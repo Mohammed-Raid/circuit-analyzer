@@ -37,3 +37,30 @@ def test_shared_node():
     G = build_graph(comps)
     assert 'NET_MID' in G.nodes
     assert G.degree('NET_MID') == 2
+
+
+def test_components_dict_stored_in_graph():
+    comps = [Component('R1', 'R', {'1': 'NET_A', '2': 'NET_B'}, '10k')]
+    G = build_graph(comps)
+    assert 'R1' in G.graph['components']
+    assert G.graph['components']['R1'].ref == 'R1'
+
+
+def test_multipin_component_adds_nodes_not_edges():
+    comps = [Component('Q1', 'Q', {'B': 'NET_B', 'C': 'NET_C', 'E': 'GND'})]
+    G = build_graph(comps)
+    assert G.number_of_edges() == 0
+    assert 'NET_B' in G.nodes
+    assert 'NET_C' in G.nodes
+    assert 'GND' in G.nodes
+
+
+def test_mixed_two_and_multipin():
+    comps = [
+        Component('R1', 'R', {'1': 'NET_A', '2': 'NET_B'}, '10k'),
+        Component('Q1', 'Q', {'B': 'NET_B', 'C': 'NET_C', 'E': 'GND'}),
+    ]
+    G = build_graph(comps)
+    assert G.number_of_edges() == 1
+    assert 'Q1' in G.graph['components']
+    assert 'R1' in G.graph['components']
