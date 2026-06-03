@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+report.txt
+custom_report.txt
+.claude/
+docs/superpowers/
+skidl_REPL.*
