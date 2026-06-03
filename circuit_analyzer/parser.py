@@ -5,9 +5,17 @@ from dataclasses import dataclass
 class Component:
     ref: str
     type: str
-    net1: str
-    net2: str
+    pins: dict[str, str]
     value: str = ''
+
+    @property
+    def net1(self) -> str:
+        return list(self.pins.values())[0] if self.pins else ''
+
+    @property
+    def net2(self) -> str:
+        vals = list(self.pins.values())
+        return vals[1] if len(vals) > 1 else ''
 
 
 def parse_file(path: str) -> list[Component]:
@@ -25,5 +33,9 @@ def parse_file(path: str) -> list[Component]:
             net2 = parts[2]
             value = parts[3] if len(parts) > 3 else ''
             comp_type = ref[0].upper()
-            components.append(Component(ref=ref, type=comp_type, net1=net1, net2=net2, value=value))
+            components.append(Component(
+                ref=ref, type=comp_type,
+                pins={'1': net1, '2': net2},
+                value=value
+            ))
     return components

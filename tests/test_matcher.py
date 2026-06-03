@@ -5,8 +5,8 @@ from circuit_analyzer.matcher import match_patterns
 
 def test_matcher_finds_rc_lowpass():
     comps = [
-        Component('R1', 'R', 'NET_IN', 'NET_MID', '10k'),
-        Component('C1', 'C', 'NET_MID', 'GND', '100nF'),
+        Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
+        Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
     ]
     results = match_patterns(build_graph(comps))
     types = [r['circuit_type'] for r in results]
@@ -14,7 +14,7 @@ def test_matcher_finds_rc_lowpass():
 
 
 def test_matcher_returns_circuit_type_field():
-    comps = [Component('F1', 'F', 'LINE_IN', 'NET_FUSE')]
+    comps = [Component('F1', 'F', {'1': 'LINE_IN', '2': 'NET_FUSE'})]
     results = match_patterns(build_graph(comps))
     assert all('circuit_type' in r for r in results)
     assert all('components' in r for r in results)
