@@ -26,6 +26,13 @@ D1  AC_POS   DC_POS
 D2  AC_NEG   DC_POS
 D3  DC_NEG   AC_POS
 D4  DC_NEG   AC_NEG
+
+# Transistor en commutation
+Q1  NET_BASE  NET_COLL  GND
+R5  NET_CMD   NET_BASE  1k
+
+# AOP suiveur
+U1  NET_SIG  NET_OUT  NET_OUT  VCC  GND
 """
 
 
@@ -49,5 +56,7 @@ def test_full_pipeline():
         assert 'Protection par fusible' in report
         assert 'Snubber RC' in report
         assert 'Pont redresseur (Graetz)' in report
+        assert 'Transistor en commutation' in report
+        assert 'Suiveur de tension (AOP)' in report
         assert 'R1' in report
         assert 'C1' in report

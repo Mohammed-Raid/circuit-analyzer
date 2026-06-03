@@ -7,8 +7,10 @@ def is_gnd(net: str) -> bool:
     net_upper = net.upper()
     if net_upper == '0':
         return True
-    GND_PREFIXES = {'GND', 'AGND', 'DGND', 'VSS', 'V-'}
-    return any(g in net_upper for g in GND_PREFIXES)
+    GND_EXACT = {'GND', 'AGND', 'DGND', 'VSS', 'V-'}
+    if net_upper in GND_EXACT:
+        return True
+    return bool(re.match(r'^(GND|AGND|DGND|VSS)[\d_]', net_upper))
 
 
 def is_power(net: str) -> bool:

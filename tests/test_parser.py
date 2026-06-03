@@ -53,3 +53,32 @@ def test_type_deduced_from_prefix():
     os.unlink(path)
     for comp, (_, expected_type) in zip(comps, cases):
         assert comp.type == expected_type
+
+
+def test_transistor_parsed_with_correct_pin_names():
+    path = _write_tmp("Q1  NET_BASE  NET_COLL  NET_EMIT\n")
+    comps = parse_file(path)
+    os.unlink(path)
+    assert len(comps) == 1
+    c = comps[0]
+    assert c.type == 'Q'
+    assert c.pins == {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'NET_EMIT'}
+    assert c.net1 == 'NET_BASE'
+
+
+def test_sw_prefix_detected_as_two_chars():
+    path = _write_tmp("SW1  NET_A  NET_B\n")
+    comps = parse_file(path)
+    os.unlink(path)
+    assert len(comps) == 1
+    assert comps[0].type == 'SW'
+
+
+def test_opamp_parsed_with_five_pins():
+    path = _write_tmp("U1  NET_INP  NET_INM  NET_OUT  VCC  GND\n")
+    comps = parse_file(path)
+    os.unlink(path)
+    assert len(comps) == 1
+    c = comps[0]
+    assert c.type == 'U'
+    assert c.pins == {'IN+': 'NET_INP', 'IN-': 'NET_INM', 'OUT': 'NET_OUT', 'V+': 'VCC', 'V-': 'GND'}

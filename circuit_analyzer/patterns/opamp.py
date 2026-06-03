@@ -87,16 +87,19 @@ class Integrator(Pattern):
                 continue
             inm = comp.pins.get('IN-')
             out = comp.pins.get('OUT')
-            if not all([inm, out]):
+            if not inm or not out:
                 continue
-            r_at_inm = [d['ref'] for u, v, d in graph.edges(inm, data=True) if d['type'] == 'R']
-            c_feedback = [
-                d['ref'] for u, v, d in graph.edges(inm, data=True)
-                if d['type'] == 'C' and (v if u == inm else u) == out
-            ]
-            if r_at_inm and c_feedback:
+            r_input = []
+            c_feedback = []
+            for u, v, d in graph.edges(inm, data=True):
+                other = v if u == inm else u
+                if d['type'] == 'R' and other != out:
+                    r_input.append(d['ref'])
+                elif d['type'] == 'C' and other == out:
+                    c_feedback.append(d['ref'])
+            if r_input and c_feedback:
                 matches.append({
-                    'components': [u_ref] + r_at_inm + c_feedback,
+                    'components': [u_ref] + r_input + c_feedback,
                     'nodes': [comp.pins.get('IN+', ''), inm, out],
                 })
         return matches

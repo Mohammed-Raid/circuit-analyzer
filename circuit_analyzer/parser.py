@@ -18,7 +18,19 @@ class Component:
         return vals[1] if len(vals) > 1 else ''
 
 
-def parse_file(path: str) -> list[Component]:
+def _infer_type(ref: str, library: dict) -> str:
+    for length in range(min(3, len(ref)), 0, -1):
+        prefix = ref[:length].upper()
+        if prefix in library:
+            return prefix
+    return ref[0].upper()
+
+
+def parse_file(path: str, library: dict = None) -> list[Component]:
+    from circuit_analyzer.component_library.loader import load_library
+    if library is None:
+        library = load_library()
+
     components = []
     with open(path, encoding='utf-8') as f:
         for line in f:
@@ -28,14 +40,18 @@ def parse_file(path: str) -> list[Component]:
             parts = line.split()
             if len(parts) < 3:
                 continue
+
             ref = parts[0]
-            net1 = parts[1]
-            net2 = parts[2]
-            value = parts[3] if len(parts) > 3 else ''
-            comp_type = ref[0].upper()
-            components.append(Component(
-                ref=ref, type=comp_type,
-                pins={'1': net1, '2': net2},
-                value=value
-            ))
+            comp_type = _infer_type(ref, library)
+            pin_names = library.get(comp_type, {}).get('pins', ['1', '2'])
+            n_pins = len(pin_names)
+
+            nets = parts[1:1 + n_pins]
+            if len(nets) < n_pins:
+                continue
+
+            value = parts[1 + n_pins] if len(parts) > 1 + n_pins else ''
+            pins = dict(zip(pin_names, nets))
+
+            components.append(Component(ref=ref, type=comp_type, pins=pins, value=value))
     return components
