@@ -24,3 +24,22 @@ def test_matcher_returns_circuit_type_field():
 def test_matcher_empty_circuit_returns_empty():
     import networkx as nx
     assert match_patterns(nx.MultiGraph()) == []
+
+
+def test_matcher_finds_transistor_switch():
+    comps = [
+        Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
+        Component('R1', 'R', {'1': 'NET_DRIVE', '2': 'NET_BASE'}, '10k'),
+    ]
+    results = match_patterns(build_graph(comps))
+    types = [r['circuit_type'] for r in results]
+    assert 'Transistor en commutation' in types
+
+
+def test_matcher_finds_voltage_follower():
+    comps = [
+        Component('U1', 'U', {'IN+': 'NET_IN', 'IN-': 'NET_OUT', 'OUT': 'NET_OUT', 'V+': 'VCC', 'V-': 'GND'}),
+    ]
+    results = match_patterns(build_graph(comps))
+    types = [r['circuit_type'] for r in results]
+    assert 'Suiveur de tension (AOP)' in types
