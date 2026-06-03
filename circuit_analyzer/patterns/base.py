@@ -1,17 +1,23 @@
 from abc import ABC, abstractmethod
+import re
 import networkx as nx
 
 
-GND_NETS = {'GND', 'AGND', 'DGND', '0', 'VSS', 'V-'}
-POWER_NETS = {'VCC', 'VDD', 'AVCC', 'AVDD', 'DVCC', 'VIN', 'VBAT', 'PWR', 'V+'}
-
-
 def is_gnd(net: str) -> bool:
-    return net.upper() in GND_NETS or any(g in net.upper() for g in GND_NETS)
+    net_upper = net.upper()
+    if net_upper == '0':
+        return True
+    GND_PREFIXES = {'GND', 'AGND', 'DGND', 'VSS', 'V-'}
+    return any(g in net_upper for g in GND_PREFIXES)
 
 
 def is_power(net: str) -> bool:
-    return net.upper() in POWER_NETS or any(p in net.upper() for p in POWER_NETS)
+    net_upper = net.upper()
+    POWER_EXACT = {'VCC', 'VDD', 'AVCC', 'AVDD', 'DVCC', 'VIN', 'VBAT', 'PWR', 'V+'}
+    if net_upper in POWER_EXACT:
+        return True
+    # Match as prefix followed by digit, underscore, or end (e.g. VCC_3V3, VDD1)
+    return bool(re.match(r'^(VCC|VDD|AVCC|AVDD|DVCC|VIN|VBAT|PWR)[\d_]', net_upper))
 
 
 class Pattern(ABC):

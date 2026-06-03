@@ -39,6 +39,14 @@ def test_rc_highpass_found():
     assert set(matches[0]['components']) == {'R1', 'C1'}
 
 
+def test_rc_highpass_not_found_when_r_not_to_gnd():
+    comps = [
+        Component('C1', 'C', 'NET_IN', 'NET_MID', '100nF'),
+        Component('R1', 'R', 'NET_MID', 'NET_OUT', '10k'),
+    ]
+    assert RCHighPassFilter().match(build_graph(comps)) == []
+
+
 # --- LC Filter ---
 
 def test_lc_filter_found():
