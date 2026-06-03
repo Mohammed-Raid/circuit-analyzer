@@ -43,3 +43,21 @@ def test_matcher_finds_voltage_follower():
     results = match_patterns(build_graph(comps))
     types = [r['circuit_type'] for r in results]
     assert 'Suiveur de tension (AOP)' in types
+
+
+def test_matcher_loads_custom_patterns(tmp_path):
+    import json, os
+    custom = [{'name': 'Circuit test', 'components': ['R', 'C'], 'conditions': []}]
+    (tmp_path / 'custom_circuits.json').write_text(json.dumps(custom), encoding='utf-8')
+    orig = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        comps = [
+            Component('R1', 'R', {'1': 'NET_A', '2': 'NET_B'}, '10k'),
+            Component('C1', 'C', {'1': 'NET_B', '2': 'GND'}, '100nF'),
+        ]
+        results = match_patterns(build_graph(comps))
+        types = [r['circuit_type'] for r in results]
+        assert 'Circuit test' in types
+    finally:
+        os.chdir(orig)
