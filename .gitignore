@@ -5,5 +5,5 @@ __pycache__/
 report.txt
 custom_report.txt
 .claude/
-docs/superpowers/
+# docs/superpowers/ intentionally tracked
 skidl_REPL.*
