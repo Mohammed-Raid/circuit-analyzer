@@ -139,14 +139,13 @@ class TabCircuits:
                                 fg_color=CARD2,
                                 border_width=1, border_color=BORDER)
         comp_col.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
-        comp_col.grid_rowconfigure(1, weight=1)
         ctk.CTkLabel(comp_col, text="⚙  Composants requis",
                      font=ctk.CTkFont("Segoe UI", 11, "bold"),
-                     text_color=BLUE).grid(
-                         row=0, column=0, sticky="w", padx=12, pady=(10, 6))
+                     text_color=BLUE).pack(
+                         anchor="w", padx=12, pady=(10, 6))
         self._comp_scroll = ctk.CTkScrollableFrame(
             comp_col, fg_color="transparent")
-        self._comp_scroll.grid(row=1, column=0, sticky="nsew",
+        self._comp_scroll.pack(fill="both", expand=True,
                                padx=6, pady=(0, 8))
 
         # Conditions column
@@ -156,8 +155,8 @@ class TabCircuits:
         cond_col.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
         ctk.CTkLabel(cond_col, text="✅  Conditions",
                      font=ctk.CTkFont("Segoe UI", 11, "bold"),
-                     text_color="#10b981").grid(
-                         row=0, column=0, sticky="w", padx=12, pady=(10, 6))
+                     text_color="#10b981").pack(
+                         anchor="w", padx=12, pady=(10, 6))
         for label in CONDITION_LABELS:
             var = tk.BooleanVar()
             self._cond_vars[label] = var
