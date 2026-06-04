@@ -249,13 +249,13 @@ class SummingAmplifier(Pattern):
 
 
 OPAMP_PATTERNS = [
-    InvertingAmplifier(),
-    NonInvertingAmplifier(),
-    VoltageFollower(),
+    DifferentialAmplifier(),
+    SummingAmplifier(),
     Integrator(),
     Differentiator(),
     SchmittTrigger(),
-    DifferentialAmplifier(),
-    SummingAmplifier(),
+    NonInvertingAmplifier(),
+    InvertingAmplifier(),
+    VoltageFollower(),
     Comparator(),
 ]

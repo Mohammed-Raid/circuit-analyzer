@@ -27,7 +27,11 @@ def main():
         print(f"Erreur : fichier introuvable : {args.input}", file=sys.stderr)
         sys.exit(1)
 
-    components = parse_file(str(input_path))
+    try:
+        components = parse_file(str(input_path))
+    except ValueError as e:
+        print(f"Erreur netlist : {e}", file=sys.stderr)
+        sys.exit(1)
     all_refs = [c.ref for c in components]
     graph = build_graph(components)
     results = match_patterns(graph)

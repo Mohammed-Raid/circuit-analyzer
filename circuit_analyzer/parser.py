@@ -43,12 +43,20 @@ def parse_file(path: str, library: dict = None) -> list[Component]:
 
             ref = parts[0]
 
-            # Point 3: duplicate reference detection
-            if ref in seen_refs:
+            # Validate ref starts with a letter (rejects shifted value tokens like '10k VCC GND')
+            if not ref[0].isalpha():
+                raise ValueError(
+                    f"Référence invalide '{ref}' (doit commencer par une lettre) "
+                    f"— ligne {line_no}: {repr(line)}"
+                )
+
+            # Point 3: case-insensitive duplicate reference detection
+            ref_key = ref.upper()
+            if ref_key in seen_refs:
                 raise ValueError(
                     f"Référence dupliquée '{ref}' — ligne {line_no}: {repr(line)}"
                 )
-            seen_refs.add(ref)
+            seen_refs.add(ref_key)
 
             comp_type = _infer_type(ref, library)
             pin_names = library.get(comp_type, {}).get('pins', ['1', '2'])

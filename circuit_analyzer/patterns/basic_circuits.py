@@ -191,22 +191,26 @@ class HalfWaveRectifier(Pattern):
     def match(self, graph):
         matches = []
         seen = set()
-        for u, v, data in graph.edges(data=True):
-            if data['type'] != 'D':
+        all_comps = graph.graph.get('components', {})
+        for d_ref, comp in all_comps.items():
+            if comp.type != 'D':
                 continue
-            for output_node in (u, v):
-                for ou, ov, od in graph.edges(output_node, data=True):
-                    if od['ref'] == data['ref']:
-                        continue
-                    other = ov if ou == output_node else ou
-                    if od['type'] == 'R' and is_gnd(other):
-                        key = frozenset([data['ref'], od['ref']])
-                        if key not in seen:
-                            seen.add(key)
-                            matches.append({
-                                'components': [data['ref'], od['ref']],
-                                'nodes': [u, v, other],
-                            })
+            # Only the cathode (K) is the DC output — never match the anode side
+            cathode = comp.pins.get('K') or comp.pins.get('2', '')
+            if not cathode:
+                continue
+            for ou, ov, od in graph.edges(cathode, data=True):
+                if od['ref'] == d_ref:
+                    continue
+                other = ov if ou == cathode else ou
+                if od['type'] == 'R' and is_gnd(other):
+                    key = frozenset([d_ref, od['ref']])
+                    if key not in seen:
+                        seen.add(key)
+                        matches.append({
+                            'components': [d_ref, od['ref']],
+                            'nodes': [comp.pins.get('A', comp.pins.get('1', '')), cathode, other],
+                        })
         return matches
 
 
@@ -216,34 +220,38 @@ class PeakDetector(Pattern):
     def match(self, graph):
         matches = []
         seen = set()
-        for u, v, data in graph.edges(data=True):
-            if data['type'] != 'D':
+        all_comps = graph.graph.get('components', {})
+        for d_ref, comp in all_comps.items():
+            if comp.type != 'D':
                 continue
-            for output_node in (u, v):
-                for ou, ov, od in graph.edges(output_node, data=True):
-                    if od['ref'] == data['ref']:
-                        continue
-                    other = ov if ou == output_node else ou
-                    if od['type'] == 'C' and is_gnd(other):
-                        key = frozenset([data['ref'], od['ref']])
-                        if key not in seen:
-                            seen.add(key)
-                            matches.append({
-                                'components': [data['ref'], od['ref']],
-                                'nodes': [u, v, other],
-                            })
+            # Only the cathode (K) is the peak-hold node — never match the anode side
+            cathode = comp.pins.get('K') or comp.pins.get('2', '')
+            if not cathode:
+                continue
+            for ou, ov, od in graph.edges(cathode, data=True):
+                if od['ref'] == d_ref:
+                    continue
+                other = ov if ou == cathode else ou
+                if od['type'] == 'C' and is_gnd(other):
+                    key = frozenset([d_ref, od['ref']])
+                    if key not in seen:
+                        seen.add(key)
+                        matches.append({
+                            'components': [d_ref, od['ref']],
+                            'nodes': [comp.pins.get('A', comp.pins.get('1', '')), cathode, other],
+                        })
         return matches
 
 
 ALL_PATTERNS = [
+    RCSnubber(),
+    DecouplingCapacitor(),   # must precede RCLowPassFilter (power-rail caps)
     RCLowPassFilter(),
     RCHighPassFilter(),
     LCFilter(),
-    VoltageDivider(),
-    DecouplingCapacitor(),
     BridgeRectifier(),
     HalfWaveRectifier(),
     PeakDetector(),
+    VoltageDivider(),
     FuseProtection(),
-    RCSnubber(),
 ]

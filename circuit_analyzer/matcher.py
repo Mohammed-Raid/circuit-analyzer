@@ -56,7 +56,7 @@ def match_patterns(graph: nx.MultiGraph) -> list[dict]:
     try:
         from custom_circuits.loader import get_custom_patterns
         custom = get_custom_patterns()
-    except ImportError:
+    except Exception:
         custom = []
 
     # Custom patterns evaluated between complex and simple passive

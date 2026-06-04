@@ -107,4 +107,5 @@ class CustomCircuitPattern(Pattern):
                         return True
             return False
 
-        return True
+        # Unknown condition — fail safe rather than silently accepting
+        return False
