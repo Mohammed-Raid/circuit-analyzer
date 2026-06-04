@@ -5,6 +5,7 @@ from circuit_analyzer.parser import parse_file
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
 from circuit_analyzer.reporter import generate
+from gui.circuit_viewer import show_circuit
 
 BG     = "#070d1a"
 CARD   = "#1e293b"
@@ -47,6 +48,7 @@ class TabAnalyze:
         self._results = []
         self._all_refs = []
         self._unclassified = []
+        self._comp_info = {}
         self._build()
 
     def _build(self):
@@ -192,6 +194,11 @@ class TabAnalyze:
             self._s_unc.update(str(len(unclassified)))
 
             self._stats_row.pack(fill="x", padx=20, before=self._body)
+            # Build comp_info dict for the schematic viewer
+            self._comp_info = {
+                c.ref: {"type": c.type, "value": c.value, "pins": c.pins}
+                for c in comps
+            }
             self._render_cards(results, unclassified)
 
         except FileNotFoundError:
@@ -256,7 +263,7 @@ class TabAnalyze:
             grid.grid_columnconfigure((0, 1), weight=1)
 
             for i, item in enumerate(items):
-                _CircuitCard(grid, item).grid(
+                _CircuitCard(grid, item, self._comp_info).grid(
                     row=i // 2, column=i % 2,
                     sticky="ew", padx=4, pady=4)
 
@@ -329,12 +336,14 @@ class _EmptyState(ctk.CTkFrame):
 
 
 class _CircuitCard(ctk.CTkFrame):
-    def __init__(self, parent, result: dict):
+    def __init__(self, parent, result: dict, comp_info: dict = None):
         bg, fg, icon = _type_style(result["circuit_type"])
         super().__init__(parent, corner_radius=12,
                          fg_color=bg,
                          border_width=1,
                          border_color=_darken(bg))
+        self._result = result
+        self._comp_info = comp_info or {}
 
         # Header
         hdr = ctk.CTkFrame(self, fg_color="transparent")
@@ -343,8 +352,13 @@ class _CircuitCard(ctk.CTkFrame):
                      font=ctk.CTkFont(size=16)).pack(side="left", padx=(0, 6))
         ctk.CTkLabel(hdr, text=result["circuit_type"],
                      font=ctk.CTkFont("Segoe UI", 12, "bold"),
-                     text_color=fg, wraplength=260,
+                     text_color=fg, wraplength=220,
                      justify="left", anchor="w").pack(side="left")
+        ctk.CTkButton(hdr, text="🔬",
+                      width=30, height=24, corner_radius=6,
+                      font=ctk.CTkFont(size=14),
+                      fg_color=_darken(bg), hover_color=_brighten(_darken(bg)),
+                      command=self._open_schema).pack(side="right")
 
         # Divider
         ctk.CTkFrame(self, height=1,
@@ -380,6 +394,9 @@ class _CircuitCard(ctk.CTkFrame):
                          text_color=_brighten(bg),
                          wraplength=230,
                          justify="left", anchor="w").pack(side="left")
+
+    def _open_schema(self):
+        show_circuit(self._result, self._comp_info)
 
 
 # ── Utilities ────────────────────────────────────────────────────────────────
