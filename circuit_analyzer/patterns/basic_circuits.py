@@ -185,6 +185,56 @@ class RCSnubber(Pattern):
         return matches
 
 
+class HalfWaveRectifier(Pattern):
+    name = "Redresseur simple alternance"
+
+    def match(self, graph):
+        matches = []
+        seen = set()
+        for u, v, data in graph.edges(data=True):
+            if data['type'] != 'D':
+                continue
+            for output_node in (u, v):
+                for ou, ov, od in graph.edges(output_node, data=True):
+                    if od['ref'] == data['ref']:
+                        continue
+                    other = ov if ou == output_node else ou
+                    if od['type'] == 'R' and is_gnd(other):
+                        key = frozenset([data['ref'], od['ref']])
+                        if key not in seen:
+                            seen.add(key)
+                            matches.append({
+                                'components': [data['ref'], od['ref']],
+                                'nodes': [u, v, other],
+                            })
+        return matches
+
+
+class PeakDetector(Pattern):
+    name = "Détecteur de crête"
+
+    def match(self, graph):
+        matches = []
+        seen = set()
+        for u, v, data in graph.edges(data=True):
+            if data['type'] != 'D':
+                continue
+            for output_node in (u, v):
+                for ou, ov, od in graph.edges(output_node, data=True):
+                    if od['ref'] == data['ref']:
+                        continue
+                    other = ov if ou == output_node else ou
+                    if od['type'] == 'C' and is_gnd(other):
+                        key = frozenset([data['ref'], od['ref']])
+                        if key not in seen:
+                            seen.add(key)
+                            matches.append({
+                                'components': [data['ref'], od['ref']],
+                                'nodes': [u, v, other],
+                            })
+        return matches
+
+
 ALL_PATTERNS = [
     RCLowPassFilter(),
     RCHighPassFilter(),
@@ -192,6 +242,8 @@ ALL_PATTERNS = [
     VoltageDivider(),
     DecouplingCapacitor(),
     BridgeRectifier(),
+    HalfWaveRectifier(),
+    PeakDetector(),
     FuseProtection(),
     RCSnubber(),
 ]
