@@ -1,108 +1,129 @@
-import tkinter as tk
-from tkinter import ttk
+import customtkinter as ctk
 from gui.tab_analyze import TabAnalyze
 from gui.tab_circuits import TabCircuits
 from gui.tab_components import TabComponents
 
-ACCENT   = '#2563eb'
-BG       = '#f1f5f9'
-FG       = '#1e293b'
-TAB_BG   = '#ffffff'
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
+
+SIDEBAR_W = 220
+NAV_ITEMS = [
+    ("🔍  Analyser",    0),
+    ("⚡  Circuits",    1),
+    ("🔧  Composants",  2),
+]
 
 
 class AppWindow:
     def __init__(self):
-        self.root = tk.Tk()
+        self.root = ctk.CTk()
         self.root.title("Circuit Analyzer")
-        self.root.geometry("1000x700")
-        self.root.minsize(800, 550)
-        self.root.configure(bg=BG)
-        self._apply_theme()
+        self.root.geometry("1100x720")
+        self.root.minsize(860, 580)
+        self._active_tab = 0
+        self._nav_btns = []
         self._build()
 
-    def _apply_theme(self):
-        style = ttk.Style(self.root)
-        style.theme_use('clam')
-
-        style.configure('.',
-            background=BG, foreground=FG,
-            font=('Segoe UI', 10),
-            borderwidth=0,
-        )
-        style.configure('TNotebook', background=BG, tabmargins=[2, 4, 2, 0])
-        style.configure('TNotebook.Tab',
-            background='#cbd5e1', foreground=FG,
-            padding=[14, 6], font=('Segoe UI', 10),
-        )
-        style.map('TNotebook.Tab',
-            background=[('selected', TAB_BG)],
-            foreground=[('selected', ACCENT)],
-            font=[('selected', ('Segoe UI', 10, 'bold'))],
-        )
-        style.configure('TFrame', background=BG)
-        style.configure('Tab.TFrame', background=TAB_BG)
-        style.configure('TLabel', background=BG, foreground=FG)
-        style.configure('Tab.TLabel', background=TAB_BG)
-        style.configure('TEntry',
-            fieldbackground='#ffffff', foreground=FG,
-            bordercolor='#cbd5e1', relief='flat',
-            padding=4,
-        )
-        style.configure('TButton',
-            background=ACCENT, foreground='white',
-            padding=[12, 6], relief='flat',
-            font=('Segoe UI', 10, 'bold'),
-        )
-        style.map('TButton',
-            background=[('active', '#1d4ed8'), ('pressed', '#1e40af')],
-        )
-        style.configure('Secondary.TButton',
-            background='#e2e8f0', foreground=FG,
-            padding=[10, 5], font=('Segoe UI', 10),
-        )
-        style.map('Secondary.TButton',
-            background=[('active', '#cbd5e1')],
-        )
-        style.configure('Danger.TButton',
-            background='#ef4444', foreground='white',
-            padding=[10, 5], font=('Segoe UI', 10),
-        )
-        style.map('Danger.TButton',
-            background=[('active', '#dc2626')],
-        )
-        style.configure('TCheckbutton', background=TAB_BG, foreground=FG)
-        style.configure('TScrollbar', background='#e2e8f0', troughcolor=BG)
-        style.configure('TLabelframe',
-            background=TAB_BG, foreground=FG,
-            relief='flat', borderwidth=1,
-        )
-        style.configure('TLabelframe.Label',
-            background=TAB_BG, foreground='#64748b',
-            font=('Segoe UI', 9, 'bold'),
-        )
-
     def _build(self):
-        # Header bar
-        header = tk.Frame(self.root, bg=ACCENT, height=48)
-        header.pack(fill='x')
-        header.pack_propagate(False)
-        tk.Label(header, text='⚡ Circuit Analyzer',
-                 bg=ACCENT, fg='white',
-                 font=('Segoe UI', 14, 'bold')).pack(side='left', padx=16, pady=10)
-        tk.Label(header, text='v2.0',
-                 bg=ACCENT, fg='#93c5fd',
-                 font=('Segoe UI', 10)).pack(side='left', pady=10)
+        self.root.grid_columnconfigure(1, weight=1)
+        self.root.grid_rowconfigure(0, weight=1)
 
-        notebook = ttk.Notebook(self.root)
-        notebook.pack(fill='both', expand=True, padx=0, pady=0)
+        # ── Sidebar ─────────────────────────────────────────────────────────
+        sidebar = ctk.CTkFrame(self.root, width=SIDEBAR_W,
+                               corner_radius=0,
+                               fg_color="#0f172a")
+        sidebar.grid(row=0, column=0, sticky="nsew")
+        sidebar.grid_propagate(False)
 
-        tab_analyze    = TabAnalyze(notebook)
-        tab_circuits   = TabCircuits(notebook)
-        tab_components = TabComponents(notebook, on_save=tab_circuits.refresh_component_list)
+        # Logo
+        ctk.CTkLabel(
+            sidebar,
+            text="⚡ Circuit\n   Analyzer",
+            font=ctk.CTkFont("Segoe UI", 22, "bold"),
+            text_color="#60a5fa",
+        ).pack(pady=(28, 4), padx=20, anchor="w")
 
-        notebook.add(tab_analyze.frame,    text='  🔍 Analyser  ')
-        notebook.add(tab_circuits.frame,   text='  ⚡ Circuits  ')
-        notebook.add(tab_components.frame, text='  🔧 Composants  ')
+        ctk.CTkLabel(
+            sidebar, text="v2.0  —  Industrial",
+            font=ctk.CTkFont("Segoe UI", 11),
+            text_color="#475569",
+        ).pack(padx=20, anchor="w")
+
+        ctk.CTkFrame(sidebar, height=1, fg_color="#1e293b").pack(
+            fill="x", padx=20, pady=20)
+
+        ctk.CTkLabel(
+            sidebar, text="NAVIGATION",
+            font=ctk.CTkFont("Segoe UI", 10, "bold"),
+            text_color="#475569",
+        ).pack(padx=20, anchor="w", pady=(0, 8))
+
+        for label, idx in NAV_ITEMS:
+            btn = ctk.CTkButton(
+                sidebar,
+                text=label,
+                width=SIDEBAR_W - 24,
+                height=44,
+                corner_radius=10,
+                font=ctk.CTkFont("Segoe UI", 13),
+                anchor="w",
+                fg_color="transparent",
+                text_color="#94a3b8",
+                hover_color="#1e293b",
+                command=lambda i=idx: self._switch(i),
+            )
+            btn.pack(padx=12, pady=2)
+            self._nav_btns.append(btn)
+
+        # Spacer + footer
+        ctk.CTkFrame(sidebar, fg_color="transparent").pack(expand=True)
+        ctk.CTkLabel(
+            sidebar, text="144 tests ✓",
+            font=ctk.CTkFont("Segoe UI", 10),
+            text_color="#334155",
+        ).pack(pady=(0, 20))
+
+        # ── Content area ────────────────────────────────────────────────────
+        self._content = ctk.CTkFrame(self.root, corner_radius=0,
+                                     fg_color="#0f172a")
+        self._content.grid(row=0, column=1, sticky="nsew")
+        self._content.grid_columnconfigure(0, weight=1)
+        self._content.grid_rowconfigure(0, weight=1)
+
+        # Build all tab frames
+        self._tab_analyze    = TabAnalyze(self._content)
+        self._tab_circuits   = TabCircuits(self._content)
+        self._tab_components = TabComponents(
+            self._content,
+            on_save=self._tab_circuits.refresh_component_list,
+        )
+
+        self._frames = [
+            self._tab_analyze.frame,
+            self._tab_circuits.frame,
+            self._tab_components.frame,
+        ]
+        for f in self._frames:
+            f.grid(row=0, column=0, sticky="nsew")
+
+        self._switch(0)
+
+    def _switch(self, idx: int):
+        self._active_tab = idx
+        for i, btn in enumerate(self._nav_btns):
+            if i == idx:
+                btn.configure(
+                    fg_color="#1d4ed8",
+                    text_color="#ffffff",
+                    font=ctk.CTkFont("Segoe UI", 13, "bold"),
+                )
+            else:
+                btn.configure(
+                    fg_color="transparent",
+                    text_color="#94a3b8",
+                    font=ctk.CTkFont("Segoe UI", 13),
+                )
+        self._frames[idx].tkraise()
 
     def run(self):
         self.root.mainloop()
