@@ -126,9 +126,38 @@ class TabAnalyze:
         self._empty_state = _EmptyState(self._body)
         self._empty_state.grid(row=0, column=0)
 
-        self._results_view = ctk.CTkScrollableFrame(
-            self._body, fg_color=BG, corner_radius=0,
-        )
+        # Lightweight scroll container — tk.Canvas is much faster than CTkScrollableFrame
+        scroll_outer = tk.Frame(self._body, bg=BG)
+        scroll_outer.grid(row=0, column=0, sticky="nsew")
+        scroll_outer.grid_columnconfigure(0, weight=1)
+        scroll_outer.grid_rowconfigure(0, weight=1)
+
+        self._canvas = tk.Canvas(scroll_outer, bg=BG,
+                                  highlightthickness=0, bd=0)
+        vsb = tk.Scrollbar(scroll_outer, orient="vertical",
+                           command=self._canvas.yview,
+                           bg="#1e293b", troughcolor=BG)
+        self._canvas.configure(yscrollcommand=vsb.set)
+        vsb.grid(row=0, column=1, sticky="ns")
+        self._canvas.grid(row=0, column=0, sticky="nsew")
+
+        self._results_view = tk.Frame(self._canvas, bg=BG)
+        self._canvas_win = self._canvas.create_window(
+            (0, 0), window=self._results_view, anchor="nw")
+
+        self._results_view.bind("<Configure>", self._on_scroll_configure)
+        self._canvas.bind("<Configure>", self._on_canvas_resize)
+
+        # Mouse wheel binding
+        self._canvas.bind("<MouseWheel>",
+            lambda e: self._canvas.yview_scroll(
+                int(-1 * (e.delta / 120)), "units"))
+        self._results_view.bind("<MouseWheel>",
+            lambda e: self._canvas.yview_scroll(
+                int(-1 * (e.delta / 120)), "units"))
+
+        scroll_outer.grid_remove()   # hide until first analysis
+        self._scroll_outer = scroll_outer
 
         # ── Bottom bar ───────────────────────────────────────────────────────
         bar = ctk.CTkFrame(self.frame, fg_color=CARD2,
@@ -194,6 +223,7 @@ class TabAnalyze:
             self._s_unc.update(str(len(unclassified)))
 
             self._stats_row.pack(fill="x", padx=20, before=self._body)
+            self._scroll_outer.grid()   # show scroll container
             # Build comp_info dict for the schematic viewer
             self._comp_info = {
                 c.ref: {"type": c.type, "value": c.value, "pins": c.pins}
@@ -223,6 +253,13 @@ class TabAnalyze:
                 f.write(self._report_text)
             messagebox.showinfo("Succès", f"Rapport sauvegardé :\n{path}")
 
+    def _on_scroll_configure(self, _=None):
+        self._canvas.configure(
+            scrollregion=self._canvas.bbox("all"))
+
+    def _on_canvas_resize(self, event):
+        self._canvas.itemconfig(self._canvas_win, width=event.width)
+
     def _copy(self):
         if not self._report_text:
             return
@@ -231,13 +268,18 @@ class TabAnalyze:
 
     # ── Card rendering ───────────────────────────────────────────────────────
 
+    def _bind_scroll(self, widget):
+        """Propagate mouse wheel to canvas for any child widget."""
+        widget.bind("<MouseWheel>",
+            lambda e: self._canvas.yview_scroll(
+                int(-1 * (e.delta / 120)), "units"))
+
     def _render_cards(self, results: list, unclassified: list):
         # Clear old cards
         for w in self._results_view.winfo_children():
             w.destroy()
 
         self._empty_state.grid_remove()
-        self._results_view.grid(row=0, column=0, sticky="nsew")
 
         # Group by type categories
         groups = {}
@@ -263,9 +305,10 @@ class TabAnalyze:
             grid.grid_columnconfigure((0, 1), weight=1)
 
             for i, item in enumerate(items):
-                _CircuitCard(grid, item, self._comp_info).grid(
-                    row=i // 2, column=i % 2,
-                    sticky="ew", padx=4, pady=4)
+                card = _CircuitCard(grid, item, self._comp_info)
+                card.grid(row=i // 2, column=i % 2,
+                          sticky="ew", padx=4, pady=4)
+                self._bind_scroll(card)
 
         # Unclassified section
         if unclassified:

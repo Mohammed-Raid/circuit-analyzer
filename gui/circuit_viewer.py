@@ -200,11 +200,16 @@ def _draw_decoupling(d, result, ci):
 
 def _draw_snubber(d, result, ci):
     r = _ref(result, ci, "R"); c = _ref(result, ci, "C")
-    d += elm.Resistor().right().label(_lbl(r, ci), loc="top")
-    d.push()
-    d += elm.Line().left(3).up(1.5)
-    d += elm.Capacitor().right().label(_lbl(c, ci), loc="top")
-    d.pop()
+    # Parallel: top branch = R, bottom branch = C
+    d += elm.Line().right(0.5)
+    d.push()                                              # save left junction
+    d += elm.Resistor().right().label(_lbl(r, ci), loc="top")  # top path
+    right_end = d.here
+    d.pop()                                               # back to left junction
+    d += elm.Line().down(1.5)
+    d += elm.Capacitor().right().label(_lbl(c, ci), loc="bottom")
+    d += elm.Line().up(1.5)                               # meet right junction
+    d += elm.Line().right(0.5)
 
 
 def _draw_fuse(d, result, ci):
@@ -233,20 +238,35 @@ def _draw_peak_detector(d, result, ci):
 
 
 def _draw_bridge_rectifier(d, result, ci):
+    """Two-column layout: all diodes point UP.
+    Left col:  DC- → D3 → AC1 → D1 → DC+
+    Right col: DC- → D4 → AC2 → D2 → DC+
+    Horizontal rails connect top (DC+) and bottom (DC-).
+    """
     ds = _refs(result, ci, "D")
     while len(ds) < 4:
         ds.append("D?")
-    d += elm.Line().right(0.5).label("AC1", loc="left")
-    d += elm.Diode().right().label(ds[0], loc="top")
-    d += elm.Line().right(1).label("DC+", loc="right")
-    d.push()
-    d += elm.Line().down(2)
-    d += elm.Ground()
-    d.pop()
-    d += elm.Line().at((0, -2)).right(0.5).label("AC2", loc="left")
-    d += elm.Diode().flip().up().label(ds[1], loc="right")
-    d += elm.Diode().right().label(ds[2], loc="bottom")
-    d += elm.Line().right(0.5).label("DC−", loc="right")
+
+    COL = 4.0   # horizontal distance between the two columns
+
+    # ── Left column ───────────────────────────────────────────────
+    d.add(elm.Dot().at((0, 0)).label("DC−", loc="left"))
+    d.add(elm.Diode().up().at((0, 0)).label(ds[2], loc="left"))  # D3 DC-→AC1
+    d.add(elm.Dot().label("AC1", loc="left"))
+    d.add(elm.Diode().up().label(ds[0], loc="left"))             # D1 AC1→DC+
+    dc_plus_y = d.here[1]
+    d.add(elm.Dot().label("DC+", loc="left"))
+
+    # ── Right column ──────────────────────────────────────────────
+    d.add(elm.Dot().at((COL, 0)).label("DC−", loc="right"))
+    d.add(elm.Diode().up().at((COL, 0)).label(ds[3], loc="right")) # D4 DC-→AC2
+    d.add(elm.Dot().label("AC2", loc="right"))
+    d.add(elm.Diode().up().label(ds[1], loc="right"))              # D2 AC2→DC+
+    d.add(elm.Dot().label("DC+", loc="right"))
+
+    # ── Connecting rails ──────────────────────────────────────────
+    d.add(elm.Line().at((0, 0)).right(COL))                       # DC- rail
+    d.add(elm.Line().at((0, dc_plus_y)).right(COL))               # DC+ rail
 
 
 def _draw_flyback(d, result, ci):
@@ -307,17 +327,21 @@ def _draw_non_inverting_amp(d, result, ci):
 
 
 def _draw_follower(d, result, ci):
-    u = _ref(result, ci, "U")
     op = d.add(elm.Opamp().anchor("in2").at((4.5, 0)))
     d.add(elm.Line().at(op.in2).left(1.2).label("IN", loc="left"))
 
-    out_pt  = op.out
-    in1_pt  = op.in1
-    above_x = (out_pt[0] + 0.8, in1_pt[1] + 1.2)
-    d.add(elm.Line().at(out_pt).right(0.8))
-    d.add(elm.Line().up(in1_pt[1] + 1.2 - out_pt[1]))
-    d.add(elm.Line().left(above_x[0] - in1_pt[0]))
-    d.add(elm.Line().down(1.2).to(in1_pt))
+    out_pt = op.out
+    in1_pt = op.in1
+
+    # Feedback wire: OUT → below opamp → back to IN-
+    # Goes: right 0.6 → down → left to under IN- → up to IN-
+    fb_x = out_pt[0] + 0.6
+    fb_y = in1_pt[1] - 1.4          # below IN- level
+
+    d.add(elm.Line().at(out_pt).right(0.6))
+    d.add(elm.Line().down(abs(out_pt[1] - fb_y)))
+    d.add(elm.Line().left(fb_x - in1_pt[0]))
+    d.add(elm.Line().up(abs(in1_pt[1] - fb_y)).to(in1_pt))
     d.add(elm.Dot().at(out_pt).label("OUT", loc="right"))
 
 
