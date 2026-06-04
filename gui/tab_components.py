@@ -6,11 +6,19 @@ from pathlib import Path
 from circuit_analyzer.component_library.base import COMPONENT_TYPES
 
 LIBRARY_FILE = "component_library.json"
+BG     = "#070d1a"
+CARD   = "#1e293b"
+CARD2  = "#0f172a"
+BORDER = "#263347"
+TEXT   = "#f1f5f9"
+MUTED  = "#64748b"
+BLUE   = "#3b82f6"
+BLUE_D = "#1d4ed8"
 
 
 class TabComponents:
     def __init__(self, parent, on_save=None):
-        self.frame = ctk.CTkFrame(parent, corner_radius=0, fg_color="#0f172a")
+        self.frame = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
         self._on_save = on_save
         self._custom: dict = {}
         self._current_key: str | None = None
@@ -19,146 +27,164 @@ class TabComponents:
         self._load()
 
     def _build(self):
-        # ── Title
-        ctk.CTkLabel(self.frame,
-                     text="Bibliothèque de composants",
-                     font=ctk.CTkFont("Segoe UI", 20, "bold"),
-                     text_color="#f1f5f9").pack(
-                         anchor="w", padx=28, pady=(24, 12))
+        # ── Page header
+        header = ctk.CTkFrame(self.frame, fg_color=CARD,
+                              corner_radius=0, height=70)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+        h = ctk.CTkFrame(header, fg_color="transparent")
+        h.pack(fill="both", expand=True, padx=28)
+        ctk.CTkLabel(h, text="Bibliothèque de composants",
+                     font=ctk.CTkFont("Segoe UI", 18, "bold"),
+                     text_color=TEXT).pack(side="left", pady=18)
+        ctk.CTkLabel(h, text="Ajouter de nouveaux types",
+                     font=ctk.CTkFont("Segoe UI", 12),
+                     text_color=MUTED).pack(side="left", padx=14)
 
+        # ── Body
         body = ctk.CTkFrame(self.frame, fg_color="transparent")
-        body.pack(fill="both", expand=True, padx=28, pady=(0, 16))
+        body.pack(fill="both", expand=True, padx=20, pady=16)
         body.grid_columnconfigure(1, weight=1)
         body.grid_rowconfigure(0, weight=1)
 
-        # ── Left: list card
-        left_card = ctk.CTkFrame(body, corner_radius=14, fg_color="#1e293b")
-        left_card.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-        left_card.grid_rowconfigure(1, weight=1)
+        # ── Left: list panel
+        left = ctk.CTkFrame(body, corner_radius=14, fg_color=CARD,
+                            border_width=1, border_color=BORDER)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        left.grid_rowconfigure(1, weight=1)
 
-        ctk.CTkLabel(left_card, text="Types de composants",
+        ctk.CTkLabel(left, text="Types de composants",
                      font=ctk.CTkFont("Segoe UI", 12, "bold"),
-                     text_color="#94a3b8").grid(
-                         row=0, column=0, sticky="w", padx=14, pady=(12, 4))
+                     text_color=TEXT).grid(
+                         row=0, column=0, sticky="w",
+                         padx=14, pady=(14, 6))
 
-        list_frame = ctk.CTkFrame(left_card, fg_color="#0a0f1e",
-                                  corner_radius=8)
-        list_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 8))
-
+        lb_f = ctk.CTkFrame(left, fg_color=CARD2, corner_radius=8)
+        lb_f.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 8))
         self._listbox = tk.Listbox(
-            list_frame, width=30, height=22,
-            bg="#0a0f1e", fg="#94a3b8",
-            selectbackground="#1d4ed8", selectforeground="#ffffff",
+            lb_f, width=30, height=24,
+            bg=CARD2, fg=MUTED,
+            selectbackground=BLUE_D, selectforeground=TEXT,
             font=("Segoe UI", 11), relief="flat", bd=0,
             activestyle="none", highlightthickness=0,
         )
-        sb = tk.Scrollbar(list_frame, command=self._listbox.yview,
-                          bg="#1e293b", troughcolor="#0a0f1e")
+        sb = tk.Scrollbar(lb_f, command=self._listbox.yview,
+                          bg=CARD, troughcolor=CARD2)
         self._listbox.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self._listbox.pack(fill="both", expand=True, padx=6, pady=6)
         self._listbox.bind("<<ListboxSelect>>", self._on_select)
 
-        btn_row = ctk.CTkFrame(left_card, fg_color="transparent")
-        btn_row.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 12))
-        ctk.CTkButton(btn_row, text="+ Nouveau", height=34,
-                      corner_radius=8,
-                      font=ctk.CTkFont("Segoe UI", 12),
-                      fg_color="#1d4ed8", hover_color="#2563eb",
-                      command=self._new).pack(side="left", expand=True,
-                                              padx=(0, 4))
-        ctk.CTkButton(btn_row, text="Supprimer", height=34,
-                      corner_radius=8,
-                      font=ctk.CTkFont("Segoe UI", 12),
+        br = ctk.CTkFrame(left, fg_color="transparent")
+        br.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 12))
+        ctk.CTkButton(br, text="＋  Nouveau", height=36,
+                      corner_radius=8, font=ctk.CTkFont("Segoe UI", 12),
+                      fg_color=BLUE_D, hover_color=BLUE,
+                      command=self._new).pack(
+                          side="left", expand=True, padx=(0, 4))
+        ctk.CTkButton(br, text="🗑  Supprimer", height=36,
+                      corner_radius=8, font=ctk.CTkFont("Segoe UI", 12),
                       fg_color="#7f1d1d", hover_color="#991b1b",
-                      command=self._delete).pack(side="left", expand=True)
+                      command=self._delete).pack(
+                          side="left", expand=True)
 
-        # ── Right: form card
-        right_card = ctk.CTkFrame(body, corner_radius=14, fg_color="#1e293b")
-        right_card.grid(row=0, column=1, sticky="nsew")
+        # ── Right: form panel
+        right = ctk.CTkFrame(body, corner_radius=14, fg_color=CARD,
+                             border_width=1, border_color=BORDER)
+        right.grid(row=0, column=1, sticky="nsew")
+        right.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(right_card, text="Définir un composant personnalisé",
+        # Form header
+        fhdr = ctk.CTkFrame(right, fg_color=CARD2, corner_radius=0,
+                            height=50)
+        fhdr.pack(fill="x")
+        fhdr.pack_propagate(False)
+        ctk.CTkLabel(fhdr,
+                     text="Définir un nouveau type de composant",
                      font=ctk.CTkFont("Segoe UI", 12, "bold"),
-                     text_color="#94a3b8").pack(
-                         anchor="w", padx=18, pady=(14, 10))
+                     text_color=TEXT).pack(side="left", padx=18, pady=12)
 
-        # Prefix row
-        ctk.CTkLabel(right_card, text="Préfixe  (ex: IC, REL, TR)",
+        form = ctk.CTkFrame(right, fg_color="transparent")
+        form.pack(fill="both", expand=True, padx=18, pady=14)
+
+        # Prefix
+        ctk.CTkLabel(form, text="Préfixe",
                      font=ctk.CTkFont("Segoe UI", 11),
-                     text_color="#64748b").pack(anchor="w", padx=18)
-
-        pfx_row = ctk.CTkFrame(right_card, fg_color="transparent")
-        pfx_row.pack(fill="x", padx=18, pady=(4, 10))
+                     text_color=MUTED).pack(anchor="w")
+        pfx_row = ctk.CTkFrame(form, fg_color="transparent")
+        pfx_row.pack(fill="x", pady=(4, 12))
         self._prefix_var = tk.StringVar()
         self._prefix_var.trace_add("write", self._validate_prefix)
         ctk.CTkEntry(pfx_row,
                      textvariable=self._prefix_var,
-                     width=100, height=38, corner_radius=8,
-                     font=ctk.CTkFont("Segoe UI", 13, "bold"),
-                     fg_color="#0a0f1e", border_color="#334155",
-                     text_color="#60a5fa").pack(side="left")
+                     width=110, height=40, corner_radius=8,
+                     font=ctk.CTkFont("Segoe UI", 14, "bold"),
+                     fg_color=CARD2, border_color=BORDER,
+                     text_color="#60a5fa",
+                     placeholder_text="IC").pack(side="left")
         self._pfx_warn = ctk.CTkLabel(pfx_row, text="",
                                       font=ctk.CTkFont("Segoe UI", 11),
                                       text_color="#f87171")
         self._pfx_warn.pack(side="left", padx=10)
 
         # Name
-        ctk.CTkLabel(right_card, text="Nom complet",
+        ctk.CTkLabel(form, text="Nom complet",
                      font=ctk.CTkFont("Segoe UI", 11),
-                     text_color="#64748b").pack(anchor="w", padx=18)
+                     text_color=MUTED).pack(anchor="w")
         self._name_var = tk.StringVar()
-        ctk.CTkEntry(right_card,
+        ctk.CTkEntry(form,
                      textvariable=self._name_var,
-                     height=38, corner_radius=8,
+                     height=40, corner_radius=8,
                      font=ctk.CTkFont("Segoe UI", 12),
-                     fg_color="#0a0f1e", border_color="#334155",
-                     text_color="#e2e8f0",
-                     placeholder_text="Ex: Circuit intégré, Relais").pack(
-                         fill="x", padx=18, pady=(4, 12))
+                     fg_color=CARD2, border_color=BORDER,
+                     text_color=TEXT,
+                     placeholder_text="Ex: Circuit intégré").pack(
+                         fill="x", pady=(4, 14))
 
-        # Pins section
-        ctk.CTkLabel(right_card, text="Broches",
+        # Pins
+        ctk.CTkLabel(form, text="Broches",
                      font=ctk.CTkFont("Segoe UI", 11),
-                     text_color="#64748b").pack(anchor="w", padx=18)
+                     text_color=MUTED).pack(anchor="w")
+        self._pins_card = ctk.CTkFrame(form, corner_radius=10,
+                                       fg_color=CARD2,
+                                       border_width=1,
+                                       border_color=BORDER)
+        self._pins_card.pack(fill="x", pady=(4, 6))
+        self._pins_inner = ctk.CTkFrame(self._pins_card,
+                                        fg_color="transparent")
+        self._pins_inner.pack(fill="x", padx=10, pady=10)
 
-        self._pins_card = ctk.CTkFrame(right_card, corner_radius=10,
-                                       fg_color="#0a0f1e")
-        self._pins_card.pack(fill="x", padx=18, pady=(4, 6))
-        self._pins_inner = ctk.CTkFrame(self._pins_card, fg_color="transparent")
-        self._pins_inner.pack(fill="x", padx=10, pady=8)
-
-        pin_btns = ctk.CTkFrame(right_card, fg_color="transparent")
-        pin_btns.pack(fill="x", padx=18, pady=(0, 14))
-        ctk.CTkButton(pin_btns, text="+ Broche", width=110, height=32,
-                      corner_radius=6,
-                      font=ctk.CTkFont("Segoe UI", 11),
-                      fg_color="#334155", hover_color="#475569",
+        pin_btns = ctk.CTkFrame(form, fg_color="transparent")
+        pin_btns.pack(fill="x", pady=(0, 14))
+        ctk.CTkButton(pin_btns, text="＋ Broche", width=110, height=32,
+                      corner_radius=6, font=ctk.CTkFont("Segoe UI", 11),
+                      fg_color=CARD, hover_color="#263347",
+                      border_width=1, border_color=BORDER,
                       command=self._add_pin).pack(side="left", padx=(0, 6))
-        ctk.CTkButton(pin_btns, text="- Broche", width=110, height=32,
-                      corner_radius=6,
-                      font=ctk.CTkFont("Segoe UI", 11),
-                      fg_color="#334155", hover_color="#475569",
+        ctk.CTkButton(pin_btns, text="− Broche", width=110, height=32,
+                      corner_radius=6, font=ctk.CTkFont("Segoe UI", 11),
+                      fg_color=CARD, hover_color="#263347",
+                      border_width=1, border_color=BORDER,
                       command=self._remove_pin).pack(side="left")
 
-        ctk.CTkButton(right_card, text="💾  Sauvegarder le composant",
-                      height=40, corner_radius=8,
-                      font=ctk.CTkFont("Segoe UI", 12, "bold"),
-                      fg_color="#059669", hover_color="#10b981",
-                      command=self._save).pack(
-                          fill="x", padx=18, pady=(0, 16))
+        ctk.CTkButton(form, text="💾  Sauvegarder le composant",
+                      height=42, corner_radius=10,
+                      font=ctk.CTkFont("Segoe UI", 13, "bold"),
+                      fg_color="#15803d", hover_color="#16a34a",
+                      command=self._save).pack(fill="x")
 
-    # ── Validation ──────────────────────────────────────────────────────────
+    # ── Validation ───────────────────────────────────────────────────────────
 
     def _validate_prefix(self, *_):
         p = self._prefix_var.get().strip().upper()
         if p in COMPONENT_TYPES:
-            self._pfx_warn.configure(text="⚠ Préfixe réservé")
+            self._pfx_warn.configure(text="⚠  Préfixe réservé")
         elif p and p in self._custom and p != self._current_key:
-            self._pfx_warn.configure(text="⚠ Déjà utilisé")
+            self._pfx_warn.configure(text="⚠  Déjà utilisé")
         else:
             self._pfx_warn.configure(text="")
 
-    # ── Pins ────────────────────────────────────────────────────────────────
+    # ── Pins ─────────────────────────────────────────────────────────────────
 
     def _set_pins(self, pins: list):
         for w in self._pins_inner.winfo_children():
@@ -171,17 +197,16 @@ class TabComponents:
         n = len(self._pin_entries) + 1
         row = ctk.CTkFrame(self._pins_inner, fg_color="transparent")
         row.pack(anchor="w", pady=2)
-        ctk.CTkLabel(row, text=f"  {n}.",
-                     width=28,
-                     font=ctk.CTkFont("Segoe UI", 10),
-                     text_color="#475569").pack(side="left")
+        ctk.CTkLabel(row, text=f"{n}.",
+                     width=24, font=ctk.CTkFont("Segoe UI", 10),
+                     text_color=MUTED).pack(side="left")
         var = tk.StringVar(value=value)
         self._pin_entries.append(var)
         ctk.CTkEntry(row, textvariable=var,
-                     width=130, height=30, corner_radius=6,
-                     font=ctk.CTkFont("Segoe UI", 11),
-                     fg_color="#1e293b", border_color="#334155",
-                     text_color="#e2e8f0",
+                     width=140, height=30, corner_radius=6,
+                     font=ctk.CTkFont("Consolas", 11),
+                     fg_color=CARD, border_color=BORDER,
+                     text_color="#60a5fa",
                      placeholder_text=f"Broche {n}").pack(side="left")
 
     def _remove_pin(self):
@@ -191,15 +216,14 @@ class TabComponents:
             if children:
                 children[-1].destroy()
 
-    # ── Data ────────────────────────────────────────────────────────────────
+    # ── Data ─────────────────────────────────────────────────────────────────
 
     def _load(self):
         self._listbox.delete(0, "end")
         for k, v in COMPONENT_TYPES.items():
             self._listbox.insert("end", f"  {k}  —  {v['name']}")
         for i in range(len(COMPONENT_TYPES)):
-            self._listbox.itemconfig(i, foreground="#475569")
-
+            self._listbox.itemconfig(i, foreground="#374151")
         self._custom = {}
         p = Path(LIBRARY_FILE)
         if p.exists():
@@ -250,11 +274,10 @@ class TabComponents:
         pins   = [v.get().strip()
                   for v in self._pin_entries if v.get().strip()]
         if not prefix:
-            messagebox.showerror("Erreur", "Le préfixe est obligatoire.")
+            messagebox.showerror("Erreur", "Préfixe obligatoire.")
             return
         if prefix in COMPONENT_TYPES:
-            messagebox.showerror("Erreur",
-                f"'{prefix}' est réservé.")
+            messagebox.showerror("Erreur", f"'{prefix}' est réservé.")
             return
         if not pins:
             messagebox.showerror("Erreur", "Au moins une broche requise.")

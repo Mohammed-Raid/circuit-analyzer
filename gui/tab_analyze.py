@@ -6,157 +6,149 @@ from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
 from circuit_analyzer.reporter import generate
 
-# Report colour tags (applied to the embedded tk.Text widget)
-TAGS = {
-    "section_header": {"foreground": "#f1f5f9",  "font": ("Consolas", 11, "bold")},
-    "separator":      {"foreground": "#334155",   "font": ("Consolas", 9)},
-    "meta_key":       {"foreground": "#64748b",   "font": ("Consolas", 10)},
-    "meta_val":       {"foreground": "#e2e8f0",   "font": ("Consolas", 10, "bold")},
-    "circuit_num":    {"foreground": "#60a5fa",   "font": ("Consolas", 11, "bold")},
-    "circuit_name":   {"foreground": "#93c5fd",   "font": ("Consolas", 11, "bold")},
-    "label":          {"foreground": "#475569",   "font": ("Consolas", 10)},
-    "comp_ref":       {"foreground": "#34d399",   "font": ("Consolas", 10, "bold")},
-    "node_ref":       {"foreground": "#c084fc",   "font": ("Consolas", 10)},
-    "unc_header":     {"foreground": "#f87171",   "font": ("Consolas", 10, "bold")},
-    "unc_ref":        {"foreground": "#fca5a5",   "font": ("Consolas", 10)},
+BG     = "#070d1a"
+CARD   = "#1e293b"
+CARD2  = "#0f172a"
+BORDER = "#263347"
+TEXT   = "#f1f5f9"
+MUTED  = "#64748b"
+BLUE   = "#3b82f6"
+
+# Circuit type → (bg, text, icon)
+TYPE_COLORS = {
+    "AOP":         ("#1a237e", "#90caf9", "🔬"),
+    "Transistor":  ("#4a148c", "#ce93d8", "📡"),
+    "MOSFET":      ("#311b92", "#b39ddb", "📡"),
+    "Pont":        ("#1b5e20", "#a5d6a7", "🔌"),
+    "Redresseur":  ("#1b5e20", "#a5d6a7", "🔌"),
+    "Filtre":      ("#0d47a1", "#90caf9", "📊"),
+    "Condensateur":("#004d40", "#80cbc4", "⚡"),
+    "Diviseur":    ("#33691e", "#c5e1a5", "⚖"),
+    "Snubber":     ("#e65100", "#ffcc80", "🛡"),
+    "Protection":  ("#b71c1c", "#ef9a9a", "🛡"),
+    "Fusible":     ("#b71c1c", "#ef9a9a", "🛡"),
+    "Diode":       ("#f57f17", "#fff176", "💡"),
+    "Miroir":      ("#4a148c", "#ce93d8", "🔄"),
+    "default":     ("#1e293b", "#94a3b8", "⚙"),
 }
+
+def _type_style(name: str):
+    for key, style in TYPE_COLORS.items():
+        if key.lower() in name.lower():
+            return style
+    return TYPE_COLORS["default"]
 
 
 class TabAnalyze:
     def __init__(self, parent):
-        self.frame = ctk.CTkFrame(parent, corner_radius=0, fg_color="#0f172a")
+        self.frame = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
         self._file_path = tk.StringVar()
-        self._report_content = ""
+        self._report_text = ""
+        self._results = []
+        self._all_refs = []
+        self._unclassified = []
         self._build()
 
     def _build(self):
-        # ── Page title
-        title_row = ctk.CTkFrame(self.frame, fg_color="transparent")
-        title_row.pack(fill="x", padx=28, pady=(24, 4))
-        ctk.CTkLabel(title_row,
-                     text="Analyser un circuit",
-                     font=ctk.CTkFont("Segoe UI", 20, "bold"),
-                     text_color="#f1f5f9").pack(side="left")
+        # ── Page header ──────────────────────────────────────────────────────
+        header = ctk.CTkFrame(self.frame, fg_color=CARD,
+                              corner_radius=0, height=70)
+        header.pack(fill="x")
+        header.pack_propagate(False)
 
-        # ── File picker card
-        card = ctk.CTkFrame(self.frame, corner_radius=14,
-                            fg_color="#1e293b")
-        card.pack(fill="x", padx=28, pady=(8, 0))
+        hinner = ctk.CTkFrame(header, fg_color="transparent")
+        hinner.pack(fill="both", expand=True, padx=28)
 
-        ctk.CTkLabel(card, text="Fichier netlist",
-                     font=ctk.CTkFont("Segoe UI", 12, "bold"),
-                     text_color="#94a3b8").pack(anchor="w", padx=18, pady=(14, 4))
+        ctk.CTkLabel(hinner, text="Analyser un circuit",
+                     font=ctk.CTkFont("Segoe UI", 18, "bold"),
+                     text_color=TEXT).pack(side="left", pady=18)
+        ctk.CTkLabel(hinner, text="Chargez un fichier netlist .txt",
+                     font=ctk.CTkFont("Segoe UI", 12),
+                     text_color=MUTED).pack(side="left", padx=14, pady=18)
 
-        row = ctk.CTkFrame(card, fg_color="transparent")
-        row.pack(fill="x", padx=18, pady=(0, 14))
+        # ── File picker bar ──────────────────────────────────────────────────
+        picker = ctk.CTkFrame(self.frame, fg_color=CARD2,
+                              corner_radius=0, height=62)
+        picker.pack(fill="x")
+        picker.pack_propagate(False)
+
+        pin = ctk.CTkFrame(picker, fg_color="transparent")
+        pin.pack(fill="both", expand=True, padx=28)
 
         self._entry = ctk.CTkEntry(
-            row,
+            pin,
             textvariable=self._file_path,
-            placeholder_text="Choisir un fichier .txt …",
-            height=40,
-            corner_radius=8,
+            placeholder_text="  Choisir un fichier .txt …",
+            height=38, corner_radius=8,
             font=ctk.CTkFont("Segoe UI", 12),
-            fg_color="#0f172a",
-            border_color="#334155",
-            text_color="#e2e8f0",
+            fg_color="#111827", border_color=BORDER,
+            text_color=TEXT,
         )
-        self._entry.pack(side="left", expand=True, fill="x", padx=(0, 10))
+        self._entry.pack(side="left", expand=True, fill="x",
+                         padx=(0, 10), pady=12)
         self._entry.bind("<Double-Button-1>", lambda _: self._browse())
 
-        ctk.CTkButton(row, text="Parcourir", width=110, height=40,
-                      corner_radius=8,
+        ctk.CTkButton(pin, text="📂  Parcourir",
+                      width=130, height=38, corner_radius=8,
                       font=ctk.CTkFont("Segoe UI", 12),
-                      fg_color="#1d4ed8", hover_color="#2563eb",
+                      fg_color="#1e293b", hover_color="#263347",
+                      border_width=1, border_color=BORDER,
                       command=self._browse).pack(side="left", padx=(0, 8))
 
-        ctk.CTkButton(row, text="▶  Analyser", width=130, height=40,
-                      corner_radius=8,
-                      font=ctk.CTkFont("Segoe UI", 12, "bold"),
-                      fg_color="#059669", hover_color="#10b981",
-                      command=self._analyze).pack(side="left")
-
-        # ── Stats bar (hidden until first run)
-        self._stats_card = ctk.CTkFrame(self.frame, corner_radius=14,
-                                        fg_color="#1e293b")
-        self._s_total  = self._make_stat(self._stats_card, "—", "Composants")
-        self._s_groups = self._make_stat(self._stats_card, "—", "Groupes identifiés")
-        self._s_pct    = self._make_stat(self._stats_card, "—", "Classifiés")
-        # hidden initially — shown after first analysis
-
-        # ── Report area
-        report_card = ctk.CTkFrame(self.frame, corner_radius=14,
-                                   fg_color="#1e293b")
-        report_card.pack(fill="both", expand=True, padx=28, pady=(10, 0))
-
-        hdr = ctk.CTkFrame(report_card, fg_color="transparent")
-        hdr.pack(fill="x", padx=14, pady=(10, 0))
-        ctk.CTkLabel(hdr, text="Rapport",
-                     font=ctk.CTkFont("Segoe UI", 12, "bold"),
-                     text_color="#94a3b8").pack(side="left")
-
-        # Embed a standard tk.Text for tag-based coloring
-        text_frame = ctk.CTkFrame(report_card, fg_color="#0a0f1e",
-                                  corner_radius=10)
-        text_frame.pack(fill="both", expand=True, padx=14, pady=(6, 0))
-
-        self._text = tk.Text(
-            text_frame,
-            state="disabled", wrap="none",
-            font=("Consolas", 11),
-            bg="#0a0f1e", fg="#e2e8f0",
-            relief="flat", bd=0,
-            selectbackground="#1d4ed8",
-            insertbackground="#60a5fa",
-            padx=14, pady=10,
-            cursor="arrow",
+        self._analyze_btn = ctk.CTkButton(
+            pin, text="▶  Analyser",
+            width=130, height=38, corner_radius=8,
+            font=ctk.CTkFont("Segoe UI", 12, "bold"),
+            fg_color="#16a34a", hover_color="#15803d",
+            command=self._analyze,
         )
-        sb_y = tk.Scrollbar(text_frame, orient="vertical",
-                            command=self._text.yview,
-                            bg="#1e293b", troughcolor="#0a0f1e")
-        sb_x = tk.Scrollbar(text_frame, orient="horizontal",
-                            command=self._text.xview,
-                            bg="#1e293b", troughcolor="#0a0f1e")
-        self._text.configure(yscrollcommand=sb_y.set,
-                             xscrollcommand=sb_x.set)
-        sb_y.pack(side="right", fill="y")
-        sb_x.pack(side="bottom", fill="x")
-        self._text.pack(fill="both", expand=True)
-        self._setup_tags()
+        self._analyze_btn.pack(side="left")
 
-        # ── Bottom buttons
-        btns = ctk.CTkFrame(self.frame, fg_color="transparent")
-        btns.pack(fill="x", padx=28, pady=12)
+        # ── Stats row (hidden until first run) ───────────────────────────────
+        self._stats_row = ctk.CTkFrame(self.frame, fg_color=BG,
+                                       corner_radius=0)
+        self._s_total  = _StatCard(self._stats_row, "—", "Composants", "#3b82f6", "📦")
+        self._s_groups = _StatCard(self._stats_row, "—", "Circuits identifiés", "#10b981", "✅")
+        self._s_pct    = _StatCard(self._stats_row, "—", "Taux de classification", "#8b5cf6", "📈")
+        self._s_unc    = _StatCard(self._stats_row, "—", "Non classifiés", "#ef4444", "⚠")
+        for sc in (self._s_total, self._s_groups, self._s_pct, self._s_unc):
+            sc.pack(side="left", expand=True, padx=8, pady=12)
 
-        ctk.CTkButton(btns, text="💾  Sauvegarder",
-                      width=150, height=36, corner_radius=8,
-                      font=ctk.CTkFont("Segoe UI", 12),
-                      fg_color="#334155", hover_color="#475569",
-                      command=self._save).pack(side="left", padx=(0, 8))
+        # ── Content: empty state or results ──────────────────────────────────
+        self._body = ctk.CTkFrame(self.frame, fg_color=BG,
+                                  corner_radius=0)
+        self._body.pack(fill="both", expand=True)
+        self._body.grid_columnconfigure(0, weight=1)
+        self._body.grid_rowconfigure(0, weight=1)
 
-        ctk.CTkButton(btns, text="📋  Copier",
-                      width=110, height=36, corner_radius=8,
-                      font=ctk.CTkFont("Segoe UI", 12),
-                      fg_color="#334155", hover_color="#475569",
-                      command=self._copy).pack(side="left")
+        self._empty_state = _EmptyState(self._body)
+        self._empty_state.grid(row=0, column=0)
 
-    def _make_stat(self, parent, value, label):
-        f = ctk.CTkFrame(parent, fg_color="transparent")
-        f.pack(side="left", expand=True, padx=20, pady=14)
-        val = ctk.CTkLabel(f, text=value,
-                           font=ctk.CTkFont("Segoe UI", 28, "bold"),
-                           text_color="#60a5fa")
-        val.pack()
-        ctk.CTkLabel(f, text=label,
-                     font=ctk.CTkFont("Segoe UI", 10),
-                     text_color="#64748b").pack()
-        return val
+        self._results_view = ctk.CTkScrollableFrame(
+            self._body, fg_color=BG, corner_radius=0,
+        )
 
-    def _setup_tags(self):
-        for name, cfg in TAGS.items():
-            self._text.tag_configure(name, **cfg)
+        # ── Bottom bar ───────────────────────────────────────────────────────
+        bar = ctk.CTkFrame(self.frame, fg_color=CARD2,
+                           corner_radius=0, height=50)
+        bar.pack(fill="x", side="bottom")
+        bar.pack_propagate(False)
+        bar_inner = ctk.CTkFrame(bar, fg_color="transparent")
+        bar_inner.pack(fill="both", padx=28)
+        ctk.CTkButton(bar_inner, text="💾  Sauvegarder",
+                      width=140, height=34, corner_radius=8,
+                      font=ctk.CTkFont("Segoe UI", 11),
+                      fg_color="#1e293b", hover_color="#263347",
+                      border_width=1, border_color=BORDER,
+                      command=self._save).pack(side="left", pady=8)
+        ctk.CTkButton(bar_inner, text="📋  Copier rapport",
+                      width=140, height=34, corner_radius=8,
+                      font=ctk.CTkFont("Segoe UI", 11),
+                      fg_color="#1e293b", hover_color="#263347",
+                      border_width=1, border_color=BORDER,
+                      command=self._copy).pack(side="left", padx=8, pady=8)
 
-    # ── Actions ─────────────────────────────────────────────────────────────
+    # ── Actions ──────────────────────────────────────────────────────────────
 
     def _browse(self):
         path = filedialog.askopenfilename(
@@ -169,40 +161,50 @@ class TabAnalyze:
     def _analyze(self):
         path = self._file_path.get().strip()
         if not path:
-            self._show_error("Veuillez sélectionner un fichier circuit.")
+            messagebox.showwarning("Attention",
+                "Veuillez sélectionner un fichier.")
             return
+
+        self._analyze_btn.configure(state="disabled", text="⏳  Analyse…")
+        self.frame.update()
+
         try:
             comps    = parse_file(path)
             graph    = build_graph(comps)
             results  = match_patterns(graph)
             all_refs = [c.ref for c in comps]
             report   = generate(results, path, len(comps), all_refs=all_refs)
-            self._report_content = report
 
-            total      = len(comps)
-            groups     = len(results)
-            classified = sum(len(r["components"]) for r in results)
-            pct        = int(100 * classified / total) if total else 0
+            self._report_text = report
+            self._results     = results
+            self._all_refs    = all_refs
 
-            self._s_total.configure(text=str(total))
-            self._s_groups.configure(text=str(groups))
-            pct_color = ("#34d399" if pct >= 80
-                         else "#fbbf24" if pct >= 60
-                         else "#f87171")
-            self._s_pct.configure(text=f"{pct}%", text_color=pct_color)
-            self._stats_card.pack(fill="x", padx=28, pady=(10, 0),
-                                  before=self._text.master.master)
-            self._render(report)
+            classified  = {ref for r in results for ref in r["components"]}
+            unclassified = [r for r in all_refs if r not in classified]
+            self._unclassified = unclassified
+
+            total = len(comps)
+            pct   = int(100 * len(classified) / total) if total else 0
+
+            self._s_total.update(str(total))
+            self._s_groups.update(str(len(results)))
+            self._s_pct.update(f"{pct}%")
+            self._s_unc.update(str(len(unclassified)))
+
+            self._stats_row.pack(fill="x", padx=20, before=self._body)
+            self._render_cards(results, unclassified)
 
         except FileNotFoundError:
-            self._show_error(f"Fichier introuvable :\n{path}")
+            messagebox.showerror("Erreur", f"Fichier introuvable :\n{path}")
         except ValueError as e:
-            self._show_error(f"Erreur netlist :\n{e}")
+            messagebox.showerror("Erreur netlist", str(e))
         except Exception as e:
-            self._show_error(f"Erreur :\n{e}")
+            messagebox.showerror("Erreur", str(e))
+        finally:
+            self._analyze_btn.configure(state="normal", text="▶  Analyser")
 
     def _save(self):
-        if not self._report_content:
+        if not self._report_text:
             messagebox.showinfo("Info", "Aucun rapport à sauvegarder.")
             return
         path = filedialog.asksaveasfilename(
@@ -211,66 +213,202 @@ class TabAnalyze:
         )
         if path:
             with open(path, "w", encoding="utf-8") as f:
-                f.write(self._report_content)
-            messagebox.showinfo("Succès", f"Sauvegardé :\n{path}")
+                f.write(self._report_text)
+            messagebox.showinfo("Succès", f"Rapport sauvegardé :\n{path}")
 
     def _copy(self):
-        if not self._report_content:
+        if not self._report_text:
             return
         self.frame.clipboard_clear()
-        self.frame.clipboard_append(self._report_content)
+        self.frame.clipboard_append(self._report_text)
 
-    # ── Rendering ───────────────────────────────────────────────────────────
+    # ── Card rendering ───────────────────────────────────────────────────────
 
-    def _show_error(self, msg):
-        self._text.configure(state="normal")
-        self._text.delete("1.0", "end")
-        self._text.insert("1.0", msg, "unc_header")
-        self._text.configure(state="disabled")
+    def _render_cards(self, results: list, unclassified: list):
+        # Clear old cards
+        for w in self._results_view.winfo_children():
+            w.destroy()
 
-    def _ins(self, text, tag=""):
-        self._text.insert("end", text, tag or ())
+        self._empty_state.grid_remove()
+        self._results_view.grid(row=0, column=0, sticky="nsew")
 
-    def _render(self, text: str):
-        self._text.configure(state="normal")
-        self._text.delete("1.0", "end")
-        in_unc = False
-        for line in text.splitlines():
-            if line.startswith("==="):
-                self._ins(line + "\n", "section_header"); in_unc = False
-            elif set(line.strip()) == {"-"} and len(line.strip()) > 4:
-                self._ins(line + "\n", "separator")
-            elif line.strip() and line.strip()[0] == "[":
-                i = line.index("]") + 1
-                self._ins(line[:i], "circuit_num")
-                self._ins(line[i:] + "\n", "circuit_name")
-                in_unc = False
-            elif "    Composants :" in line:
-                pos = line.index(":") + 1
-                self._ins(line[:pos], "label")
-                for j, part in enumerate(line[pos:].split(",")):
-                    r = part.strip()
-                    if r:
-                        self._ins(" " + r, "comp_ref")
-                        if j < len(line[pos:].split(",")) - 1:
-                            self._ins(",", "label")
-                self._ins("\n")
-            elif "    Nœuds" in line:
-                pos = line.index(":") + 1
-                self._ins(line[:pos], "label")
-                self._ins(line[pos:] + "\n", "node_ref")
-            elif any(k in line for k in ("Fichier", "Composants totaux", "Groupes identifiés")):
-                if ":" in line:
-                    pos = line.index(":") + 1
-                    self._ins(line[:pos], "meta_key")
-                    self._ins(line[pos:] + "\n", "meta_val")
-                else:
-                    self._ins(line + "\n")
-            elif "non classifiés" in line:
-                self._ins(line + "\n", "unc_header"); in_unc = True
-            elif in_unc and line.startswith("    "):
-                self._ins(line + "\n", "unc_ref")
-            else:
-                self._ins(line + "\n")
-        self._text.configure(state="disabled")
-        self._text.see("1.0")
+        # Group by type categories
+        groups = {}
+        for r in results:
+            cat = _category(r["circuit_type"])
+            groups.setdefault(cat, []).append(r)
+
+        for cat, items in groups.items():
+            # Category header
+            ch = ctk.CTkFrame(self._results_view,
+                              fg_color="transparent")
+            ch.pack(fill="x", padx=16, pady=(12, 2))
+            ctk.CTkLabel(ch, text=cat,
+                         font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                         text_color=MUTED).pack(side="left")
+            ctk.CTkFrame(ch, height=1, fg_color=BORDER).pack(
+                side="left", fill="x", expand=True, padx=10)
+
+            # Circuit cards in a grid (2 per row)
+            grid = ctk.CTkFrame(self._results_view,
+                                fg_color="transparent")
+            grid.pack(fill="x", padx=16, pady=2)
+            grid.grid_columnconfigure((0, 1), weight=1)
+
+            for i, item in enumerate(items):
+                _CircuitCard(grid, item).grid(
+                    row=i // 2, column=i % 2,
+                    sticky="ew", padx=4, pady=4)
+
+        # Unclassified section
+        if unclassified:
+            uch = ctk.CTkFrame(self._results_view,
+                               fg_color="transparent")
+            uch.pack(fill="x", padx=16, pady=(16, 2))
+            ctk.CTkLabel(uch, text="NON CLASSIFIÉS",
+                         font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                         text_color="#ef4444").pack(side="left")
+            ctk.CTkFrame(uch, height=1, fg_color="#ef444440").pack(
+                side="left", fill="x", expand=True, padx=10)
+
+            uc_card = ctk.CTkFrame(self._results_view,
+                                   fg_color="#1c0a0a",
+                                   corner_radius=12,
+                                   border_width=1,
+                                   border_color="#7f1d1d")
+            uc_card.pack(fill="x", padx=16, pady=(4, 16))
+            wrap = ctk.CTkFrame(uc_card, fg_color="transparent")
+            wrap.pack(fill="x", padx=14, pady=10)
+            for chunk in _chunks(unclassified, 8):
+                row = ctk.CTkFrame(wrap, fg_color="transparent")
+                row.pack(anchor="w", pady=2)
+                for ref in chunk:
+                    ctk.CTkLabel(row, text=ref,
+                                 font=ctk.CTkFont("Consolas", 11, "bold"),
+                                 text_color="#fca5a5",
+                                 fg_color="#7f1d1d",
+                                 corner_radius=4).pack(
+                                     side="left", padx=3)
+
+
+# ── Helper widgets ────────────────────────────────────────────────────────────
+
+class _StatCard(ctk.CTkFrame):
+    def __init__(self, parent, value, label, color, icon):
+        super().__init__(parent, corner_radius=12,
+                         fg_color=CARD,
+                         border_width=1, border_color=BORDER)
+        ctk.CTkLabel(self, text=icon,
+                     font=ctk.CTkFont(size=20),
+                     text_color=color).pack(pady=(12, 2))
+        self._val = ctk.CTkLabel(self, text=value,
+                                  font=ctk.CTkFont("Segoe UI", 26, "bold"),
+                                  text_color=color)
+        self._val.pack()
+        ctk.CTkLabel(self, text=label,
+                     font=ctk.CTkFont("Segoe UI", 10),
+                     text_color=MUTED).pack(pady=(2, 12))
+
+    def update(self, value: str):
+        self._val.configure(text=value)
+
+
+class _EmptyState(ctk.CTkFrame):
+    def __init__(self, parent):
+        super().__init__(parent, fg_color="transparent")
+        ctk.CTkLabel(self, text="📂",
+                     font=ctk.CTkFont(size=56),
+                     text_color="#1e293b").pack(pady=(60, 8))
+        ctk.CTkLabel(self, text="Aucun circuit chargé",
+                     font=ctk.CTkFont("Segoe UI", 18, "bold"),
+                     text_color="#334155").pack()
+        ctk.CTkLabel(self,
+                     text="Cliquez sur Parcourir pour charger\nun fichier netlist .txt",
+                     font=ctk.CTkFont("Segoe UI", 13),
+                     text_color=MUTED, justify="center").pack(pady=8)
+
+
+class _CircuitCard(ctk.CTkFrame):
+    def __init__(self, parent, result: dict):
+        bg, fg, icon = _type_style(result["circuit_type"])
+        super().__init__(parent, corner_radius=12,
+                         fg_color=bg,
+                         border_width=1,
+                         border_color=_darken(bg))
+
+        # Header
+        hdr = ctk.CTkFrame(self, fg_color="transparent")
+        hdr.pack(fill="x", padx=12, pady=(10, 4))
+        ctk.CTkLabel(hdr, text=icon,
+                     font=ctk.CTkFont(size=16)).pack(side="left", padx=(0, 6))
+        ctk.CTkLabel(hdr, text=result["circuit_type"],
+                     font=ctk.CTkFont("Segoe UI", 12, "bold"),
+                     text_color=fg, wraplength=260,
+                     justify="left", anchor="w").pack(side="left")
+
+        # Divider
+        ctk.CTkFrame(self, height=1,
+                     fg_color=_darken(bg)).pack(
+                         fill="x", padx=12, pady=2)
+
+        # Components
+        c_row = ctk.CTkFrame(self, fg_color="transparent")
+        c_row.pack(fill="x", padx=12, pady=(4, 2))
+        ctk.CTkLabel(c_row, text="Composants",
+                     font=ctk.CTkFont("Segoe UI", 9),
+                     text_color=MUTED, width=75,
+                     anchor="w").pack(side="left")
+        refs_text = "  ".join(result["components"])
+        ctk.CTkLabel(c_row, text=refs_text,
+                     font=ctk.CTkFont("Consolas", 10, "bold"),
+                     text_color=fg, wraplength=230,
+                     justify="left", anchor="w").pack(
+                         side="left", fill="x", expand=True)
+
+        # Nodes
+        if result.get("nodes"):
+            n_row = ctk.CTkFrame(self, fg_color="transparent")
+            n_row.pack(fill="x", padx=12, pady=(0, 10))
+            ctk.CTkLabel(n_row, text="Nœuds",
+                         font=ctk.CTkFont("Segoe UI", 9),
+                         text_color=MUTED, width=75,
+                         anchor="w").pack(side="left")
+            nodes = [n for n in result["nodes"] if n]
+            nodes_text = " → ".join(nodes[:3])
+            ctk.CTkLabel(n_row, text=nodes_text,
+                         font=ctk.CTkFont("Consolas", 9),
+                         text_color=_brighten(bg),
+                         wraplength=230,
+                         justify="left", anchor="w").pack(side="left")
+
+
+# ── Utilities ────────────────────────────────────────────────────────────────
+
+def _category(name: str) -> str:
+    if "AOP" in name:           return "AMPLIFICATEURS OPÉRATIONNELS"
+    if any(x in name for x in ("Transistor", "MOSFET", "Miroir", "Relais")):
+        return "TRANSISTORS & COMMUTATION"
+    if any(x in name for x in ("Pont", "Redresseur", "Crête", "Roue")):
+        return "REDRESSEURS & DIODES"
+    if any(x in name for x in ("Filtre", "Condensateur", "Snubber", "LC", "RC")):
+        return "FILTRES & PASSIFS"
+    if any(x in name for x in ("Diviseur", "Fusible", "Protection", "ESD")):
+        return "PROTECTION & AUTRES"
+    return "AUTRES"
+
+
+def _darken(hex_color: str) -> str:
+    r, g, b = int(hex_color[1:3], 16), int(hex_color[3:5], 16), int(hex_color[5:7], 16)
+    r, g, b = max(0, r - 20), max(0, g - 20), max(0, b - 20)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _brighten(hex_color: str) -> str:
+    r, g, b = int(hex_color[1:3], 16), int(hex_color[3:5], 16), int(hex_color[5:7], 16)
+    r, g, b = min(255, r + 60), min(255, g + 60), min(255, b + 60)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _chunks(lst, n):
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]

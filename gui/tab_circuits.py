@@ -9,141 +9,176 @@ from custom_circuits.loader import (
     load_custom_circuits, save_custom_circuits, CONDITION_LABELS
 )
 
-_BASE_PATTERN_NAMES = [p.name for p in BASIC_PATTERNS + TRANSISTOR_PATTERNS + OPAMP_PATTERNS]
+BG     = "#070d1a"
+CARD   = "#1e293b"
+CARD2  = "#0f172a"
+BORDER = "#263347"
+TEXT   = "#f1f5f9"
+MUTED  = "#64748b"
+BLUE   = "#3b82f6"
+BLUE_D = "#1d4ed8"
+
+_BASE_NAMES = [p.name for p in BASIC_PATTERNS + TRANSISTOR_PATTERNS + OPAMP_PATTERNS]
 
 
 class TabCircuits:
     def __init__(self, parent):
-        self.frame = ctk.CTkFrame(parent, corner_radius=0, fg_color="#0f172a")
+        self.frame = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
         self._custom = []
         self._current_idx = None
         self._comp_vars: dict[str, tk.BooleanVar] = {}
-        self._cond_vars: dict[str, tk.BooleanVar] = {}
+        self._cond_vars:  dict[str, tk.BooleanVar] = {}
         self._build()
         self._load()
 
     def _build(self):
-        # ── Title
-        ctk.CTkLabel(self.frame,
-                     text="Circuits reconnus",
-                     font=ctk.CTkFont("Segoe UI", 20, "bold"),
-                     text_color="#f1f5f9").pack(
-                         anchor="w", padx=28, pady=(24, 12))
+        # ── Page header
+        header = ctk.CTkFrame(self.frame, fg_color=CARD,
+                              corner_radius=0, height=70)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+        h = ctk.CTkFrame(header, fg_color="transparent")
+        h.pack(fill="both", expand=True, padx=28)
+        ctk.CTkLabel(h, text="Circuits reconnus",
+                     font=ctk.CTkFont("Segoe UI", 18, "bold"),
+                     text_color=TEXT).pack(side="left", pady=18)
+        ctk.CTkLabel(h, text="Gérer les patterns personnalisés",
+                     font=ctk.CTkFont("Segoe UI", 12),
+                     text_color=MUTED).pack(side="left", padx=14)
 
+        # ── Body
         body = ctk.CTkFrame(self.frame, fg_color="transparent")
-        body.pack(fill="both", expand=True, padx=28, pady=(0, 16))
+        body.pack(fill="both", expand=True, padx=20, pady=16)
         body.grid_columnconfigure(1, weight=1)
         body.grid_rowconfigure(0, weight=1)
 
-        # ── Left: list card
-        left_card = ctk.CTkFrame(body, corner_radius=14, fg_color="#1e293b")
-        left_card.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-        left_card.grid_rowconfigure(1, weight=1)
+        # ── Left: list panel
+        left = ctk.CTkFrame(body, corner_radius=14, fg_color=CARD,
+                            border_width=1, border_color=BORDER)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        left.grid_rowconfigure(1, weight=1)
 
-        ctk.CTkLabel(left_card, text="Liste",
+        lhdr = ctk.CTkFrame(left, fg_color="transparent")
+        lhdr.grid(row=0, column=0, sticky="ew", padx=14, pady=(14, 6))
+        ctk.CTkLabel(lhdr, text="Liste des circuits",
                      font=ctk.CTkFont("Segoe UI", 12, "bold"),
-                     text_color="#94a3b8").grid(
-                         row=0, column=0, sticky="w", padx=14, pady=(12, 4))
+                     text_color=TEXT).pack(side="left")
 
-        list_frame = ctk.CTkFrame(left_card, fg_color="#0a0f1e",
-                                  corner_radius=8)
-        list_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 8))
-
+        # Listbox in dark frame
+        lb_f = ctk.CTkFrame(left, fg_color=CARD2, corner_radius=8)
+        lb_f.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 8))
         self._listbox = tk.Listbox(
-            list_frame, width=32, height=22,
-            bg="#0a0f1e", fg="#94a3b8",
-            selectbackground="#1d4ed8", selectforeground="#ffffff",
+            lb_f, width=34, height=24,
+            bg=CARD2, fg=MUTED,
+            selectbackground=BLUE_D, selectforeground=TEXT,
             font=("Segoe UI", 11), relief="flat", bd=0,
             activestyle="none", highlightthickness=0,
         )
-        sb = tk.Scrollbar(list_frame, command=self._listbox.yview,
-                          bg="#1e293b", troughcolor="#0a0f1e")
+        sb = tk.Scrollbar(lb_f, command=self._listbox.yview,
+                          bg=CARD, troughcolor=CARD2)
         self._listbox.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self._listbox.pack(fill="both", expand=True, padx=6, pady=6)
         self._listbox.bind("<<ListboxSelect>>", self._on_select)
 
-        # List buttons
-        btn_row = ctk.CTkFrame(left_card, fg_color="transparent")
-        btn_row.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 12))
-        ctk.CTkButton(btn_row, text="+ Nouveau", height=34,
-                      corner_radius=8,
-                      font=ctk.CTkFont("Segoe UI", 12),
-                      fg_color="#1d4ed8", hover_color="#2563eb",
-                      command=self._new).pack(side="left", expand=True,
-                                              padx=(0, 4))
-        ctk.CTkButton(btn_row, text="Supprimer", height=34,
-                      corner_radius=8,
-                      font=ctk.CTkFont("Segoe UI", 12),
+        # Buttons
+        br = ctk.CTkFrame(left, fg_color="transparent")
+        br.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 12))
+        ctk.CTkButton(br, text="＋  Nouveau", height=36,
+                      corner_radius=8, font=ctk.CTkFont("Segoe UI", 12),
+                      fg_color=BLUE_D, hover_color=BLUE,
+                      command=self._new).pack(
+                          side="left", expand=True, padx=(0, 4))
+        ctk.CTkButton(br, text="🗑  Supprimer", height=36,
+                      corner_radius=8, font=ctk.CTkFont("Segoe UI", 12),
                       fg_color="#7f1d1d", hover_color="#991b1b",
-                      command=self._delete).pack(side="left", expand=True)
+                      command=self._delete).pack(
+                          side="left", expand=True)
 
-        # ── Right: form card
-        right_card = ctk.CTkFrame(body, corner_radius=14, fg_color="#1e293b")
-        right_card.grid(row=0, column=1, sticky="nsew")
-        right_card.grid_columnconfigure(0, weight=1)
+        # ── Right: form panel
+        right = ctk.CTkFrame(body, corner_radius=14, fg_color=CARD,
+                             border_width=1, border_color=BORDER)
+        right.grid(row=0, column=1, sticky="nsew")
+        right.grid_columnconfigure(0, weight=1)
+        right.grid_rowconfigure(2, weight=1)
 
-        ctk.CTkLabel(right_card, text="Définir un circuit personnalisé",
+        # Form header
+        fhdr = ctk.CTkFrame(right, fg_color=CARD2, corner_radius=0,
+                            height=50)
+        fhdr.grid(row=0, column=0, sticky="ew")
+        fhdr.grid_propagate(False)
+        ctk.CTkLabel(fhdr,
+                     text="Définir un nouveau circuit personnalisé",
                      font=ctk.CTkFont("Segoe UI", 12, "bold"),
-                     text_color="#94a3b8").pack(
-                         anchor="w", padx=18, pady=(14, 10))
+                     text_color=TEXT).pack(side="left", padx=18, pady=12)
 
-        # Name field
-        ctk.CTkLabel(right_card, text="Nom du circuit",
+        # Name row
+        name_row = ctk.CTkFrame(right, fg_color="transparent")
+        name_row.grid(row=1, column=0, sticky="ew", padx=18, pady=(14, 10))
+        ctk.CTkLabel(name_row, text="Nom du circuit",
                      font=ctk.CTkFont("Segoe UI", 11),
-                     text_color="#64748b").pack(
-                         anchor="w", padx=18)
+                     text_color=MUTED).pack(anchor="w")
         self._name_var = tk.StringVar()
-        ctk.CTkEntry(right_card,
+        ctk.CTkEntry(name_row,
                      textvariable=self._name_var,
-                     height=38, corner_radius=8,
-                     font=ctk.CTkFont("Segoe UI", 12),
-                     fg_color="#0a0f1e", border_color="#334155",
-                     text_color="#e2e8f0",
+                     height=40, corner_radius=8,
+                     font=ctk.CTkFont("Segoe UI", 13),
+                     fg_color=CARD2, border_color=BORDER,
+                     text_color=TEXT,
                      placeholder_text="Ex: Filtre RLC série").pack(
-                         fill="x", padx=18, pady=(4, 12))
+                         fill="x", pady=(4, 0))
 
-        # Two-column layout for checkboxes
-        cols = ctk.CTkFrame(right_card, fg_color="transparent")
-        cols.pack(fill="both", expand=True, padx=18)
+        # Two columns: components | conditions
+        cols = ctk.CTkFrame(right, fg_color="transparent")
+        cols.grid(row=2, column=0, sticky="nsew", padx=18, pady=(0, 10))
         cols.grid_columnconfigure((0, 1), weight=1)
+        cols.grid_rowconfigure(0, weight=1)
 
         # Components column
         comp_col = ctk.CTkFrame(cols, corner_radius=10,
-                                fg_color="#0a0f1e")
-        comp_col.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=(0, 10))
-        ctk.CTkLabel(comp_col, text="Composants requis",
+                                fg_color=CARD2,
+                                border_width=1, border_color=BORDER)
+        comp_col.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        comp_col.grid_rowconfigure(1, weight=1)
+        ctk.CTkLabel(comp_col, text="⚙  Composants requis",
                      font=ctk.CTkFont("Segoe UI", 11, "bold"),
-                     text_color="#60a5fa").pack(
-                         anchor="w", padx=12, pady=(10, 6))
+                     text_color=BLUE).grid(
+                         row=0, column=0, sticky="w", padx=12, pady=(10, 6))
         self._comp_scroll = ctk.CTkScrollableFrame(
-            comp_col, fg_color="transparent", height=180)
-        self._comp_scroll.pack(fill="both", expand=True, padx=6, pady=(0, 8))
+            comp_col, fg_color="transparent")
+        self._comp_scroll.grid(row=1, column=0, sticky="nsew",
+                               padx=6, pady=(0, 8))
 
         # Conditions column
         cond_col = ctk.CTkFrame(cols, corner_radius=10,
-                                fg_color="#0a0f1e")
-        cond_col.grid(row=0, column=1, sticky="nsew", padx=(6, 0), pady=(0, 10))
-        ctk.CTkLabel(cond_col, text="Conditions",
+                                fg_color=CARD2,
+                                border_width=1, border_color=BORDER)
+        cond_col.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
+        ctk.CTkLabel(cond_col, text="✅  Conditions",
                      font=ctk.CTkFont("Segoe UI", 11, "bold"),
-                     text_color="#60a5fa").pack(
-                         anchor="w", padx=12, pady=(10, 6))
+                     text_color="#10b981").grid(
+                         row=0, column=0, sticky="w", padx=12, pady=(10, 6))
         for label in CONDITION_LABELS:
             var = tk.BooleanVar()
             self._cond_vars[label] = var
             ctk.CTkCheckBox(
                 cond_col, text=label, variable=var,
                 font=ctk.CTkFont("Segoe UI", 11),
-                text_color="#e2e8f0",
-                fg_color="#1d4ed8", hover_color="#2563eb",
-            ).pack(anchor="w", padx=12, pady=3)
+                text_color=TEXT,
+                fg_color=BLUE_D, hover_color=BLUE,
+                checkmark_color=TEXT,
+            ).pack(anchor="w", padx=12, pady=4)
 
-        ctk.CTkButton(right_card, text="💾  Sauvegarder le circuit",
-                      height=40, corner_radius=8,
-                      font=ctk.CTkFont("Segoe UI", 12, "bold"),
-                      fg_color="#059669", hover_color="#10b981",
-                      command=self._save).pack(
-                          fill="x", padx=18, pady=(0, 16))
+        # Save button
+        ctk.CTkButton(right, text="💾  Sauvegarder ce circuit",
+                      height=42, corner_radius=10,
+                      font=ctk.CTkFont("Segoe UI", 13, "bold"),
+                      fg_color="#15803d", hover_color="#16a34a",
+                      command=self._save).grid(
+                          row=3, column=0, sticky="ew",
+                          padx=18, pady=(0, 16))
+
+    # ── Data ─────────────────────────────────────────────────────────────────
 
     def _build_comp_checkboxes(self):
         for w in self._comp_scroll.winfo_children():
@@ -157,9 +192,10 @@ class TabCircuits:
                 text=f"{key}  —  {val['name']}",
                 variable=var,
                 font=ctk.CTkFont("Segoe UI", 11),
-                text_color="#e2e8f0",
-                fg_color="#1d4ed8", hover_color="#2563eb",
-            ).pack(anchor="w", padx=6, pady=2)
+                text_color=TEXT,
+                fg_color=BLUE_D, hover_color=BLUE,
+                checkmark_color=TEXT,
+            ).pack(anchor="w", padx=4, pady=3)
 
     def refresh_component_list(self):
         self._build_comp_checkboxes()
@@ -167,10 +203,10 @@ class TabCircuits:
     def _load(self):
         self._build_comp_checkboxes()
         self._listbox.delete(0, "end")
-        for name in _BASE_PATTERN_NAMES:
+        for name in _BASE_NAMES:
             self._listbox.insert("end", f"  {name}")
-        for i in range(len(_BASE_PATTERN_NAMES)):
-            self._listbox.itemconfig(i, foreground="#475569")
+        for i in range(len(_BASE_NAMES)):
+            self._listbox.itemconfig(i, foreground="#374151")
         self._custom = load_custom_circuits()
         for c in self._custom:
             self._listbox.insert("end", f"  ★  {c['name']}")
@@ -179,19 +215,16 @@ class TabCircuits:
 
     def _on_select(self, _=None):
         sel = self._listbox.curselection()
-        if not sel:
+        if not sel or sel[0] < len(_BASE_NAMES):
             return
-        idx = sel[0]
-        if idx < len(_BASE_PATTERN_NAMES):
-            return
-        self._current_idx = idx - len(_BASE_PATTERN_NAMES)
+        self._current_idx = sel[0] - len(_BASE_NAMES)
         c = self._custom[self._current_idx]
         self._name_var.set(c["name"])
-        sel_comps = set(c.get("components", []))
+        sel_c = set(c.get("components", []))
         for k, v in self._comp_vars.items():
-            v.set(k in sel_comps)
-        for label, v in self._cond_vars.items():
-            v.set(label in c.get("conditions", []))
+            v.set(k in sel_c)
+        for l, v in self._cond_vars.items():
+            v.set(l in c.get("conditions", []))
 
     def _new(self):
         self._current_idx = None
@@ -204,11 +237,10 @@ class TabCircuits:
     def _delete(self):
         if self._current_idx is None:
             messagebox.showinfo("Info",
-                "Sélectionnez un circuit personnalisé à supprimer.")
+                "Sélectionnez un circuit personnalisé.")
             return
         name = self._custom[self._current_idx]["name"]
-        if messagebox.askyesno("Confirmer",
-                               f"Supprimer '{name}' ?"):
+        if messagebox.askyesno("Confirmer", f"Supprimer '{name}' ?"):
             self._custom.pop(self._current_idx)
             save_custom_circuits(self._custom)
             self._current_idx = None
@@ -217,7 +249,7 @@ class TabCircuits:
     def _save(self):
         name = self._name_var.get().strip()
         if not name:
-            messagebox.showerror("Erreur", "Le nom est obligatoire.")
+            messagebox.showerror("Erreur", "Nom obligatoire.")
             return
         comps = [k for k, v in self._comp_vars.items() if v.get()]
         if not comps:
@@ -225,12 +257,12 @@ class TabCircuits:
                 "Sélectionnez au moins un composant.")
             return
         conds = [k for k, v in self._cond_vars.items() if v.get()]
-        circuit = {"name": name, "components": comps, "conditions": conds}
+        c = {"name": name, "components": comps, "conditions": conds}
         if self._current_idx is not None:
-            self._custom[self._current_idx] = circuit
+            self._custom[self._current_idx] = c
         else:
-            self._custom.append(circuit)
+            self._custom.append(c)
             self._current_idx = len(self._custom) - 1
         save_custom_circuits(self._custom)
         self._load()
-        messagebox.showinfo("Succès", f"Circuit '{name}' sauvegardé.")
+        messagebox.showinfo("Succès", f"'{name}' sauvegardé.")
