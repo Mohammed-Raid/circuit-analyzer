@@ -1,0 +1,59 @@
+# Half-bridge motor driver - 48V bus
+# Two MOSFETs (high-side + low-side) with gate resistors, bootstrap, snubbers
+
+# Bus capacitor
+C1  /VBUS_48V   /PGND   470uF
+C2  /VBUS_48V   /PGND   100nF
+
+# Fuse on bus
+F1  /VBUS_RAW   /VBUS_48V  10A
+
+# High-side MOSFET (source at midpoint /MID_HB)
+M1  /GATE_H     /VBUS_48V  /MID_HB   IRFB4410
+
+# Low-side MOSFET (source at PGND)
+M2  /GATE_L     /MID_HB    /PGND     IRFB4410
+
+# Gate resistors for slew rate control
+R1  /GATE_H_DRV  /GATE_H   10
+R2  /GATE_L_DRV  /GATE_L   10
+
+# Pull-down gate resistors (prevent floating gate)
+R3  /GATE_H     /MID_HB    100k
+R4  /GATE_L     /PGND      100k
+
+# Bootstrap capacitor
+C3  /BOOT_H     /MID_HB    220nF
+C4  /BOOT_H     /MID_HB    100nF
+
+# Bootstrap supply resistor
+R5  /VCC_15V    /BOOT_H    10
+
+# RC snubbers across each MOSFET
+R6  /MID_HB    /VBUS_48V   47
+C5  /MID_HB    /VBUS_48V   1nF
+
+R7  /PGND      /MID_HB     47
+C6  /PGND      /MID_HB     1nF
+
+# Dead-time RC filter on gate signals
+R8  /HIN_LOGIC  /GATE_H_DRV  4.7k
+C7  /GATE_H_DRV  /MID_HB     10nF
+
+R9  /LIN_LOGIC  /GATE_L_DRV  4.7k
+C8  /GATE_L_DRV  /PGND       10nF
+
+# Current sense (shunt on low side)
+R10  /PGND_SENSE  /PGND   0.005
+
+# RC filter on current sense signal
+R11  /PGND_SENSE  /ISENSE_FILT  1k
+C9   /ISENSE_FILT  /AGND        100nF
+
+# VCC decoupling
+C10  /VCC_15V    /PGND   100uF
+C11  /VCC_15V    /PGND   100nF
+
+# Output to motor (via LC filter)
+L1  /MID_HB    /MOTOR_A   10uH
+C12  /MOTOR_A   /PGND      100nF

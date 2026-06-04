@@ -1,0 +1,65 @@
+# Relay driver circuit - NPN BJT switch + flyback diode + relay coil
+# Multiple relay channels, logic interface, status LED
+
+# Channel 1: Relay driven by Q1 (NPN, collector to A2)
+K1  /VCC_12V   /COL_Q1   /MOT_COM1   /MOT_NC1   /MOT_NO1
+
+# Flyback diode across relay coil K1 (cathode at VCC, anode at Q1 collector)
+D1  /COL_Q1    /VCC_12V
+
+# NPN driver transistor for K1
+Q1  /BASE_Q1   /COL_Q1   /PGND   BC337
+
+# Base resistor
+R1  /CTRL_CH1  /BASE_Q1  4.7k
+
+# Base pull-down (ensures off when input floating)
+R2  /BASE_Q1   /PGND     100k
+
+# Status LED for channel 1
+D2  /VCC_12V   /LED1_A
+R3  /LED1_A    /PGND     1k
+
+# Channel 2: second relay
+K2  /VCC_12V   /COL_Q2   /MOT_COM2   /MOT_NC2   /MOT_NO2
+
+D3  /COL_Q2    /VCC_12V
+
+Q2  /BASE_Q2   /COL_Q2   /PGND   BC337
+
+R4  /CTRL_CH2  /BASE_Q2   4.7k
+R5  /BASE_Q2   /PGND      100k
+
+D4  /VCC_12V   /LED2_A
+R6  /LED2_A    /PGND   1k
+
+# Channel 3: MOSFET driver variant
+K3  /VCC_12V   /DRAIN_M1   /MOT_COM3   /MOT_NC3   /MOT_NO3
+
+D5  /DRAIN_M1  /VCC_12V
+
+M1  /GATE_M1   /DRAIN_M1  /PGND   2N7000
+
+R7  /CTRL_CH3  /GATE_M1   1k
+R8  /GATE_M1   /PGND      100k
+
+# Logic supply decoupling
+C1  /VCC_12V   /PGND   100uF
+C2  /VCC_12V   /PGND   100nF
+
+C3  /VCC_5V    /PGND   10uF
+C4  /VCC_5V    /PGND   100nF
+
+# Logic level shifter (5V logic to 12V control)
+R9   /CTRL_5V  /CTRL_CH1   1k
+R10  /CTRL_CH1  /PGND      10k
+
+R11  /CTRL_5V  /CTRL_CH2   1k
+R12  /CTRL_CH2  /PGND      10k
+
+# Relay power filter
+R13  /VCC_RAW  /VCC_12V   10
+C5   /VCC_12V  /PGND      470uF
+
+# Input protection TVS
+D6  /CTRL_5V   /PGND

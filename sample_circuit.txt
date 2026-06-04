@@ -1,24 +1,18 @@
-# Exemple de circuit de test
-# Filtre RC passe-bas
-R1  NET_IN   NET_MID  10k
-C1  NET_MID  GND      100nF
+# Caractères spéciaux et espaces dans les nets
+R1  NET-A     NET_B     10k
+C1  NET_B     G N D     100nF
 
-# Pont diviseur de tension
-R2  VCC      NET_DIV  10k
-R3  NET_DIV  GND      4.7k
+# Préfixes non standard ou ambigus (Potentiomètre, Diode Zener)
+RV1 NET_C     NET_D     10k
+ZD1 NET_D     GND
 
-# Condensateur de découplage
-C2  VCC      GND      10uF
+# Syntaxe tronquée (donnée manquante)
+R2  NET_E     1k
 
-# Fusible
-F1  LINE_IN  NET_FUSE
+# Discordance de casse sur le même net
+R3  vcc       net_f     10k
+C2  NET_F     Gnd       10uF
 
-# Snubber RC
-R4  NET_A    NET_B    100
-C3  NET_A    NET_B    10nF
-
-# Diodes pont de Graetz
-D1  AC_POS   DC_POS
-D2  AC_NEG   DC_POS
-D3  DC_NEG   AC_POS
-D4  DC_NEG   AC_NEG
+# Références dupliquées
+C3  VCC       GND       100nF
+C3  NET_X     GND       22pF

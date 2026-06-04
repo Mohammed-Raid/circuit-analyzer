@@ -2,6 +2,57 @@ import networkx as nx
 from circuit_analyzer.patterns.base import Pattern, is_gnd, is_power
 
 
+class ESDProtectionDiode(Pattern):
+    """Diode de protection ESD / TVS / Zener shunt.
+    Covers three sub-topologies:
+    - Forward low-side clamp: anode=GND, cathode=signal (prevents negative excursions)
+    - Reverse Zener/TVS shunt: anode=GND, cathode=power rail (voltage clamping)
+    - Reverse Zener shunt: anode=signal, cathode=GND (clamp above GND)
+    """
+    name = "Diode de protection ESD"
+
+    def match(self, graph):
+        matches = []
+        all_comps = graph.graph.get('components', {})
+        for d_ref, comp in all_comps.items():
+            if comp.type != 'D':
+                continue
+            anode = comp.pins.get('A') or comp.pins.get('1', '')
+            cathode = comp.pins.get('K') or comp.pins.get('2', '')
+            if not anode or not cathode:
+                continue
+            # Anode at GND: forward clamp (negative) or reverse Zener shunt (positive)
+            if is_gnd(anode):
+                matches.append({'components': [d_ref], 'nodes': [anode, cathode]})
+            # Anode at signal or power, cathode at GND: Zener/TVS shunt or reverse protection
+            elif is_gnd(cathode):
+                matches.append({'components': [d_ref], 'nodes': [anode, cathode]})
+        return matches
+
+
+class FlybackDiode(Pattern):
+    """Diode de roue libre — cathode on power rail, anode at switch output node."""
+    name = "Diode de roue libre"
+
+    def match(self, graph):
+        matches = []
+        all_comps = graph.graph.get('components', {})
+        for d_ref, comp in all_comps.items():
+            if comp.type != 'D':
+                continue
+            cathode = comp.pins.get('K')
+            anode = comp.pins.get('A')
+            if not cathode or not anode:
+                continue
+            # Flyback: cathode at power rail, anode at switch node (not GND, not power)
+            if is_power(cathode) and not is_gnd(anode) and not is_power(anode):
+                matches.append({
+                    'components': [d_ref],
+                    'nodes': [anode, cathode],
+                })
+        return matches
+
+
 class RCLowPassFilter(Pattern):
     name = "Filtre RC passe-bas"
 
@@ -144,6 +195,14 @@ class BridgeRectifier(Pattern):
                         # Check if n4 connects back to n1
                         for n1_check, d4_ref in diode_adj.get(n4, []):
                             if n1_check == n1 and len({d1_ref, d2_ref, d3_ref, d4_ref}) == 4:
+                                cycle_nodes = {n1, n2, n3, n4}
+                                # Exclude ESD clamp arrays: those have BOTH a power rail AND a GND
+                                # rail in the 4-node cycle (two clamp rails + two signal nodes).
+                                # A real bridge rectifier has at most one rail type in its cycle.
+                                has_pwr = any(is_power(n) for n in cycle_nodes)
+                                has_gnd = any(is_gnd(n) for n in cycle_nodes)
+                                if has_pwr and has_gnd:
+                                    continue
                                 cycle_key = frozenset([d1_ref, d2_ref, d3_ref, d4_ref])
                                 if cycle_key not in seen_cycles:
                                     seen_cycles.add(cycle_key)
@@ -195,9 +254,19 @@ class HalfWaveRectifier(Pattern):
         for d_ref, comp in all_comps.items():
             if comp.type != 'D':
                 continue
+            anode = comp.pins.get('A') or comp.pins.get('1', '')
             # Only the cathode (K) is the DC output — never match the anode side
             cathode = comp.pins.get('K') or comp.pins.get('2', '')
-            if not cathode:
+            if not cathode or not anode:
+                continue
+            # Exclude flyback diodes: cathode on a power rail means this is not a rectifier
+            if is_power(cathode):
+                continue
+            # Exclude reverse-polarity ESD clamps and GND-anode diodes
+            if is_gnd(anode):
+                continue
+            # Exclude always-forward-biased diodes: anode on a power rail (e.g. LED indicators)
+            if is_power(anode):
                 continue
             for ou, ov, od in graph.edges(cathode, data=True):
                 if od['ref'] == d_ref:
@@ -209,7 +278,7 @@ class HalfWaveRectifier(Pattern):
                         seen.add(key)
                         matches.append({
                             'components': [d_ref, od['ref']],
-                            'nodes': [comp.pins.get('A', comp.pins.get('1', '')), cathode, other],
+                            'nodes': [anode, cathode, other],
                         })
         return matches
 
@@ -224,9 +293,16 @@ class PeakDetector(Pattern):
         for d_ref, comp in all_comps.items():
             if comp.type != 'D':
                 continue
+            anode = comp.pins.get('A') or comp.pins.get('1', '')
             # Only the cathode (K) is the peak-hold node — never match the anode side
             cathode = comp.pins.get('K') or comp.pins.get('2', '')
-            if not cathode:
+            if not cathode or not anode:
+                continue
+            # Exclude flyback diodes: cathode on a power rail means this is not a peak detector
+            if is_power(cathode):
+                continue
+            # Exclude reverse-polarity ESD clamps: anode at GND means this clamps below GND
+            if is_gnd(anode):
                 continue
             for ou, ov, od in graph.edges(cathode, data=True):
                 if od['ref'] == d_ref:
@@ -238,7 +314,7 @@ class PeakDetector(Pattern):
                         seen.add(key)
                         matches.append({
                             'components': [d_ref, od['ref']],
-                            'nodes': [comp.pins.get('A', comp.pins.get('1', '')), cathode, other],
+                            'nodes': [anode, cathode, other],
                         })
         return matches
 
@@ -250,6 +326,8 @@ ALL_PATTERNS = [
     RCHighPassFilter(),
     LCFilter(),
     BridgeRectifier(),
+    FlybackDiode(),
+    ESDProtectionDiode(),
     HalfWaveRectifier(),
     PeakDetector(),
     VoltageDivider(),

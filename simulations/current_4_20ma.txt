@@ -1,0 +1,57 @@
+# 4-20mA current loop transmitter
+# AOP non-inverting + NPN transistor current source + shunt resistor
+
+# Input signal conditioning (RC filter)
+R1  /SIG_0_5V   /SIG_FILT   1k
+C1  /SIG_FILT   /AGND       100nF
+
+# Reference voltage divider (zero offset = 4mA)
+R2  /AVCC       /VREF_ZERO   47k
+R3  /VREF_ZERO  /AGND        10k
+
+# AOP non-inverting amplifier (sets V-to-I gain)
+U1  /SIG_FILT   /FB_XMIT   /VDRIVE   /AVCC   /AGND
+
+# Feedback resistors
+R4  /AGND       /FB_XMIT   10k
+R5  /FB_XMIT    /VDRIVE    47k
+
+# NPN transistor as current source
+Q1  /VDRIVE     /VLOOP_24V  /EMITTER_Q   BC547
+
+# Base resistor for Q1
+R6  /VDRIVE     /BASE_Q1    1k
+
+# Emitter shunt (current sense, 50 ohm => 4-20mA = 0.2-1V)
+R7  /EMITTER_Q  /AGND       50
+
+# RC filter on shunt voltage feedback
+R8  /EMITTER_Q  /VFEEDBACK  1k
+C2  /VFEEDBACK  /AGND       100nF
+
+# Second AOP stage for linearization / offset trim
+U2  /VREF_ZERO  /VFEEDBACK  /TRIM_OUT   /AVCC   /AGND
+
+# Trim pot divider on IN- of U2
+R9   /VFEEDBACK  /TRIM_ADJ   10k
+R10  /TRIM_ADJ   /AGND       10k
+
+# Loop supply decoupling
+C3  /VLOOP_24V   /AGND   10uF
+C4  /VLOOP_24V   /AGND   100nF
+
+# AVCC decoupling
+C5  /AVCC        /AGND   100nF
+C6  /AVCC        /AGND   10uF
+
+# Protection zener on input
+D1  /SIG_0_5V    /AGND
+
+# Protection zener on loop
+D2  /VLOOP_24V   /AGND
+
+# Output TVS
+D3  /LOOP_OUT    /AGND
+
+# Pull-up on loop output
+R11  /VLOOP_24V  /LOOP_OUT   100

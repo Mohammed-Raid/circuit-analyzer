@@ -6,11 +6,13 @@ from circuit_analyzer.patterns.opamp import (
 )
 from circuit_analyzer.patterns.transistor import (
     CurrentMirror, CommonEmitterAmp, TransistorSwitch, MosfetSwitch,
+    HighSideMosfet, RelayDriver,
 )
 from circuit_analyzer.patterns.basic_circuits import (
     BridgeRectifier, HalfWaveRectifier, PeakDetector,
     RCSnubber, RCLowPassFilter, RCHighPassFilter, LCFilter,
-    VoltageDivider, DecouplingCapacitor, FuseProtection,
+    VoltageDivider, DecouplingCapacitor, FuseProtection, FlybackDiode,
+    ESDProtectionDiode,
 )
 
 # Point 4: ordered from most specific (AOP) to least specific (isolated).
@@ -27,23 +29,27 @@ _BUILTIN_HIGH = [
     InvertingAmplifier(),
     VoltageFollower(),
     Comparator(),
-    # Transistors
+    # Transistors — ordered most constrained first
     CurrentMirror(),
+    RelayDriver(),
     CommonEmitterAmp(),
     TransistorSwitch(),
     MosfetSwitch(),
+    HighSideMosfet(),
     # Complex passive
     BridgeRectifier(),
+    FlybackDiode(),
+    ESDProtectionDiode(),
     HalfWaveRectifier(),
     PeakDetector(),
 ]
 
 _BUILTIN_LOW = [
     # Simple passive — evaluated after all complex structures.
-    # DecouplingCapacitor before RC filters: a power-rail cap must be locked
-    # before generic RCLowPass can absorb it alongside a signal resistor.
-    RCSnubber(),
+    # DecouplingCapacitor before RCSnubber: power-rail caps must be locked first
+    # so that the snubber doesn't absorb decoupling caps alongside a signal resistor.
     DecouplingCapacitor(),
+    RCSnubber(),
     RCLowPassFilter(),
     RCHighPassFilter(),
     LCFilter(),

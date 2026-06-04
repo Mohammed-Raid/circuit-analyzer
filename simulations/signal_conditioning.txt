@@ -1,0 +1,66 @@
+# Signal conditioning - differential amp + filter + buffer
+# For industrial sensor (4-20mA or thermocouple) to ADC interface
+
+# Differential amplifier (AOP with 4 resistors)
+U1  /SIG_P   /SIG_N   /DIFF_OUT   /AVCC   /AGND
+
+# Differential amp resistors
+R1  /SIG_P    /INP_U1   10k
+R2  /INP_U1   /AGND     10k
+R3  /SIG_N    /INM_U1   10k
+R4  /INM_U1   /DIFF_OUT  10k
+
+# Gain setting resistor (Rg for instrumentation amp)
+R5  /INM_U1   /INP_U1   1k
+
+# Anti-alias RC filter after diff amp
+R6  /DIFF_OUT   /FILT_NODE   4.7k
+C1  /FILT_NODE  /AGND        10nF
+
+# Second RC filter stage (steeper rolloff)
+R7  /FILT_NODE  /FILT2_NODE  4.7k
+C2  /FILT2_NODE  /AGND       10nF
+
+# AOP output buffer (voltage follower)
+U2  /FILT2_NODE   /ADC_BUF_N   /ADC_SIG   /AVCC   /AGND
+
+# Follower feedback
+# ADC_BUF_N = ADC_SIG (follower)
+
+# ADC input series resistor
+R8  /ADC_SIG   /ADC_PIN   100
+
+# ADC input decoupling
+C3  /ADC_PIN   /AGND   100pF
+
+# CMR input filters (common mode rejection)
+C4  /SIG_P   /AGND   10pF
+C5  /SIG_N   /AGND   10pF
+
+# Input protection (differential)
+R9   /SIG_IN_P   /SIG_P   100
+R10  /SIG_IN_N   /SIG_N   100
+
+# ESD protection diodes
+D1  /SIG_P    /AVCC
+D2  /AGND     /SIG_P
+D3  /SIG_N    /AVCC
+D4  /AGND     /SIG_N
+
+# Power supply filtering
+R11  /VCC_5V   /AVCC   10
+C6   /AVCC     /AGND   10uF
+C7   /AVCC     /AGND   100nF
+
+# Reference voltage for single-supply operation
+R12  /AVCC    /VREF   20k
+R13  /VREF    /AGND   20k
+C8   /VREF    /AGND   10uF
+
+# Schmitt trigger for threshold detection on conditioned signal
+U3  /ADC_SIG   /THRESH_N   /ALERT_OUT   /AVCC   /AGND
+
+# Schmitt hysteresis
+R14  /THRESH_N   /AGND       10k
+R15  /ALERT_OUT  /INP_U3     47k
+# Note: INP_U3 = IN+ of U3, connected via R15 from output (positive feedback)

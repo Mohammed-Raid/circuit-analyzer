@@ -1,0 +1,50 @@
+# Netlist industrielle — export KiCad style (nets avec /)
+# 3 cartes mélangées sans structure
+#
+# Carte 1 : Alimentation à découpage 24V
+# Carte 2 : Conditionnement signal 4-20mA
+# Carte 3 : Commande demi-pont moteur DC
+
+C12 /VMOT      /PGND      470uF
+R11 /DRV_H     /GATE_H    10
+D3  /DC_NEG    /AC_L
+F1  /L_IN      /VIN_FUSE
+C1  /VIN_RECT  /PGND      2200uF
+R1  /PWM_SW    /BASE_SW   4k7
+D5  /PGND      /VMOT
+C6  /VCC_AOP   /GND_AOP   100nF
+R5  /SIG_F     /DIFF_P    10k
+U2  /DIFF_P    /DIFF_M    /SIG_OUT   /VCC_AOP  /GND_AOP
+L1  /COLL_SW   /VOUT_24   220uH
+D1  /AC_L      /VIN_RECT
+R6  /DIFF_P    /GND_AOP   10k
+C9  /MID_HB    /PGND      10nF
+R2  /VOUT_24   /FB_DIV    33k
+Q1  /BASE_SW   /COLL_SW   /PGND
+C2  /VIN_RECT  /PGND      2200uF
+R7  /SIG_IN2   /DIFF_M    10k
+U3  /SIG_BUF   /BUF_OUT   /BUF_OUT   /VCC_AOP  /GND_AOP
+R8  /DIFF_M    /SIG_OUT   100k
+R12 /DRV_L     /GATE_L    10
+C3  /VOUT_24   /PGND      470uF
+R4  /SIG_IN    /SIG_F     1k
+C5  /SIG_F     /GND_AOP   47nF
+M1  /GATE_H    /VMOT      /MID_HB
+D2  /AC_N      /VIN_RECT
+R9  /VOUT_24   /REF_P     10k
+R3  /FB_DIV    /PGND      5k6
+U1  /FB_DIV    /VREF      /PWM_GEN   /VCC_CTRL  /GND_CTRL
+R10 /REF_P     /GND_AOP   10k
+C4  /VCC_CTRL  /GND_CTRL  100nF
+C10 /MID_HB    /PGND      10nF
+R13 /MID_HB    /PGND      47
+R14 /VMOT      /MID_HB    47
+C11 /VMOT      /MID_HB    10nF
+D4  /DC_NEG    /AC_N
+C7  /VCC_AOP   /GND_AOP   10uF
+M2  /GATE_L    /MID_HB    /PGND
+Q2  /BASE_Q2   /COLL_Q2   /PGND
+R15 /PWM_CMD   /BASE_Q2   4k7
+R16 /COLL_Q2   /VCC_DRV   1k
+L2  /VOUT_24   /VMOT      100uH
+C8  /VCC_AOP   /GND_AOP   100nF

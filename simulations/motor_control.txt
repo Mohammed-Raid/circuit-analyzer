@@ -1,0 +1,81 @@
+# Motor control - complete DC motor drive with sensing and protection
+# H-bridge core + current feedback AOP + speed control AOP + protection
+
+# Power supply
+C1  /VMOT_48V   /PGND   1000uF
+C2  /VMOT_48V   /PGND   100nF
+F1  /VMOT_RAW   /VMOT_48V   20A
+
+# H-bridge: 4 MOSFETs
+M1  /GATE_Q1    /VMOT_48V  /OUT_A   IRFB4620
+M2  /GATE_Q2    /OUT_A     /PGND    IRFB4620
+M3  /GATE_Q3    /VMOT_48V  /OUT_B   IRFB4620
+M4  /GATE_Q4    /OUT_B     /PGND    IRFB4620
+
+# Gate resistors
+R1  /GD_Q1   /GATE_Q1   10
+R2  /GD_Q2   /GATE_Q2   10
+R3  /GD_Q3   /GATE_Q3   10
+R4  /GD_Q4   /GATE_Q4   10
+
+# Gate pull-downs
+R5  /GATE_Q1   /OUT_A   100k
+R6  /GATE_Q2   /PGND    100k
+R7  /GATE_Q3   /OUT_B   100k
+R8  /GATE_Q4   /PGND    100k
+
+# Snubbers
+R9   /OUT_A   /VMOT_48V  47
+C3   /OUT_A   /VMOT_48V  2.2nF
+R10  /OUT_B   /VMOT_48V  47
+C4   /OUT_B   /VMOT_48V  2.2nF
+
+# Current sense shunt
+R11  /PGND_SHUNT  /PGND  0.01
+
+# Current sense AOP (differential amplifier configuration)
+U1  /PGND_SHUNT  /PGND   /ISENSE_OUT   /AVCC   /AGND
+
+R12  /PGND_SHUNT  /INP_U1   10k
+R13  /INP_U1      /AVCC     10k
+R14  /PGND        /INM_U1   10k
+R15  /INM_U1      /ISENSE_OUT   10k
+
+# Current sense RC filter
+R16  /ISENSE_OUT  /ISENSE_FILT  1k
+C5   /ISENSE_FILT  /AGND        100nF
+
+# Speed control AOP (PI controller / integrator)
+U2  /SPD_REF   /ERR_N   /SPD_OUT   /AVCC   /AGND
+
+# Speed setpoint voltage divider
+R17  /AVCC    /SPD_REF   10k
+R18  /SPD_REF  /AGND     10k
+
+# PI controller: R+C input, C feedback
+R19  /ERR_N   /SPD_OUT   100k
+C6   /ERR_N   /SPD_OUT   1uF
+
+# Current limit comparator
+U3  /ILIM_REF   /ISENSE_FILT   /ILIM_OUT   /AVCC   /AGND
+
+# Ilim reference divider
+R20  /AVCC    /ILIM_REF  47k
+R21  /ILIM_REF  /AGND    10k
+
+# Bootstrap capacitors
+C7   /BOOT_A   /OUT_A   100nF
+C8   /BOOT_B   /OUT_B   100nF
+
+# Driver supply decoupling
+C9   /VCC_DRV   /PGND   100nF
+C10  /AVCC      /AGND   10uF
+C11  /AVCC      /AGND   100nF
+
+# Encoder pull-ups
+R22  /VCC_5V   /ENC_A   4.7k
+R23  /VCC_5V   /ENC_B   4.7k
+
+# Encoder RC filter
+R24  /ENC_A_RAW  /ENC_A   100
+C12  /ENC_A      /AGND    1nF

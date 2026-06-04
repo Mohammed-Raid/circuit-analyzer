@@ -1,0 +1,90 @@
+=== ANALYSE DU CIRCUIT ===
+Fichier           : simulations/motor_control.txt
+Composants totaux : 44
+Groupes identifiés : 20
+
+------------------------------------------------------------
+[1] Comparateur (AOP)
+    Composants : U1
+    Nœuds     : /PGND_SHUNT → /PGND → /ISENSE_OUT
+
+[2] Comparateur (AOP)
+    Composants : U3
+    Nœuds     : /ILIM_REF → /ISENSE_FILT → /ILIM_OUT
+
+[3] MOSFET en commutation
+    Composants : M2, R2, R6
+    Nœuds     : /GATE_Q2 → /OUT_A → /PGND
+
+[4] MOSFET en commutation
+    Composants : M4, R4, R8
+    Nœuds     : /GATE_Q4 → /OUT_B → /PGND
+
+[5] MOSFET haute-tension (high-side)
+    Composants : M1, R1, R5
+    Nœuds     : /GATE_Q1 → /VMOT_48V → /OUT_A
+
+[6] MOSFET haute-tension (high-side)
+    Composants : M3, R3, R7
+    Nœuds     : /GATE_Q3 → /VMOT_48V → /OUT_B
+
+[7] Condensateur de découplage
+    Composants : C1
+    Nœuds     : /VMOT_48V → /PGND
+
+[8] Condensateur de découplage
+    Composants : C2
+    Nœuds     : /VMOT_48V → /PGND
+
+[9] Condensateur de découplage
+    Composants : C9
+    Nœuds     : /PGND → /VCC_DRV
+
+[10] Condensateur de découplage
+    Composants : C10
+    Nœuds     : /AVCC → /AGND
+
+[11] Condensateur de découplage
+    Composants : C11
+    Nœuds     : /AVCC → /AGND
+
+[12] Snubber RC
+    Composants : R9, C3
+    Nœuds     : /OUT_A → /VMOT_48V
+
+[13] Snubber RC
+    Composants : R10, C4
+    Nœuds     : /OUT_B → /VMOT_48V
+
+[14] Snubber RC
+    Composants : R19, C6
+    Nœuds     : /ERR_N → /SPD_OUT
+
+[15] Filtre RC passe-bas
+    Composants : R16, C5
+    Nœuds     : /ISENSE_OUT → /ISENSE_FILT → /AGND
+
+[16] Filtre RC passe-bas
+    Composants : R22, C12
+    Nœuds     : /VCC_5V → /ENC_A → /AGND
+
+[17] Pont diviseur de tension
+    Composants : R11, R14
+    Nœuds     : /PGND_SHUNT → /PGND → /INM_U1
+
+[18] Pont diviseur de tension
+    Composants : R13, R17
+    Nœuds     : /INP_U1 → /AVCC → /SPD_REF
+
+[19] Pont diviseur de tension
+    Composants : R18, R21
+    Nœuds     : /SPD_REF → /AGND → /ILIM_REF
+
+[20] Protection par fusible
+    Composants : F1
+    Nœuds     : /VMOT_48V → /VMOT_RAW
+
+------------------------------------------------------------
+
+Composants non classifiés (8) :
+    R12, R15, U2, R20, C7, C8, R23, R24

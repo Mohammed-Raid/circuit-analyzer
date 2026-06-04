@@ -1,0 +1,58 @@
+# LDO Voltage Regulator - 12V to 5V, 500mA
+# Pass transistor (NPN BJT) driven by AOP error amplifier
+# Reference divider + feedback network
+
+# Input capacitor
+C1  /VIN_12V    /PGND   10uF
+C2  /VIN_12V    /PGND   100nF
+
+# Fuse
+F1  /VIN_RAW    /VIN_12V   1A
+
+# Pass transistor (NPN, emitter-follower)
+Q1  /BASE_PASS  /VIN_12V   /VOUT_5V   TIP31
+
+# Base current limiting resistor
+R1  /AOP_OUT    /BASE_PASS   100
+
+# Error amplifier AOP (compares feedback vs reference)
+U1  /VREF_2V5   /FB_NODE   /AOP_OUT   /VCC_12V   /PGND
+
+# Feedback voltage divider from output
+R2  /VOUT_5V    /FB_NODE   10k
+R3  /FB_NODE    /PGND      10k
+
+# Reference voltage divider (from 12V, sets 2.5V ref)
+R4  /VIN_12V    /VREF_2V5  47k
+R5  /VREF_2V5   /PGND      22k
+
+# Compensation capacitor on AOP output
+C3  /AOP_OUT    /PGND   100pF
+
+# Output capacitor
+C4  /VOUT_5V    /PGND   100uF
+C5  /VOUT_5V    /PGND   100nF
+
+# AOP power supply decoupling
+C6  /VCC_12V    /PGND   100nF
+C7  /VCC_12V    /PGND   10uF
+
+# Emitter bypass capacitor (output stability)
+C8  /VOUT_5V    /PGND   10uF
+
+# Load resistor (minimum load for stability)
+R6  /VOUT_5V    /PGND   10k
+
+# Current limit sense resistor
+R7  /VIN_12V    /BASE_CURR  0.5
+
+# Soft-start RC
+R8  /VOUT_5V    /SS_FB  100k
+C9  /SS_FB      /PGND   1uF
+
+# Status LED resistor
+R9  /VOUT_5V    /LED_A  1k
+D1  /LED_A      /PGND
+
+# Output enable pull-up
+R10  /VOUT_5V   /EN_PIN  10k

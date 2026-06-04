@@ -1,0 +1,51 @@
+# Anti-aliasing filter for ADC input - dual RC stage + AOP buffer
+# Designed for 10kHz cutoff before a 100kSps ADC
+
+# Stage 1 RC low-pass filter
+R1  /SIG_IN    /NODE1   10k
+C1  /NODE1     /AGND    1nF
+
+# Stage 2 RC low-pass filter (cascaded)
+R2  /NODE1     /NODE2   10k
+C2  /NODE2     /AGND    1nF
+
+# AOP voltage follower buffer (unity gain)
+# IN- tied to OUT (/ADC_IN) for unity-gain feedback
+U1  /NODE2   /ADC_IN   /ADC_IN   /AVCC   /AGND
+
+# Output series resistor (ADC input protection)
+R3  /ADC_IN    /ADC_PIN   100
+
+# ADC input decoupling
+C3  /ADC_PIN   /AGND   100pF
+
+# Power supply filtering for AOP
+R4  /VCC_5V    /AVCC   10
+C4  /AVCC      /AGND   10uF
+C5  /AVCC      /AGND   100nF
+
+# Input signal protection (clamp diodes modeled as RC to power rails)
+R5  /SIG_RAW   /SIG_IN   1k
+C6  /SIG_IN    /AGND     100pF
+
+# Reference voltage for single-supply biasing
+R6  /VCC_5V    /VREF_2V5   10k
+R7  /VREF_2V5  /AGND       10k
+C7  /VREF_2V5  /AGND       10uF
+
+# Second channel (differential input conditioning)
+R8  /SIG_IN_N  /NODE3   10k
+C8  /NODE3     /AGND    1nF
+
+R9  /NODE3     /NODE4   10k
+C9  /NODE4     /AGND    1nF
+
+# Second AOP follower (IN- = OUT = ADC_IN_N)
+U2  /NODE4   /ADC_IN_N   /ADC_IN_N   /AVCC   /AGND
+
+R10  /ADC_IN_N   /ADC_PIN_N   100
+C10  /ADC_PIN_N  /AGND        100pF
+
+# Common mode choke / ferrite (modeled as inductor)
+L1  /SIG_RAW_CM   /SIG_IN   10uH
+L2  /SIG_RAW_N_CM  /SIG_IN_N  10uH

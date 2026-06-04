@@ -1,0 +1,58 @@
+=== ANALYSE DU CIRCUIT ===
+Fichier           : simulations/anti_alias_filter.txt
+Composants totaux : 24
+Groupes identifiés : 12
+
+------------------------------------------------------------
+[1] Suiveur de tension (AOP)
+    Composants : U1
+    Nœuds     : /NODE2 → /ADC_IN
+
+[2] Suiveur de tension (AOP)
+    Composants : U2
+    Nœuds     : /NODE4 → /ADC_IN_N
+
+[3] Condensateur de découplage
+    Composants : C4
+    Nœuds     : /AGND → /AVCC
+
+[4] Condensateur de découplage
+    Composants : C5
+    Nœuds     : /AGND → /AVCC
+
+[5] Snubber RC
+    Composants : R7, C7
+    Nœuds     : /AGND → /VREF_2V5
+
+[6] Filtre RC passe-bas
+    Composants : R1, C6
+    Nœuds     : /NODE1 → /SIG_IN → /AGND
+
+[7] Filtre RC passe-bas
+    Composants : R2, C1
+    Nœuds     : /NODE2 → /NODE1 → /AGND
+
+[8] Filtre RC passe-bas
+    Composants : R3, C3
+    Nœuds     : /ADC_IN → /ADC_PIN → /AGND
+
+[9] Filtre RC passe-bas
+    Composants : R8, C8
+    Nœuds     : /SIG_IN_N → /NODE3 → /AGND
+
+[10] Filtre RC passe-bas
+    Composants : R9, C9
+    Nœuds     : /NODE3 → /NODE4 → /AGND
+
+[11] Filtre RC passe-bas
+    Composants : R10, C10
+    Nœuds     : /ADC_IN_N → /ADC_PIN_N → /AGND
+
+[12] Pont diviseur de tension
+    Composants : R4, R6
+    Nœuds     : /AVCC → /VCC_5V → /VREF_2V5
+
+------------------------------------------------------------
+
+Composants non classifiés (4) :
+    C2, R5, L1, L2

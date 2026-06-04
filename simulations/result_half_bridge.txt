@@ -1,0 +1,58 @@
+=== ANALYSE DU CIRCUIT ===
+Fichier           : simulations/half_bridge.txt
+Composants totaux : 27
+Groupes identifiés : 12
+
+------------------------------------------------------------
+[1] MOSFET en commutation
+    Composants : M2, R2, R4
+    Nœuds     : /GATE_L → /MID_HB → /PGND
+
+[2] MOSFET haute-tension (high-side)
+    Composants : M1, R1, R3
+    Nœuds     : /GATE_H → /VBUS_48V → /MID_HB
+
+[3] Condensateur de découplage
+    Composants : C1
+    Nœuds     : /VBUS_48V → /PGND
+
+[4] Condensateur de découplage
+    Composants : C2
+    Nœuds     : /VBUS_48V → /PGND
+
+[5] Condensateur de découplage
+    Composants : C10
+    Nœuds     : /PGND → /VCC_15V
+
+[6] Condensateur de découplage
+    Composants : C11
+    Nœuds     : /PGND → /VCC_15V
+
+[7] Snubber RC
+    Composants : R6, C5
+    Nœuds     : /MID_HB → /VBUS_48V
+
+[8] Snubber RC
+    Composants : R7, C6
+    Nœuds     : /MID_HB → /PGND
+
+[9] Filtre RC passe-bas
+    Composants : R9, C8
+    Nœuds     : /LIN_LOGIC → /GATE_L_DRV → /PGND
+
+[10] Filtre RC passe-bas
+    Composants : R11, C9
+    Nœuds     : /PGND_SENSE → /ISENSE_FILT → /AGND
+
+[11] Filtre RC passe-haut
+    Composants : R10, C12
+    Nœuds     : /MOTOR_A → /PGND → /PGND_SENSE
+
+[12] Protection par fusible
+    Composants : F1
+    Nœuds     : /VBUS_48V → /VBUS_RAW
+
+------------------------------------------------------------
+
+Composants non classifiés (6) :
+    C3, C4, R5, R8, C7, L1

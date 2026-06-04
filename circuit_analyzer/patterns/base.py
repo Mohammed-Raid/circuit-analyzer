@@ -17,10 +17,14 @@ def is_gnd(net: str) -> bool:
 def is_power(net: str) -> bool:
     # Strip KiCad hierarchy prefix (e.g. /VCC_AOP → VCC_AOP)
     net_upper = net.lstrip('/').upper()
-    POWER_EXACT = {'VCC', 'VDD', 'AVCC', 'AVDD', 'DVCC', 'VIN', 'VBAT', 'PWR', 'V+', 'VMOT', 'VBUS'}
+    POWER_EXACT = {'VCC', 'VDD', 'AVCC', 'AVDD', 'DVCC', 'VIN', 'VBAT', 'PWR', 'V+', 'VMOT', 'VBUS',
+                   'VLOOP', 'VREG', 'VRAW', 'VSUPPLY', 'VPWR', 'VSYS'}
     if net_upper in POWER_EXACT:
         return True
-    return bool(re.match(r'^(VCC|VDD|AVCC|AVDD|DVCC|VIN|VBAT|PWR|VOUT|VMOT|VBUS)[\d_]', net_upper))
+    return bool(re.match(
+        r'^(VCC|VDD|AVCC|AVDD|DVCC|VIN|VBAT|PWR|VOUT|VMOT|VBUS|VLOOP|VREG|VRAW|VSUPPLY|VPWR|VSYS)[\d_]',
+        net_upper
+    ))
 
 
 class Pattern(ABC):

@@ -1,0 +1,70 @@
+=== ANALYSE DU CIRCUIT ===
+Fichier           : simulations/smps_full.txt
+Composants totaux : 36
+Groupes identifiés : 15
+
+------------------------------------------------------------
+[1] Amplificateur différentiel (AOP)
+    Composants : U1, R6, R5, R8, R3, R4
+    Nœuds     : /VREF_2V5 → /FB_SMPS → /COMP_OUT
+
+[2] Pont redresseur (Graetz)
+    Composants : D1, D2, D4, D3
+    Nœuds     : /LINE_FUSED → /VDC_BUS → /NEUTR_FUSED → /PGND
+
+[3] Diode de protection ESD
+    Composants : D5
+    Nœuds     : /PGND → /SW_BUCK
+
+[4] Condensateur de découplage
+    Composants : C4
+    Nœuds     : /PGND → /VOUT_12V
+
+[5] Condensateur de découplage
+    Composants : C5
+    Nœuds     : /PGND → /VOUT_12V
+
+[6] Condensateur de découplage
+    Composants : C6
+    Nœuds     : /PGND → /VOUT_12V
+
+[7] Condensateur de découplage
+    Composants : C8
+    Nœuds     : /PGND → /VCC_AUX
+
+[8] Condensateur de découplage
+    Composants : C9
+    Nœuds     : /PGND → /VCC_AUX
+
+[9] Snubber RC
+    Composants : R1, C1
+    Nœuds     : /LINE_FUSED → /NEUTR_FUSED
+
+[10] Snubber RC
+    Composants : R12, C14
+    Nœuds     : /SW_BUCK → /VDC_BUS
+
+[11] Snubber RC
+    Composants : R7, C7
+    Nœuds     : /COMP_OUT → /PGND
+
+[12] Filtre RC passe-bas
+    Composants : R11, C13
+    Nœuds     : /PGND_SENSE → /ISENSE_FILT → /PGND
+
+[13] Filtre RC passe-haut
+    Composants : R10, C2
+    Nœuds     : /VDC_BUS → /PGND → /PGND_SENSE
+
+[14] Protection par fusible
+    Composants : F1
+    Nœuds     : /LINE_IN → /LINE_FUSED
+
+[15] Protection par fusible
+    Composants : F2
+    Nœuds     : /NEUTRAL → /NEUTR_FUSED
+
+------------------------------------------------------------
+
+Composants non classifiés (8) :
+    C3, M1, L1, R2, R9, C10, C11, C12

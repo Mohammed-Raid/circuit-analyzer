@@ -1,0 +1,82 @@
+=== ANALYSE DU CIRCUIT ===
+Fichier           : simulations/signal_conditioning.txt
+Composants totaux : 30
+Groupes identifiés : 18
+
+------------------------------------------------------------
+[1] Comparateur (AOP)
+    Composants : U1
+    Nœuds     : /SIG_P → /SIG_N → /DIFF_OUT
+
+[2] Comparateur (AOP)
+    Composants : U2
+    Nœuds     : /FILT2_NODE → /ADC_BUF_N → /ADC_SIG
+
+[3] Comparateur (AOP)
+    Composants : U3
+    Nœuds     : /ADC_SIG → /THRESH_N → /ALERT_OUT
+
+[4] Diode de roue libre
+    Composants : D1
+    Nœuds     : /SIG_P → /AVCC
+
+[5] Diode de roue libre
+    Composants : D3
+    Nœuds     : /SIG_N → /AVCC
+
+[6] Diode de protection ESD
+    Composants : D2
+    Nœuds     : /AGND → /SIG_P
+
+[7] Diode de protection ESD
+    Composants : D4
+    Nœuds     : /AGND → /SIG_N
+
+[8] Condensateur de découplage
+    Composants : C6
+    Nœuds     : /AVCC → /AGND
+
+[9] Condensateur de découplage
+    Composants : C7
+    Nœuds     : /AVCC → /AGND
+
+[10] Snubber RC
+    Composants : R13, C8
+    Nœuds     : /AGND → /VREF
+
+[11] Filtre RC passe-bas
+    Composants : R1, C4
+    Nœuds     : /INP_U1 → /SIG_P → /AGND
+
+[12] Filtre RC passe-bas
+    Composants : R3, C5
+    Nœuds     : /INM_U1 → /SIG_N → /AGND
+
+[13] Filtre RC passe-bas
+    Composants : R6, C1
+    Nœuds     : /DIFF_OUT → /FILT_NODE → /AGND
+
+[14] Filtre RC passe-bas
+    Composants : R7, C2
+    Nœuds     : /FILT_NODE → /FILT2_NODE → /AGND
+
+[15] Filtre RC passe-bas
+    Composants : R8, C3
+    Nœuds     : /ADC_SIG → /ADC_PIN → /AGND
+
+[16] Pont diviseur de tension
+    Composants : R11, R12
+    Nœuds     : /VCC_5V → /AVCC → /VREF
+
+[17] Pont diviseur de tension
+    Composants : R2, R14
+    Nœuds     : /INP_U1 → /AGND → /THRESH_N
+
+[18] Pont diviseur de tension
+    Composants : R4, R5
+    Nœuds     : /DIFF_OUT → /INM_U1 → /INP_U1
+
+------------------------------------------------------------
+
+Composants non classifiés (3) :
+    R9, R10, R15

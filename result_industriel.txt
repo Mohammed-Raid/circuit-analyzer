@@ -1,0 +1,90 @@
+=== ANALYSE DU CIRCUIT ===
+Fichier           : test_industriel.txt
+Composants totaux : 43
+Groupes identifiés : 20
+
+------------------------------------------------------------
+[1] Amplificateur différentiel (AOP)
+    Composants : U2, R6, R5, R8, R7
+    Nœuds     : /DIFF_P → /DIFF_M → /SIG_OUT
+
+[2] Suiveur de tension (AOP)
+    Composants : U3
+    Nœuds     : /SIG_BUF → /BUF_OUT
+
+[3] Comparateur (AOP)
+    Composants : U1
+    Nœuds     : /FB_DIV → /VREF → /PWM_GEN
+
+[4] Amplificateur émetteur commun
+    Composants : Q2, R16, R15
+    Nœuds     : /BASE_Q2 → /COLL_Q2 → /PGND
+
+[5] Transistor en commutation
+    Composants : Q1, R1
+    Nœuds     : /BASE_SW → /COLL_SW → /PGND
+
+[6] MOSFET en commutation
+    Composants : M2, R12
+    Nœuds     : /GATE_L → /MID_HB → /PGND
+
+[7] Pont redresseur (Graetz)
+    Composants : D3, D1, D2, D4
+    Nœuds     : /DC_NEG → /AC_L → /VIN_RECT → /AC_N
+
+[8] Détecteur de crête
+    Composants : D5, C12
+    Nœuds     : /PGND → /VMOT → /PGND
+
+[9] Snubber RC
+    Composants : R14, C11
+    Nœuds     : /MID_HB → /VMOT
+
+[10] Snubber RC
+    Composants : R13, C9, C10
+    Nœuds     : /MID_HB → /PGND
+
+[11] Condensateur de découplage
+    Composants : C1
+    Nœuds     : /PGND → /VIN_RECT
+
+[12] Condensateur de découplage
+    Composants : C2
+    Nœuds     : /PGND → /VIN_RECT
+
+[13] Condensateur de découplage
+    Composants : C3
+    Nœuds     : /PGND → /VOUT_24
+
+[14] Condensateur de découplage
+    Composants : C6
+    Nœuds     : /VCC_AOP → /GND_AOP
+
+[15] Condensateur de découplage
+    Composants : C7
+    Nœuds     : /VCC_AOP → /GND_AOP
+
+[16] Condensateur de découplage
+    Composants : C8
+    Nœuds     : /VCC_AOP → /GND_AOP
+
+[17] Condensateur de découplage
+    Composants : C4
+    Nœuds     : /VCC_CTRL → /GND_CTRL
+
+[18] Filtre RC passe-bas
+    Composants : R4, C5
+    Nœuds     : /SIG_IN → /SIG_F → /GND_AOP
+
+[19] Pont diviseur de tension
+    Composants : R2, R9
+    Nœuds     : /FB_DIV → /VOUT_24 → /REF_P
+
+[20] Protection par fusible
+    Composants : F1
+    Nœuds     : /L_IN → /VIN_FUSE
+
+------------------------------------------------------------
+
+Composants non classifiés (6) :
+    R11, L1, M1, R3, R10, L2

@@ -1,0 +1,70 @@
+# Protection circuit - fuse + snubber + voltage divider + decoupling + clamp
+# Industrial protection: overvoltage, overcurrent, EMI filtering, ESD
+
+# Main fuse
+F1  /VIN_24V_RAW   /VIN_FUSED   5A
+
+# Secondary fuse for logic supply
+F2  /VIN_5V_RAW    /VIN_5V_PROT  1A
+
+# RC snubber on power input
+R1  /VIN_FUSED    /PGND   10
+C1  /VIN_FUSED    /PGND   10nF
+
+# Second snubber (parallel to switch contact)
+R2  /RELAY_COM    /RELAY_NO   100
+C2  /RELAY_COM    /RELAY_NO   1nF
+
+# Voltage divider for MCU ADC (24V to 3.3V)
+R3  /VIN_FUSED    /ADC_NODE   82k
+R4  /ADC_NODE     /PGND       10k
+
+# Feedback divider for regulation
+R5  /VREG_OUT    /FB_DIV   47k
+R6  /FB_DIV      /PGND     10k
+
+# RC filter on ADC reading
+R7  /ADC_NODE   /ADC_FILT   1k
+C3  /ADC_FILT   /PGND       100pF
+
+# Decoupling caps on 24V rail
+C4  /VIN_FUSED   /PGND   100uF
+C5  /VIN_FUSED   /PGND   10uF
+C6  /VIN_FUSED   /PGND   100nF
+
+# Decoupling on 5V logic
+C7  /VIN_5V_PROT  /PGND   10uF
+C8  /VIN_5V_PROT  /PGND   100nF
+
+# Zener clamp on 24V (protect downstream)
+D1  /PGND    /VIN_FUSED
+
+# Zener clamp on 5V
+D2  /PGND    /VIN_5V_PROT
+
+# TVS on 24V input
+D3  /VIN_24V_RAW   /PGND
+
+# MOV-like behavior (resistor model for simulation)
+R8  /VIN_24V_RAW  /PGND   10M
+
+# Bulk hold-up capacitor
+C9  /VIN_FUSED   /PGND   1000uF
+
+# LC filter on output
+L1  /VIN_FUSED   /VOUT_CLEAN   10uH
+C10  /VOUT_CLEAN  /PGND  47uF
+C11  /VOUT_CLEAN  /PGND  100nF
+
+# EMI filter: common mode choke + Y caps
+L2  /VIN_24V_RAW   /VIN_CM_OUT   100uH
+C12  /VIN_CM_OUT   /PE_GND   4.7nF
+C13  /PGND         /PE_GND   4.7nF
+
+# Load divider (monitor output voltage)
+R9   /VOUT_CLEAN   /VMON_NODE   20k
+R10  /VMON_NODE    /PGND        5.1k
+
+# Second filter on monitor node
+R11  /VMON_NODE   /VMON_FILT   1k
+C14  /VMON_FILT   /PGND        10nF

@@ -1,0 +1,65 @@
+# PID Controller - analog implementation
+# 3 AOP stages: integrator (I), differentiator (D), summing amplifier (P+I+D)
+# Plus input conditioning and output buffering
+
+# Proportional stage (inverting amplifier)
+U1  /AGND    /IN_PROP   /P_OUT   /AVCC   /AGND
+
+# Proportional gain resistors
+R1  /ERR_SIG   /IN_PROP   10k
+R2  /IN_PROP   /P_OUT     47k
+
+# Integrator stage
+U2  /AGND    /IN_INTEG   /I_OUT   /AVCC   /AGND
+
+# Integrator input resistor and feedback capacitor
+R3  /ERR_SIG   /IN_INTEG   10k
+C1  /IN_INTEG  /I_OUT      100nF
+
+# Anti-windup resistor across integrator cap
+R4  /IN_INTEG  /I_OUT      1M
+
+# Differentiator stage
+U3  /AGND    /IN_DIFF   /D_OUT   /AVCC   /AGND
+
+# Differentiator input capacitor and feedback resistor
+C2  /ERR_SIG   /IN_DIFF    100nF
+R5  /IN_DIFF   /D_OUT      47k
+
+# Differentiator input limiting resistor (stability)
+R6  /ERR_SIG   /D_LIMIT    1k
+
+# Summing amplifier (P + I + D)
+U4  /AGND    /SUM_IN   /PID_OUT   /AVCC   /AGND
+
+# Summing input resistors
+R7  /P_OUT    /SUM_IN    10k
+R8  /I_OUT    /SUM_IN    10k
+R9  /D_OUT    /SUM_IN    10k
+
+# Summing feedback resistor
+R10  /SUM_IN   /PID_OUT   10k
+
+# Output buffer (voltage follower — IN- = OUT = /ACT_OUT)
+U5  /PID_OUT   /ACT_OUT   /ACT_OUT   /AVCC   /AGND
+
+# Input RC anti-alias filter
+R11  /ERR_IN   /ERR_SIG   1k
+C3   /ERR_SIG  /AGND      10nF
+
+# Output RC smoothing
+R12  /ACT_OUT  /ACT_FILT  1k
+C4   /ACT_FILT  /AGND     10nF
+
+# Power supply decoupling for each AOP
+C5   /AVCC    /AGND   100nF
+C6   /AVCC    /AGND   10uF
+C7   /AVCC    /AGND   100nF
+C8   /AVCC    /AGND   100nF
+
+# Reference voltage divider for AGND mid-rail
+R13  /AVCC    /AGND_REF   10k
+R14  /AGND_REF  /PGND    10k
+
+# Bypass on AGND_REF
+C9   /AGND_REF  /PGND   10uF

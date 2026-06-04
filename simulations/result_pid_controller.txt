@@ -1,0 +1,58 @@
+=== ANALYSE DU CIRCUIT ===
+Fichier           : simulations/pid_controller.txt
+Composants totaux : 28
+Groupes identifiés : 12
+
+------------------------------------------------------------
+[1] Amplificateur sommateur (AOP)
+    Composants : U4, R10, R7, R8, R9
+    Nœuds     : /AGND → /SUM_IN → /PID_OUT
+
+[2] Intégrateur (AOP)
+    Composants : U2, R3, C1
+    Nœuds     : /AGND → /IN_INTEG → /I_OUT
+
+[3] Dérivateur (AOP)
+    Composants : U3, C2, R5
+    Nœuds     : /AGND → /IN_DIFF → /D_OUT
+
+[4] Amplificateur inverseur (AOP)
+    Composants : U1, R2, R1
+    Nœuds     : /AGND → /IN_PROP → /P_OUT
+
+[5] Suiveur de tension (AOP)
+    Composants : U5
+    Nœuds     : /PID_OUT → /ACT_OUT
+
+[6] Condensateur de découplage
+    Composants : C5
+    Nœuds     : /AGND → /AVCC
+
+[7] Condensateur de découplage
+    Composants : C6
+    Nœuds     : /AGND → /AVCC
+
+[8] Condensateur de découplage
+    Composants : C7
+    Nœuds     : /AGND → /AVCC
+
+[9] Condensateur de découplage
+    Composants : C8
+    Nœuds     : /AGND → /AVCC
+
+[10] Snubber RC
+    Composants : R14, C9
+    Nœuds     : /AGND_REF → /PGND
+
+[11] Filtre RC passe-bas
+    Composants : R6, C3
+    Nœuds     : /D_LIMIT → /ERR_SIG → /AGND
+
+[12] Filtre RC passe-bas
+    Composants : R12, C4
+    Nœuds     : /ACT_OUT → /ACT_FILT → /AGND
+
+------------------------------------------------------------
+
+Composants non classifiés (3) :
+    R4, R11, R13

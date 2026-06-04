@@ -1,0 +1,61 @@
+# Buck converter (step-down) - 24V to 5V, 3A
+# MOSFET high-side switch + freewheeling diode + LC output filter + input/output caps
+# Gate driver section with bootstrap resistors and snubbers
+
+# Input capacitor bank (decoupling)
+C1  /VIN_24V    /PGND   100uF
+C2  /VIN_24V    /PGND   10uF
+C3  /VIN_24V    /PGND   100nF
+
+# Fuse on input
+F1  /VIN_RAW    /VIN_24V  5A
+
+# High-side MOSFET switch (N-channel, source not at GND — floating source)
+M1  /GATE_HS    /VIN_24V  /SW_NODE  IRF540
+
+# Gate resistor for high-side MOSFET
+R1  /GATE_DRIVE_HS  /GATE_HS  10
+
+# Freewheeling (catch) diode - anode at GND, cathode at SW_NODE
+D1  /PGND   /SW_NODE  SS34
+
+# Output inductor
+L1  /SW_NODE    /VOUT_5V   22uH
+
+# Output capacitor bank
+C4  /VOUT_5V    /PGND   220uF
+C5  /VOUT_5V    /PGND   10uF
+C6  /VOUT_5V    /PGND   100nF
+
+# Feedback voltage divider (to PWM controller)
+R2  /VOUT_5V    /FB_NODE   10k
+R3  /FB_NODE    /PGND      3.3k
+
+# RC snubber across MOSFET drain-source
+R4  /SW_NODE    /VIN_24V   10
+C7  /SW_NODE    /VIN_24V   1nF
+
+# Bootstrap capacitor for high-side gate drive
+C8  /BOOT_HS    /SW_NODE   100nF
+
+# Bootstrap resistor
+R5  /VCC_DRV    /BOOT_HS   10
+
+# Current sense resistor
+R6  /PGND_SENSE  /PGND    0.01
+
+# RC low-pass filter on feedback signal
+R7  /FB_NODE    /FB_FILT   1k
+C9  /FB_FILT    /PGND      100nF
+
+# Soft-start capacitor
+C10  /SS_PIN    /PGND      10nF
+
+# Compensation RC
+R8  /COMP_NODE  /PGND      100k
+C11  /COMP_NODE  /PGND      10nF
+R9  /COMP_NODE  /FB_FILT   10k
+
+# Additional decoupling on controller VCC
+C12  /VCC_DRV    /PGND   100nF
+C13  /VCC_DRV    /PGND   10uF

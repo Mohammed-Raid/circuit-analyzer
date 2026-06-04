@@ -1,0 +1,71 @@
+# Full H-Bridge motor controller - 24V, 10A
+# 4 N-channel MOSFETs, gate drivers, current sensing, protection
+
+# Power supply decoupling
+C1  /VMOT_24V   /PGND   1000uF
+C2  /VMOT_24V   /PGND   100uF
+C3  /VMOT_24V   /PGND   100nF
+
+# Input protection fuse
+F1  /VMOT_IN    /VMOT_24V   15A
+
+# High-side MOSFET leg A
+M1  /GATE_AH    /VMOT_24V  /OUT_A   IRFZ44N
+
+# Low-side MOSFET leg A
+M2  /GATE_AL    /OUT_A     /PGND    IRFZ44N
+
+# High-side MOSFET leg B
+M3  /GATE_BH    /VMOT_24V  /OUT_B   IRFZ44N
+
+# Low-side MOSFET leg B
+M4  /GATE_BL    /OUT_B     /PGND    IRFZ44N
+
+# Gate resistors leg A
+R1  /GDR_AH    /GATE_AH   10
+R2  /GDR_AL    /GATE_AL   10
+
+# Gate resistors leg B
+R3  /GDR_BH    /GATE_BH   10
+R4  /GDR_BL    /GATE_BL   10
+
+# Gate pull-down resistors
+R5  /GATE_AH   /OUT_A     100k
+R6  /GATE_AL   /PGND      100k
+R7  /GATE_BH   /OUT_B     100k
+R8  /GATE_BL   /PGND      100k
+
+# Snubber diodes modeled as RC across legs
+R9   /OUT_A    /VMOT_24V  47
+C4   /OUT_A    /VMOT_24V  2.2nF
+
+R10  /PGND     /OUT_A     47
+C5   /PGND     /OUT_A     2.2nF
+
+R11  /OUT_B    /VMOT_24V  47
+C6   /OUT_B    /VMOT_24V  2.2nF
+
+R12  /PGND     /OUT_B     47
+C7   /PGND     /OUT_B     2.2nF
+
+# Current sense shunt (low-side)
+R13  /PGND_SHUNT  /PGND   0.005
+
+# RC filter on current sense output
+R14  /PGND_SHUNT  /ISENSE  2.2k
+C8   /ISENSE     /PGND    10nF
+
+# Bootstrap capacitors (high-side gate supply)
+C9   /BOOT_A    /OUT_A    100nF
+C10  /BOOT_B    /OUT_B    100nF
+
+# Bootstrap resistors
+R15  /VCC_DRV   /BOOT_A   10
+R16  /VCC_DRV   /BOOT_B   10
+
+# Logic supply decoupling
+C11  /VCC_DRV   /PGND   100nF
+C12  /VCC_DRV   /PGND   10uF
+
+# Enable pull-up
+R17  /VCC_DRV   /EN_PIN   10k

@@ -1,0 +1,74 @@
+=== ANALYSE DU CIRCUIT ===
+Fichier           : simulations/buck_converter.txt
+Composants totaux : 26
+Groupes identifiés : 16
+
+------------------------------------------------------------
+[1] MOSFET haute-tension (high-side)
+    Composants : M1, R1
+    Nœuds     : /GATE_HS → /VIN_24V → /SW_NODE
+
+[2] Diode de protection ESD
+    Composants : D1
+    Nœuds     : /PGND → /SW_NODE
+
+[3] Condensateur de découplage
+    Composants : C1
+    Nœuds     : /VIN_24V → /PGND
+
+[4] Condensateur de découplage
+    Composants : C2
+    Nœuds     : /VIN_24V → /PGND
+
+[5] Condensateur de découplage
+    Composants : C3
+    Nœuds     : /VIN_24V → /PGND
+
+[6] Condensateur de découplage
+    Composants : C4
+    Nœuds     : /PGND → /VOUT_5V
+
+[7] Condensateur de découplage
+    Composants : C5
+    Nœuds     : /PGND → /VOUT_5V
+
+[8] Condensateur de découplage
+    Composants : C6
+    Nœuds     : /PGND → /VOUT_5V
+
+[9] Condensateur de découplage
+    Composants : C12
+    Nœuds     : /PGND → /VCC_DRV
+
+[10] Condensateur de découplage
+    Composants : C13
+    Nœuds     : /PGND → /VCC_DRV
+
+[11] Snubber RC
+    Composants : R4, C7
+    Nœuds     : /SW_NODE → /VIN_24V
+
+[12] Snubber RC
+    Composants : R8, C11
+    Nœuds     : /COMP_NODE → /PGND
+
+[13] Filtre RC passe-bas
+    Composants : R7, C9
+    Nœuds     : /FB_NODE → /FB_FILT → /PGND
+
+[14] Filtre RC passe-haut
+    Composants : R6, C10
+    Nœuds     : /SS_PIN → /PGND → /PGND_SENSE
+
+[15] Pont diviseur de tension
+    Composants : R2, R3
+    Nœuds     : /VOUT_5V → /FB_NODE → /PGND
+
+[16] Protection par fusible
+    Composants : F1
+    Nœuds     : /VIN_24V → /VIN_RAW
+
+------------------------------------------------------------
+
+Composants non classifiés (4) :
+    L1, C8, R5, R9

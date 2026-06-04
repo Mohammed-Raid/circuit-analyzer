@@ -1,0 +1,90 @@
+=== ANALYSE DU CIRCUIT ===
+Fichier           : simulations/protection_circuit.txt
+Composants totaux : 32
+Groupes identifiés : 20
+
+------------------------------------------------------------
+[1] Diode de protection ESD
+    Composants : D1
+    Nœuds     : /PGND → /VIN_FUSED
+
+[2] Diode de protection ESD
+    Composants : D2
+    Nœuds     : /PGND → /VIN_5V_PROT
+
+[3] Diode de protection ESD
+    Composants : D3
+    Nœuds     : /VIN_24V_RAW → /PGND
+
+[4] Condensateur de découplage
+    Composants : C1
+    Nœuds     : /VIN_FUSED → /PGND
+
+[5] Condensateur de découplage
+    Composants : C4
+    Nœuds     : /VIN_FUSED → /PGND
+
+[6] Condensateur de découplage
+    Composants : C5
+    Nœuds     : /VIN_FUSED → /PGND
+
+[7] Condensateur de découplage
+    Composants : C6
+    Nœuds     : /VIN_FUSED → /PGND
+
+[8] Condensateur de découplage
+    Composants : C9
+    Nœuds     : /VIN_FUSED → /PGND
+
+[9] Condensateur de découplage
+    Composants : C7
+    Nœuds     : /VIN_5V_PROT → /PGND
+
+[10] Condensateur de découplage
+    Composants : C8
+    Nœuds     : /VIN_5V_PROT → /PGND
+
+[11] Condensateur de découplage
+    Composants : C10
+    Nœuds     : /PGND → /VOUT_CLEAN
+
+[12] Condensateur de découplage
+    Composants : C11
+    Nœuds     : /PGND → /VOUT_CLEAN
+
+[13] Snubber RC
+    Composants : R2, C2
+    Nœuds     : /RELAY_COM → /RELAY_NO
+
+[14] Filtre RC passe-bas
+    Composants : R7, C3
+    Nœuds     : /ADC_NODE → /ADC_FILT → /PGND
+
+[15] Filtre RC passe-bas
+    Composants : R11, C14
+    Nœuds     : /VMON_NODE → /VMON_FILT → /PGND
+
+[16] Pont diviseur de tension
+    Composants : R1, R3
+    Nœuds     : /PGND → /VIN_FUSED → /ADC_NODE
+
+[17] Pont diviseur de tension
+    Composants : R4, R6
+    Nœuds     : /ADC_NODE → /PGND → /FB_DIV
+
+[18] Pont diviseur de tension
+    Composants : R8, R10
+    Nœuds     : /VIN_24V_RAW → /PGND → /VMON_NODE
+
+[19] Protection par fusible
+    Composants : F1
+    Nœuds     : /VIN_24V_RAW → /VIN_FUSED
+
+[20] Protection par fusible
+    Composants : F2
+    Nœuds     : /VIN_5V_RAW → /VIN_5V_PROT
+
+------------------------------------------------------------
+
+Composants non classifiés (6) :
+    R5, L1, L2, C12, C13, R9

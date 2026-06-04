@@ -1,0 +1,80 @@
+# SMPS full - AC/DC offline power supply
+# Bridge rectifier (AC->DC) + bulk cap + buck stage + AOP regulation
+
+# AC input fuse
+F1  /LINE_IN   /LINE_FUSED   2A
+
+# Fuse 2 (neutral)
+F2  /NEUTRAL   /NEUTR_FUSED  2A
+
+# RC snubber across AC line
+R1  /LINE_FUSED  /NEUTR_FUSED  100
+C1  /LINE_FUSED  /NEUTR_FUSED  10nF
+
+# Bridge rectifier (4 diodes)
+D1  /LINE_FUSED   /VDC_BUS
+D2  /NEUTR_FUSED  /VDC_BUS
+D3  /PGND         /LINE_FUSED
+D4  /PGND         /NEUTR_FUSED
+
+# Bulk capacitor (after rectifier)
+C2  /VDC_BUS   /PGND   1000uF
+C3  /VDC_BUS   /PGND   100nF
+
+# Buck converter MOSFET
+M1  /GATE_BUCK  /VDC_BUS   /SW_BUCK   FDP33N25
+
+# Freewheeling diode
+D5  /PGND    /SW_BUCK
+
+# Buck inductor
+L1  /SW_BUCK  /VOUT_12V   100uH
+
+# Output capacitors
+C4  /VOUT_12V  /PGND   470uF
+C5  /VOUT_12V  /PGND   10uF
+C6  /VOUT_12V  /PGND   100nF
+
+# Gate resistor
+R2  /GATE_DRV  /GATE_BUCK  10
+
+# Feedback voltage divider
+R3  /VOUT_12V  /FB_SMPS   22k
+R4  /FB_SMPS   /PGND      10k
+
+# Error AOP (compares FB vs reference)
+U1  /VREF_2V5   /FB_SMPS   /COMP_OUT   /VCC_AUX   /PGND
+
+# AOP reference divider
+R5  /VCC_AUX   /VREF_2V5   15k
+R6  /VREF_2V5  /PGND       10k
+
+# Compensation network on AOP output
+R7  /COMP_OUT  /PGND   47k
+C7  /COMP_OUT  /PGND   10nF
+R8  /COMP_OUT  /FB_SMPS  10k
+
+# Auxiliary winding supply (VCC_AUX)
+C8  /VCC_AUX   /PGND   100uF
+C9  /VCC_AUX   /PGND   100nF
+
+# Inrush current limiting resistor
+R9  /LINE_IN   /LINE_FUSED  10
+
+# X-capacitor (AC line filter)
+C10  /LINE_IN   /NEUTRAL   100nF
+
+# Y-capacitor (line to PE)
+C11  /LINE_IN   /PE_GND   4.7nF
+C12  /NEUTRAL   /PE_GND   4.7nF
+
+# Current sense resistor
+R10  /PGND_SENSE  /PGND  0.02
+
+# RC filter on current sense
+R11  /PGND_SENSE  /ISENSE_FILT  1k
+C13  /ISENSE_FILT  /PGND        10nF
+
+# Snubber on MOSFET
+R12  /SW_BUCK   /VDC_BUS   47
+C14  /SW_BUCK   /VDC_BUS   1nF

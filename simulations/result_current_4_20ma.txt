@@ -1,0 +1,62 @@
+=== ANALYSE DU CIRCUIT ===
+Fichier           : simulations/current_4_20ma.txt
+Composants totaux : 23
+Groupes identifiés : 13
+
+------------------------------------------------------------
+[1] Amplificateur non-inverseur (AOP)
+    Composants : U1, R5, R4
+    Nœuds     : /SIG_FILT → /FB_XMIT → /VDRIVE
+
+[2] Comparateur (AOP)
+    Composants : U2
+    Nœuds     : /VREF_ZERO → /VFEEDBACK → /TRIM_OUT
+
+[3] Diode de protection ESD
+    Composants : D1
+    Nœuds     : /SIG_0_5V → /AGND
+
+[4] Diode de protection ESD
+    Composants : D2
+    Nœuds     : /VLOOP_24V → /AGND
+
+[5] Diode de protection ESD
+    Composants : D3
+    Nœuds     : /LOOP_OUT → /AGND
+
+[6] Condensateur de découplage
+    Composants : C3
+    Nœuds     : /AGND → /VLOOP_24V
+
+[7] Condensateur de découplage
+    Composants : C4
+    Nœuds     : /AGND → /VLOOP_24V
+
+[8] Condensateur de découplage
+    Composants : C5
+    Nœuds     : /AGND → /AVCC
+
+[9] Condensateur de découplage
+    Composants : C6
+    Nœuds     : /AGND → /AVCC
+
+[10] Filtre RC passe-bas
+    Composants : R1, C1
+    Nœuds     : /SIG_0_5V → /SIG_FILT → /AGND
+
+[11] Filtre RC passe-bas
+    Composants : R8, C2
+    Nœuds     : /EMITTER_Q → /VFEEDBACK → /AGND
+
+[12] Pont diviseur de tension
+    Composants : R3, R7
+    Nœuds     : /VREF_ZERO → /AGND → /EMITTER_Q
+
+[13] Pont diviseur de tension
+    Composants : R9, R10
+    Nœuds     : /VFEEDBACK → /TRIM_ADJ → /AGND
+
+------------------------------------------------------------
+
+Composants non classifiés (4) :
+    R2, Q1, R6, R11

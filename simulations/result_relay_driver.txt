@@ -1,0 +1,78 @@
+=== ANALYSE DU CIRCUIT ===
+Fichier           : simulations/relay_driver.txt
+Composants totaux : 30
+Groupes identifiés : 17
+
+------------------------------------------------------------
+[1] Commande de relais
+    Composants : K1, Q1
+    Nœuds     : /VCC_12V → /COL_Q1
+
+[2] Commande de relais
+    Composants : K2, Q2
+    Nœuds     : /VCC_12V → /COL_Q2
+
+[3] Commande de relais
+    Composants : K3, M1
+    Nœuds     : /VCC_12V → /DRAIN_M1
+
+[4] Diode de roue libre
+    Composants : D1
+    Nœuds     : /COL_Q1 → /VCC_12V
+
+[5] Diode de roue libre
+    Composants : D3
+    Nœuds     : /COL_Q2 → /VCC_12V
+
+[6] Diode de roue libre
+    Composants : D5
+    Nœuds     : /DRAIN_M1 → /VCC_12V
+
+[7] Diode de protection ESD
+    Composants : D6
+    Nœuds     : /CTRL_5V → /PGND
+
+[8] Condensateur de découplage
+    Composants : C1
+    Nœuds     : /VCC_12V → /PGND
+
+[9] Condensateur de découplage
+    Composants : C2
+    Nœuds     : /VCC_12V → /PGND
+
+[10] Condensateur de découplage
+    Composants : C5
+    Nœuds     : /VCC_12V → /PGND
+
+[11] Condensateur de découplage
+    Composants : C3
+    Nœuds     : /PGND → /VCC_5V
+
+[12] Condensateur de découplage
+    Composants : C4
+    Nœuds     : /PGND → /VCC_5V
+
+[13] Pont diviseur de tension
+    Composants : R1, R2
+    Nœuds     : /CTRL_CH1 → /BASE_Q1 → /PGND
+
+[14] Pont diviseur de tension
+    Composants : R3, R5
+    Nœuds     : /LED1_A → /PGND → /BASE_Q2
+
+[15] Pont diviseur de tension
+    Composants : R6, R8
+    Nœuds     : /LED2_A → /PGND → /GATE_M1
+
+[16] Pont diviseur de tension
+    Composants : R10, R12
+    Nœuds     : /CTRL_CH1 → /PGND → /CTRL_CH2
+
+[17] Pont diviseur de tension
+    Composants : R4, R11
+    Nœuds     : /BASE_Q2 → /CTRL_CH2 → /CTRL_5V
+
+------------------------------------------------------------
+
+Composants non classifiés (5) :
+    D2, D4, R7, R9, R13

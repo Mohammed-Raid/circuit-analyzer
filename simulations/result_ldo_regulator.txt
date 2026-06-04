@@ -1,0 +1,70 @@
+=== ANALYSE DU CIRCUIT ===
+Fichier           : simulations/ldo_regulator.txt
+Composants totaux : 23
+Groupes identifiés : 15
+
+------------------------------------------------------------
+[1] Comparateur (AOP)
+    Composants : U1
+    Nœuds     : /VREF_2V5 → /FB_NODE → /AOP_OUT
+
+[2] Amplificateur émetteur commun
+    Composants : Q1, R4, R7, R1
+    Nœuds     : /BASE_PASS → /VIN_12V → /VOUT_5V
+
+[3] Diode de protection ESD
+    Composants : D1
+    Nœuds     : /LED_A → /PGND
+
+[4] Condensateur de découplage
+    Composants : C1
+    Nœuds     : /VIN_12V → /PGND
+
+[5] Condensateur de découplage
+    Composants : C2
+    Nœuds     : /VIN_12V → /PGND
+
+[6] Condensateur de découplage
+    Composants : C4
+    Nœuds     : /PGND → /VOUT_5V
+
+[7] Condensateur de découplage
+    Composants : C5
+    Nœuds     : /PGND → /VOUT_5V
+
+[8] Condensateur de découplage
+    Composants : C8
+    Nœuds     : /PGND → /VOUT_5V
+
+[9] Condensateur de découplage
+    Composants : C6
+    Nœuds     : /PGND → /VCC_12V
+
+[10] Condensateur de découplage
+    Composants : C7
+    Nœuds     : /PGND → /VCC_12V
+
+[11] Filtre RC passe-bas
+    Composants : R8, C9
+    Nœuds     : /VOUT_5V → /SS_FB → /PGND
+
+[12] Pont diviseur de tension
+    Composants : R3, R5
+    Nœuds     : /FB_NODE → /PGND → /VREF_2V5
+
+[13] Pont diviseur de tension
+    Composants : R2, R6
+    Nœuds     : /FB_NODE → /VOUT_5V → /PGND
+
+[14] Pont diviseur de tension
+    Composants : R9, R10
+    Nœuds     : /LED_A → /VOUT_5V → /EN_PIN
+
+[15] Protection par fusible
+    Composants : F1
+    Nœuds     : /VIN_12V → /VIN_RAW
+
+------------------------------------------------------------
+
+Composants non classifiés (1) :
+    C3

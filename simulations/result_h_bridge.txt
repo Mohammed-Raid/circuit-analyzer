@@ -1,0 +1,74 @@
+=== ANALYSE DU CIRCUIT ===
+Fichier           : simulations/h_bridge.txt
+Composants totaux : 34
+Groupes identifiés : 16
+
+------------------------------------------------------------
+[1] MOSFET en commutation
+    Composants : M2, R2, R6
+    Nœuds     : /GATE_AL → /OUT_A → /PGND
+
+[2] MOSFET en commutation
+    Composants : M4, R4, R8
+    Nœuds     : /GATE_BL → /OUT_B → /PGND
+
+[3] MOSFET haute-tension (high-side)
+    Composants : M1, R1, R5
+    Nœuds     : /GATE_AH → /VMOT_24V → /OUT_A
+
+[4] MOSFET haute-tension (high-side)
+    Composants : M3, R3, R7
+    Nœuds     : /GATE_BH → /VMOT_24V → /OUT_B
+
+[5] Condensateur de découplage
+    Composants : C1
+    Nœuds     : /VMOT_24V → /PGND
+
+[6] Condensateur de découplage
+    Composants : C2
+    Nœuds     : /VMOT_24V → /PGND
+
+[7] Condensateur de découplage
+    Composants : C3
+    Nœuds     : /VMOT_24V → /PGND
+
+[8] Condensateur de découplage
+    Composants : C11
+    Nœuds     : /PGND → /VCC_DRV
+
+[9] Condensateur de découplage
+    Composants : C12
+    Nœuds     : /PGND → /VCC_DRV
+
+[10] Snubber RC
+    Composants : R9, C4
+    Nœuds     : /OUT_A → /VMOT_24V
+
+[11] Snubber RC
+    Composants : R11, C6
+    Nœuds     : /OUT_B → /VMOT_24V
+
+[12] Snubber RC
+    Composants : R10, C5
+    Nœuds     : /OUT_A → /PGND
+
+[13] Snubber RC
+    Composants : R12, C7
+    Nœuds     : /OUT_B → /PGND
+
+[14] Filtre RC passe-bas
+    Composants : R14, C8
+    Nœuds     : /PGND_SHUNT → /ISENSE → /PGND
+
+[15] Pont diviseur de tension
+    Composants : R15, R16
+    Nœuds     : /BOOT_A → /VCC_DRV → /BOOT_B
+
+[16] Protection par fusible
+    Composants : F1
+    Nœuds     : /VMOT_24V → /VMOT_IN
+
+------------------------------------------------------------
+
+Composants non classifiés (4) :
+    R13, C9, C10, R17
