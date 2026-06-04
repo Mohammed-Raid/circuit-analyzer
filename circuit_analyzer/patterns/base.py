@@ -4,22 +4,23 @@ import networkx as nx
 
 
 def is_gnd(net: str) -> bool:
-    net_upper = net.upper()
+    # Strip KiCad hierarchy prefix (e.g. /PGND → PGND, /GND_AOP → GND_AOP)
+    net_upper = net.lstrip('/').upper()
     if net_upper == '0':
         return True
-    GND_EXACT = {'GND', 'AGND', 'DGND', 'VSS', 'V-'}
+    GND_EXACT = {'GND', 'AGND', 'DGND', 'PGND', 'VSS', 'V-'}
     if net_upper in GND_EXACT:
         return True
-    return bool(re.match(r'^(GND|AGND|DGND|VSS)[\d_]', net_upper))
+    return bool(re.match(r'^(GND|AGND|DGND|PGND|VSS)[\d_]', net_upper))
 
 
 def is_power(net: str) -> bool:
-    net_upper = net.upper()
-    POWER_EXACT = {'VCC', 'VDD', 'AVCC', 'AVDD', 'DVCC', 'VIN', 'VBAT', 'PWR', 'V+'}
+    # Strip KiCad hierarchy prefix (e.g. /VCC_AOP → VCC_AOP)
+    net_upper = net.lstrip('/').upper()
+    POWER_EXACT = {'VCC', 'VDD', 'AVCC', 'AVDD', 'DVCC', 'VIN', 'VBAT', 'PWR', 'V+', 'VMOT', 'VBUS'}
     if net_upper in POWER_EXACT:
         return True
-    # Match as prefix followed by digit, underscore, or end (e.g. VCC_3V3, VDD1)
-    return bool(re.match(r'^(VCC|VDD|AVCC|AVDD|DVCC|VIN|VBAT|PWR)[\d_]', net_upper))
+    return bool(re.match(r'^(VCC|VDD|AVCC|AVDD|DVCC|VIN|VBAT|PWR|VOUT|VMOT|VBUS)[\d_]', net_upper))
 
 
 class Pattern(ABC):
