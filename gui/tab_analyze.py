@@ -2,6 +2,7 @@ import tkinter as tk
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from circuit_analyzer.parser import parse_file
+from circuit_analyzer.xml_parser import parse_xml
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
 from circuit_analyzer.reporter import generate
@@ -64,7 +65,7 @@ class TabAnalyze:
         ctk.CTkLabel(hinner, text="Analyser un circuit",
                      font=ctk.CTkFont("Segoe UI", 18, "bold"),
                      text_color=TEXT).pack(side="left", pady=18)
-        ctk.CTkLabel(hinner, text="Chargez un fichier netlist .txt",
+        ctk.CTkLabel(hinner, text="Chargez un fichier netlist .txt ou schéma .xml",
                      font=ctk.CTkFont("Segoe UI", 12),
                      text_color=MUTED).pack(side="left", padx=14, pady=18)
 
@@ -80,7 +81,7 @@ class TabAnalyze:
         self._entry = ctk.CTkEntry(
             pin,
             textvariable=self._file_path,
-            placeholder_text="  Choisir un fichier .txt …",
+            placeholder_text="  Choisir un fichier .txt ou .xml …",
             height=38, corner_radius=8,
             font=ctk.CTkFont("Segoe UI", 12),
             fg_color="#111827", border_color=BORDER,
@@ -184,7 +185,12 @@ class TabAnalyze:
     def _browse(self):
         path = filedialog.askopenfilename(
             title="Choisir un fichier netlist",
-            filetypes=[("Fichiers texte", "*.txt"), ("Tous", "*.*")],
+            filetypes=[
+                ("Netlists & schémas", "*.txt *.xml"),
+                ("Fichiers texte", "*.txt"),
+                ("Schémas XML (BoardSCH)", "*.xml"),
+                ("Tous", "*.*"),
+            ],
         )
         if path:
             self._file_path.set(path)
@@ -200,7 +206,10 @@ class TabAnalyze:
         self.frame.update()
 
         try:
-            comps    = parse_file(path)
+            if path.lower().endswith('.xml'):
+                comps = parse_xml(path)
+            else:
+                comps    = parse_file(path)
             graph    = build_graph(comps)
             results  = match_patterns(graph)
             all_refs = [c.ref for c in comps]

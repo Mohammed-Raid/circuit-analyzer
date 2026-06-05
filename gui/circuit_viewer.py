@@ -297,12 +297,12 @@ def _draw_inverting_amp(d, result, ci):
     d.add(elm.Line().at(op.in2).left(1))
     d.add(elm.Ground())
 
-    # Feedback path
+    # Feedback: go up, then tox to align with op.out, then toy down to op.out
     above = (mid_pt[0], mid_pt[1] + 1.5)
     d.add(elm.Line().at(mid_pt).up(1.5))
-    d.add(elm.Resistor().right().label(_lbl(rf, ci), loc="top")
-          .at(above))
-    d.add(elm.Line().down(1.5).to(op.out))
+    d.add(elm.Resistor().at(above).right().tox(op.out[0])
+          .label(_lbl(rf, ci), loc="top"))
+    d.add(elm.Line().toy(op.out[1]))
     d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
 
 
@@ -312,17 +312,21 @@ def _draw_non_inverting_amp(d, result, ci):
     rg  = rs[1] if len(rs) > 1 else "Rg"
 
     op = d.add(elm.Opamp().anchor("in2").at((4.5, 0)))
-
     d.add(elm.Line().at(op.in2).left(1.2).label("IN+", loc="left"))
 
-    fb_pt = op.in1
-    d.add(elm.Resistor().at(fb_pt).down().label(_lbl(rg, ci), loc="right"))
+    fb_pt = op.in1  # IN− pin
+    # Rg: move left 2.2 units (past IN+ wire endpoint at x=3.3) then down
+    d.add(elm.Line().at(fb_pt).left(2.2))
+    d.add(elm.Resistor().down().label(_lbl(rg, ci), loc="right"))
     d.add(elm.Ground())
+    d.add(elm.Dot().at(fb_pt))
 
+    # Rf feedback: up from IN−, tox to out.x, toy down to out
     above = (fb_pt[0], fb_pt[1] + 1.5)
     d.add(elm.Line().at(fb_pt).up(1.5))
-    d.add(elm.Resistor().right().label(_lbl(rf, ci), loc="top").at(above))
-    d.add(elm.Line().down(1.5).to(op.out))
+    d.add(elm.Resistor().at(above).right().tox(op.out[0])
+          .label(_lbl(rf, ci), loc="top"))
+    d.add(elm.Line().toy(op.out[1]))
     d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
 
 
@@ -331,18 +335,17 @@ def _draw_follower(d, result, ci):
     d.add(elm.Line().at(op.in2).left(1.2).label("IN", loc="left"))
 
     out_pt = op.out
-    in1_pt = op.in1
+    in1_pt = op.in1   # IN− (upper pin)
 
-    # Feedback wire: OUT → below opamp → back to IN-
-    # Goes: right 0.6 → down → left to under IN- → up to IN-
-    fb_x = out_pt[0] + 0.6
-    fb_y = in1_pt[1] - 1.4          # below IN- level
-
+    # Feedback routes ABOVE the opamp to avoid crossing IN+:
+    # OUT → right → up above opamp → left back to IN− x → down to IN−
+    top_y = in1_pt[1] + 1.2
     d.add(elm.Line().at(out_pt).right(0.6))
-    d.add(elm.Line().down(abs(out_pt[1] - fb_y)))
-    d.add(elm.Line().left(fb_x - in1_pt[0]))
-    d.add(elm.Line().up(abs(in1_pt[1] - fb_y)).to(in1_pt))
-    d.add(elm.Dot().at(out_pt).label("OUT", loc="right"))
+    d.add(elm.Line().toy(top_y))
+    d.add(elm.Line().tox(in1_pt[0]))
+    d.add(elm.Line().toy(in1_pt[1]))
+    d.add(elm.Dot().at(out_pt))
+    d.add(elm.Line().at(out_pt).right(1).label("OUT", loc="right"))
 
 
 def _draw_integrator(d, result, ci):
@@ -358,8 +361,9 @@ def _draw_integrator(d, result, ci):
 
     above = (mid_pt[0], mid_pt[1] + 1.5)
     d.add(elm.Line().at(mid_pt).up(1.5))
-    d.add(elm.Capacitor().right().label(_lbl(c, ci), loc="top").at(above))
-    d.add(elm.Line().down(1.5).to(op.out))
+    d.add(elm.Capacitor().at(above).right().tox(op.out[0])
+          .label(_lbl(c, ci), loc="top"))
+    d.add(elm.Line().toy(op.out[1]))
     d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
 
 
@@ -376,8 +380,9 @@ def _draw_differentiator(d, result, ci):
 
     above = (mid_pt[0], mid_pt[1] + 1.5)
     d.add(elm.Line().at(mid_pt).up(1.5))
-    d.add(elm.Resistor().right().label(_lbl(r, ci), loc="top").at(above))
-    d.add(elm.Line().down(1.5).to(op.out))
+    d.add(elm.Resistor().at(above).right().tox(op.out[0])
+          .label(_lbl(r, ci), loc="top"))
+    d.add(elm.Line().toy(op.out[1]))
     d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
 
 
@@ -395,13 +400,20 @@ def _draw_schmitt(d, result, ci):
     op = d.add(elm.Opamp().anchor("center").at((4.5, 0)))
     d.add(elm.Line().at(op.in1).left(1.2).label("REF", loc="left"))
 
-    in2_pt = op.in2
+    in2_pt = op.in2  # IN+ (non-inverting, lower pin)
     d.add(elm.Line().at(in2_pt).left(0.8).label("IN", loc="left"))
-    fb_junc = (in2_pt[0], in2_pt[1] + 1.5)
-    d.add(elm.Line().at(in2_pt).up(1.5))
-    d.add(elm.Resistor().right().label(_lbl(rf, ci), loc="top").at(fb_junc))
-    d.add(elm.Line().down(1.5).to(op.out))
-    d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
+    d.add(elm.Dot().at(in2_pt))
+
+    # Positive feedback routes BELOW the opamp to avoid body overlap:
+    # OUT → right → down below → Rf left past opamp → up to IN+
+    out_pt = op.out
+    bot_y  = in2_pt[1] - 1.2   # below IN+
+    d.add(elm.Line().at(out_pt).right(0.6))
+    d.add(elm.Line().toy(bot_y))
+    d.add(elm.Resistor().left().tox(in2_pt[0]).label(_lbl(rf, ci), loc="bottom"))
+    d.add(elm.Line().toy(in2_pt[1]))
+    # OUT label (overlaps the short right(0.6) wire — visually one segment)
+    d.add(elm.Line().at(out_pt).right(1.6).label("OUT", loc="right"))
 
 
 def _draw_differential_amp(d, result, ci):
@@ -413,10 +425,11 @@ def _draw_differential_amp(d, result, ci):
 
     op = d.add(elm.Opamp().anchor("center").at((5.5, 0)))
 
-    # IN+ path
+    # IN+ path: R1 goes left from IN+; Rg hangs down from end of R1 (avoids opamp body)
     d.add(elm.Resistor().at(op.in2).left().label(_lbl(r1, ci), loc="top"))
+    in1_junc = d.here                             # left end of R1 = IN1 node
     d.add(elm.Dot().label("IN1", loc="left"))
-    d.add(elm.Resistor().at(op.in2).down().label(_lbl(rg, ci), loc="right"))
+    d.add(elm.Resistor().at(in1_junc).down().label(_lbl(rg, ci), loc="right"))
     d.add(elm.Ground())
 
     # IN- path with feedback
@@ -425,8 +438,9 @@ def _draw_differential_amp(d, result, ci):
     d.add(elm.Dot().label("IN2", loc="left"))
     above = (in1_pt[0], in1_pt[1] + 1.5)
     d.add(elm.Line().at(in1_pt).up(1.5))
-    d.add(elm.Resistor().right().label(_lbl(rf, ci), loc="top").at(above))
-    d.add(elm.Line().down(1.5).to(op.out))
+    d.add(elm.Resistor().at(above).right().tox(op.out[0])
+          .label(_lbl(rf, ci), loc="top"))
+    d.add(elm.Line().toy(op.out[1]))
     d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
 
 
@@ -434,27 +448,35 @@ def _draw_summing_amp(d, result, ci):
     rs = _refs(result, ci, "R")
     rf = rs[0] if rs else "Rf"
     inputs = rs[1:] if len(rs) > 1 else ["Ra", "Rb"]
+    n = min(len(inputs), 3)
 
     op = d.add(elm.Opamp().anchor("in1").at((5, 0)))
-    in1_pt = op.in1
+    in1_pt = op.in1  # summing node (IN-)
     d.add(elm.Line().at(op.in2).left(1))
     d.add(elm.Ground())
 
-    # Draw summing resistors
     spacing = 1.2
-    for i, r in enumerate(inputs[:3]):
-        y_off = i * spacing - (len(inputs[:3]) - 1) * spacing / 2
-        start = (in1_pt[0] - 3, in1_pt[1] + y_off)
-        d.add(elm.Resistor().right().label(_lbl(r, ci), loc="top").at(start))
-        end = (in1_pt[0], in1_pt[1] + y_off)
-        if i < len(inputs[:3]) - 1:
-            d.add(elm.Line().at(end).to(in1_pt))
+    y_offs = [i * spacing - (n - 1) * spacing / 2 for i in range(n)]
+    top_y  = in1_pt[1] + y_offs[-1]
+    bot_y  = in1_pt[1] + y_offs[0]
 
-    # Feedback
-    above = (in1_pt[0], in1_pt[1] + 1.5 + (len(inputs[:3]) - 1) * spacing / 2)
-    d.add(elm.Line().at(in1_pt).up(above[1] - in1_pt[1]))
-    d.add(elm.Resistor().right().label(_lbl(rf, ci), loc="top").at(above))
-    d.add(elm.Line().down(above[1] - op.out[1]).to(op.out))
+    # Vertical bus at in1_pt.x connecting all input ends to summing node
+    if n > 1:
+        d.add(elm.Line().at((in1_pt[0], bot_y)).toy(top_y))
+        d.add(elm.Dot().at(in1_pt))
+
+    # Input resistors going left from the bus
+    for i in range(n):
+        node_y = in1_pt[1] + y_offs[i]
+        d.add(elm.Resistor().at((in1_pt[0], node_y)).left()
+              .label(_lbl(inputs[i], ci), loc="top"))
+
+    # Feedback Rf: up from in1_pt, then tox(out.x), then toy to out
+    above_y = top_y + 0.8
+    d.add(elm.Line().at(in1_pt).toy(above_y))
+    d.add(elm.Resistor().at((in1_pt[0], above_y)).right().tox(op.out[0])
+          .label(_lbl(rf, ci), loc="top"))
+    d.add(elm.Line().toy(op.out[1]))
     d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
 
 

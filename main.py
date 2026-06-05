@@ -3,6 +3,7 @@ import sys
 import io
 from pathlib import Path
 from circuit_analyzer.parser import parse_file
+from circuit_analyzer.xml_parser import parse_xml
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
 from circuit_analyzer.reporter import generate
@@ -17,7 +18,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='Analyse un circuit et identifie les sous-circuits de base.'
     )
-    parser.add_argument('input', help='Fichier netlist (.txt)')
+    parser.add_argument('input', help='Fichier netlist (.txt) ou schéma BoardSCH (.xml)')
     parser.add_argument('--output', help='Fichier de sortie (défaut: report.txt)', default='report.txt')
     parser.add_argument('--format', choices=['txt'], default='txt', help='Format de sortie')
     args = parser.parse_args()
@@ -28,7 +29,10 @@ def main():
         sys.exit(1)
 
     try:
-        components = parse_file(str(input_path))
+        if input_path.suffix.lower() == '.xml':
+            components = parse_xml(str(input_path))
+        else:
+            components = parse_file(str(input_path))
     except ValueError as e:
         print(f"Erreur netlist : {e}", file=sys.stderr)
         sys.exit(1)
