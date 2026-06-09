@@ -182,7 +182,7 @@ def test_industrial_netlist_roundtrip_no_loss():
 
 # ── _Block / _layout_groups ───────────────────────────────────────────────────
 
-from circuit_analyzer.xml_generator import _layout_groups, _Block
+from circuit_analyzer.xml_generator import _layout_groups, _Block, _place_blocks
 
 
 def test_layout_groups_one_block_per_pattern():
@@ -217,3 +217,18 @@ def test_layout_groups_unclassified_go_to_divers():
     assert {c.ref for c in divers.comps} == {"L1"}
     # Divers is always last
     assert blocks[-1].label == "Divers"
+
+
+def test_place_blocks_groups_are_spatially_separated():
+    # Two blocks: components within a block are closer to each other than to
+    # the other block's components.
+    a = [Component("R1", "R", {"1": "X", "2": "Y"}),
+         Component("R2", "R", {"1": "Y", "2": "Z"})]
+    b = [Component("R3", "R", {"1": "P", "2": "Q"})]
+    blocks = [_Block("Filtre", a), _Block("Divers", b)]
+    pos = _place_blocks(blocks)
+    # every ref placed
+    assert set(pos) == {"R1", "R2", "R3"}
+    # R1 and R2 (same block) share the same y row; R3 is on a different position
+    assert pos["R1"][1] == pos["R2"][1]
+    assert pos["R3"] != pos["R1"]

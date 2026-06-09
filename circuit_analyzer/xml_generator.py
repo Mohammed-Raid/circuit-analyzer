@@ -458,6 +458,38 @@ def _layout_groups(components, results) -> List["_Block"]:
     return blocks
 
 
+# Block-grid layout constants
+_BLOCKS_PER_ROW = 3
+_BLOCK_GAP = 160          # horizontal gap between blocks
+_COMP_W = 320             # horizontal spacing of components inside a block
+_BLOCK_ROW_H = 260        # vertical spacing between block rows
+
+
+def _place_blocks(blocks) -> Dict[str, Tuple[int, int]]:
+    """Compute the absolute (x, y) of every component, grouped by block.
+
+    Blocks are laid on a grid (_BLOCKS_PER_ROW per row). Inside a block the
+    components are aligned horizontally. Returns ref -> (x, y).
+    """
+    pos: Dict[str, Tuple[int, int]] = {}
+    x_cursor = 250
+    y_cursor = 250
+    row_count = 0
+    for blk in blocks:
+        # place this block's components horizontally from x_cursor
+        for j, comp in enumerate(blk.comps):
+            pos[comp.ref] = (x_cursor + j * _COMP_W, y_cursor)
+        # advance the cursor past this block (its width + a gap)
+        block_w = max(len(blk.comps), 1) * _COMP_W
+        x_cursor += block_w + _BLOCK_GAP
+        row_count += 1
+        if row_count >= _BLOCKS_PER_ROW:
+            row_count = 0
+            x_cursor = 250
+            y_cursor += _BLOCK_ROW_H
+    return pos
+
+
 # ── Module-level: convert analyzer Component objects → BoardSCH XML ────────────
 
 def components_to_xml(components) -> str:
