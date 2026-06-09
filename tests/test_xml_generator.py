@@ -266,3 +266,23 @@ def test_components_to_xml_grouped_roundtrip_preserved():
     roundtrip = sorted(r["circuit_type"] for r in match_patterns(build_graph(back)))
     orig = sorted(r["circuit_type"] for r in match_patterns(build_graph(comps)))
     assert orig == roundtrip
+
+
+def test_components_to_xml_grouped_positions_differ_from_grid():
+    # When results are given, at least one component must land at a different
+    # position than the naive grid, proving the grouped path is active.
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+        Component("R3", "R", {"1": "NET_B", "2": "NET_A"}),
+        Component("C1", "C", {"1": "NET_B", "2": "GND"}),
+    ]
+    results = match_patterns(build_graph(comps))
+    xml_grid = components_to_xml(comps)                    # legacy grid
+    xml_grouped = components_to_xml(comps, results=results)  # grouped layout
+    # The two XMLs must differ (different CtrIem positions) when results exist
+    assert xml_grid != xml_grouped, (
+        "Grouped layout must produce different coordinates from the legacy grid"
+    )

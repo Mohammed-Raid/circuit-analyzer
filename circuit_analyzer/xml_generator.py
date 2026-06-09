@@ -435,20 +435,17 @@ def _layout_groups(components, results) -> List["_Block"]:
         for ref in r["components"]:
             type_of_ref.setdefault(ref, r["circuit_type"])
 
-    # Build blocks preserving first-seen pattern order
+    # Build blocks: each result entry becomes its own block, regardless of whether
+    # another result shares the same circuit_type (e.g. two RC low-pass instances).
     blocks: list[_Block] = []
-    block_by_label: dict[str, _Block] = {}
     for r in results or []:
         label = r["circuit_type"]
-        if label not in block_by_label:
-            b = _Block(label, [])
-            block_by_label[label] = b
-            blocks.append(b)
+        b = _Block(label, [])
         for ref in r["components"]:
             if ref in comp_by_ref and type_of_ref.get(ref) == label:
-                block_by_label[label].comps.append(comp_by_ref[ref])
-
-    blocks = [b for b in blocks if b.comps]
+                b.comps.append(comp_by_ref[ref])
+        if b.comps:   # skip block if all components are non-drawable
+            blocks.append(b)
 
     # Unclassified drawable components → "Divers"
     divers = [c for ref, c in comp_by_ref.items() if ref not in type_of_ref]
