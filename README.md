@@ -9,7 +9,9 @@ Charge un fichier netlist, identifie les sous-circuits connus (filtres, AOP, tra
 
 - **Analyse de netlists** au format texte — compatible exports KiCad et formats maison
 - **23 patterns reconnus** : filtres RC/LC, AOP (9 montages), transistors BJT/MOSFET, redresseurs, protections…
-- **Interface graphique** (Tkinter) pour les techniciens sans connaissance Python
+- **Interface graphique** (CustomTkinter) pour les techniciens sans connaissance Python
+- **Schémas visuels** — rendu automatique de chaque circuit détecté (schemdraw)
+- **Export XML BoardSCH** — exporte le schéma organisé par circuit détecté, ouvrable dans le logiciel de design
 - **Patterns personnalisés** — ajouter de nouveaux circuits sans toucher au code
 - **Bibliothèque de composants extensible** — ajouter de nouveaux types de composants
 - **Résolution hiérarchique** — les circuits complexes ont priorité sur les circuits simples (pas de faux positifs)
@@ -21,7 +23,11 @@ Charge un fichier netlist, identifie les sous-circuits connus (filtres, AOP, tra
 
 ### Prérequis
 - Python 3.10 ou supérieur
-- Aucune dépendance externe (Tkinter est inclus dans Python)
+- Dépendances : `customtkinter`, `schemdraw`, `networkx`
+
+```bash
+pip install customtkinter schemdraw networkx
+```
 
 ### Étapes
 
@@ -54,10 +60,11 @@ La fenêtre s'ouvre avec 3 onglets :
 | **Composants** | Ajouter de nouveaux types de composants à la bibliothèque |
 
 **Procédure d'analyse :**
-1. Onglet **Analyser** → cliquer **Parcourir** → sélectionner votre fichier `.txt`
+1. Onglet **Analyser** → cliquer **Parcourir** → sélectionner votre fichier `.txt` ou `.xml`
 2. Cliquer **Analyser**
-3. Le rapport s'affiche dans la zone de texte
+3. Le rapport s'affiche avec les circuits détectés et leur schéma visuel
 4. Optionnel : cliquer **Sauvegarder le rapport** pour exporter en `.txt`
+5. Optionnel : cliquer **Exporter XML (design)** pour obtenir un schéma BoardSCH organisé, ouvrable dans le logiciel de design
 
 ### Ligne de commande
 
@@ -147,7 +154,7 @@ U1   NET_INP   NET_INM   NET_OUT   VCC   GND
 | Filtre LC | L série + C vers GND |
 | Pont diviseur de tension | 2 R en série |
 | Condensateur de découplage | C entre alimentation et GND |
-| Snubber RC | R et C en parallèle |
+| Absorbeur RC | R et C en parallèle |
 | Protection par fusible | Fusible F seul |
 
 ---
@@ -204,7 +211,7 @@ Ces topologies ne sont **pas détectables** depuis la netlist seule :
 python -m pytest -q
 ```
 
-144 tests automatisés couvrant le parseur, les patterns, l'intégration bout en bout et les circuits industriels.
+162 tests automatisés couvrant le parseur, les patterns, le générateur XML, l'intégration bout en bout et les circuits industriels.
 
 ---
 
@@ -216,6 +223,8 @@ circuit_analyzer/
 ├── graph_builder.py       ← construction du graphe NetworkX
 ├── matcher.py             ← résolution hiérarchique des patterns
 ├── reporter.py            ← génération du rapport texte
+├── xml_parser.py          ← lecture de schémas BoardSCH .xml
+├── xml_generator.py       ← génération de schémas BoardSCH .xml (groupés)
 ├── component_library/     ← bibliothèque de composants (base + JSON)
 └── patterns/
     ├── base.py            ← Pattern ABC, is_gnd(), is_power()
@@ -224,16 +233,20 @@ circuit_analyzer/
     └── transistor.py      ← BJT, MOSFET, relais
 
 gui/
-├── app_window.py          ← fenêtre principale Tkinter
-├── tab_analyze.py         ← onglet Analyser
+├── app_window.py          ← fenêtre principale CustomTkinter
+├── tab_analyze.py         ← onglet Analyser (analyse + export XML)
 ├── tab_circuits.py        ← onglet Circuits
-└── tab_components.py      ← onglet Composants
+├── tab_components.py      ← onglet Composants
+├── circuit_viewer.py      ← rendu schemdraw des circuits détectés
+└── theme.py               ← palette de couleurs centralisée
 
 custom_circuits/
 └── loader.py              ← circuits personnalisés (JSON)
 
 simulations/               ← 12 netlists industrielles de test
-tests/                     ← suite de tests pytest (144 tests)
+circuits_industriels/      ← schémas BoardSCH générés (groupés)
+tests/                     ← suite de tests pytest (162 tests)
+netlist_to_xml.py          ← convertit simulations/ → circuits_industriels/
 app.py                     ← point d'entrée interface graphique
 main.py                    ← point d'entrée ligne de commande
 ```
