@@ -445,8 +445,10 @@ def _layout_groups(components, results) -> List["_Block"]:
             block_by_label[label] = b
             blocks.append(b)
         for ref in r["components"]:
-            if ref in comp_by_ref:
+            if ref in comp_by_ref and type_of_ref.get(ref) == label:
                 block_by_label[label].comps.append(comp_by_ref[ref])
+
+    blocks = [b for b in blocks if b.comps]
 
     # Unclassified drawable components → "Divers"
     divers = [c for ref, c in comp_by_ref.items() if ref not in type_of_ref]
