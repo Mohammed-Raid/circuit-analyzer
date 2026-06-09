@@ -492,30 +492,44 @@ def _place_blocks(blocks) -> Dict[str, Tuple[int, int]]:
 
 # ── Module-level: convert analyzer Component objects → BoardSCH XML ────────────
 
-def components_to_xml(components) -> str:
+def components_to_xml(components, results=None) -> str:
     """Convert a list of analyzer Component objects into a BoardSCH XML string
     openable in the design app. Pins sharing a net are wired together; power
     and ground nets get their own symbols.
 
     This is the inverse of xml_parser.parse_xml: it reconstructs a schematic
     from the abstract netlist so the design app can render and edit it.
+
+    When `results` (the output of match_patterns) is given, components are laid
+    out grouped by detected circuit pattern instead of on a naive grid; passing
+    None keeps the legacy grid layout. Only coordinates change — connectivity is
+    unchanged, so the round-trip still detects the same patterns.
     """
     gen = BoardSCHGenerator()
 
-    # ── Step 1: place every component on a grid ───────────────────────────────
+    # ── Step 1: choose component positions ────────────────────────────────────
     COL_W, ROW_H = 320, 260
     PER_ROW = 4
     cid_of_ref: dict[str, int] = {}
     # library_pin → shape_pin map per ref
     pinmap_of_ref: dict[str, dict] = {}
 
+    if results:
+        # Grouped layout: one block per detected pattern, "Divers" for the rest.
+        grouped_pos = _place_blocks(_layout_groups(components, results))
+    else:
+        grouped_pos = None
+
     for i, comp in enumerate(components):
         spec = BoardSCHGenerator._TYPE_TO_SHAPE.get(comp.type)
         if spec is None:
             continue   # unknown type → skip (can't draw a shape for it)
         board_name, pinmap = spec
-        x = 250 + (i % PER_ROW) * COL_W
-        y = 250 + (i // PER_ROW) * ROW_H
+        if grouped_pos is not None and comp.ref in grouped_pos:
+            x, y = grouped_pos[comp.ref]
+        else:
+            x = 250 + (i % PER_ROW) * COL_W
+            y = 250 + (i // PER_ROW) * ROW_H
         cid = gen.add(board_name, comp.value, x=x, y=y)
         cid_of_ref[comp.ref] = cid
         pinmap_of_ref[comp.ref] = pinmap
@@ -538,7 +552,10 @@ def components_to_xml(components) -> str:
 
     # ── Step 3: wire each net + add power symbols ─────────────────────────────
     pwr_x = 250
-    pwr_y = 250 + ((len(components) // PER_ROW) + 1) * ROW_H
+    if grouped_pos:
+        pwr_y = max(y for _, y in grouped_pos.values()) + ROW_H
+    else:
+        pwr_y = 250 + ((len(components) // PER_ROW) + 1) * ROW_H
 
     for net, pins in net_pins.items():
         sym = BoardSCHGenerator._power_symbol(net)

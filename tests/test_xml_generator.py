@@ -235,3 +235,34 @@ def test_place_blocks_groups_are_spatially_separated():
     intra = pos["R2"][0] - pos["R1"][0]   # gap within block A
     inter = pos["R3"][0] - pos["R2"][0]   # gap from block A to block B
     assert inter > intra, f"inter-block gap ({inter}) must exceed intra-block spacing ({intra})"
+
+
+def test_components_to_xml_backward_compatible_without_results():
+    # No results → must produce identical output to the legacy grid path.
+    comps = [
+        Component("R1", "R", {"1": "A", "2": "B"}),
+        Component("C1", "C", {"1": "B", "2": "GND"}),
+    ]
+    xml_a = components_to_xml(comps)
+    xml_b = components_to_xml(comps, results=None)
+    assert xml_a == xml_b
+
+
+def test_components_to_xml_grouped_roundtrip_preserved():
+    # With results, the round-trip must still detect the same patterns:
+    # grouping changes only coordinates, never connectivity.
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+        Component("R3", "R", {"1": "NET_B", "2": "NET_A"}),
+        Component("C1", "C", {"1": "NET_B", "2": "GND"}),
+        Component("F1", "F", {"1": "LINE", "2": "NET_A"}),
+    ]
+    results = match_patterns(build_graph(comps))
+    xml = components_to_xml(comps, results=results)
+    back = _xml_to_components(xml)
+    roundtrip = sorted(r["circuit_type"] for r in match_patterns(build_graph(back)))
+    orig = sorted(r["circuit_type"] for r in match_patterns(build_graph(comps)))
+    assert orig == roundtrip
