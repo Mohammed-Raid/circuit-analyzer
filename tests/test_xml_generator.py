@@ -229,6 +229,9 @@ def test_place_blocks_groups_are_spatially_separated():
     pos = _place_blocks(blocks)
     # every ref placed
     assert set(pos) == {"R1", "R2", "R3"}
-    # R1 and R2 (same block) share the same y row; R3 is on a different position
+    # R1 and R2 (same block) share the same y row
     assert pos["R1"][1] == pos["R2"][1]
-    assert pos["R3"] != pos["R1"]
+    # inter-block gap must be strictly larger than intra-block spacing
+    intra = pos["R2"][0] - pos["R1"][0]   # gap within block A
+    inter = pos["R3"][0] - pos["R2"][0]   # gap from block A to block B
+    assert inter > intra, f"inter-block gap ({inter}) must exceed intra-block spacing ({intra})"
