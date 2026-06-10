@@ -170,3 +170,48 @@ def test_labels_cp1252():
     g = build_graph(comps)
     for i in detecter_ilots(g, []):
         i['label'].encode('cp1252')
+
+
+# =============================================================================
+# Intégration bout-en-bout via analyser()
+# =============================================================================
+
+def _circuit_deux_etages():
+    return [
+        # Étage 1 : filtre RC
+        Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
+        Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
+        # Étage 2 : pont diviseur, aucun net signal commun avec l'étage 1
+        Component('R2', 'R', {'1': 'VCC', '2': 'NET_DIV'}, '10k'),
+        Component('R3', 'R', {'1': 'NET_DIV', '2': 'GND'}, '4.7k'),
+        # Découplage rail-to-rail
+        Component('C2', 'C', {'1': 'VCC', '2': 'GND'}, '100nF'),
+    ]
+
+def test_e2e_ilots_attache_aux_resultats():
+    results = match_patterns(build_graph(_circuit_deux_etages()))
+    assert hasattr(results, 'ilots')
+    assert isinstance(results.ilots, list)
+    assert len(results.ilots) >= 2
+
+def test_e2e_indices_circuits_coherents():
+    results = match_patterns(build_graph(_circuit_deux_etages()))
+    for ilot in results.ilots:
+        for idx in ilot['circuits']:
+            match = results[idx]
+            # au moins un composant du match est dans l'îlot
+            assert any(ref in ilot['composants']
+                       for ref in match['components'])
+
+def test_e2e_etages_separes():
+    results = match_patterns(build_graph(_circuit_deux_etages()))
+    groupes = [set(i['composants']) for i in results.ilots]
+    assert any({'R1', 'C1'} <= g for g in groupes)
+    assert any({'R2', 'R3'} <= g for g in groupes)
+    # le filtre et le diviseur ne sont pas dans le même îlot
+    assert not any({'R1', 'R2'} <= g for g in groupes)
+
+def test_resultats_analyse_ilots_par_defaut():
+    from circuit_analyzer.detecteur import ResultatsAnalyse
+    r = ResultatsAnalyse()
+    assert r.ilots == []

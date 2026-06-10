@@ -22,6 +22,7 @@ from circuit_analyzer.patterns.base import (
 )
 from circuit_analyzer.value_parser import parse_valeur
 from circuit_analyzer.satellites import rattacher_satellites
+from circuit_analyzer.ilots import detecter_ilots
 
 # Alias français (= les nouvelles fonctions enrichies par le fichier de config)
 est_masse        = is_ground_net
@@ -1086,12 +1087,14 @@ def detecter_fusible(graphe):
 class ResultatsAnalyse(list):
     """
     Liste de circuits détectés. Entièrement compatible avec list.
-    Attribut supplémentaire :
+    Attributs supplémentaires :
         .supprimes : matches ignorés car leurs composants étaient déjà pris
+        .ilots     : îlots fonctionnels (structure en étages du schéma)
     """
     def __init__(self, matches=None):
         super().__init__(matches or [])
         self.supprimes: list[dict] = []
+        self.ilots: list[dict] = []
 
 
 # Catégorie fonctionnelle par type de circuit
@@ -1462,6 +1465,8 @@ def analyser(graphe, patterns_personnalises=None):
 
     resultats = ResultatsAnalyse(circuits_trouves)
     resultats.supprimes = supprimes
+    # Structure en étages : îlots de connexité hors rails
+    resultats.ilots = detecter_ilots(graphe, circuits_trouves)
     return resultats
 
 
