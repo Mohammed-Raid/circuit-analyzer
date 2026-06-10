@@ -339,17 +339,24 @@ class _Bloc:
     comps: list
 
 
+def _refs_du_bloc(r) -> list:
+    """Refs d'un circuit + ses satellites sûrs (les « possibles » restent en Divers)."""
+    refs = list(r["components"])
+    refs += [s['ref'] for s in r.get('satellites', []) if s.get('status') == 'sure']
+    return refs
+
+
 def _grouper_par_circuit(composants, resultats):
     """Regroupe les composants par circuit détecté. Composants non classifiés → bloc 'Divers'."""
     comp_par_ref = {c.ref: c for c in composants if _TYPE_VERS_FORME.get(c.type) is not None}
     type_du_ref: dict = {}
     for r in resultats or []:
-        for ref in r["components"]:
+        for ref in _refs_du_bloc(r):
             type_du_ref.setdefault(ref, r["circuit_type"])
     blocs = []
     for r in resultats or []:
         label = r["circuit_type"]
-        b = _Bloc(label, [comp_par_ref[ref] for ref in r["components"]
+        b = _Bloc(label, [comp_par_ref[ref] for ref in _refs_du_bloc(r)
                           if ref in comp_par_ref and type_du_ref.get(ref) == label])
         if b.comps:
             blocs.append(b)

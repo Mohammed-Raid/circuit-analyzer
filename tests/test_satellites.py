@@ -484,3 +484,52 @@ def test_rapport_encodable_cp1252():
     for ligne in rapport.split('\n'):
         if 'Satellites' in ligne or 'À vérifier' in ligne or 'rattachement' in ligne:
             ligne.encode('cp1252')   # ne doit pas lever UnicodeEncodeError
+
+
+# =============================================================================
+# Export XML
+# =============================================================================
+
+from circuit_analyzer.xml import generer_xml, _grouper_par_circuit
+
+
+def test_xml_satellite_sur_dans_le_bloc_du_circuit():
+    comps = [
+        Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
+        Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
+        Component('R3', 'R', {'1': 'NET_MID', '2': 'VCC'}, '47k'),
+    ]
+    results = match_patterns(build_graph(comps))
+    blocs = _grouper_par_circuit(comps, results)
+    bloc_filtre = [b for b in blocs if 'passe-bas' in b.label]
+    assert bloc_filtre and any(c.ref == 'R3' for c in bloc_filtre[0].comps)
+    # R3 ne doit plus être en Divers
+    for b in blocs:
+        if b.label == 'Divers':
+            assert all(c.ref != 'R3' for c in b.comps)
+
+def test_xml_satellite_possible_reste_en_divers():
+    comps = [
+        Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
+        Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
+        Component('C9', 'C', {'1': 'NET_MID', '2': 'NET_X'}, '10nF'),
+    ]
+    results = match_patterns(build_graph(comps))
+    blocs = _grouper_par_circuit(comps, results)
+    divers = [b for b in blocs if b.label == 'Divers']
+    assert divers and any(c.ref == 'C9' for c in divers[0].comps)
+    # et C9 n'est dans aucun bloc de circuit
+    for b in blocs:
+        if b.label != 'Divers':
+            assert all(c.ref != 'C9' for c in b.comps)
+
+def test_xml_generation_complete_avec_satellites():
+    comps = [
+        Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
+        Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
+        Component('R3', 'R', {'1': 'NET_MID', '2': 'VCC'}, '47k'),
+    ]
+    results = match_patterns(build_graph(comps))
+    xml_str = generer_xml(comps, results)
+    # le format BoardSCH n'embarque pas les refs : on vérifie la valeur de R3
+    assert '47k' in xml_str
