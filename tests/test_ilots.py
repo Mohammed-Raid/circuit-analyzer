@@ -215,3 +215,55 @@ def test_resultats_analyse_ilots_par_defaut():
     from circuit_analyzer.detecteur import ResultatsAnalyse
     r = ResultatsAnalyse()
     assert r.ilots == []
+
+
+# =============================================================================
+# Rapport — section STRUCTURE EN ETAGES
+# =============================================================================
+
+from circuit_analyzer.rapport import generer_rapport
+
+
+def test_rapport_section_etages():
+    comps = _circuit_deux_etages()
+    refs = [c.ref for c in comps]
+    results = match_patterns(build_graph(comps))
+    rapport = generer_rapport(results, 'test.txt', len(refs), refs)
+    assert '=== STRUCTURE EN ETAGES ===' in rapport
+    assert 'Îlot 1' in rapport
+
+def test_rapport_etages_numeros_circuits_coherents():
+    comps = _circuit_deux_etages()
+    refs = [c.ref for c in comps]
+    results = match_patterns(build_graph(comps))
+    rapport = generer_rapport(results, 'test.txt', len(refs), refs)
+    # le circuit [1] du listing principal doit apparaître avec le même
+    # numéro dans la section étages
+    section = rapport.split('=== STRUCTURE EN ETAGES ===')[1]
+    assert '[1]' in section
+
+def test_rapport_etages_absente_si_list_simple():
+    # compat : un appel avec une simple list (sans .ilots) ne plante pas
+    comps = _circuit_deux_etages()
+    refs = [c.ref for c in comps]
+    results = match_patterns(build_graph(comps))
+    rapport = generer_rapport(list(results), 'test.txt', len(refs), refs)
+    assert '=== STRUCTURE EN ETAGES ===' not in rapport
+
+def test_rapport_etages_ilot_sans_circuit_liste_composants():
+    comps = [
+        Component('X1', 'R', {'1': 'NET_Z1', '2': 'NET_Z2'}),
+    ]
+    refs = [c.ref for c in comps]
+    results = match_patterns(build_graph(comps))
+    rapport = generer_rapport(results, 'test.txt', len(refs), refs)
+    section = rapport.split('=== STRUCTURE EN ETAGES ===')[1]
+    assert 'X1' in section
+
+def test_rapport_etages_cp1252():
+    comps = _circuit_deux_etages()
+    refs = [c.ref for c in comps]
+    results = match_patterns(build_graph(comps))
+    rapport = generer_rapport(results, 'test.txt', len(refs), refs)
+    section = rapport.split('=== STRUCTURE EN ETAGES ===')[1].split('===')[0]
+    section.encode('cp1252')

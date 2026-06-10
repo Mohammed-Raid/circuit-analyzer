@@ -76,6 +76,32 @@ def generer_rapport(resultats, fichier: str,
 
     lignes.append(_SEP)
 
+    # Structure en étages (îlots fonctionnels)
+    ilots = getattr(resultats, 'ilots', [])
+    if ilots:
+        lignes += ['', '=== STRUCTURE EN ETAGES ===', '']
+        for ilot in ilots:
+            nb_circ = len(ilot['circuits'])
+            nb_comp = len(ilot['composants'])
+            detail = (f"({nb_circ} circuit{'s' if nb_circ > 1 else ''}, "
+                      f"{nb_comp} composant{'s' if nb_comp > 1 else ''})"
+                      if nb_circ else
+                      f"({nb_comp} composant{'s' if nb_comp > 1 else ''})")
+            lignes.append(f"{ilot['label']} {detail}")
+            if ilot['circuits']:
+                for idx in ilot['circuits']:
+                    match = resultats[idx]
+                    surs = [s['ref'] for s in match.get('satellites', [])
+                            if s.get('status') == 'sure']
+                    suffixe = f" (+ {', '.join(surs)})" if surs else ''
+                    lignes.append(
+                        f"    [{idx + 1}] {match['circuit_type']} : "
+                        f"{', '.join(match['components'])}{suffixe}"
+                    )
+            else:
+                lignes.append('    ' + ', '.join(ilot['composants']))
+        lignes += ['', _SEP]
+
     # Composants non classifiés
     refs_a_verifier = {ref for ref, _, _ in a_verifier}
     if tous_refs:
