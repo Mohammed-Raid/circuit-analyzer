@@ -4,8 +4,10 @@ rapport.py — Génération du rapport texte après analyse.
 from collections import Counter
 
 
+# NB : sortie limitée aux caractères cp1252 (console Windows) — pas de
+# symboles Unicode (fleches, triangles d'avertissement, traits pleins).
 _NIVEAUX = {'high': 'élevée', 'medium': 'moyenne', 'low': 'faible'}
-_SEP     = '─' * 64
+_SEP     = '-' * 64
 _SEP_FIN = '=' * 64
 
 
@@ -39,6 +41,7 @@ def generer_rapport(resultats, fichier: str,
     lignes += ['', _SEP]
 
     classifies: set = set()
+    a_verifier: list = []   # satellites « possibles » : (ref, circuit hôte, raison)
     for i, match in enumerate(resultats, 1):
         ct       = match['circuit_type']
         niveau   = _NIVEAUX.get(match.get('confidence_level', ''), '?')
@@ -46,28 +49,49 @@ def generer_rapport(resultats, fichier: str,
         reasons  = match.get('reasons', [])
         warns    = match.get('warnings', [])
         cat      = match.get('functional_category', 'divers')
+        sats     = match.get('satellites', [])
+        surs     = [s for s in sats if s.get('status') == 'sure']
+        possibles = [s for s in sats if s.get('status') == 'possible']
 
         lignes.append(f'[{i}] {ct}')
         lignes.append(f'    Confiance    : {niveau} ({conf_pct}%) — {cat}')
         lignes.append(f'    Composants   : {", ".join(match["components"])}')
-        lignes.append(f'    Nœuds        : {" → ".join(n for n in match["nodes"] if n)}')
+        lignes.append(f'    Nœuds        : {" -> ".join(n for n in match["nodes"] if n)}')
+        if surs:
+            lignes.append('    Satellites sûrs     : ' + ' ; '.join(
+                f"{s['ref']} ({s['role']} - {s['reason']})" for s in surs))
+        if possibles:
+            lignes.append('    Satellites possibles: ' + ' ; '.join(
+                f"{s['ref']} ? ({s['reason']})" for s in possibles))
         if reasons:
             lignes.append(f'    Raisons      : {" ; ".join(reasons)}')
         for w in warns:
-            lignes.append(f'    ⚠  {w}')
+            lignes.append(f'    ATTENTION : {w}')
         lignes.append('')
         classifies.update(match['components'])
+        # Seuls les satellites SÛRS quittent les « non classifiés » ;
+        # les possibles vont dans la section « À vérifier ».
+        classifies.update(s['ref'] for s in surs)
+        a_verifier.extend((s['ref'], ct, s['reason']) for s in possibles)
 
     lignes.append(_SEP)
 
     # Composants non classifiés
+    refs_a_verifier = {ref for ref, _, _ in a_verifier}
     if tous_refs:
-        non_classifies = [r for r in tous_refs if r not in classifies]
+        non_classifies = [r for r in tous_refs
+                          if r not in classifies and r not in refs_a_verifier]
         if non_classifies:
             lignes.append(
                 f'\nComposants non classifiés ({len(non_classifies)}) :'
             )
             lignes.append('    ' + ', '.join(non_classifies))
+
+    # Satellites possibles — rattachement à confirmer par un ingénieur
+    if a_verifier:
+        lignes.append(f'\nÀ vérifier (rattachement possible) ({len(a_verifier)}) :')
+        for ref, ct_hote, raison in a_verifier:
+            lignes.append(f'    - {ref} -> {ct_hote} ({raison})')
 
     # Matches supprimés (composants déjà pris)
     supprimes = getattr(resultats, 'supprimes', [])
@@ -87,8 +111,8 @@ def generer_rapport(resultats, fichier: str,
     lignes += [
         '',
         _SEP_FIN,
-        '  ⚠  Cet outil est une aide à l\'analyse — il ne remplace pas',
-        '     une validation par un ingénieur électronique qualifié.',
+        '  ATTENTION : Cet outil est une aide à l\'analyse — il ne remplace pas',
+        '  une validation par un ingénieur électronique qualifié.',
         _SEP_FIN,
     ]
 

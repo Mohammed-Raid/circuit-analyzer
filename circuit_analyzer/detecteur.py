@@ -21,6 +21,7 @@ from circuit_analyzer.patterns.base import (
     is_ground_net, is_power_net, is_protective_earth_net, classify_net
 )
 from circuit_analyzer.value_parser import parse_valeur
+from circuit_analyzer.satellites import rattacher_satellites
 
 # Alias français (= les nouvelles fonctions enrichies par le fichier de config)
 est_masse        = is_ground_net
@@ -1454,6 +1455,10 @@ def analyser(graphe, patterns_personnalises=None):
                 continue
             composants_utilises.update(match['components'])
             circuits_trouves.append(match_enrichi)
+
+    # Passe satellite : absorbe les annexes mono-composant puis rattache
+    # les composants restés non classifiés aux circuits détectés.
+    rattacher_satellites(circuits_trouves, graphe, composants_utilises)
 
     resultats = ResultatsAnalyse(circuits_trouves)
     resultats.supprimes = supprimes

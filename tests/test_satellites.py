@@ -363,3 +363,124 @@ def test_absorption_prefere_noeud_signal_au_rail():
     rattacher_satellites(circuits, g, {'Q1', 'K1', 'U1', 'R1', 'D1'})
     assert len(c1['satellites']) == 1      # malgré la confiance plus faible
     assert c2['satellites'] == []
+
+
+# =============================================================================
+# Intégration bout-en-bout via analyser()
+# =============================================================================
+
+def test_e2e_pull_up_devient_satellite():
+    # NB : un pull-down de base est déjà absorbé par le détecteur transistor
+    # lui-même ; le vrai cas leftover est un pull-up sur un nœud interne
+    # d'un circuit passif (ici le nœud milieu d'un filtre RC).
+    comps = [
+        Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
+        Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
+        Component('R3', 'R', {'1': 'NET_MID', '2': 'VCC'}, '47k'),
+    ]
+    results = match_patterns(build_graph(comps))
+    filtre = [m for m in results if m['circuit_type'] == 'Filtre RC passe-bas']
+    assert len(filtre) == 1
+    sats = filtre[0]['satellites']
+    assert any(s['ref'] == 'R3' and s['role'] == 'pull-up'
+               and s['status'] == 'sure' for s in sats)
+
+def test_e2e_tous_les_matches_ont_la_cle_satellites():
+    comps = [
+        Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
+        Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
+    ]
+    results = match_patterns(build_graph(comps))
+    assert results
+    for m in results:
+        assert isinstance(m['satellites'], list)
+
+def test_e2e_roue_libre_absorbee():
+    # Commande de relais + diode de roue libre sur le nœud de commutation
+    comps = [
+        Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_SW', 'E': 'GND'}),
+        Component('R1', 'R', {'1': 'NET_CMD', '2': 'NET_BASE'}, '1k'),
+        Component('K1', 'K', {'A1': 'NET_SW', 'A2': 'VCC', 'C': 'NET_C', 'NC': 'NET_NC'}),
+        Component('D1', 'D', {'A': 'NET_SW', 'K': 'VCC'}),
+    ]
+    results = match_patterns(build_graph(comps))
+    types = [m['circuit_type'] for m in results]
+    assert 'Diode de roue libre' not in types
+    hote = [m for m in results if any(s['ref'] == 'D1' for s in m['satellites'])]
+    assert len(hote) == 1
+
+def test_e2e_aucune_regression_sans_satellite():
+    # Un circuit sans composant orphelin : aucun satellite, comportement inchangé
+    comps = [
+        Component('R1', 'R', {'1': 'VCC', '2': 'NET_DIV'}, '10k'),
+        Component('R2', 'R', {'1': 'NET_DIV', '2': 'GND'}, '4.7k'),
+    ]
+    results = match_patterns(build_graph(comps))
+    assert len(results) == 1
+    assert results[0]['satellites'] == []
+
+
+# =============================================================================
+# Rapport
+# =============================================================================
+
+from circuit_analyzer.rapport import generer_rapport
+
+
+def _resultats_filtre_avec_satellites():
+    comps = [
+        Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
+        Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
+        Component('R3', 'R', {'1': 'NET_MID', '2': 'VCC'}, '47k'),
+        Component('C9', 'C', {'1': 'NET_MID', '2': 'NET_X'}, '10nF'),
+    ]
+    refs = [c.ref for c in comps]
+    return match_patterns(build_graph(comps)), refs
+
+def test_rapport_affiche_satellites_surs():
+    results, refs = _resultats_filtre_avec_satellites()
+    rapport = generer_rapport(results, 'test.txt', len(refs), refs)
+    assert 'Satellites sûrs' in rapport
+    assert 'R3' in rapport
+    assert 'pull-up' in rapport
+
+def test_rapport_affiche_satellites_possibles_avec_marqueur():
+    results, refs = _resultats_filtre_avec_satellites()
+    rapport = generer_rapport(results, 'test.txt', len(refs), refs)
+    assert 'Satellites possibles' in rapport
+    assert 'C9 ?' in rapport
+
+def test_rapport_sur_quitte_non_classifies_possible_va_dans_a_verifier():
+    # Correction 2 : seuls les sûrs sortent des non-classifiés ;
+    # les possibles vont dans une section « À vérifier »
+    results, refs = _resultats_filtre_avec_satellites()
+    rapport = generer_rapport(results, 'test.txt', len(refs), refs)
+    assert 'À vérifier (rattachement possible)' in rapport
+    section = rapport.split('À vérifier')[1]
+    assert 'C9' in section
+    if 'non classifiés' in rapport:
+        section_nc = rapport.split('non classifiés')[1].split('À vérifier')[0]
+        assert 'R3' not in section_nc
+
+def test_rapport_warning_validation_ingenieur():
+    results, refs = _resultats_filtre_avec_satellites()
+    rapport = generer_rapport(results, 'test.txt', len(refs), refs)
+    assert 'validation ingénieur nécessaire' in rapport
+
+def test_rapport_pas_de_lignes_satellites_quand_vide():
+    comps = [
+        Component('R1', 'R', {'1': 'VCC', '2': 'NET_DIV'}, '10k'),
+        Component('R2', 'R', {'1': 'NET_DIV', '2': 'GND'}, '4.7k'),
+    ]
+    refs = [c.ref for c in comps]
+    results = match_patterns(build_graph(comps))
+    rapport = generer_rapport(results, 'test.txt', len(refs), refs)
+    assert 'Satellites' not in rapport
+    assert 'À vérifier' not in rapport
+
+def test_rapport_encodable_cp1252():
+    results, refs = _resultats_filtre_avec_satellites()
+    rapport = generer_rapport(results, 'test.txt', len(refs), refs)
+    for ligne in rapport.split('\n'):
+        if 'Satellites' in ligne or 'À vérifier' in ligne or 'rattachement' in ligne:
+            ligne.encode('cp1252')   # ne doit pas lever UnicodeEncodeError
