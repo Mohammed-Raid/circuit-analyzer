@@ -12,6 +12,7 @@ Charge un fichier netlist ou un schéma XML, identifie les sous-circuits connus,
 - **27 patterns reconnus** : filtres RC/LC, AOP (9 montages), transistors BJT/MOSFET, redresseurs, protections…
 - **Score de confiance** — chaque circuit détecté reçoit un score (élevé/moyen/faible) avec les raisons et les avertissements
 - **Composants satellites** — les composants autour d'un circuit détecté (pull-up, découplage, roue libre, R série…) lui sont rattachés avec un statut sûr/possible
+- **Îlots fonctionnels** — le schéma est découpé en étages (connexité hors rails) : rapport, export XML et GUI montrent la structure en blocs fonctionnels
 - **Détection des ambiguïtés** — avertissements automatiques pour les topologies polyvalentes (LED/ESD, snubber/filtre, diviseur sans rails connus…)
 - **Parser de valeurs** — calcule la fréquence de coupure des filtres RC/LC à partir des valeurs réelles
 - **Alias de nets configurables** — `config/net_aliases.json` définit GND, alimentation et terre de protection (PE ≠ GND)
@@ -200,6 +201,32 @@ Un découplage qui ne partage que des rails avec son hôte n'est jamais « sûr 
 Seuls les satellites **sûrs** rejoignent le bloc du circuit dans l'export XML —
 les « possibles » restent dans le bloc Divers.
 
+---
+
+## Îlots fonctionnels (structure en étages)
+
+En retirant les rails (GND / alimentations / PE) du graphe, les composants se
+séparent en groupes connexes : les **îlots**. Chaque îlot est nommé d'après la
+catégorie majoritaire de ses circuits, et les composants rail-to-rail forment
+un îlot par rail d'alimentation :
+
+```
+=== STRUCTURE EN ETAGES ===
+
+Îlot 1 - commutation (3 circuits, 12 composants)
+    [1] Commande de relais : K1, Q1 (+ D1)
+    [2] Commande de relais : K2, Q2 (+ D3)
+    Autres : R13
+Îlot 2 - alimentation VCC_12V (3 composants)
+    C1, C2, C5
+Îlot 3 - non identifié (2 composants)
+    X1, X2
+```
+
+La même structure pilote l'**ordre des blocs dans l'export XML** (les circuits
+d'un même étage sont placés côte à côte) et le **panneau repliable « Structure
+en étages »** de l'onglet Analyser.
+
 Les **avertissements** signalent les ambiguïtés :
 - `Diode de protection ESD` → *"Topologie compatible LED / TVS / Zener selon le contexte"*
 - `Pont diviseur` sans VCC/GND identifiés → *"Peut être un pont résistif quelconque"*
@@ -276,7 +303,7 @@ Ces topologies ne sont **pas détectables** depuis la netlist seule :
 python -m pytest -q
 ```
 
-247 tests automatisés couvrant le parseur, les 27 patterns, le score de confiance, les composants satellites, les alias de nets, le parser de valeurs, le générateur XML, l'import XML et les circuits industriels.
+272 tests automatisés couvrant le parseur, les 27 patterns, le score de confiance, les composants satellites, les îlots fonctionnels, les alias de nets, le parser de valeurs, le générateur XML, l'import XML et les circuits industriels.
 
 ---
 
@@ -287,6 +314,7 @@ circuit_analyzer/
 ├── composant.py           ← lecture netlist + graphe NetworkX + bibliothèque
 ├── detecteur.py           ← 27 fonctions de détection + score de confiance
 ├── satellites.py          ← rattachement des composants satellites
+├── ilots.py               ← îlots fonctionnels (structure en étages)
 ├── rapport.py             ← génération du rapport texte
 ├── xml.py                 ← import/export BoardSCH XML
 │

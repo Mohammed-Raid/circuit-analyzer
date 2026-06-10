@@ -260,6 +260,21 @@ def test_rapport_etages_ilot_sans_circuit_liste_composants():
     section = rapport.split('=== STRUCTURE EN ETAGES ===')[1]
     assert 'X1' in section
 
+def test_rapport_etages_ligne_autres_pour_membres_hors_circuits():
+    # R9 est dans l'îlot du filtre mais n'appartient à aucun circuit listé
+    # ni aux satellites sûrs -> il doit apparaître sur la ligne « Autres »
+    comps = [
+        Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
+        Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
+        Component('C9', 'C', {'1': 'NET_MID', '2': 'NET_X'}, '10nF'),  # possible
+    ]
+    refs = [c.ref for c in comps]
+    results = match_patterns(build_graph(comps))
+    rapport = generer_rapport(results, 'test.txt', len(refs), refs)
+    section = rapport.split('=== STRUCTURE EN ETAGES ===')[1].split('===')[0]
+    assert 'Autres : C9' in section
+
+
 def test_rapport_etages_cp1252():
     comps = _circuit_deux_etages()
     refs = [c.ref for c in comps]

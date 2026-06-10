@@ -89,6 +89,7 @@ def generer_rapport(resultats, fichier: str,
                       f"({nb_comp} composant{'s' if nb_comp > 1 else ''})")
             lignes.append(f"{ilot['label']} {detail}")
             if ilot['circuits']:
+                couverts: set = set()
                 for idx in ilot['circuits']:
                     match = resultats[idx]
                     surs = [s['ref'] for s in match.get('satellites', [])
@@ -98,6 +99,11 @@ def generer_rapport(resultats, fichier: str,
                         f"    [{idx + 1}] {match['circuit_type']} : "
                         f"{', '.join(match['components'])}{suffixe}"
                     )
+                    couverts.update(match['components'])
+                    couverts.update(surs)
+                restes = [r for r in ilot['composants'] if r not in couverts]
+                if restes:
+                    lignes.append('    Autres : ' + ', '.join(restes))
             else:
                 lignes.append('    ' + ', '.join(ilot['composants']))
         lignes += ['', _SEP]
