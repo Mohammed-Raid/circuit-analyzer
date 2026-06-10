@@ -272,3 +272,94 @@ def test_conflit_meilleur_score_gagne(monkeypatch):
     rattacher_satellites([c1, c2], g, {'Q1', 'Q2'})
     assert c1['satellites'] == []
     assert c2['satellites'][0]['role'] == 'role-fort'
+
+
+# =============================================================================
+# Absorption des circuits annexes mono-composant
+# =============================================================================
+
+def test_roue_libre_absorbee_via_noeud_signal():
+    circuits = [
+        _match('Commande de relais', ['Q1', 'K1'],
+               ['NET_BASE', 'NET_COLL', 'GND', 'VCC'], confidence=0.9),
+        _match('Diode de roue libre', ['D1'],
+               ['NET_COLL', 'VCC'], confidence=0.75),
+    ]
+    g = build_graph([])
+    rattacher_satellites(circuits, g, {'Q1', 'K1', 'D1'})
+    assert len(circuits) == 1
+    assert circuits[0]['circuit_type'] == 'Commande de relais'
+    sats = circuits[0]['satellites']
+    assert len(sats) == 1
+    assert sats[0]['ref'] == 'D1'
+    assert sats[0]['role'] == 'flyback'
+    assert sats[0]['status'] == 'sure'        # partage un nœud signal
+    assert sats[0]['score'] == 0.75
+    assert sats[0]['reason'] == 'Diode de roue libre'
+
+def test_decouplage_rail_seul_hote_devient_possible():
+    # Correction 3 : absorption par rails uniquement -> jamais « sure »
+    circuits = [
+        _match('Amplificateur inverseur (AOP)', ['U1', 'R1', 'R2'],
+               ['NET_IN', 'NET_INM', 'NET_OUT', 'VCC', 'GND'], confidence=0.9),
+        _match('Condensateur de découplage', ['C3'],
+               ['VCC', 'GND'], confidence=0.85),
+    ]
+    g = build_graph([])
+    rattacher_satellites(circuits, g, {'U1', 'R1', 'R2', 'C3'})
+    assert len(circuits) == 1
+    sat = circuits[0]['satellites'][0]
+    assert sat['role'] == 'decoupling'
+    assert sat['status'] == 'possible'
+    assert sat['score'] <= 0.55
+    assert any('C3' in w for w in circuits[0]['warnings'])
+
+def test_decouplage_rails_plusieurs_hotes_pas_absorbe():
+    # Correction 3 : plusieurs circuits partagent le rail -> ambigu, pas d'absorption
+    circuits = [
+        _match('Amplificateur inverseur (AOP)', ['U1', 'R1'],
+               ['NET_A', 'NET_B', 'VCC', 'GND'], confidence=0.9),
+        _match('Transistor en commutation', ['Q1', 'R3'],
+               ['NET_C', 'NET_D', 'VCC', 'GND'], confidence=0.85),
+        _match('Condensateur de découplage', ['C3'],
+               ['VCC', 'GND'], confidence=0.85),
+    ]
+    g = build_graph([])
+    rattacher_satellites(circuits, g, {'U1', 'R1', 'Q1', 'R3', 'C3'})
+    assert len(circuits) == 3
+    types = [m['circuit_type'] for m in circuits]
+    assert 'Condensateur de découplage' in types
+
+def test_annexe_sans_circuit_hote_reste_un_circuit():
+    circuits = [
+        _match('Diode de roue libre', ['D1'], ['NET_SW', 'VCC'], confidence=0.75),
+    ]
+    g = build_graph([])
+    rattacher_satellites(circuits, g, {'D1'})
+    assert len(circuits) == 1
+    assert circuits[0]['circuit_type'] == 'Diode de roue libre'
+
+def test_annexe_non_adjacente_reste_un_circuit():
+    circuits = [
+        _match('Commande de relais', ['Q1', 'K1'],
+               ['NET_BASE', 'NET_COLL', 'GND'], confidence=0.9),
+        _match('Diode de roue libre', ['D9'],
+               ['NET_LOIN', 'VBAT'], confidence=0.75),
+    ]
+    g = build_graph([])
+    rattacher_satellites(circuits, g, {'Q1', 'K1', 'D9'})
+    assert len(circuits) == 2
+
+def test_absorption_prefere_noeud_signal_au_rail():
+    # D1 partage NET_COLL (signal) avec c1 et seulement VCC (rail) avec c2
+    c1 = _match('Commande de relais', ['Q1', 'K1'],
+                ['NET_BASE', 'NET_COLL', 'VCC', 'GND'], confidence=0.7)
+    c2 = _match('Amplificateur inverseur (AOP)', ['U1', 'R1'],
+                ['NET_X', 'NET_Y', 'VCC', 'GND'], confidence=0.99)
+    annexe = _match('Diode de roue libre', ['D1'], ['NET_COLL', 'VCC'],
+                    confidence=0.75)
+    circuits = [c1, c2, annexe]
+    g = build_graph([])
+    rattacher_satellites(circuits, g, {'Q1', 'K1', 'U1', 'R1', 'D1'})
+    assert len(c1['satellites']) == 1      # malgré la confiance plus faible
+    assert c2['satellites'] == []

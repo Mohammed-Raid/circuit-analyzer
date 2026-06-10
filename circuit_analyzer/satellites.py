@@ -117,6 +117,63 @@ def _ajouter_satellite(match: dict, ref: str, role: str, score: float, reason: s
         )
 
 
+# Circuits annexes mono-composant absorbables par un circuit multi-composants.
+_ANNEXES: dict[str, str] = {
+    'Diode de roue libre':        'flyback',
+    'Condensateur de découplage': 'decoupling',
+    'Diode de protection ESD':    'esd',
+}
+
+# Score plafond quand l'annexe ne partage que des rails avec son hôte
+# (rattachement incertain : un rail est commun à tout le schéma).
+_SCORE_RAIL_SEULEMENT = 0.55
+
+
+def _absorber_annexes(circuits: list) -> None:
+    """
+    Les circuits annexes mono-composant (roue libre, découplage, ESD) adjacents
+    à un circuit multi-composants sont retirés de la liste et convertis en
+    satellite de celui-ci (reason = leur type de circuit).
+
+    Règles :
+      - partage d'un nœud signal  -> absorbé, score = confidence de l'annexe ;
+      - partage de rails seulement -> absorbé en « possible » (score plafonné)
+        UNIQUEMENT si un seul circuit hôte est candidat ; sinon, trop ambigu,
+        l'annexe reste un circuit à part entière.
+    """
+    hotes = [m for m in circuits
+             if len(m['components']) > 1 and m['circuit_type'] not in _ANNEXES]
+    if not hotes:
+        return
+
+    a_retirer = []
+    for annexe in circuits:
+        role = _ANNEXES.get(annexe['circuit_type'])
+        if role is None or len(annexe['components']) != 1:
+            continue
+        noeuds_annexe = {n for n in annexe.get('nodes', []) if n}
+
+        # 1) Hôtes partageant un nœud signal (rattachement fort)
+        hotes_signal = [h for h in hotes if noeuds_annexe & _noeuds_internes(h)]
+        if hotes_signal:
+            hote = max(hotes_signal, key=lambda h: h.get('confidence', 0))
+            score = annexe.get('confidence', SEUIL_SUR)
+        else:
+            # 2) Hôtes partageant seulement un rail : possible si UN SEUL candidat
+            hotes_rail = [h for h in hotes if noeuds_annexe & _rails_alim(h)]
+            if len(hotes_rail) != 1:
+                continue
+            hote = hotes_rail[0]
+            score = min(annexe.get('confidence', SEUIL_SUR), _SCORE_RAIL_SEULEMENT)
+
+        _ajouter_satellite(hote, annexe['components'][0], role, score,
+                           annexe['circuit_type'])
+        a_retirer.append(annexe)
+
+    for annexe in a_retirer:
+        circuits.remove(annexe)
+
+
 def rattacher_satellites(circuits: list, graphe, composants_utilises: set) -> None:
     """
     Rattache les composants non classifiés aux circuits détectés.
@@ -130,6 +187,8 @@ def rattacher_satellites(circuits: list, graphe, composants_utilises: set) -> No
     """
     for m in circuits:
         m.setdefault('satellites', [])
+
+    _absorber_annexes(circuits)
 
     infos = [(m, _noeuds_internes(m), _rails_alim(m)) for m in circuits]
     tous = graphe.graph.get('components', {})
