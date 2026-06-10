@@ -70,6 +70,30 @@ Les rails sont partagés par tout le schéma : un composant qui ne touche un cir
 VCC/GND n'est PAS un voisin (exception : le découplage, qui par définition vit entre rails
 mais doit toucher le rail d'alim effectivement utilisé par le circuit).
 
+## Phase 2 — Absorption des circuits annexes mono-composant
+
+Découverte d'implémentation : « roue libre », « découplage » et « ESD » sont déjà des
+patterns autonomes parmi les 27. En mode leftovers-only pur, une diode de roue libre
+adjacente à une commande de relais serait détectée comme circuit séparé et jamais
+rattachée — ce qui contredit le critère de succès.
+
+Solution (sans modifier les 27 détecteurs) : après la détection, les circuits annexes
+**mono-composant** dont le type figure dans la liste ci-dessous et qui partagent un nœud
+avec un circuit **multi-composants** sont retirés de la liste des circuits et convertis
+en satellite de ce circuit (score = leur `confidence`) :
+
+| Type annexe | Rôle satellite |
+|-------------|----------------|
+| Diode de roue libre | `flyback` |
+| Condensateur de découplage | `decoupling` |
+| Diode de protection ESD | `esd` |
+
+Priorité de rattachement : partage d'un nœud signal > partage d'un rail d'alim ;
+à égalité, le circuit hôte avec la meilleure `confidence`. Conséquence assumée :
+« Groupes identifiés » diminue quand un annexe est absorbé — les tests d'intégration
+existants qui comptent les groupes seront mis à jour si ce nouveau comportement est
+celui attendu.
+
 ## Rapport (`rapport.py`)
 
 ```
