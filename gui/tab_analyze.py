@@ -1,12 +1,10 @@
 import tkinter as tk
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
-from circuit_analyzer.parser import parse_file
-from circuit_analyzer.xml_parser import parse_xml
-from circuit_analyzer.graph_builder import build_graph
-from circuit_analyzer.matcher import match_patterns
-from circuit_analyzer.reporter import generate
-from circuit_analyzer.xml_generator import components_to_xml
+from circuit_analyzer.composant import lire_netlist as parse_file, construire_graphe as build_graph
+from circuit_analyzer.xml import lire_xml as parse_xml, generer_xml as components_to_xml
+from circuit_analyzer.detecteur import analyser as match_patterns
+from circuit_analyzer.rapport import generate
 from gui.circuit_viewer import show_circuit
 
 from gui.theme import BG, CARD, CARD2, BORDER, TEXT, MUTED, BLUE
@@ -321,6 +319,9 @@ class TabAnalyze:
 
         self._empty_state.grid_remove()
 
+        # Structure en étages (îlots fonctionnels)
+        self._render_islands(results)
+
         # Group by type categories
         groups = {}
         for r in results:
@@ -350,6 +351,27 @@ class TabAnalyze:
                           sticky="ew", padx=4, pady=4)
 
         # Unclassified section
+        self._render_unclassified(unclassified)
+
+    def _render_islands(self, results):
+        """Panneau repliable « Structure en étages » (îlots fonctionnels)."""
+        ilots = getattr(results, 'ilots', [])
+        if not ilots:
+            return
+
+        hdr = ctk.CTkFrame(self._results_view, fg_color="transparent")
+        hdr.pack(fill="x", padx=16, pady=(14, 2))
+        ctk.CTkLabel(hdr, text="STRUCTURE EN ÉTAGES",
+                     font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                     text_color=BLUE).pack(side="left")
+        ctk.CTkFrame(hdr, height=1, fg_color=BORDER).pack(
+            side="left", fill="x", expand=True, padx=10)
+
+        for ilot in ilots:
+            _IslandSection(self._results_view, ilot, results).pack(
+                fill="x", padx=16, pady=3)
+
+    def _render_unclassified(self, unclassified: list):
         if unclassified:
             uch = ctk.CTkFrame(self._results_view,
                                fg_color="transparent")
@@ -415,6 +437,64 @@ class _EmptyState(ctk.CTkFrame):
                      text="Cliquez sur Parcourir pour charger\nun fichier netlist .txt ou schéma .xml",
                      font=ctk.CTkFont("Segoe UI", 13),
                      text_color=MUTED, justify="center").pack(pady=8)
+
+
+class _IslandSection(ctk.CTkFrame):
+    """Section repliable pour un îlot fonctionnel (structure en étages)."""
+
+    def __init__(self, parent, ilot: dict, results):
+        super().__init__(parent, corner_radius=10,
+                         fg_color=CARD,
+                         border_width=1, border_color=BORDER)
+        self._ouvert = True
+
+        nb = len(ilot['composants'])
+        titre = f"{ilot['label']}  ({nb} composant{'s' if nb > 1 else ''})"
+        self._btn = ctk.CTkButton(
+            self, text=f"▼  {titre}",
+            anchor="w", height=32, corner_radius=8,
+            font=ctk.CTkFont("Segoe UI", 12, "bold"),
+            fg_color="transparent", hover_color=CARD2,
+            text_color=TEXT,
+            command=self._toggle,
+        )
+        self._btn.pack(fill="x", padx=6, pady=(4, 0))
+        self._titre = titre
+
+        self._contenu = ctk.CTkFrame(self, fg_color="transparent")
+        self._contenu.pack(fill="x", padx=20, pady=(0, 8))
+
+        if ilot['circuits']:
+            for idx in ilot['circuits']:
+                try:
+                    match = results[idx]
+                except (IndexError, TypeError):
+                    continue
+                surs = [s['ref'] for s in match.get('satellites', [])
+                        if s.get('status') == 'sure']
+                suffixe = f"  (+ {', '.join(surs)})" if surs else ''
+                ligne = (f"[{idx + 1}] {match['circuit_type']} : "
+                         f"{', '.join(match['components'])}{suffixe}")
+                ctk.CTkLabel(self._contenu, text=ligne,
+                             font=ctk.CTkFont("Consolas", 11),
+                             text_color=MUTED, anchor="w",
+                             justify="left").pack(fill="x", pady=1)
+        else:
+            ctk.CTkLabel(self._contenu,
+                         text=', '.join(ilot['composants']),
+                         font=ctk.CTkFont("Consolas", 11),
+                         text_color=MUTED, anchor="w",
+                         wraplength=700,
+                         justify="left").pack(fill="x", pady=1)
+
+    def _toggle(self):
+        self._ouvert = not self._ouvert
+        if self._ouvert:
+            self._contenu.pack(fill="x", padx=20, pady=(0, 8))
+            self._btn.configure(text=f"▼  {self._titre}")
+        else:
+            self._contenu.pack_forget()
+            self._btn.configure(text=f"▶  {self._titre}")
 
 
 class _CircuitCard(ctk.CTkFrame):
