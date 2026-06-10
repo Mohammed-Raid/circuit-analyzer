@@ -41,3 +41,65 @@ def _noeuds_internes(match: dict) -> set:
 def _rails_alim(match: dict) -> set:
     """Rails d'alimentation effectivement présents dans les nœuds du circuit."""
     return {n for n in match.get('nodes', []) if n and is_power_net(n)}
+
+
+def _evaluer(comp, internes: set, rails: set):
+    """
+    Évalue le rôle d'un composant candidat vis-à-vis d'un circuit.
+
+    Arguments :
+        comp     : Composant (.type, .pins, .value)
+        internes : nœuds signal du circuit
+        rails    : rails d'alimentation du circuit
+
+    Retourne (role, score, reason) ou None si le composant ne touche pas le circuit.
+    Les chaînes reason restent compatibles cp1252 (console Windows).
+    """
+    nets = [n for n in comp.pins.values() if n]
+    touche_interne = [n for n in nets if n in internes]
+
+    # ── Découplage / bulk : C entre un rail d'alim du circuit et GND ─────────
+    # Seul rôle qui ne passe pas par un nœud interne : un découplage vit
+    # par définition entre rails, mais doit toucher le rail utilisé par le circuit.
+    if comp.type == 'C' and len(nets) == 2:
+        rail = next((n for n in nets if n in rails), None)
+        if rail:
+            autre = nets[1] if nets[0] == rail else nets[0]
+            if is_ground_net(autre):
+                classe = classifier_condensateur(comp.value, entre_power_gnd=True)
+                if classe == 'decoupling':
+                    return ('decoupling', 0.9, f"C {comp.value} entre {rail} et {autre}")
+                if classe == 'bulk_filter':
+                    return ('bulk', 0.8, f"C {comp.value} entre {rail} et {autre}")
+                return ('decoupling', 0.7, f"C entre {rail} et {autre} (valeur inconnue)")
+
+    if not touche_interne:
+        return None
+    noeud = touche_interne[0]
+
+    # ── Résistances : pull-up / pull-down / série ─────────────────────────────
+    if comp.type == 'R' and len(nets) == 2:
+        autre = nets[1] if nets[0] == noeud else nets[0]
+        if is_ground_net(autre) or is_power_net(autre):
+            role = 'pull-down' if is_ground_net(autre) else 'pull-up'
+            classe = classifier_resistance(comp.value)
+            if classe == 'pull':
+                return (role, 0.9, f"R {comp.value} entre {noeud} et {autre}")
+            if classe == 'unknown':
+                return (role, 0.7, f"R entre {noeud} et {autre} (valeur inconnue)")
+            return ('unknown-neighbor', 0.4,
+                    f"R {comp.value} entre {noeud} et {autre} (trop faible pour un pull)")
+        if not _est_rail(autre):
+            # R série : score plein uniquement si la valeur est typique (1 ohm - 1k)
+            v = parse_valeur(comp.value)
+            score = 0.7 if (v is not None and 1.0 <= v <= 1000.0) else 0.55
+            return ('series-r', score, f"R en série sur {noeud} (vers {autre})")
+
+    # ── Diode de roue libre : anode sur nœud interne, cathode sur rail ───────
+    if comp.type == 'D':
+        anode, cathode = comp.pins.get('A'), comp.pins.get('K')
+        if anode in internes and cathode and is_power_net(cathode):
+            return ('flyback', 0.85, f"D anode sur {anode}, cathode sur {cathode}")
+
+    # ── Voisin direct sans rôle identifié ─────────────────────────────────────
+    return ('unknown-neighbor', 0.4, f"adjacent à {noeud}, rôle non identifié")
