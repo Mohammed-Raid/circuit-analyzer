@@ -346,15 +346,32 @@ def _refs_du_bloc(r) -> list:
     return refs
 
 
+def _ordre_des_circuits(resultats) -> list:
+    """
+    Ordre d'émission des blocs : les circuits du même îlot fonctionnel sont
+    consécutifs (si .ilots est disponible), sinon ordre de détection.
+    """
+    indices = list(range(len(resultats or [])))
+    ilots = getattr(resultats, 'ilots', [])
+    if not ilots:
+        return indices
+    par_ilot = [i for ilot in ilots for i in ilot['circuits']]
+    restants = [i for i in indices if i not in par_ilot]
+    return par_ilot + restants
+
+
 def _grouper_par_circuit(composants, resultats):
     """Regroupe les composants par circuit détecté. Composants non classifiés → bloc 'Divers'."""
     comp_par_ref = {c.ref: c for c in composants if _TYPE_VERS_FORME.get(c.type) is not None}
+    ordre = _ordre_des_circuits(resultats)
     type_du_ref: dict = {}
-    for r in resultats or []:
+    for i in ordre:
+        r = resultats[i]
         for ref in _refs_du_bloc(r):
             type_du_ref.setdefault(ref, r["circuit_type"])
     blocs = []
-    for r in resultats or []:
+    for i in ordre:
+        r = resultats[i]
         label = r["circuit_type"]
         b = _Bloc(label, [comp_par_ref[ref] for ref in _refs_du_bloc(r)
                           if ref in comp_par_ref and type_du_ref.get(ref) == label])

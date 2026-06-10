@@ -267,3 +267,38 @@ def test_rapport_etages_cp1252():
     rapport = generer_rapport(results, 'test.txt', len(refs), refs)
     section = rapport.split('=== STRUCTURE EN ETAGES ===')[1].split('===')[0]
     section.encode('cp1252')
+
+
+# =============================================================================
+# Export XML — ordre des blocs par îlot
+# =============================================================================
+
+from circuit_analyzer.xml import _grouper_par_circuit
+
+
+def test_xml_blocs_ordonnes_par_ilot():
+    comps = _circuit_deux_etages()
+    results = match_patterns(build_graph(comps))
+    blocs = _grouper_par_circuit(comps, results)
+    labels = [b.label for b in blocs if b.label != 'Divers']
+    # ordre attendu : les circuits dans l'ordre des îlots
+    attendu = [results[idx]['circuit_type']
+               for ilot in results.ilots for idx in ilot['circuits']]
+    assert labels == attendu
+
+def test_xml_divers_reste_dernier():
+    comps = _circuit_deux_etages() + [
+        Component('R9', 'R', {'1': 'NET_SEUL', '2': 'NET_SEUL2'}),
+    ]
+    results = match_patterns(build_graph(comps))
+    blocs = _grouper_par_circuit(comps, results)
+    if any(b.label == 'Divers' for b in blocs):
+        assert blocs[-1].label == 'Divers'
+
+def test_xml_compat_list_simple():
+    # une simple list (sans .ilots) doit garder l'ordre de détection historique
+    comps = _circuit_deux_etages()
+    results = match_patterns(build_graph(comps))
+    blocs_simple = _grouper_par_circuit(comps, list(results))
+    labels_simple = [b.label for b in blocs_simple if b.label != 'Divers']
+    assert labels_simple == [m['circuit_type'] for m in results]
