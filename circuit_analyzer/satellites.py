@@ -103,3 +103,54 @@ def _evaluer(comp, internes: set, rails: set):
 
     # ── Voisin direct sans rôle identifié ─────────────────────────────────────
     return ('unknown-neighbor', 0.4, f"adjacent à {noeud}, rôle non identifié")
+
+
+def _ajouter_satellite(match: dict, ref: str, role: str, score: float, reason: str) -> None:
+    """Ajoute un satellite au match avec son statut, et le warning si « possible »."""
+    status = 'sure' if score >= SEUIL_SUR else 'possible'
+    match['satellites'].append(
+        {'ref': ref, 'role': role, 'score': score, 'status': status, 'reason': reason}
+    )
+    if status == 'possible':
+        match.setdefault('warnings', []).append(
+            f"{ref} : rattachement possible uniquement, validation ingénieur nécessaire"
+        )
+
+
+def rattacher_satellites(circuits: list, graphe, composants_utilises: set) -> None:
+    """
+    Rattache les composants non classifiés aux circuits détectés.
+
+    Mute les matches en place : chaque match reçoit une clé 'satellites'
+    (liste, toujours présente). Les satellites sûrs (status 'sure') sont
+    ajoutés à composants_utilises ; les « possibles » restent libres.
+
+    Conflit (un candidat éligible pour plusieurs circuits) : rattaché au
+    meilleur score de rôle ; à égalité, au circuit avec la meilleure confidence.
+    """
+    for m in circuits:
+        m.setdefault('satellites', [])
+
+    infos = [(m, _noeuds_internes(m), _rails_alim(m)) for m in circuits]
+    tous = graphe.graph.get('components', {})
+
+    for ref, comp in tous.items():
+        if ref in composants_utilises:
+            continue
+        meilleur = None   # (cle_de_tri, match, role, score, reason)
+        for m, internes, rails in infos:
+            resultat = _evaluer(comp, internes, rails)
+            if resultat is None:
+                continue
+            role, score, reason = resultat
+            cle = (score, m.get('confidence', 0))
+            if meilleur is None or cle > meilleur[0]:
+                meilleur = (cle, m, role, score, reason)
+        if meilleur is None:
+            continue
+        _, m, role, score, reason = meilleur
+        if score < SEUIL_POSSIBLE:
+            continue
+        _ajouter_satellite(m, ref, role, score, reason)
+        if score >= SEUIL_SUR:
+            composants_utilises.add(ref)

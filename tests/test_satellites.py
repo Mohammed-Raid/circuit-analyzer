@@ -165,3 +165,110 @@ def test_reasons_sans_caracteres_hors_cp1252():
         resultat = _evaluer(comp, internes, rails)
         assert resultat is not None
         resultat[2].encode('cp1252')   # ne doit pas lever UnicodeEncodeError
+
+
+# =============================================================================
+# rattacher_satellites — phase leftovers
+# =============================================================================
+
+from circuit_analyzer.satellites import rattacher_satellites
+
+
+def _match(circuit_type, components, nodes, confidence=0.8):
+    return {'circuit_type': circuit_type, 'components': list(components),
+            'nodes': list(nodes), 'confidence': confidence, 'warnings': []}
+
+
+def test_leftover_rattache_comme_sur():
+    comps = [
+        Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
+        Component('R2', 'R', {'1': 'NET_BASE', '2': 'GND'}, '10k'),
+    ]
+    g = build_graph(comps)
+    circuits = [_match('Transistor en commutation', ['Q1'],
+                       ['NET_BASE', 'NET_COLL', 'GND'], confidence=0.85)]
+    utilises = {'Q1'}
+    rattacher_satellites(circuits, g, utilises)
+    sats = circuits[0]['satellites']
+    assert len(sats) == 1
+    assert sats[0]['ref'] == 'R2'
+    assert sats[0]['role'] == 'pull-down'
+    assert sats[0]['status'] == 'sure'
+    # Un satellite sûr est verrouillé
+    assert 'R2' in utilises
+
+def test_satellite_possible_non_verrouille_et_warning():
+    comps = [
+        Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
+        Component('C9', 'C', {'1': 'NET_COLL', '2': 'NET_X'}, '10nF'),
+    ]
+    g = build_graph(comps)
+    circuits = [_match('Transistor en commutation', ['Q1'],
+                       ['NET_BASE', 'NET_COLL', 'GND'])]
+    utilises = {'Q1'}
+    rattacher_satellites(circuits, g, utilises)
+    sats = circuits[0]['satellites']
+    assert len(sats) == 1
+    assert sats[0]['role'] == 'unknown-neighbor'
+    assert sats[0]['status'] == 'possible'
+    assert 'C9' not in utilises
+    # Correction 7 : warning explicite pour chaque satellite possible
+    assert any('C9' in w and 'validation ingénieur' in w
+               for w in circuits[0]['warnings'])
+
+def test_composant_deja_classifie_jamais_reexamine():
+    comps = [
+        Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
+        Component('R2', 'R', {'1': 'NET_BASE', '2': 'GND'}, '10k'),
+    ]
+    g = build_graph(comps)
+    circuits = [_match('Transistor en commutation', ['Q1'],
+                       ['NET_BASE', 'NET_COLL', 'GND'])]
+    utilises = {'Q1', 'R2'}          # R2 appartient déjà à un circuit
+    rattacher_satellites(circuits, g, utilises)
+    assert circuits[0]['satellites'] == []
+
+def test_composant_isole_non_rattache():
+    comps = [
+        Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
+        Component('R8', 'R', {'1': 'NET_LOIN', '2': 'NET_AILLEURS'}, '1k'),
+    ]
+    g = build_graph(comps)
+    circuits = [_match('Transistor en commutation', ['Q1'],
+                       ['NET_BASE', 'NET_COLL', 'GND'])]
+    utilises = {'Q1'}
+    rattacher_satellites(circuits, g, utilises)
+    assert circuits[0]['satellites'] == []
+
+def test_satellites_toujours_present_meme_vide():
+    g = build_graph([Component('Q1', 'Q', {'B': 'A', 'C': 'B', 'E': 'GND'})])
+    circuits = [_match('Transistor en commutation', ['Q1'], ['A', 'B', 'GND'])]
+    rattacher_satellites(circuits, g, {'Q1'})
+    assert 'satellites' in circuits[0]
+
+def test_conflit_egalite_va_a_la_meilleure_confiance():
+    comps = [
+        Component('R2', 'R', {'1': 'NET_A', '2': 'GND'}, '10k'),
+    ]
+    g = build_graph(comps)
+    c1 = _match('Circuit faible', ['Q1'], ['NET_A', 'GND'], confidence=0.7)
+    c2 = _match('Circuit fort',   ['Q2'], ['NET_A', 'GND'], confidence=0.95)
+    utilises = {'Q1', 'Q2'}
+    rattacher_satellites([c1, c2], g, utilises)
+    assert c1['satellites'] == []
+    assert len(c2['satellites']) == 1 and c2['satellites'][0]['ref'] == 'R2'
+
+def test_conflit_meilleur_score_gagne(monkeypatch):
+    import circuit_analyzer.satellites as sat
+    def faux_evaluer(comp, internes, rails):
+        if 'N_FAIBLE' in internes:
+            return ('role-faible', 0.5, 'x')
+        return ('role-fort', 0.9, 'y')
+    monkeypatch.setattr(sat, '_evaluer', faux_evaluer)
+    comps = [Component('R2', 'R', {'1': 'N_FAIBLE', '2': 'N_FORT'}, '1k')]
+    g = build_graph(comps)
+    c1 = _match('A', ['Q1'], ['N_FAIBLE'], confidence=0.99)
+    c2 = _match('B', ['Q2'], ['N_FORT'],   confidence=0.70)
+    rattacher_satellites([c1, c2], g, {'Q1', 'Q2'})
+    assert c1['satellites'] == []
+    assert c2['satellites'][0]['role'] == 'role-fort'
