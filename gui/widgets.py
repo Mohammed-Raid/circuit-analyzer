@@ -6,6 +6,8 @@ widgets.py — Briques d'interface partagées par les onglets Composants et Circ
   - BandeauEtat     : bandeau indiquant le mode du formulaire
     (nouveau / édition / lecture seule).
   - ligne_aide      : petite ligne de texte d'aide sous un champ.
+  - lier_molette    : rend une zone scrollable défilable à la molette partout,
+    y compris au-dessus d'enfants ajoutés dynamiquement.
 """
 import tkinter as tk
 import customtkinter as ctk
@@ -136,6 +138,9 @@ class BandeauEtat:
     def pack(self, **kwargs):
         self._frame.pack(**kwargs)
 
+    def grid(self, **kwargs):
+        self._frame.grid(**kwargs)
+
     def definir(self, mode: str, texte: str) -> None:
         fond, couleur = self._STYLES[mode]
         self._frame.configure(fg_color=fond)
@@ -149,3 +154,37 @@ def ligne_aide(parent, texte: str) -> ctk.CTkLabel:
                          text_color=MUTED, justify="left", anchor="w")
     label.pack(anchor="w", pady=(0, 8))
     return label
+
+
+def lier_molette(zone_scrollable) -> None:
+    """Rend `zone_scrollable` (un CTkScrollableFrame) défilable à la molette
+    où que soit le curseur — y compris au-dessus d'enfants ajoutés après coup.
+
+    CTkScrollableFrame ne lie la molette qu'au canvas et aux enfants présents à
+    la construction ; les widgets ajoutés ensuite (lignes de broches, cases à
+    cocher) ou des CTkEntry « avalent » l'évènement au lieu de le transmettre.
+    On contourne en reliant le défilement récursivement sur la zone et tous ses
+    descendants. Idempotent : on peut la rappeler après chaque ajout/retrait —
+    les anciennes liaisons sont remplacées (pas accumulées), les nouvelles
+    ajoutées.
+    """
+    canvas = getattr(zone_scrollable, "_parent_canvas", None)
+    if canvas is None:
+        return
+
+    def _defiler(event):
+        if getattr(event, "num", 0) == 4:        # Linux : molette haut
+            canvas.yview_scroll(-1, "units")
+        elif getattr(event, "num", 0) == 5:      # Linux : molette bas
+            canvas.yview_scroll(1, "units")
+        else:                                    # Windows / macOS
+            canvas.yview_scroll(int(-event.delta / 120), "units")
+
+    def _relier(widget):
+        widget.bind("<MouseWheel>", _defiler)    # Windows / macOS
+        widget.bind("<Button-4>", _defiler)      # Linux
+        widget.bind("<Button-5>", _defiler)      # Linux
+        for enfant in widget.winfo_children():
+            _relier(enfant)
+
+    _relier(zone_scrollable)

@@ -3,7 +3,8 @@ from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
 from custom_circuits.loader import (
     load_custom_circuits, save_custom_circuits,
-    CustomCircuitPattern, get_custom_patterns, CONDITION_LABELS
+    CustomCircuitPattern, get_custom_patterns,
+    CONDITION_LABELS, CONDITION_DESCRIPTIONS,
 )
 
 
@@ -95,6 +96,13 @@ def test_condition_labels_list():
     assert 'C connecté à GND' in CONDITION_LABELS
     assert 'Émetteur/Source à GND' in CONDITION_LABELS
     assert len(CONDITION_LABELS) >= 5
+
+
+def test_every_condition_has_a_description():
+    # L'onglet Circuits affiche une description sous chaque case : aucune
+    # condition ne doit rester sans explication (sinon case cryptique).
+    manquantes = [l for l in CONDITION_LABELS if not CONDITION_DESCRIPTIONS.get(l)]
+    assert manquantes == [], f"Conditions sans description : {manquantes}"
 
 
 def test_get_custom_patterns_returns_empty_when_no_file():

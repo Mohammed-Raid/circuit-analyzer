@@ -19,6 +19,17 @@ CONDITION_LABELS = [
     "Feedback OUT→IN-",
 ]
 
+# Explication courte affichée sous chaque case dans l'onglet Circuits : les
+# libellés ci-dessus sont trop laconiques pour un non-initié. Toute entrée de
+# CONDITION_LABELS doit avoir sa description ici (garanti par un test).
+CONDITION_DESCRIPTIONS = {
+    "C connecté à GND":       "un condensateur du circuit touche la masse",
+    "R en série":             "une résistance partage un nœud avec un autre composant",
+    "R vers alimentation":    "une résistance est reliée à un rail d'alimentation",
+    "Émetteur/Source à GND":  "l'émetteur (BJT) ou la source (MOSFET) est à la masse",
+    "Feedback OUT→IN-":       "la sortie de l'AOP reboucle sur l'entrée inverseuse",
+}
+
 
 def load_custom_circuits(path=None) -> list[dict]:
     p = Path(path) if path is not None else chemin_custom_circuits()
