@@ -38,13 +38,20 @@ TYPES_COMPOSANTS = {
 COMPONENT_TYPES = TYPES_COMPOSANTS
 
 
-def charger_bibliotheque(chemin_json: str = 'component_library.json') -> dict:
+def chemin_bibliotheque() -> Path:
+    """Chemin par défaut de component_library.json : à la racine de
+    l'application (à côté de l'exe une fois gelée), pas au CWD."""
+    from circuit_analyzer.chemins import racine_application
+    return racine_application() / 'component_library.json'
+
+
+def charger_bibliotheque(chemin_json=None) -> dict:
     """
     Charge la bibliothèque de composants.
     Commence par les types par défaut, puis applique les modifications du fichier JSON.
     """
     bibliotheque = copy.deepcopy(TYPES_COMPOSANTS)
-    chemin = Path(chemin_json)
+    chemin = Path(chemin_json) if chemin_json is not None else chemin_bibliotheque()
     if chemin.exists():
         with open(chemin, encoding='utf-8') as f:
             personnalisations = json.load(f)
@@ -52,7 +59,7 @@ def charger_bibliotheque(chemin_json: str = 'component_library.json') -> dict:
     return bibliotheque
 
 
-def get_pins(type_comp: str, chemin_json: str = 'component_library.json') -> list[str]:
+def get_pins(type_comp: str, chemin_json=None) -> list[str]:
     """Retourne les noms de broches pour un type de composant donné."""
     bib = charger_bibliotheque(chemin_json)
     entree = bib.get(type_comp)

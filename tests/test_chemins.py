@@ -34,3 +34,12 @@ def test_chemin_custom_circuits_mode_normal():
     # Hors gel : custom_circuits.json à la racine du projet, plus au CWD.
     assert loader.chemin_custom_circuits() == \
         chemins.racine_application() / 'custom_circuits.json'
+
+
+def test_chemin_bibliotheque_suit_la_racine(monkeypatch):
+    from circuit_analyzer.composant import chemin_bibliotheque
+    monkeypatch.setattr(sys, 'frozen', True, raising=False)
+    monkeypatch.setattr(sys, 'executable',
+                        r'C:\Apps\AnalyseurCircuits\AnalyseurCircuits.exe')
+    assert chemin_bibliotheque() == \
+        Path(r'C:\Apps\AnalyseurCircuits\component_library.json')
