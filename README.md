@@ -1,19 +1,26 @@
 # Circuit Analyzer
 
 Outil d'analyse automatique de circuits électroniques industriels.  
-Charge un fichier netlist, identifie les sous-circuits connus (filtres, AOP, transistors, alimentations…), et génère un rapport clair.
+Charge un fichier netlist ou un schéma XML, identifie les sous-circuits connus, et génère un rapport avec score de confiance.
 
 ---
 
 ## Fonctionnalités
 
 - **Analyse de netlists** au format texte — compatible exports KiCad et formats maison
-- **23 patterns reconnus** : filtres RC/LC, AOP (9 montages), transistors BJT/MOSFET, redresseurs, protections…
-- **Interface graphique** (Tkinter) pour les techniciens sans connaissance Python
+- **Import XML BoardSCH** — lit directement les schémas du logiciel de design (noms FR/EN acceptés)
+- **27 patterns reconnus** : filtres RC/LC, AOP (9 montages), transistors BJT/MOSFET, redresseurs, protections…
+- **Score de confiance** — chaque circuit détecté reçoit un score (élevé/moyen/faible) avec les raisons et les avertissements
+- **Composants satellites** — les composants autour d'un circuit détecté (pull-up, découplage, roue libre, R série…) lui sont rattachés avec un statut sûr/possible
+- **Îlots fonctionnels** — le schéma est découpé en étages (connexité hors rails) : rapport, export XML et GUI montrent la structure en blocs fonctionnels
+- **Détection des ambiguïtés** — avertissements automatiques pour les topologies polyvalentes (LED/ESD, snubber/filtre, diviseur sans rails connus…)
+- **Parser de valeurs** — calcule la fréquence de coupure des filtres RC/LC à partir des valeurs réelles
+- **Alias de nets configurables** — `config/net_aliases.json` définit GND, alimentation et terre de protection (PE ≠ GND)
+- **Interface graphique** (CustomTkinter) pour les techniciens sans connaissance Python
+- **Schémas visuels** — rendu automatique de chaque circuit détecté (schemdraw)
+- **Export XML BoardSCH groupé** — schéma organisé par circuit détecté, ouvrable dans le logiciel de design
 - **Patterns personnalisés** — ajouter de nouveaux circuits sans toucher au code
-- **Bibliothèque de composants extensible** — ajouter de nouveaux types de composants
-- **Résolution hiérarchique** — les circuits complexes ont priorité sur les circuits simples (pas de faux positifs)
-- **Taux de classification moyen : 85%** sur 12 circuits industriels réels
+- **Résolution hiérarchique** — les circuits complexes ont priorité sur les circuits simples
 
 ---
 
@@ -21,7 +28,11 @@ Charge un fichier netlist, identifie les sous-circuits connus (filtres, AOP, tra
 
 ### Prérequis
 - Python 3.10 ou supérieur
-- Aucune dépendance externe (Tkinter est inclus dans Python)
+- Dépendances : `customtkinter`, `schemdraw`, `matplotlib`, `networkx`
+
+```bash
+pip install -r requirements.txt
+```
 
 ### Étapes
 
@@ -49,20 +60,51 @@ La fenêtre s'ouvre avec 3 onglets :
 
 | Onglet | Rôle |
 |--------|------|
-| **Analyser** | Charger un fichier netlist et lancer l'analyse |
+| **Analyser** | Charger un fichier netlist (`.txt`) ou schéma (`.xml`) et lancer l'analyse |
 | **Circuits** | Voir les circuits reconnus, ajouter des circuits personnalisés |
 | **Composants** | Ajouter de nouveaux types de composants à la bibliothèque |
 
 **Procédure d'analyse :**
-1. Onglet **Analyser** → cliquer **Parcourir** → sélectionner votre fichier `.txt`
+1. Onglet **Analyser** → cliquer **Parcourir** → sélectionner votre fichier `.txt` ou `.xml`
 2. Cliquer **Analyser**
-3. Le rapport s'affiche dans la zone de texte
+3. Le rapport s'affiche avec les circuits détectés, leur score de confiance et les avertissements
 4. Optionnel : cliquer **Sauvegarder le rapport** pour exporter en `.txt`
+5. Optionnel : cliquer **Exporter XML (design)** pour obtenir un schéma BoardSCH organisé par circuit
 
 ### Ligne de commande
 
 ```bash
 python main.py mon_circuit.txt --output rapport.txt
+```
+
+---
+
+## Distribution Windows (.exe)
+
+L'application se distribue sans Python via PyInstaller :
+
+```bash
+pip install pyinstaller
+python tools/build_exe.py
+```
+
+Le script construit `dist/AnalyseurCircuits-<version>.zip` et valide l'exe
+par un test de fumée (analyse de `relay_driver.xml`). Le zip extrait contient :
+
+```
+AnalyseurCircuits/
+├── AnalyseurCircuits.exe      ← interface graphique (double-clic)
+├── analyseur-cli.exe          ← ligne de commande (scripts, traitement par lots)
+├── config/net_aliases.json   ← alias de nets, éditable
+└── _internal/                 ← DLLs et bibliothèques (partagées par les 2 exes)
+```
+
+Le dossier est **portable** (clé USB, partage réseau) : `net_aliases.json`
+et `custom_circuits.json` (créé au premier circuit personnalisé) vivent à
+côté des exes et sont pris en compte au lancement suivant.
+
+```bash
+analyseur-cli.exe mon_circuit.xml --output rapport.txt
 ```
 
 ---
@@ -109,46 +151,181 @@ U1   NET_INP   NET_INM   NET_OUT   VCC   GND
 
 ---
 
-## Circuits reconnus
+## Circuits reconnus (27)
 
 ### Montages AOP
-| Circuit | Topologie détectée |
-|---------|--------------------|
-| Amplificateur différentiel | 4 résistances en pont + AOP |
-| Amplificateur sommateur | ≥2 R d'entrée + R feedback |
-| Intégrateur | R entrée + C feedback |
-| Dérivateur | C entrée + R feedback |
-| Trigger de Schmitt | R feedback positif (OUT→IN+) |
-| Amplificateur non-inverseur | R feedback + R vers GND |
-| Amplificateur inverseur | R entrée + R feedback |
-| Suiveur de tension | IN− directement relié à OUT |
-| Comparateur | AOP sans feedback |
+| Circuit | Confiance typique | Topologie détectée |
+|---------|------------------|--------------------|
+| Amplificateur différentiel | élevée | 4 résistances en pont + AOP |
+| Amplificateur sommateur | élevée | ≥2 R d'entrée + R feedback |
+| Intégrateur | élevée | R entrée + C feedback |
+| Dérivateur | élevée | C entrée + R feedback |
+| Bascule de Schmitt | élevée | R feedback positif (OUT→IN+) |
+| Amplificateur non-inverseur | élevée | R feedback + R vers GND |
+| Amplificateur inverseur | élevée | R entrée + R feedback |
+| Suiveur de tension | élevée | IN− directement relié à OUT |
+| Comparateur | moyenne | AOP sans feedback |
 
 ### Transistors
-| Circuit | Topologie détectée |
-|---------|--------------------|
-| Transistor en commutation | BJT + R de base + émetteur GND |
-| Amplificateur émetteur commun | BJT + R collecteur + R base |
-| Miroir de courant BJT | 2 BJT base commune + émetteurs GND |
-| MOSFET en commutation | MOSFET + R de grille + source GND |
-| MOSFET côté haut | MOSFET + drain sur rail + R de grille |
-| Driver relais | Relais K piloté par BJT/MOSFET |
+| Circuit | Confiance typique | Topologie détectée |
+|---------|------------------|--------------------|
+| Transistor en commutation | élevée | BJT + R de base + émetteur GND |
+| Amplificateur émetteur commun | élevée | BJT + R collecteur + R base |
+| Miroir de courant BJT | élevée | 2 BJT base commune + émetteurs GND |
+| MOSFET en commutation | élevée | MOSFET + R de grille + source GND |
+| MOSFET côté haut | élevée | MOSFET + drain sur rail + R de grille |
+| Commande de relais | élevée | Relais K piloté par BJT/MOSFET |
 
 ### Circuits passifs et alimentation
-| Circuit | Topologie détectée |
-|---------|--------------------|
-| Pont redresseur (Graetz) | 4 diodes en pont |
-| Redresseur simple alternance | Diode cathode + R charge vers GND |
-| Détecteur de crête | Diode cathode + C vers GND |
-| Diode de roue libre | Cathode sur rail, anode sur nœud commutation |
-| Diode de protection ESD | Anode ou cathode à GND |
-| Filtre RC passe-bas | R série + C vers GND |
-| Filtre RC passe-haut | C série + R vers GND |
-| Filtre LC | L série + C vers GND |
-| Pont diviseur de tension | 2 R en série |
-| Condensateur de découplage | C entre alimentation et GND |
-| Snubber RC | R et C en parallèle |
-| Protection par fusible | Fusible F seul |
+| Circuit | Confiance typique | Topologie détectée |
+|---------|------------------|--------------------|
+| Pont redresseur (Graetz) | élevée | 4 diodes en pont |
+| Redresseur simple alternance | moyenne | Diode cathode + R charge vers GND |
+| Détecteur de crête | moyenne | Diode cathode + C vers GND |
+| Diode de roue libre | moyenne | Cathode sur rail, anode sur nœud commutation |
+| Diode de protection ESD | faible/moyenne | Anode ou cathode à GND |
+| Filtre RC passe-bas | élevée | R série + C vers GND |
+| Filtre RC passe-haut | élevée | C série + R vers GND |
+| Filtre LC | élevée | L série + C vers GND |
+| Pont diviseur de tension | élevée si VCC/GND, moyenne sinon | 2 R en série |
+| Condensateur de découplage | élevée si entre rails | C entre alimentation et GND |
+| Absorbeur RC | moyenne | R et C en parallèle |
+| Protection par fusible | élevée | Fusible F seul |
+
+---
+
+## Score de confiance
+
+Chaque circuit détecté expose :
+
+```
+[1] Filtre RC passe-bas
+    Confiance    : élevée (90%) — filtrage
+    Composants   : R1, C1
+    Nœuds        : NET_IN -> NET_MID -> GND
+    Satellites sûrs     : R3 (pull-up - R 47k entre NET_MID et VCC)
+    Satellites possibles: C9 ? (adjacent à NET_MID, rôle non identifié)
+    Raisons      : Résistance série + condensateur vers GND ;
+                   Fréquence de coupure ~ 159.2 Hz (R=10k, C=100nF)
+```
+
+Le rapport se termine par une section **À vérifier (rattachement possible)** listant
+les satellites incertains, chacun accompagné d'un avertissement
+*« rattachement possible uniquement, validation ingénieur nécessaire »*.
+
+### Composants satellites
+
+Après la détection des patterns, une passe dédiée rattache les composants restants :
+
+| Rôle | Condition | Statut typique |
+|------|-----------|----------------|
+| pull-up / pull-down | R >= 10k entre un nœud du circuit et un rail | sûr |
+| decoupling / bulk | C entre le rail d'alim du circuit et GND | sûr |
+| flyback | D cathode sur rail, anode sur nœud de commutation | sûr |
+| series-r | R en série (1 Ω – 1 kΩ) sur un nœud du circuit | sûr |
+| unknown-neighbor | voisin direct sans rôle identifiable | possible |
+
+Les circuits annexes mono-composant déjà détectés (roue libre, découplage, ESD)
+adjacents à un circuit multi-composants sont absorbés comme satellites de celui-ci.
+Un découplage qui ne partage que des rails avec son hôte n'est jamais « sûr ».
+Seuls les satellites **sûrs** rejoignent le bloc du circuit dans l'export XML —
+les « possibles » restent dans le bloc Divers.
+
+---
+
+## Îlots fonctionnels (structure en étages)
+
+En retirant les rails (GND / alimentations / PE) du graphe, les composants se
+séparent en groupes connexes : les **îlots**. Chaque îlot est nommé d'après la
+catégorie majoritaire de ses circuits, et les composants rail-to-rail forment
+un îlot par rail d'alimentation :
+
+```
+=== STRUCTURE EN ETAGES ===
+
+Îlot 1 - commutation (3 circuits, 12 composants)
+    [1] Commande de relais : K1, Q1 (+ D1)
+    [2] Commande de relais : K2, Q2 (+ D3)
+    Autres : R13
+Îlot 2 - alimentation VCC_12V (3 composants)
+    C1, C2, C5
+Îlot 3 - non identifié (2 composants)
+    X1, X2
+```
+
+La même structure pilote l'**ordre des blocs dans l'export XML** (les circuits
+d'un même étage sont placés côte à côte) et le **panneau repliable « Structure
+en étages »** de l'onglet Analyser.
+
+Les **avertissements** signalent les ambiguïtés :
+- `Diode de protection ESD` → *"Topologie compatible LED / TVS / Zener selon le contexte"*
+- `Pont diviseur` sans VCC/GND identifiés → *"Peut être un pont résistif quelconque"*
+- `Absorbeur RC` → *"Topologie compatible avec un filtre ou une compensation"*
+- `Filtre RC` sans valeurs → *"Fréquence de coupure non vérifiable"*
+
+---
+
+## Performance
+
+L'analyse est calibrée pour les netlists industrielles (mesures avec
+`tools/benchmark.py`, étages de relais répliqués) :
+
+| Composants | Analyse | Avant optimisation |
+|-----------:|--------:|-------------------:|
+| 500 | 0.12 s | 9.56 s |
+| 1000 | 0.19 s | ~45 s |
+| 2000 | 0.75 s | 206.87 s |
+| 5000 | 3.28 s | 1039.94 s (17 min) |
+
+Les correctifs sont électriquement justifiés en plus d'être algorithmiques :
+le nœud milieu d'un pont diviseur et la jonction d'un filtre RC/LC sont des
+nœuds **signal** — les énumérer sur GND/VCC produisait des milliers de faux
+matches quadratiques. Le miroir de courant n'apparie que les BJT de base
+commune, l'enrichissement n'est calculé que pour les circuits retenus, et la
+classification des nets est mémoïsée.
+
+- `python tools/benchmark.py` — tableau des temps sur netlists synthétiques
+  (100 à 5000 composants).
+- `tests/test_performance.py` — garde-fou dans la suite : 1000 composants
+  doivent s'analyser en moins de 5 s.
+- Le rapport plafonne l'affichage des matches supprimés à 50 lignes
+  (le total exact reste indiqué).
+
+---
+
+## Configuration des alias de nets
+
+Le fichier `config/net_aliases.json` définit les noms reconnus pour chaque catégorie :
+
+```json
+{
+  "ground": ["GND", "AGND", "DGND", "PGND", "0", "0V", "COM", "VSS"],
+  "power":  ["VCC", "VDD", "VIN", "VBAT", "+5V", "+3V3", "AVCC", ...],
+  "protective_earth": ["PE", "EARTH", "CHASSIS"]
+}
+```
+
+> **Important** : `PE`/`EARTH`/`CHASSIS` ne sont **jamais** traités comme `GND`.  
+> Ils apparaissent comme avertissement dans le rapport si un circuit en dépend.
+
+---
+
+## Import XML BoardSCH
+
+Les noms de composants FR et EN sont acceptés :
+
+| FR | EN |
+|----|----|
+| Résistance | Resistor |
+| Condensateur / Capa | Capacitor |
+| Bobine / Inductance | Inductor |
+| Diode | LED / Zener / TVS |
+| AOP | OpAmp |
+| Transistor | BJT |
+| Relais | Relay |
+| Fusible | Fuse |
+
+Les composants avec un nom inconnu sont conservés sous le type `X` (visibles dans le rapport et dans le bloc *Divers* de l'export XML) sans faire planter l'analyse.
 
 ---
 
@@ -161,40 +338,20 @@ U1   NET_INP   NET_INM   NET_OUT   VCC   GND
 5. Cocher les conditions topologiques applicables
 6. Cliquer **Sauvegarder**
 
-Le circuit est immédiatement actif pour les analyses suivantes.
-
----
-
-## Ajouter un type de composant (via l'interface)
-
-1. Ouvrir l'onglet **Composants**
-2. Cliquer **+ Nouveau**
-3. Renseigner le préfixe (ex : `IC`), le nom, et les broches
-4. Cliquer **Sauvegarder**
-
----
-
-## Résultats sur circuits industriels
-
-Tests effectués sur 12 netlists industrielles réelles (alimentations, commande moteur, conditionnement signal, protection) :
-
-| Métrique | Valeur |
-|----------|--------|
-| Taux de classification moyen | **85%** |
-| Meilleur résultat | 96% (régulateur LDO) |
-| Résultat typique | 83–90% |
-
 ---
 
 ## Limitations connues
 
 Ces topologies ne sont **pas détectables** depuis la netlist seule :
 
-- **Inductances isolées** — impossible de distinguer une self de stockage buck d'un filtre de mode commun sans contexte
+- **Inductances isolées** — impossible de distinguer une self de stockage buck d'un filtre sans contexte
 - **Condensateurs bootstrap** — aucune extrémité sur GND ou alimentation connue
 - **Transistors en source de courant** — émetteur/source sur nœud flottant non reconnu
-- **LEDs indicateurs** — topologiquement identiques à un redresseur simple alternance
-- **Condensateurs Y vers PE** — la terre de protection (PE) n'est pas assimilée à GND pour des raisons de sécurité
+- **LEDs indicateurs** — topologiquement identiques à un redresseur simple alternance (avertissement généré)
+- **Satellites « possibles »** — un voisin sans rôle identifiable est signalé (score faible, section À vérifier) mais jamais intégré au schéma exporté
+- **Valeurs avec tolérance** — `"10k ±5%"` n'est pas parsé ; seule la valeur nominale est extraite si possible
+
+> Cet outil est une aide à l'analyse — il ne remplace pas une validation par un ingénieur électronique qualifié.
 
 ---
 
@@ -204,7 +361,7 @@ Ces topologies ne sont **pas détectables** depuis la netlist seule :
 python -m pytest -q
 ```
 
-144 tests automatisés couvrant le parseur, les patterns, l'intégration bout en bout et les circuits industriels.
+286 tests automatisés couvrant le parseur, les 27 patterns, le score de confiance, les composants satellites, les îlots fonctionnels, la performance, les chemins d'application, les alias de nets, le parser de valeurs, le générateur XML, l'import XML et les circuits industriels.
 
 ---
 
@@ -212,28 +369,49 @@ python -m pytest -q
 
 ```
 circuit_analyzer/
-├── parser.py              ← lecture et validation de la netlist
-├── graph_builder.py       ← construction du graphe NetworkX
-├── matcher.py             ← résolution hiérarchique des patterns
-├── reporter.py            ← génération du rapport texte
-├── component_library/     ← bibliothèque de composants (base + JSON)
-└── patterns/
-    ├── base.py            ← Pattern ABC, is_gnd(), is_power()
-    ├── basic_circuits.py  ← filtres, redresseurs, passifs
-    ├── opamp.py           ← montages AOP
-    └── transistor.py      ← BJT, MOSFET, relais
+├── composant.py           ← lecture netlist + graphe NetworkX + bibliothèque
+├── detecteur.py           ← 27 fonctions de détection + score de confiance
+├── satellites.py          ← rattachement des composants satellites
+├── ilots.py               ← îlots fonctionnels (structure en étages)
+├── rapport.py             ← génération du rapport texte
+├── xml.py                 ← import/export BoardSCH XML
+│
+├── parser.py              ← alias → composant.py  (compat)
+├── graph_builder.py       ← alias → composant.py  (compat)
+├── matcher.py             ← alias → detecteur.py  (compat)
+├── reporter.py            ← alias → rapport.py    (compat)
+├── xml_generator.py       ← alias → xml.py        (compat)
+├── xml_parser.py          ← alias → xml.py        (compat)
+│
+├── patterns/
+│   ├── base.py            ← is_ground_net / is_power_net / is_protective_earth_net
+│   ├── basic_circuits.py  ← wrappers → detecteur.py
+│   ├── opamp.py           ← wrappers → detecteur.py
+│   └── transistor.py      ← wrappers → detecteur.py
+│
+├── component_library/     ← redirects → composant.py
+└── value_parser.py        ← parse 10k / 100nF / 1mH / 4K7 / 0R…
+
+config/
+└── net_aliases.json       ← alias GND / alimentation / terre de protection
 
 gui/
-├── app_window.py          ← fenêtre principale Tkinter
+├── app_window.py          ← fenêtre principale CustomTkinter
 ├── tab_analyze.py         ← onglet Analyser
 ├── tab_circuits.py        ← onglet Circuits
-└── tab_components.py      ← onglet Composants
+├── tab_components.py      ← onglet Composants
+├── circuit_viewer.py      ← rendu schemdraw
+└── theme.py               ← palette de couleurs
 
 custom_circuits/
 └── loader.py              ← circuits personnalisés (JSON)
 
-simulations/               ← 12 netlists industrielles de test
-tests/                     ← suite de tests pytest (144 tests)
+circuits_industriels/      ← schémas BoardSCH générés (12 circuits)
+tests/                     ← 200 tests pytest
+docs/
+└── explication_logiciel.md ← explication pédagogique du fonctionnement
+
 app.py                     ← point d'entrée interface graphique
 main.py                    ← point d'entrée ligne de commande
+netlist_to_xml.py          ← convertit netlists → circuits_industriels/
 ```

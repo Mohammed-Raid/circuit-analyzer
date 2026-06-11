@@ -1,20 +1,13 @@
 import tkinter as tk
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
-from circuit_analyzer.parser import parse_file
-from circuit_analyzer.xml_parser import parse_xml
-from circuit_analyzer.graph_builder import build_graph
-from circuit_analyzer.matcher import match_patterns
-from circuit_analyzer.reporter import generate
+from circuit_analyzer.composant import lire_netlist as parse_file, construire_graphe as build_graph
+from circuit_analyzer.xml import lire_xml as parse_xml, generer_xml as components_to_xml
+from circuit_analyzer.detecteur import analyser as match_patterns
+from circuit_analyzer.rapport import generate
 from gui.circuit_viewer import show_circuit
 
-BG     = "#070d1a"
-CARD   = "#1e293b"
-CARD2  = "#0f172a"
-BORDER = "#263347"
-TEXT   = "#f1f5f9"
-MUTED  = "#64748b"
-BLUE   = "#3b82f6"
+from gui.theme import BG, CARD, CARD2, BORDER, TEXT, MUTED, BLUE
 
 # Circuit type → (bg, text, icon)
 TYPE_COLORS = {
@@ -26,7 +19,7 @@ TYPE_COLORS = {
     "Filtre":      ("#0d47a1", "#90caf9", "📊"),
     "Condensateur":("#004d40", "#80cbc4", "⚡"),
     "Diviseur":    ("#33691e", "#c5e1a5", "⚖"),
-    "Snubber":     ("#e65100", "#ffcc80", "🛡"),
+    "Absorbeur":   ("#e65100", "#ffcc80", "🛡"),
     "Protection":  ("#b71c1c", "#ef9a9a", "🛡"),
     "Fusible":     ("#b71c1c", "#ef9a9a", "🛡"),
     "Diode":       ("#f57f17", "#fff176", "💡"),
@@ -50,6 +43,7 @@ class TabAnalyze:
         self._all_refs = []
         self._unclassified = []
         self._comp_info = {}
+        self._comps = []          # parsed Component objects (for XML export)
         self._build()
 
     def _build(self):
@@ -149,13 +143,11 @@ class TabAnalyze:
         self._results_view.bind("<Configure>", self._on_scroll_configure)
         self._canvas.bind("<Configure>", self._on_canvas_resize)
 
-        # Mouse wheel binding
-        self._canvas.bind("<MouseWheel>",
-            lambda e: self._canvas.yview_scroll(
-                int(-1 * (e.delta / 120)), "units"))
-        self._results_view.bind("<MouseWheel>",
-            lambda e: self._canvas.yview_scroll(
-                int(-1 * (e.delta / 120)), "units"))
+        # Mousewheel active only while cursor is inside the scroll area
+        scroll_outer.bind("<Enter>", lambda _: self._canvas.bind_all(
+            "<MouseWheel>", self._on_mousewheel))
+        scroll_outer.bind("<Leave>", lambda _: self._canvas.unbind_all(
+            "<MouseWheel>"))
 
         scroll_outer.grid_remove()   # hide until first analysis
         self._scroll_outer = scroll_outer
@@ -179,6 +171,12 @@ class TabAnalyze:
                       fg_color="#1e293b", hover_color="#263347",
                       border_width=1, border_color=BORDER,
                       command=self._copy).pack(side="left", padx=8, pady=8)
+        ctk.CTkButton(bar_inner, text="🔧  Exporter XML (design)",
+                      width=190, height=34, corner_radius=8,
+                      font=ctk.CTkFont("Segoe UI", 11),
+                      fg_color="#1e293b", hover_color="#263347",
+                      border_width=1, border_color=BORDER,
+                      command=self._export_xml).pack(side="left", padx=8, pady=8)
 
     # ── Actions ──────────────────────────────────────────────────────────────
 
@@ -218,6 +216,7 @@ class TabAnalyze:
             self._report_text = report
             self._results     = results
             self._all_refs    = all_refs
+            self._comps       = comps
 
             classified  = {ref for r in results for ref in r["components"]}
             unclassified = [r for r in all_refs if r not in classified]
@@ -232,7 +231,7 @@ class TabAnalyze:
             self._s_unc.update(str(len(unclassified)))
 
             self._stats_row.pack(fill="x", padx=20, before=self._body)
-            self._scroll_outer.grid()   # show scroll container
+            self._scroll_outer.grid()
             # Build comp_info dict for the schematic viewer
             self._comp_info = {
                 c.ref: {"type": c.type, "value": c.value, "pins": c.pins}
@@ -242,10 +241,19 @@ class TabAnalyze:
 
         except FileNotFoundError:
             messagebox.showerror("Erreur", f"Fichier introuvable :\n{path}")
+            self._stats_row.pack_forget()
+            self._scroll_outer.grid_remove()
+            self._empty_state.grid()
         except ValueError as e:
             messagebox.showerror("Erreur netlist", str(e))
+            self._stats_row.pack_forget()
+            self._scroll_outer.grid_remove()
+            self._empty_state.grid()
         except Exception as e:
             messagebox.showerror("Erreur", str(e))
+            self._stats_row.pack_forget()
+            self._scroll_outer.grid_remove()
+            self._empty_state.grid()
         finally:
             self._analyze_btn.configure(state="normal", text="▶  Analyser")
 
@@ -262,6 +270,27 @@ class TabAnalyze:
                 f.write(self._report_text)
             messagebox.showinfo("Succès", f"Rapport sauvegardé :\n{path}")
 
+    def _export_xml(self):
+        if not self._comps:
+            messagebox.showinfo("Info", "Analysez d'abord un circuit.")
+            return
+        path = filedialog.asksaveasfilename(
+            defaultextension=".xml",
+            filetypes=[("Schéma BoardSCH", "*.xml")],
+            title="Exporter le schéma pour le logiciel de design",
+        )
+        if not path:
+            return
+        try:
+            xml = components_to_xml(self._comps, results=self._results)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(xml)
+            messagebox.showinfo("Succès ✓",
+                f"Schéma XML exporté :\n{path}\n\n"
+                "Ouvrable dans le logiciel de design.")
+        except Exception as e:
+            messagebox.showerror("Erreur export XML", str(e))
+
     def _on_scroll_configure(self, _=None):
         self._canvas.configure(
             scrollregion=self._canvas.bbox("all"))
@@ -271,17 +300,17 @@ class TabAnalyze:
 
     def _copy(self):
         if not self._report_text:
+            messagebox.showinfo("Info", "Aucun rapport à copier.")
             return
         self.frame.clipboard_clear()
         self.frame.clipboard_append(self._report_text)
+        messagebox.showinfo("Copié ✓", "Rapport copié dans le presse-papiers.")
 
     # ── Card rendering ───────────────────────────────────────────────────────
 
-    def _bind_scroll(self, widget):
-        """Propagate mouse wheel to canvas for any child widget."""
-        widget.bind("<MouseWheel>",
-            lambda e: self._canvas.yview_scroll(
-                int(-1 * (e.delta / 120)), "units"))
+    def _on_mousewheel(self, event):
+        """Single handler — registered once on _results_view so every child inherits it."""
+        self._canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def _render_cards(self, results: list, unclassified: list):
         # Clear old cards
@@ -289,6 +318,9 @@ class TabAnalyze:
             w.destroy()
 
         self._empty_state.grid_remove()
+
+        # Structure en étages (îlots fonctionnels)
+        self._render_islands(results)
 
         # Group by type categories
         groups = {}
@@ -317,9 +349,29 @@ class TabAnalyze:
                 card = _CircuitCard(grid, item, self._comp_info)
                 card.grid(row=i // 2, column=i % 2,
                           sticky="ew", padx=4, pady=4)
-                self._bind_scroll(card)
 
         # Unclassified section
+        self._render_unclassified(unclassified)
+
+    def _render_islands(self, results):
+        """Panneau repliable « Structure en étages » (îlots fonctionnels)."""
+        ilots = getattr(results, 'ilots', [])
+        if not ilots:
+            return
+
+        hdr = ctk.CTkFrame(self._results_view, fg_color="transparent")
+        hdr.pack(fill="x", padx=16, pady=(14, 2))
+        ctk.CTkLabel(hdr, text="STRUCTURE EN ÉTAGES",
+                     font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                     text_color=BLUE).pack(side="left")
+        ctk.CTkFrame(hdr, height=1, fg_color=BORDER).pack(
+            side="left", fill="x", expand=True, padx=10)
+
+        for ilot in ilots:
+            _IslandSection(self._results_view, ilot, results).pack(
+                fill="x", padx=16, pady=3)
+
+    def _render_unclassified(self, unclassified: list):
         if unclassified:
             uch = ctk.CTkFrame(self._results_view,
                                fg_color="transparent")
@@ -327,7 +379,7 @@ class TabAnalyze:
             ctk.CTkLabel(uch, text="NON CLASSIFIÉS",
                          font=ctk.CTkFont("Segoe UI", 10, "bold"),
                          text_color="#ef4444").pack(side="left")
-            ctk.CTkFrame(uch, height=1, fg_color="#ef444440").pack(
+            ctk.CTkFrame(uch, height=1, fg_color="#4d1515").pack(
                 side="left", fill="x", expand=True, padx=10)
 
             uc_card = ctk.CTkFrame(self._results_view,
@@ -382,9 +434,67 @@ class _EmptyState(ctk.CTkFrame):
                      font=ctk.CTkFont("Segoe UI", 18, "bold"),
                      text_color="#334155").pack()
         ctk.CTkLabel(self,
-                     text="Cliquez sur Parcourir pour charger\nun fichier netlist .txt",
+                     text="Cliquez sur Parcourir pour charger\nun fichier netlist .txt ou schéma .xml",
                      font=ctk.CTkFont("Segoe UI", 13),
                      text_color=MUTED, justify="center").pack(pady=8)
+
+
+class _IslandSection(ctk.CTkFrame):
+    """Section repliable pour un îlot fonctionnel (structure en étages)."""
+
+    def __init__(self, parent, ilot: dict, results):
+        super().__init__(parent, corner_radius=10,
+                         fg_color=CARD,
+                         border_width=1, border_color=BORDER)
+        self._ouvert = True
+
+        nb = len(ilot['composants'])
+        titre = f"{ilot['label']}  ({nb} composant{'s' if nb > 1 else ''})"
+        self._btn = ctk.CTkButton(
+            self, text=f"▼  {titre}",
+            anchor="w", height=32, corner_radius=8,
+            font=ctk.CTkFont("Segoe UI", 12, "bold"),
+            fg_color="transparent", hover_color=CARD2,
+            text_color=TEXT,
+            command=self._toggle,
+        )
+        self._btn.pack(fill="x", padx=6, pady=(4, 0))
+        self._titre = titre
+
+        self._contenu = ctk.CTkFrame(self, fg_color="transparent")
+        self._contenu.pack(fill="x", padx=20, pady=(0, 8))
+
+        if ilot['circuits']:
+            for idx in ilot['circuits']:
+                try:
+                    match = results[idx]
+                except (IndexError, TypeError):
+                    continue
+                surs = [s['ref'] for s in match.get('satellites', [])
+                        if s.get('status') == 'sure']
+                suffixe = f"  (+ {', '.join(surs)})" if surs else ''
+                ligne = (f"[{idx + 1}] {match['circuit_type']} : "
+                         f"{', '.join(match['components'])}{suffixe}")
+                ctk.CTkLabel(self._contenu, text=ligne,
+                             font=ctk.CTkFont("Consolas", 11),
+                             text_color=MUTED, anchor="w",
+                             justify="left").pack(fill="x", pady=1)
+        else:
+            ctk.CTkLabel(self._contenu,
+                         text=', '.join(ilot['composants']),
+                         font=ctk.CTkFont("Consolas", 11),
+                         text_color=MUTED, anchor="w",
+                         wraplength=700,
+                         justify="left").pack(fill="x", pady=1)
+
+    def _toggle(self):
+        self._ouvert = not self._ouvert
+        if self._ouvert:
+            self._contenu.pack(fill="x", padx=20, pady=(0, 8))
+            self._btn.configure(text=f"▼  {self._titre}")
+        else:
+            self._contenu.pack_forget()
+            self._btn.configure(text=f"▶  {self._titre}")
 
 
 class _CircuitCard(ctk.CTkFrame):
@@ -459,7 +569,7 @@ def _category(name: str) -> str:
         return "TRANSISTORS & COMMUTATION"
     if any(x in name for x in ("Pont", "Redresseur", "Crête", "Roue")):
         return "REDRESSEURS & DIODES"
-    if any(x in name for x in ("Filtre", "Condensateur", "Snubber", "LC", "RC")):
+    if any(x in name for x in ("Filtre", "Condensateur", "Absorbeur", "LC", "RC")):
         return "FILTRES & PASSIFS"
     if any(x in name for x in ("Diviseur", "Fusible", "Protection", "ESD")):
         return "PROTECTION & AUTRES"

@@ -45,19 +45,18 @@ def test_matcher_finds_voltage_follower():
     assert 'Suiveur de tension (AOP)' in types
 
 
-def test_matcher_loads_custom_patterns(tmp_path):
-    import json, os
+def test_matcher_loads_custom_patterns(tmp_path, monkeypatch):
+    # custom_circuits.json est cherché à la racine de l'application (à côté
+    # de l'exe une fois gelée), plus au répertoire courant.
+    import json, sys
     custom = [{'name': 'Circuit test', 'components': ['R', 'C'], 'conditions': []}]
     (tmp_path / 'custom_circuits.json').write_text(json.dumps(custom), encoding='utf-8')
-    orig = os.getcwd()
-    os.chdir(tmp_path)
-    try:
-        comps = [
-            Component('R1', 'R', {'1': 'NET_A', '2': 'NET_B'}, '10k'),
-            Component('C1', 'C', {'1': 'NET_B', '2': 'GND'}, '100nF'),
-        ]
-        results = match_patterns(build_graph(comps))
-        types = [r['circuit_type'] for r in results]
-        assert 'Circuit test' in types
-    finally:
-        os.chdir(orig)
+    monkeypatch.setattr(sys, 'frozen', True, raising=False)
+    monkeypatch.setattr(sys, 'executable', str(tmp_path / 'AnalyseurCircuits.exe'))
+    comps = [
+        Component('R1', 'R', {'1': 'NET_A', '2': 'NET_B'}, '10k'),
+        Component('C1', 'C', {'1': 'NET_B', '2': 'GND'}, '100nF'),
+    ]
+    results = match_patterns(build_graph(comps))
+    types = [r['circuit_type'] for r in results]
+    assert 'Circuit test' in types

@@ -1,0 +1,17 @@
+{
+  "ground": [
+    "GND", "AGND", "DGND", "PGND", "0", "0V", "COM", "VSS", "V-",
+    "GND_ANA", "GND_DIG", "GND_PWR", "GNDD", "GNDA", "GNDP"
+  ],
+  "power": [
+    "VCC", "VDD", "VIN", "VBAT", "VBUS", "VMOT",
+    "+5V", "+3V3", "+12V", "+24V", "+3.3V", "+5.0V",
+    "P5V0", "P3V3", "P12V", "P24V",
+    "AVCC", "AVDD", "DVCC", "DVDD",
+    "PWR", "V+", "VLOOP", "VREG", "VRAW", "VSUPPLY", "VPWR", "VSYS",
+    "VOUT", "VREF", "VBIAS"
+  ],
+  "protective_earth": [
+    "PE", "EARTH", "CHASSIS", "FG", "FRAME_GND", "PROTECTIVE_EARTH"
+  ]
+}
