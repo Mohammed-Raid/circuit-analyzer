@@ -78,6 +78,29 @@ def test_supprimes_non_enrichis():
         assert 'confidence' not in s
 
 
+def test_pas_de_filtre_rc_avec_rail_en_jonction():
+    # R3 (VCC -> DIV) et C1 (VCC -> GND) se croisent sur VCC : la jonction
+    # d'un filtre RC est un nœud signal, jamais un rail.
+    comps = [
+        Component('R3', 'R', {'1': 'VCC', '2': 'NET_DIV'}, '10k'),
+        Component('C1', 'C', {'1': 'VCC', '2': 'GND'}, '100nF'),
+    ]
+    results = match_patterns(build_graph(comps))
+    tous = [m['circuit_type'] for m in results] + \
+           [m['circuit_type'] for m in results.supprimes]
+    assert 'Filtre RC passe-bas' not in tous
+    assert 'Filtre RC passe-haut' not in tous
+
+
+def test_filtre_rc_legitime_toujours_detecte():
+    comps = [
+        Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
+        Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
+    ]
+    results = match_patterns(build_graph(comps))
+    assert any(m['circuit_type'] == 'Filtre RC passe-bas' for m in results)
+
+
 def test_rapport_plafonne_les_supprimes_a_50():
     from circuit_analyzer.rapport import generer_rapport
 

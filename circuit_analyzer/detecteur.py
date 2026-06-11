@@ -906,6 +906,10 @@ def detecter_filtre_rc_passe_bas(graphe):
     deja_vus = set()
 
     for noeud in graphe.nodes():
+        # La jonction R-C d'un filtre est un nœud signal, jamais un rail
+        # (R série depuis VCC + C de découplage ne forment pas un filtre).
+        if _est_rail(noeud):
+            continue
         resistances   = _voisins_de_type(graphe, noeud, 'R')
         condensateurs = _voisins_de_type(graphe, noeud, 'C')
 
@@ -939,6 +943,9 @@ def detecter_filtre_rc_passe_haut(graphe):
     deja_vus = set()
 
     for noeud in graphe.nodes():
+        # Même règle que le passe-bas : la jonction C-R est un nœud signal.
+        if _est_rail(noeud):
+            continue
         resistances   = _voisins_de_type(graphe, noeud, 'R')
         condensateurs = _voisins_de_type(graphe, noeud, 'C')
 
@@ -974,6 +981,9 @@ def detecter_filtre_lc(graphe):
     deja_vus = set()
 
     for noeud in graphe.nodes():
+        # La jonction L-C d'un filtre est un nœud signal, jamais un rail.
+        if _est_rail(noeud):
+            continue
         inductances    = _voisins_de_type(graphe, noeud, 'L')
         condensateurs  = _voisins_de_type(graphe, noeud, 'C')
 
