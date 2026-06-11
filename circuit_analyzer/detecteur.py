@@ -32,6 +32,13 @@ is_gnd   = is_ground_net
 is_power = is_power_net
 
 
+def _est_rail(noeud) -> bool:
+    """Vrai si le nœud est une masse, une alimentation ou une terre de protection."""
+    return bool(noeud) and (
+        est_masse(noeud) or est_alimentation(noeud) or is_protective_earth_net(noeud)
+    )
+
+
 def _voisins_de_type(graphe, noeud, type_composant):
     """
     Retourne la liste de (ref_composant, autre_noeud) pour tous les composants
@@ -1001,6 +1008,10 @@ def detecter_pont_diviseur(graphe):
     deja_vus = set()
 
     for noeud in graphe.nodes():
+        # Le nœud milieu d'un diviseur est toujours un nœud signal — énumérer
+        # les paires de R sur GND/VCC serait à la fois faux et quadratique.
+        if _est_rail(noeud):
+            continue
         resistances = _voisins_de_type(graphe, noeud, 'R')
 
         # Chercher deux R connectées au même nœud mais vers des points différents
