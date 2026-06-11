@@ -72,9 +72,37 @@ Affichage limité à 50 lignes + `... et N autres matches supprimés`.
   analysés en **< 5 s** (seuil large anti-flaky, mais qui échoue si un
   quadratique revient).
 
+## Correctifs ajoutés en implémentation
+
+Deux causes supplémentaires identifiées au benchmark/profilage :
+
+5. **Filtres RC/LC** : même défaut que le pont diviseur — la jonction R-C
+   (ou L-C) d'un filtre est un nœud signal, mais les détecteurs énuméraient
+   les paires sur VCC/GND (R série depuis VCC x C de découplage = faux
+   « Filtre RC passe-bas » quadratique). Correctif : `continue` sur les rails.
+6. **Classification des nets** : `is_power_net`/`is_ground_net` reconstruisaient
+   ~18 regex (`re.escape` + `re.match`) à chaque appel — 863 000 matchs regex
+   à 2000 composants pour ~1250 nets distincts. Correctif : une regex alternée
+   précompilée par catégorie + `lru_cache` (sûr : les alias sont figés à
+   l'import du module).
+
 ## Critères de succès
 
 - `tools/benchmark.py` : 5000 composants < 10 s.
 - Suite complète verte (tests des faux diviseurs/snubbers mis à jour).
 - `relay_driver.xml` : plus aucun « Pont diviseur » avec un rail en nœud milieu ;
   les R concernées redeviennent satellites ou non-classifiées.
+
+## Résultats mesurés (2026-06-11)
+
+| Composants | Avant | Après |
+|-----------:|------:|------:|
+| 100 | 0.38 s | 0.02 s |
+| 500 | 9.56 s | 0.12 s |
+| 1000 | — | 0.19 s |
+| 2000 | 206.87 s | 0.75 s |
+| 5000 | 1039.94 s | **3.28 s** |
+
+Matches supprimés à 5000 comps : 1 366 875 -> 625 (1 par bloc, linéaire).
+`relay_driver.xml` : 5 ponts diviseurs restants, tous à nœud milieu signal ;
+8 supprimés (avant : des centaines). Suite : 282 tests verts.

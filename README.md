@@ -235,6 +235,34 @@ Les **avertissements** signalent les ambiguïtés :
 
 ---
 
+## Performance
+
+L'analyse est calibrée pour les netlists industrielles (mesures avec
+`tools/benchmark.py`, étages de relais répliqués) :
+
+| Composants | Analyse | Avant optimisation |
+|-----------:|--------:|-------------------:|
+| 500 | 0.12 s | 9.56 s |
+| 1000 | 0.19 s | ~45 s |
+| 2000 | 0.75 s | 206.87 s |
+| 5000 | 3.28 s | 1039.94 s (17 min) |
+
+Les correctifs sont électriquement justifiés en plus d'être algorithmiques :
+le nœud milieu d'un pont diviseur et la jonction d'un filtre RC/LC sont des
+nœuds **signal** — les énumérer sur GND/VCC produisait des milliers de faux
+matches quadratiques. Le miroir de courant n'apparie que les BJT de base
+commune, l'enrichissement n'est calculé que pour les circuits retenus, et la
+classification des nets est mémoïsée.
+
+- `python tools/benchmark.py` — tableau des temps sur netlists synthétiques
+  (100 à 5000 composants).
+- `tests/test_performance.py` — garde-fou dans la suite : 1000 composants
+  doivent s'analyser en moins de 5 s.
+- Le rapport plafonne l'affichage des matches supprimés à 50 lignes
+  (le total exact reste indiqué).
+
+---
+
 ## Configuration des alias de nets
 
 Le fichier `config/net_aliases.json` définit les noms reconnus pour chaque catégorie :
@@ -303,7 +331,7 @@ Ces topologies ne sont **pas détectables** depuis la netlist seule :
 python -m pytest -q
 ```
 
-272 tests automatisés couvrant le parseur, les 27 patterns, le score de confiance, les composants satellites, les îlots fonctionnels, les alias de nets, le parser de valeurs, le générateur XML, l'import XML et les circuits industriels.
+282 tests automatisés couvrant le parseur, les 27 patterns, le score de confiance, les composants satellites, les îlots fonctionnels, la performance, les alias de nets, le parser de valeurs, le générateur XML, l'import XML et les circuits industriels.
 
 ---
 
