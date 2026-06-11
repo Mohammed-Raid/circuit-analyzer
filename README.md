@@ -28,10 +28,10 @@ Charge un fichier netlist ou un schéma XML, identifie les sous-circuits connus,
 
 ### Prérequis
 - Python 3.10 ou supérieur
-- Dépendances : `customtkinter`, `schemdraw`, `networkx`
+- Dépendances : `customtkinter`, `schemdraw`, `matplotlib`, `networkx`
 
 ```bash
-pip install customtkinter schemdraw networkx
+pip install -r requirements.txt
 ```
 
 ### Étapes
@@ -75,6 +75,36 @@ La fenêtre s'ouvre avec 3 onglets :
 
 ```bash
 python main.py mon_circuit.txt --output rapport.txt
+```
+
+---
+
+## Distribution Windows (.exe)
+
+L'application se distribue sans Python via PyInstaller :
+
+```bash
+pip install pyinstaller
+python tools/build_exe.py
+```
+
+Le script construit `dist/AnalyseurCircuits-<version>.zip` et valide l'exe
+par un test de fumée (analyse de `relay_driver.xml`). Le zip extrait contient :
+
+```
+AnalyseurCircuits/
+├── AnalyseurCircuits.exe      ← interface graphique (double-clic)
+├── analyseur-cli.exe          ← ligne de commande (scripts, traitement par lots)
+├── config/net_aliases.json   ← alias de nets, éditable
+└── _internal/                 ← DLLs et bibliothèques (partagées par les 2 exes)
+```
+
+Le dossier est **portable** (clé USB, partage réseau) : `net_aliases.json`
+et `custom_circuits.json` (créé au premier circuit personnalisé) vivent à
+côté des exes et sont pris en compte au lancement suivant.
+
+```bash
+analyseur-cli.exe mon_circuit.xml --output rapport.txt
 ```
 
 ---
@@ -331,7 +361,7 @@ Ces topologies ne sont **pas détectables** depuis la netlist seule :
 python -m pytest -q
 ```
 
-282 tests automatisés couvrant le parseur, les 27 patterns, le score de confiance, les composants satellites, les îlots fonctionnels, la performance, les alias de nets, le parser de valeurs, le générateur XML, l'import XML et les circuits industriels.
+286 tests automatisés couvrant le parseur, les 27 patterns, le score de confiance, les composants satellites, les îlots fonctionnels, la performance, les chemins d'application, les alias de nets, le parser de valeurs, le générateur XML, l'import XML et les circuits industriels.
 
 ---
 

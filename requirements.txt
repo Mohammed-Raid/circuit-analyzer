@@ -1,2 +1,10 @@
+# Runtime
 networkx>=3.0
+customtkinter>=5.2
+matplotlib>=3.8
+schemdraw>=0.18
+
+# Développement
 pytest>=7.0
+
+# Build .exe (optionnel) : pip install pyinstaller

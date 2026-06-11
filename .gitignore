@@ -7,3 +7,7 @@ custom_report.txt
 .claude/
 # docs/superpowers/ intentionally tracked
 skidl_REPL.*
+
+# Sorties PyInstaller (packaging/analyseur.spec est versionné)
+build/
+dist/
