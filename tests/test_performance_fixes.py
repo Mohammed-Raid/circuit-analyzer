@@ -61,3 +61,18 @@ def test_miroir_apparie_uniquement_par_base_commune():
     matches = detecter_miroir_courant(build_graph(comps))
     paires = {frozenset(m['components']) for m in matches}
     assert paires == {frozenset({'Q1', 'Q2'}), frozenset({'Q3', 'Q4'})}
+
+
+def test_supprimes_non_enrichis():
+    # L'enrichissement (confiance) ne doit plus être calculé pour les
+    # matches supprimés — seuls circuit_type/components/nodes sont garantis.
+    comps = [
+        Component('R1', 'R', {'1': 'VCC', '2': 'NET_MID'}, '10k'),
+        Component('R2', 'R', {'1': 'NET_MID', '2': 'GND'}, '10k'),
+        Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
+    ]
+    results = match_patterns(build_graph(comps))
+    assert results.supprimes   # chevauchement filtre RC / pont diviseur
+    for s in results.supprimes:
+        assert 'circuit_type' in s and 'components' in s
+        assert 'confidence' not in s

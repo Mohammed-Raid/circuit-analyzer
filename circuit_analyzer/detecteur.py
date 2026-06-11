@@ -1462,12 +1462,13 @@ def analyser(graphe, patterns_personnalises=None):
 
     for detecter in tous_les_detecteurs:
         for match in detecter(graphe):
-            match_enrichi = _enrichir(match, graphe)
+            # Test anti-vol AVANT enrichissement : inutile de calculer la
+            # confiance des matches supprimés (ils peuvent être très nombreux).
             if any(c in composants_utilises for c in match['components']):
-                supprimes.append(match_enrichi)
+                supprimes.append(match)
                 continue
             composants_utilises.update(match['components'])
-            circuits_trouves.append(match_enrichi)
+            circuits_trouves.append(_enrichir(match, graphe))
 
     # Passe satellite : absorbe les annexes mono-composant puis rattache
     # les composants restés non classifiés aux circuits détectés.

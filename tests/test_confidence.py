@@ -257,9 +257,10 @@ def test_suppressed_contains_overlapping_match():
     supp_types = [m['circuit_type'] for m in results.supprimes]
     # Au moins un circuit principal + au moins une suppression possible
     assert len(results) > 0
-    # Les supprimés ont aussi les champs de confiance
+    # Les supprimés sont des matches bruts (non enrichis depuis le sous-projet perf)
     for s in results.supprimes:
-        assert 'confidence' in s
+        assert 'circuit_type' in s
+        assert 'components' in s
 
 def test_results_still_iterable_like_list():
     """Backward compat : ResultatsAnalyse se comporte comme une liste."""
