@@ -1049,6 +1049,9 @@ def detecter_absorbeur_rc(graphe):
 
     for noeud in graphe.nodes():
         for voisin in graphe.neighbors(noeud):
+            # R parallèle C entre deux rails = bleeder + découplage, pas un snubber.
+            if _est_rail(noeud) and _est_rail(voisin):
+                continue
             paire = tuple(sorted([noeud, voisin]))
             if paire in deja_vus:
                 continue
