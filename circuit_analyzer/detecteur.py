@@ -499,33 +499,29 @@ def detecter_miroir_courant(graphe):
     """
     resultats = []
     composants = graphe.graph.get('components', {})
-    bjts = [(ref, comp) for ref, comp in composants.items() if comp.type == 'Q']
-    deja_vus = set()
 
-    # Comparer chaque paire de BJT
-    for i in range(len(bjts)):
-        for j in range(i + 1, len(bjts)):
-            ref1, q1 = bjts[i]
-            ref2, q2 = bjts[j]
+    # Grouper par net de base : le miroir exige une base commune, inutile
+    # (et quadratique) de comparer des BJT de bases différentes.
+    groupes: dict = {}
+    for ref, comp in composants.items():
+        if comp.type != 'Q':
+            continue
+        base     = comp.pins.get('B')
+        emetteur = comp.pins.get('E')
+        if not base or not emetteur or not est_masse(emetteur):
+            continue
+        groupes.setdefault(base, []).append((ref, comp))
 
-            base1    = q1.pins.get('B')
-            base2    = q2.pins.get('B')
-            emetteur1 = q1.pins.get('E')
-            emetteur2 = q2.pins.get('E')
-
-            if not all([base1, base2, emetteur1, emetteur2]):
-                continue
-
-            # Condition miroir : mêmes bases, deux émetteurs à GND
-            if base1 == base2 and est_masse(emetteur1) and est_masse(emetteur2):
-                cle = frozenset([ref1, ref2])
-                if cle not in deja_vus:
-                    deja_vus.add(cle)
-                    resultats.append({
-                        'circuit_type': 'Miroir de courant BJT',
-                        'components': [ref1, ref2],
-                        'nodes': [base1, q1.pins.get('C', ''), q2.pins.get('C', '')],
-                    })
+    for base, bjts in groupes.items():
+        for i in range(len(bjts)):
+            for j in range(i + 1, len(bjts)):
+                ref1, q1 = bjts[i]
+                ref2, q2 = bjts[j]
+                resultats.append({
+                    'circuit_type': 'Miroir de courant BJT',
+                    'components': [ref1, ref2],
+                    'nodes': [base, q1.pins.get('C', ''), q2.pins.get('C', '')],
+                })
 
     return resultats
 

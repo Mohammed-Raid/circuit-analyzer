@@ -48,3 +48,16 @@ def test_snubber_legitime_toujours_detecte():
     ]
     results = match_patterns(build_graph(comps))
     assert any(m['circuit_type'] == 'Absorbeur RC' for m in results)
+
+
+def test_miroir_apparie_uniquement_par_base_commune():
+    comps = [
+        Component('Q1', 'Q', {'B': 'NB1', 'C': 'NC1', 'E': 'GND'}),
+        Component('Q2', 'Q', {'B': 'NB1', 'C': 'NC2', 'E': 'GND'}),
+        Component('Q3', 'Q', {'B': 'NB2', 'C': 'NC3', 'E': 'GND'}),
+        Component('Q4', 'Q', {'B': 'NB2', 'C': 'NC4', 'E': 'GND'}),
+    ]
+    from circuit_analyzer.detecteur import detecter_miroir_courant
+    matches = detecter_miroir_courant(build_graph(comps))
+    paires = {frozenset(m['components']) for m in matches}
+    assert paires == {frozenset({'Q1', 'Q2'}), frozenset({'Q3', 'Q4'})}
