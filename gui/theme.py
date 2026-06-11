@@ -1,0 +1,11 @@
+"""Centralized design tokens — import with: from gui.theme import *"""
+
+BG      = "#070d1a"
+SURFACE = "#0f172a"
+CARD    = "#1e293b"
+CARD2   = "#0f172a"
+BORDER  = "#263347"
+TEXT    = "#f1f5f9"
+MUTED   = "#64748b"
+BLUE    = "#3b82f6"
+BLUE_D  = "#1d4ed8"
