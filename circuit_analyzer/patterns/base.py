@@ -18,11 +18,10 @@ def _charger_alias() -> dict:
                    "AVCC", "AVDD", "DVCC", "PWR", "V+", "VREG", "VSUPPLY", "VPWR", "VSYS", "VOUT"],
         "protective_earth": ["PE", "EARTH", "CHASSIS"]
     }
-    # Chercher depuis la racine du projet (2 niveaux au-dessus de patterns/)
-    racine = Path(__file__).parent.parent.parent
-    chemin = racine / 'config' / 'net_aliases.json'
-    if not chemin.exists():
-        chemin = Path('config') / 'net_aliases.json'
+    # Racine de l'application : projet en mode normal, dossier de l'exe
+    # une fois gelée par PyInstaller (fichier éditable par l'utilisateur).
+    from circuit_analyzer.chemins import racine_application
+    chemin = racine_application() / 'config' / 'net_aliases.json'
     if chemin.exists():
         try:
             with open(chemin, encoding='utf-8') as f:

@@ -1,8 +1,15 @@
 import json
 from pathlib import Path
+from circuit_analyzer.chemins import racine_application
 from circuit_analyzer.patterns.base import Pattern, is_gnd, is_power
 
 CUSTOM_CIRCUITS_FILE = 'custom_circuits.json'
+
+
+def chemin_custom_circuits() -> Path:
+    """Chemin par défaut du fichier des circuits personnalisés : à la racine
+    de l'application (à côté de l'exe une fois gelée), pas au CWD."""
+    return racine_application() / CUSTOM_CIRCUITS_FILE
 
 CONDITION_LABELS = [
     "C connecté à GND",
@@ -13,20 +20,21 @@ CONDITION_LABELS = [
 ]
 
 
-def load_custom_circuits(path: str = CUSTOM_CIRCUITS_FILE) -> list[dict]:
-    p = Path(path)
+def load_custom_circuits(path=None) -> list[dict]:
+    p = Path(path) if path is not None else chemin_custom_circuits()
     if not p.exists():
         return []
     with open(p, encoding='utf-8') as f:
         return json.load(f)
 
 
-def save_custom_circuits(circuits: list[dict], path: str = CUSTOM_CIRCUITS_FILE) -> None:
-    with open(path, 'w', encoding='utf-8') as f:
+def save_custom_circuits(circuits: list[dict], path=None) -> None:
+    p = Path(path) if path is not None else chemin_custom_circuits()
+    with open(p, 'w', encoding='utf-8') as f:
         json.dump(circuits, f, ensure_ascii=False, indent=2)
 
 
-def get_custom_patterns(path: str = CUSTOM_CIRCUITS_FILE) -> list['CustomCircuitPattern']:
+def get_custom_patterns(path=None) -> list['CustomCircuitPattern']:
     return [CustomCircuitPattern(d) for d in load_custom_circuits(path)]
 
 
