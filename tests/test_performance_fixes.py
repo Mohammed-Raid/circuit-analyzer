@@ -76,3 +76,22 @@ def test_supprimes_non_enrichis():
     for s in results.supprimes:
         assert 'circuit_type' in s and 'components' in s
         assert 'confidence' not in s
+
+
+def test_rapport_plafonne_les_supprimes_a_50():
+    from circuit_analyzer.rapport import generer_rapport
+
+    class FauxResultats(list):
+        pass
+
+    resultats = FauxResultats([])
+    resultats.ilots = []
+    resultats.supprimes = [
+        {'circuit_type': 'Pont diviseur de tension',
+         'components': [f'R{2*i}', f'R{2*i+1}'], 'nodes': ['N1', 'N2', 'N3']}
+        for i in range(80)
+    ]
+    rapport = generer_rapport(resultats, 'test.txt', 0, [])
+    assert 'Matches supprimés (80)' in rapport
+    assert '... et 30 autres matches supprimés' in rapport
+    assert rapport.count('déjà dans un autre circuit') == 50

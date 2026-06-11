@@ -9,6 +9,9 @@ from collections import Counter
 _NIVEAUX = {'high': 'élevée', 'medium': 'moyenne', 'low': 'faible'}
 _SEP     = '-' * 64
 _SEP_FIN = '=' * 64
+# Sur une grosse netlist, les matches supprimés se comptent en milliers :
+# l'affichage est plafonné, seul le total reste exact.
+_PLAFOND_SUPPRIMES = 50
 
 
 def generer_rapport(resultats, fichier: str,
@@ -125,11 +128,11 @@ def generer_rapport(resultats, fichier: str,
         for ref, ct_hote, raison in a_verifier:
             lignes.append(f'    - {ref} -> {ct_hote} ({raison})')
 
-    # Matches supprimés (composants déjà pris)
+    # Matches supprimés (composants déjà pris) — affichage plafonné
     supprimes = getattr(resultats, 'supprimes', [])
     if supprimes:
         lignes.append(f'\nMatches supprimés ({len(supprimes)}) — composants déjà utilisés :')
-        for s in supprimes:
+        for s in supprimes[:_PLAFOND_SUPPRIMES]:
             ref_conflit = next(
                 (c for c in s.get('locked_components', s['components'])
                  if c in classifies), '?'
@@ -137,6 +140,10 @@ def generer_rapport(resultats, fichier: str,
             lignes.append(
                 f'    - {s["circuit_type"]} [{", ".join(s["components"])}]'
                 f' — "{ref_conflit}" déjà dans un autre circuit'
+            )
+        if len(supprimes) > _PLAFOND_SUPPRIMES:
+            lignes.append(
+                f'    ... et {len(supprimes) - _PLAFOND_SUPPRIMES} autres matches supprimés'
             )
 
     # Avertissement global
