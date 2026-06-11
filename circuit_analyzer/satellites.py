@@ -141,9 +141,11 @@ def _absorber_annexes(circuits: list) -> None:
         UNIQUEMENT si un seul circuit hôte est candidat ; sinon, trop ambigu,
         l'annexe reste un circuit à part entière.
     """
-    hotes = [m for m in circuits
-             if len(m['components']) > 1 and m['circuit_type'] not in _ANNEXES]
-    if not hotes:
+    # Pré-calcul par hôte : les nœuds d'un match ne changent pas pendant
+    # l'absorption, inutile de les reclasser pour chaque paire annexe x hôte.
+    infos_hotes = [(m, _noeuds_internes(m), _rails_alim(m)) for m in circuits
+                   if len(m['components']) > 1 and m['circuit_type'] not in _ANNEXES]
+    if not infos_hotes:
         return
 
     a_retirer = []
@@ -154,13 +156,13 @@ def _absorber_annexes(circuits: list) -> None:
         noeuds_annexe = {n for n in annexe.get('nodes', []) if n}
 
         # 1) Hôtes partageant un nœud signal (rattachement fort)
-        hotes_signal = [h for h in hotes if noeuds_annexe & _noeuds_internes(h)]
+        hotes_signal = [h for h, internes, _ in infos_hotes if noeuds_annexe & internes]
         if hotes_signal:
             hote = max(hotes_signal, key=lambda h: h.get('confidence', 0))
             score = annexe.get('confidence', SEUIL_SUR)
         else:
             # 2) Hôtes partageant seulement un rail : possible si UN SEUL candidat
-            hotes_rail = [h for h in hotes if noeuds_annexe & _rails_alim(h)]
+            hotes_rail = [h for h, _, rails in infos_hotes if noeuds_annexe & rails]
             if len(hotes_rail) != 1:
                 continue
             hote = hotes_rail[0]
