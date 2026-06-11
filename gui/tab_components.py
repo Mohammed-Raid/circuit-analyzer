@@ -331,6 +331,10 @@ class TabComponents:
             self._ecrire()
             self._load()
             self._afficher_nouveau()
+            # Comme à la sauvegarde : prévenir l'onglet Circuits que la
+            # bibliothèque a changé, sinon le composant supprimé reste proposé.
+            if self._on_save:
+                self._on_save()
 
     def _sauvegarder(self):
         prefix = self._prefix_var.get().strip().upper()
