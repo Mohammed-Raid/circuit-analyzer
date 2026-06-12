@@ -24,6 +24,32 @@ def _aretes(graphe):
     )
 
 
+# ── Préservation de la valeur (non-régression stricte) ─────────────────────────
+
+def test_singleton_conserve_sa_valeur_reelle():
+    # Un passif non fusionné (R de feedback unique, ancré par l'AOP) doit garder
+    # sa value d'origine dans le graphe réduit — pas son ref comme value.
+    g = _graphe(
+        _aop(in_moins='INM', out='OUT'),
+        Composant('Rf', 'R', {'1': 'INM', '2': 'OUT'}, '10k'),
+    )
+    reduit, expansion = reduire_dipoles(g)
+    assert expansion == {}
+    rf = next(d for _, _, d in reduit.edges(data=True) if d['ref'] == 'Rf')
+    assert rf['value'] == '10k'   # et surtout PAS 'Rf'
+
+
+def test_reseau_flottant_conserve_valeurs():
+    # Pont diviseur non ancré : intact, valeurs comprises.
+    g = _graphe(
+        Composant('R1', 'R', {'1': 'VCC', '2': 'DIV'}, '10k'),
+        Composant('R2', 'R', {'1': 'DIV', '2': 'GND'}, '4k7'),
+    )
+    reduit, _ = reduire_dipoles(g)
+    vals = {d['ref']: d['value'] for _, _, d in reduit.edges(data=True)}
+    assert vals == {'R1': '10k', 'R2': '4k7'}
+
+
 # ── Non-régression : aucun composite → graphe inchangé ─────────────────────────
 
 def test_aucune_reduction_si_pas_de_composite():

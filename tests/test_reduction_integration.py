@@ -38,3 +38,18 @@ def test_inverseur_simple_toujours_detecte():
     res = analyser(construire_graphe(composants))
     inv = next(c for c in res if c['circuit_type'] == 'Amplificateur inverseur (AOP)')
     assert sorted(inv['components']) == ['Rf', 'Rin', 'U1']
+
+
+def test_feedback_mixte_R_serie_C_non_classifie():
+    # Limitation connue : un feedback R série C devient un dipôle de type 'Z'
+    # qu'aucun détecteur ne reconnaît. On épingle ce comportement (non-détection
+    # volontaire plutôt que faux positif) pour qu'il ne soit pas pris pour un bug.
+    composants = [
+        Composant('U1', 'U', {'IN+': 'GND', 'IN-': 'INM', 'OUT': 'OUT'}),
+        Composant('Rin', 'R', {'1': 'IN', '2': 'INM'}, '1k'),
+        Composant('Rf', 'R', {'1': 'INM', '2': 'MID'}, '10k'),
+        Composant('Cf', 'C', {'1': 'MID', '2': 'OUT'}, '100n'),
+    ]
+    res = analyser(construire_graphe(composants))
+    assert 'Amplificateur inverseur (AOP)' not in _types(res)
+    assert 'Intégrateur (AOP)' not in _types(res)

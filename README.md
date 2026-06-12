@@ -381,7 +381,7 @@ Ces topologies ne sont **pas détectables** depuis la netlist seule :
 python -m pytest -q
 ```
 
-304 tests automatisés couvrant le parseur, les 27 patterns, le score de confiance, les composants satellites, les îlots fonctionnels, la réduction en dipôles équivalents, la performance, les chemins d'application, les alias de nets, le parser de valeurs, le générateur XML, l'import XML et les circuits industriels.
+307 tests automatisés couvrant le parseur, les 27 patterns, le score de confiance, les composants satellites, les îlots fonctionnels, la réduction en dipôles équivalents, la performance, les chemins d'application, les alias de nets, le parser de valeurs, le générateur XML, l'import XML et les circuits industriels.
 
 ---
 
@@ -428,7 +428,7 @@ custom_circuits/
 └── loader.py              ← circuits personnalisés (JSON)
 
 circuits_industriels/      ← schémas BoardSCH générés (12 circuits)
-tests/                     ← 304 tests pytest
+tests/                     ← 307 tests pytest
 docs/
 └── explication_logiciel.md ← explication pédagogique du fonctionnement
 

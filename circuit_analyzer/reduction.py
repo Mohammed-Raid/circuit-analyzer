@@ -41,7 +41,13 @@ def _est_rail(net) -> bool:
 
 
 def _combiner_type(t1: str, t2: str) -> str:
-    """Type de l'équivalent : le type commun, ou 'Z' (impédance composite) si mixte."""
+    """Type de l'équivalent : le type commun, ou 'Z' (impédance composite) si mixte.
+
+    Limitation connue : un dipôle mixte (ex. R série C, le cas « (R1+C)R2 » du
+    document) devient un type 'Z' qu'AUCUN détecteur actuel ne reconnaît
+    (l'inverseur attend 'R', l'intégrateur 'C'). C'est volontaire — mieux vaut
+    une non-détection qu'un faux positif —, mais cela signifie que la variante
+    composite mixte n'est pas (encore) classifiée comme un montage nommé."""
     return t1 if t1 == t2 else 'Z'
 
 
@@ -73,7 +79,11 @@ def _graphe_de_travail(graphe) -> nx.MultiGraph:
     for u, v, data in graphe.edges(data=True):
         if data.get('type') in TYPES_REDUCTIBLES:
             ref = data['ref']
-            W.add_edge(u, v, type=data['type'], refs=[ref], expr=ref)
+            # 'value' est conservée pour les arêtes NON fusionnées (singletons) :
+            # le graphe réduit doit rester strictement identique à l'original
+            # tant qu'aucune réduction n'a lieu (valeurs comprises).
+            W.add_edge(u, v, type=data['type'], refs=[ref], expr=ref,
+                       value=data.get('value', ''))
     return W
 
 
@@ -102,50 +112,72 @@ def _noeuds_ancres(W: nx.MultiGraph, pins_actives: set) -> set:
 
 
 def _pass_parallele(W: nx.MultiGraph, ancres: set) -> bool:
-    """Fusionne UN banc d'arêtes parallèles (même paire de nœuds). Retourne True
-    si une fusion a eu lieu (l'appelant relance jusqu'au point fixe).
+    """Fusionne TOUS les bancs d'arêtes parallèles (même paire de nœuds) en une
+    seule passe. Retourne True si au moins une fusion a eu lieu.
+
+    Les bancs parallèles sont indépendants entre eux (fusionner (u,v) ne touche
+    aucune autre paire de nœuds), on peut donc tous les traiter d'un coup —
+    inutile de relancer un balayage complet après chaque fusion.
 
     Conditions :
       - le banc doit être ancré à un composant actif (sinon un R//C flottant
         est un amortisseur autonome, pas une contre-réaction) ;
       - aucune extrémité ne doit être un rail (composants de prélèvement)."""
-    for u, v in [(a, b) for a, b in W.edges()]:
+    paires = set()
+    for u, v in W.edges():
         if u == v or _est_rail(u) or _est_rail(v):
             continue
         if u not in ancres and v not in ancres:
             continue
         if W.number_of_edges(u, v) > 1:
-            paquet = list(W.get_edge_data(u, v).values())
-            type_eq = paquet[0]['type']
-            refs, exprs = [], []
-            for d in paquet:
-                type_eq = _combiner_type(type_eq, d['type'])
-                refs.extend(d['refs'])
-                exprs.append(d['expr'])
-            # Retirer toutes les arêtes parallèles puis poser l'équivalent
-            for _ in range(len(paquet)):
-                W.remove_edge(u, v)
-            W.add_edge(u, v, type=type_eq, refs=refs,
-                       expr="(" + "//".join(exprs) + ")")
-            return True
-    return False
+            paires.add(frozenset((u, v)))
+
+    for paire in paires:
+        u, v = tuple(paire)
+        paquet = list(W.get_edge_data(u, v).values())
+        type_eq = paquet[0]['type']
+        refs, exprs = [], []
+        for d in paquet:
+            type_eq = _combiner_type(type_eq, d['type'])
+            refs.extend(d['refs'])
+            exprs.append(d['expr'])
+        for _ in range(len(paquet)):
+            W.remove_edge(u, v)
+        W.add_edge(u, v, type=type_eq, refs=refs,
+                   expr="(" + "//".join(exprs) + ")")
+    return bool(paires)
 
 
 def _pass_serie(W: nx.MultiGraph, proteges: set, ancres: set) -> bool:
-    """Élimine UN nœud interne de degré 2 en fusionnant ses deux arêtes en série.
-    Retourne True si une fusion a eu lieu."""
+    """Élimine en une passe tous les nœuds internes de degré 2 disjoints, en
+    fusionnant chaque paire d'arêtes en série. Retourne True si au moins une
+    fusion a eu lieu.
+
+    Un nœud fusionné modifie ses deux voisins (a, b) : on les marque « touchés »
+    et on diffère tout nœud adjacent à la passe suivante (boucle externe), pour
+    ne jamais réutiliser des données d'arête périmées dans la même passe. Les
+    chaînes longues convergent ainsi en quelques passes au lieu d'un redémarrage
+    complet par fusion."""
+    touches: set = set()
+    change = False
     for n in list(W.nodes()):
-        if n in proteges or n not in ancres:
+        if n in touches or n in proteges or n not in ancres:
             continue
         if W.degree(n) != 2:
             continue
         aretes = list(W.edges(n, keys=True, data=True))
+        if len(aretes) != 2:  # garde-fou (multi-arête résiduelle)
+            continue
         (u1, v1, k1, d1), (u2, v2, k2, d2) = aretes
         a = v1 if u1 == n else u1
         b = v2 if u2 == n else u2
         if a == b:
             # Deux arêtes vers le même voisin = banc parallèle : laisser
             # _pass_parallele s'en charger.
+            continue
+        if a in touches or b in touches:
+            # Un voisin a déjà fusionné dans cette passe : ses arêtes ont
+            # changé, on diffère ce nœud à la passe suivante.
             continue
         if _est_rail(a) or _est_rail(b):
             # N est un point de prélèvement vers un rail (sortie de filtre RC,
@@ -157,8 +189,9 @@ def _pass_serie(W: nx.MultiGraph, proteges: set, ancres: set) -> bool:
         expr = f"{d1['expr']}+{d2['expr']}"
         W.remove_node(n)  # retire le nœud interne et ses deux arêtes
         W.add_edge(a, b, type=type_eq, refs=refs, expr=expr)
-        return True
-    return False
+        touches.update((n, a, b))
+        change = True
+    return change
 
 
 def reduire_dipoles(graphe):
@@ -198,11 +231,19 @@ def reduire_dipoles(graphe):
         refs = data['refs']
         if len(refs) > 1:
             compteur += 1
+            # Namespace réservé : un ref réel commence toujours par une lettre
+            # (cf. lire_netlist), '#' garantit l'absence de collision avec un
+            # composant existant lors de la ré-expansion.
             ref_syn = f"Z#{compteur}"
             expansion[ref_syn] = list(refs)
+            # Dipôle composite : 'value' = expression lisible (« R1+R2 »,
+            # « (R1//C1) »), volontairement non parseable en ohms/farads.
             reduit.add_edge(u, v, ref=ref_syn, type=data['type'], value=data['expr'])
         else:
-            reduit.add_edge(u, v, ref=refs[0], type=data['type'], value=data['expr'])
+            # Singleton non fusionné : on restitue ref ET value d'origine →
+            # arête strictement identique à celle du graphe de départ.
+            reduit.add_edge(u, v, ref=refs[0], type=data['type'],
+                            value=data.get('value', ''))
 
     return reduit, expansion
 
