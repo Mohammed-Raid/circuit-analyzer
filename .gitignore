@@ -27,3 +27,6 @@ circuits_industriels/tata.xml
 circuits_industriels/titit.xml
 # Fichiers de verrouillage temporaires Office
 ~$*
+# Fichiers temporaires de l'outillage (messages de commit, notes de release, bench)
+*.tmp
+_bench_*.py
