@@ -20,7 +20,7 @@
         <DataPolygon><point><X>80</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
         <DataPolygon><point><X>45</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon></datapolygon>
       <datasegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>2</Pname>
@@ -33,7 +33,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>50</typ>
       </DataPin>      <DataPin>
         <Pname>1</Pname>
         <Pnumber>1</Pnumber>
@@ -45,11 +45,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>49</typ>
       </DataPin>
       </datapin>
       <PinCL><string>0_0_0_3</string><string>0_1_0_0</string></PinCL>
-      <CtrIem><X>1850</X><Y>250</Y></CtrIem>
+      <CtrIem><X>730</X><Y>510</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -81,7 +81,7 @@
         <DataSegment><Spoint><X>6</X><Y>-48</Y></Spoint><Epoint><X>6</X><Y>48</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-6</X><Y>0</Y></Spoint><Epoint><X>-48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>6</X><Y>0</Y></Spoint><Epoint><X>48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>-</Pname>
@@ -94,7 +94,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>45</typ>
       </DataPin>      <DataPin>
         <Pname>+</Pname>
         <Pnumber>+</Pnumber>
@@ -106,11 +106,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>43</typ>
       </DataPin>
       </datapin>
       <PinCL><string>1_0_1_5</string><string>1_1_1_3</string><string>1_1_0_4</string></PinCL>
-      <CtrIem><X>2810</X><Y>250</Y></CtrIem>
+      <CtrIem><X>1850</X><Y>510</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -119,7 +119,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>32</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -147,7 +147,7 @@
         <DataPolygon><point><X>80</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
         <DataPolygon><point><X>45</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon></datapolygon>
       <datasegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>2</Pname>
@@ -160,7 +160,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>50</typ>
       </DataPin>      <DataPin>
         <Pname>1</Pname>
         <Pnumber>1</Pnumber>
@@ -172,11 +172,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>49</typ>
       </DataPin>
       </datapin>
       <PinCL><string>2_0_0_16</string><string>2_1_1_4</string></PinCL>
-      <CtrIem><X>2490</X><Y>250</Y></CtrIem>
+      <CtrIem><X>1530</X><Y>510</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -208,7 +208,7 @@
         <DataSegment><Spoint><X>6</X><Y>-48</Y></Spoint><Epoint><X>6</X><Y>48</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-6</X><Y>0</Y></Spoint><Epoint><X>-48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>6</X><Y>0</Y></Spoint><Epoint><X>48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>-</Pname>
@@ -221,7 +221,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>45</typ>
       </DataPin>      <DataPin>
         <Pname>+</Pname>
         <Pnumber>+</Pnumber>
@@ -233,11 +233,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>43</typ>
       </DataPin>
       </datapin>
       <PinCL><string>3_0_1_6</string><string>3_1_1_16</string><string>3_1_0_17</string></PinCL>
-      <CtrIem><X>250</X><Y>510</Y></CtrIem>
+      <CtrIem><X>1850</X><Y>1030</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -246,7 +246,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>32</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -268,7 +268,7 @@
         <DataSegment><Spoint><X>48</X><Y>0</Y></Spoint><Epoint><X>72</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-48</X><Y>-24</Y></Spoint><Epoint><X>-72</X><Y>-24</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-48</X><Y>24</Y></Spoint><Epoint><X>-72</X><Y>24</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>+</Pname>
@@ -281,7 +281,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>43</typ>
       </DataPin>      <DataPin>
         <Pname>-</Pname>
         <Pnumber>-</Pnumber>
@@ -293,7 +293,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>45</typ>
       </DataPin>      <DataPin>
         <Pname>s</Pname>
         <Pnumber>s</Pnumber>
@@ -305,7 +305,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>115</typ>
       </DataPin>
       </datapin>
       <PinCL><string>4_0_1_17</string><string>4_1_0_18</string><string>4_2_1_18</string><string>4_2_0_19</string></PinCL>
@@ -318,7 +318,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>79</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -346,7 +346,7 @@
         <DataPolygon><point><X>80</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
         <DataPolygon><point><X>45</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon></datapolygon>
       <datasegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>2</Pname>
@@ -359,7 +359,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>50</typ>
       </DataPin>      <DataPin>
         <Pname>1</Pname>
         <Pnumber>1</Pnumber>
@@ -371,11 +371,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>49</typ>
       </DataPin>
       </datapin>
       <PinCL><string>5_0_0_20</string><string>5_1_1_19</string></PinCL>
-      <CtrIem><X>3130</X><Y>250</Y></CtrIem>
+      <CtrIem><X>250</X><Y>770</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -407,7 +407,7 @@
         <DataSegment><Spoint><X>6</X><Y>-48</Y></Spoint><Epoint><X>6</X><Y>48</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-6</X><Y>0</Y></Spoint><Epoint><X>-48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>6</X><Y>0</Y></Spoint><Epoint><X>48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>-</Pname>
@@ -420,7 +420,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>45</typ>
       </DataPin>      <DataPin>
         <Pname>+</Pname>
         <Pnumber>+</Pnumber>
@@ -432,11 +432,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>43</typ>
       </DataPin>
       </datapin>
       <PinCL><string>6_0_1_7</string><string>6_1_1_20</string></PinCL>
-      <CtrIem><X>3450</X><Y>250</Y></CtrIem>
+      <CtrIem><X>570</X><Y>770</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -445,7 +445,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>32</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -473,7 +473,7 @@
         <DataPolygon><point><X>80</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
         <DataPolygon><point><X>45</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon></datapolygon>
       <datasegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>2</Pname>
@@ -486,7 +486,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>50</typ>
       </DataPin>      <DataPin>
         <Pname>1</Pname>
         <Pnumber>1</Pnumber>
@@ -498,11 +498,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>49</typ>
       </DataPin>
       </datapin>
       <PinCL><string>7_0_1_23</string><string>7_1_1_21</string></PinCL>
-      <CtrIem><X>570</X><Y>510</Y></CtrIem>
+      <CtrIem><X>2170</X><Y>1030</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -534,7 +534,7 @@
         <DataSegment><Spoint><X>6</X><Y>-48</Y></Spoint><Epoint><X>6</X><Y>48</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-6</X><Y>0</Y></Spoint><Epoint><X>-48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>6</X><Y>0</Y></Spoint><Epoint><X>48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>-</Pname>
@@ -547,7 +547,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>45</typ>
       </DataPin>      <DataPin>
         <Pname>+</Pname>
         <Pnumber>+</Pnumber>
@@ -559,11 +559,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>43</typ>
       </DataPin>
       </datapin>
       <PinCL><string>8_0_1_8</string><string>8_1_1_24</string></PinCL>
-      <CtrIem><X>1050</X><Y>250</Y></CtrIem>
+      <CtrIem><X>1210</X><Y>250</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -572,7 +572,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>32</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -595,7 +595,7 @@
         <DataSegment><Spoint><X>6</X><Y>-48</Y></Spoint><Epoint><X>6</X><Y>48</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-6</X><Y>0</Y></Spoint><Epoint><X>-48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>6</X><Y>0</Y></Spoint><Epoint><X>48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>-</Pname>
@@ -608,7 +608,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>45</typ>
       </DataPin>      <DataPin>
         <Pname>+</Pname>
         <Pnumber>+</Pnumber>
@@ -620,11 +620,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>43</typ>
       </DataPin>
       </datapin>
       <PinCL><string>9_0_1_9</string><string>9_1_1_25</string></PinCL>
-      <CtrIem><X>1370</X><Y>250</Y></CtrIem>
+      <CtrIem><X>250</X><Y>510</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -633,7 +633,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>32</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -661,7 +661,7 @@
         <DataPolygon><point><X>80</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
         <DataPolygon><point><X>45</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon></datapolygon>
       <datasegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>2</Pname>
@@ -674,7 +674,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>50</typ>
       </DataPin>      <DataPin>
         <Pname>1</Pname>
         <Pnumber>1</Pnumber>
@@ -686,11 +686,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>49</typ>
       </DataPin>
       </datapin>
       <PinCL><string>10_0_1_0</string><string>10_0_0_1</string></PinCL>
-      <CtrIem><X>890</X><Y>510</Y></CtrIem>
+      <CtrIem><X>2490</X><Y>1030</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -722,7 +722,7 @@
         <DataSegment><Spoint><X>6</X><Y>-48</Y></Spoint><Epoint><X>6</X><Y>48</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-6</X><Y>0</Y></Spoint><Epoint><X>-48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>6</X><Y>0</Y></Spoint><Epoint><X>48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>-</Pname>
@@ -735,7 +735,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>45</typ>
       </DataPin>      <DataPin>
         <Pname>+</Pname>
         <Pnumber>+</Pnumber>
@@ -747,11 +747,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>43</typ>
       </DataPin>
       </datapin>
       <PinCL><string>11_0_1_10</string><string>11_1_1_1</string><string>11_1_0_2</string></PinCL>
-      <CtrIem><X>2170</X><Y>250</Y></CtrIem>
+      <CtrIem><X>1050</X><Y>510</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -760,7 +760,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>32</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -788,7 +788,7 @@
         <DataPolygon><point><X>80</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
         <DataPolygon><point><X>45</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon></datapolygon>
       <datasegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>2</Pname>
@@ -801,7 +801,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>50</typ>
       </DataPin>      <DataPin>
         <Pname>1</Pname>
         <Pnumber>1</Pnumber>
@@ -813,11 +813,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>49</typ>
       </DataPin>
       </datapin>
       <PinCL><string>12_0_0_26</string><string>12_1_1_22</string></PinCL>
-      <CtrIem><X>3770</X><Y>250</Y></CtrIem>
+      <CtrIem><X>1050</X><Y>770</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -854,7 +854,7 @@
         <DataPolygon><point><X>80</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
         <DataPolygon><point><X>45</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon></datapolygon>
       <datasegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>2</Pname>
@@ -867,7 +867,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>50</typ>
       </DataPin>      <DataPin>
         <Pname>1</Pname>
         <Pnumber>1</Pnumber>
@@ -879,11 +879,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>49</typ>
       </DataPin>
       </datapin>
       <PinCL><string>13_0_1_11</string><string>13_1_1_26</string><string>13_1_0_27</string></PinCL>
-      <CtrIem><X>1210</X><Y>510</Y></CtrIem>
+      <CtrIem><X>2810</X><Y>1030</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -915,7 +915,7 @@
         <DataSegment><Spoint><X>6</X><Y>-48</Y></Spoint><Epoint><X>6</X><Y>48</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-6</X><Y>0</Y></Spoint><Epoint><X>-48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>6</X><Y>0</Y></Spoint><Epoint><X>48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>-</Pname>
@@ -928,7 +928,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>45</typ>
       </DataPin>      <DataPin>
         <Pname>+</Pname>
         <Pnumber>+</Pnumber>
@@ -940,11 +940,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>43</typ>
       </DataPin>
       </datapin>
       <PinCL><string>14_0_1_12</string><string>14_1_1_27</string></PinCL>
-      <CtrIem><X>4090</X><Y>250</Y></CtrIem>
+      <CtrIem><X>1370</X><Y>770</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -953,7 +953,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>32</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -981,7 +981,7 @@
         <DataPolygon><point><X>80</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
         <DataPolygon><point><X>45</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon></datapolygon>
       <datasegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>2</Pname>
@@ -994,7 +994,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>50</typ>
       </DataPin>      <DataPin>
         <Pname>1</Pname>
         <Pnumber>1</Pnumber>
@@ -1006,11 +1006,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>49</typ>
       </DataPin>
       </datapin>
       <PinCL><string>15_0_0_29</string><string>15_1_0_28</string></PinCL>
-      <CtrIem><X>4410</X><Y>250</Y></CtrIem>
+      <CtrIem><X>1850</X><Y>770</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -1042,7 +1042,7 @@
         <DataSegment><Spoint><X>6</X><Y>-48</Y></Spoint><Epoint><X>6</X><Y>48</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-6</X><Y>0</Y></Spoint><Epoint><X>-48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>6</X><Y>0</Y></Spoint><Epoint><X>48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>-</Pname>
@@ -1055,7 +1055,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>45</typ>
       </DataPin>      <DataPin>
         <Pname>+</Pname>
         <Pnumber>+</Pnumber>
@@ -1067,11 +1067,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>43</typ>
       </DataPin>
       </datapin>
       <PinCL><string>16_0_1_13</string><string>16_1_1_29</string><string>16_1_0_30</string></PinCL>
-      <CtrIem><X>4730</X><Y>250</Y></CtrIem>
+      <CtrIem><X>2170</X><Y>770</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -1080,7 +1080,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>32</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -1108,7 +1108,7 @@
         <DataPolygon><point><X>80</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
         <DataPolygon><point><X>45</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon></datapolygon>
       <datasegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>2</Pname>
@@ -1121,7 +1121,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>50</typ>
       </DataPin>      <DataPin>
         <Pname>1</Pname>
         <Pnumber>1</Pnumber>
@@ -1133,11 +1133,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>49</typ>
       </DataPin>
       </datapin>
       <PinCL><string>17_0_0_31</string><string>17_1_1_30</string></PinCL>
-      <CtrIem><X>5050</X><Y>250</Y></CtrIem>
+      <CtrIem><X>250</X><Y>1030</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -1169,7 +1169,7 @@
         <DataSegment><Spoint><X>6</X><Y>-48</Y></Spoint><Epoint><X>6</X><Y>48</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-6</X><Y>0</Y></Spoint><Epoint><X>-48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>6</X><Y>0</Y></Spoint><Epoint><X>48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>-</Pname>
@@ -1182,7 +1182,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>45</typ>
       </DataPin>      <DataPin>
         <Pname>+</Pname>
         <Pnumber>+</Pnumber>
@@ -1194,11 +1194,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>43</typ>
       </DataPin>
       </datapin>
       <PinCL><string>18_0_1_14</string><string>18_1_1_31</string><string>18_1_0_32</string></PinCL>
-      <CtrIem><X>5370</X><Y>250</Y></CtrIem>
+      <CtrIem><X>570</X><Y>1030</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -1207,7 +1207,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>32</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -1229,7 +1229,7 @@
         <DataSegment><Spoint><X>48</X><Y>0</Y></Spoint><Epoint><X>72</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-48</X><Y>-24</Y></Spoint><Epoint><X>-72</X><Y>-24</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-48</X><Y>24</Y></Spoint><Epoint><X>-72</X><Y>24</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>+</Pname>
@@ -1242,7 +1242,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>43</typ>
       </DataPin>      <DataPin>
         <Pname>-</Pname>
         <Pnumber>-</Pnumber>
@@ -1254,7 +1254,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>45</typ>
       </DataPin>      <DataPin>
         <Pname>s</Pname>
         <Pnumber>s</Pnumber>
@@ -1266,11 +1266,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>115</typ>
       </DataPin>
       </datapin>
       <PinCL><string>19_0_1_32</string><string>19_1_0_33</string><string>19_2_1_33</string><string>19_2_0_34</string></PinCL>
-      <CtrIem><X>570</X><Y>250</Y></CtrIem>
+      <CtrIem><X>730</X><Y>250</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -1279,7 +1279,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>79</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -1307,7 +1307,7 @@
         <DataPolygon><point><X>80</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
         <DataPolygon><point><X>45</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon></datapolygon>
       <datasegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>2</Pname>
@@ -1320,7 +1320,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>50</typ>
       </DataPin>      <DataPin>
         <Pname>1</Pname>
         <Pnumber>1</Pnumber>
@@ -1332,11 +1332,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>49</typ>
       </DataPin>
       </datapin>
       <PinCL><string>20_0_0_35</string><string>20_1_1_34</string></PinCL>
-      <CtrIem><X>5690</X><Y>250</Y></CtrIem>
+      <CtrIem><X>1050</X><Y>1030</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -1368,7 +1368,7 @@
         <DataSegment><Spoint><X>6</X><Y>-48</Y></Spoint><Epoint><X>6</X><Y>48</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-6</X><Y>0</Y></Spoint><Epoint><X>-48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>6</X><Y>0</Y></Spoint><Epoint><X>48</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>-</Pname>
@@ -1381,7 +1381,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>45</typ>
       </DataPin>      <DataPin>
         <Pname>+</Pname>
         <Pnumber>+</Pnumber>
@@ -1393,11 +1393,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>43</typ>
       </DataPin>
       </datapin>
       <PinCL><string>21_0_1_15</string><string>21_1_1_35</string></PinCL>
-      <CtrIem><X>6010</X><Y>250</Y></CtrIem>
+      <CtrIem><X>1370</X><Y>1030</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -1406,7 +1406,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>32</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -1422,9 +1422,12 @@
       <value>10uH</value>
       <datapolygon></datapolygon>
       <datasegment>
-        <DataSegment><Spoint><X>-80</X><Y>0</Y></Spoint><Epoint><X>-50</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
-        <DataSegment><Spoint><X>50</X><Y>0</Y></Spoint><Epoint><X>80</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+        <DataSegment><Spoint><X>-48</X><Y>0</Y></Spoint><Epoint><X>-80</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>48</X><Y>0</Y></Spoint><Epoint><X>80</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
+      <dataarc>
+        <DataArc><pCenter><X>-32</X><Y>0</Y></pCenter><stAngle>-180</stAngle><swAngle>180</swAngle><Spoint><X>-48</X><Y>0</Y></Spoint><Epoint><X>-16</X><Y>0</Y></Epoint><Eangle>0</Eangle><OldAngle>180</OldAngle><w>16</w><h>0</h><Rect><Location><X>-48</X><Y>0</Y></Location><Size><Width>16</Width><Height>16</Height></Size><X>-48</X><Y>0</Y><Width>16</Width><Height>16</Height></Rect><CPtSelected>false</CPtSelected><SPtSelected>false</SPtSelected><EPtSelected>false</EPtSelected><ArcFinished>true</ArcFinished><Clockwise>false</Clockwise><CPtGap><X>0</X><Y>0</Y></CPtGap><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap><Sens>false</Sens></DataArc>
+        <DataArc><pCenter><X>0</X><Y>0</Y></pCenter><stAngle>-180</stAngle><swAngle>180</swAngle><Spoint><X>-16</X><Y>0</Y></Spoint><Epoint><X>16</X><Y>0</Y></Epoint><Eangle>0</Eangle><OldAngle>180</OldAngle><w>16</w><h>0</h><Rect><Location><X>-16</X><Y>0</Y></Location><Size><Width>16</Width><Height>16</Height></Size><X>-16</X><Y>0</Y><Width>16</Width><Height>16</Height></Rect><CPtSelected>false</CPtSelected><SPtSelected>false</SPtSelected><EPtSelected>false</EPtSelected><ArcFinished>true</ArcFinished><Clockwise>false</Clockwise><CPtGap><X>0</X><Y>0</Y></CPtGap><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap><Sens>false</Sens></DataArc>
+        <DataArc><pCenter><X>32</X><Y>0</Y></pCenter><stAngle>-180</stAngle><swAngle>180</swAngle><Spoint><X>16</X><Y>0</Y></Spoint><Epoint><X>48</X><Y>0</Y></Epoint><Eangle>0</Eangle><OldAngle>180</OldAngle><w>16</w><h>0</h><Rect><Location><X>16</X><Y>0</Y></Location><Size><Width>16</Width><Height>16</Height></Size><X>16</X><Y>0</Y><Width>16</Width><Height>16</Height></Rect><CPtSelected>false</CPtSelected><SPtSelected>false</SPtSelected><EPtSelected>false</EPtSelected><ArcFinished>true</ArcFinished><Clockwise>false</Clockwise><CPtGap><X>0</X><Y>0</Y></CPtGap><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap><Sens>false</Sens></DataArc></dataarc>
       <datapin>
       <DataPin>
         <Pname>1</Pname>
@@ -1437,7 +1440,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>49</typ>
       </DataPin>      <DataPin>
         <Pname>2</Pname>
         <Pnumber>2</Pnumber>
@@ -1449,11 +1452,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>50</typ>
       </DataPin>
       </datapin>
       <PinCL><string>22_1_1_2</string></PinCL>
-      <CtrIem><X>1530</X><Y>510</Y></CtrIem>
+      <CtrIem><X>3130</X><Y>1030</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -1462,7 +1465,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>66</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -1478,9 +1481,12 @@
       <value>10uH</value>
       <datapolygon></datapolygon>
       <datasegment>
-        <DataSegment><Spoint><X>-80</X><Y>0</Y></Spoint><Epoint><X>-50</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
-        <DataSegment><Spoint><X>50</X><Y>0</Y></Spoint><Epoint><X>80</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+        <DataSegment><Spoint><X>-48</X><Y>0</Y></Spoint><Epoint><X>-80</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>48</X><Y>0</Y></Spoint><Epoint><X>80</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
+      <dataarc>
+        <DataArc><pCenter><X>-32</X><Y>0</Y></pCenter><stAngle>-180</stAngle><swAngle>180</swAngle><Spoint><X>-48</X><Y>0</Y></Spoint><Epoint><X>-16</X><Y>0</Y></Epoint><Eangle>0</Eangle><OldAngle>180</OldAngle><w>16</w><h>0</h><Rect><Location><X>-48</X><Y>0</Y></Location><Size><Width>16</Width><Height>16</Height></Size><X>-48</X><Y>0</Y><Width>16</Width><Height>16</Height></Rect><CPtSelected>false</CPtSelected><SPtSelected>false</SPtSelected><EPtSelected>false</EPtSelected><ArcFinished>true</ArcFinished><Clockwise>false</Clockwise><CPtGap><X>0</X><Y>0</Y></CPtGap><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap><Sens>false</Sens></DataArc>
+        <DataArc><pCenter><X>0</X><Y>0</Y></pCenter><stAngle>-180</stAngle><swAngle>180</swAngle><Spoint><X>-16</X><Y>0</Y></Spoint><Epoint><X>16</X><Y>0</Y></Epoint><Eangle>0</Eangle><OldAngle>180</OldAngle><w>16</w><h>0</h><Rect><Location><X>-16</X><Y>0</Y></Location><Size><Width>16</Width><Height>16</Height></Size><X>-16</X><Y>0</Y><Width>16</Width><Height>16</Height></Rect><CPtSelected>false</CPtSelected><SPtSelected>false</SPtSelected><EPtSelected>false</EPtSelected><ArcFinished>true</ArcFinished><Clockwise>false</Clockwise><CPtGap><X>0</X><Y>0</Y></CPtGap><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap><Sens>false</Sens></DataArc>
+        <DataArc><pCenter><X>32</X><Y>0</Y></pCenter><stAngle>-180</stAngle><swAngle>180</swAngle><Spoint><X>16</X><Y>0</Y></Spoint><Epoint><X>48</X><Y>0</Y></Epoint><Eangle>0</Eangle><OldAngle>180</OldAngle><w>16</w><h>0</h><Rect><Location><X>16</X><Y>0</Y></Location><Size><Width>16</Width><Height>16</Height></Size><X>16</X><Y>0</Y><Width>16</Width><Height>16</Height></Rect><CPtSelected>false</CPtSelected><SPtSelected>false</SPtSelected><EPtSelected>false</EPtSelected><ArcFinished>true</ArcFinished><Clockwise>false</Clockwise><CPtGap><X>0</X><Y>0</Y></CPtGap><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap><Sens>false</Sens></DataArc></dataarc>
       <datapin>
       <DataPin>
         <Pname>1</Pname>
@@ -1493,7 +1499,7 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>49</typ>
       </DataPin>      <DataPin>
         <Pname>2</Pname>
         <Pnumber>2</Pnumber>
@@ -1505,11 +1511,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>50</typ>
       </DataPin>
       </datapin>
       <PinCL><string>23_1_1_28</string></PinCL>
-      <CtrIem><X>1850</X><Y>510</Y></CtrIem>
+      <CtrIem><X>3450</X><Y>1030</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -1518,7 +1524,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>66</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -1538,7 +1544,7 @@
         <DataSegment><Spoint><X>-60</X><Y>0</Y></Spoint><Epoint><X>60</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-48</X><Y>12</Y></Spoint><Epoint><X>48</X><Y>12</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>0</X><Y>-48</Y></Spoint><Epoint><X>0</X><Y>-12</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>GND</Pname>
@@ -1551,11 +1557,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>71</typ>
       </DataPin>
       </datapin>
       <PinCL><string>24_0_0_5</string><string>24_0_0_6</string><string>24_0_0_7</string><string>24_0_0_8</string><string>24_0_0_9</string><string>24_0_0_10</string><string>24_0_0_11</string><string>24_0_0_12</string><string>24_0_0_13</string><string>24_0_0_14</string><string>24_0_0_15</string></PinCL>
-      <CtrIem><X>250</X><Y>770</Y></CtrIem>
+      <CtrIem><X>250</X><Y>1290</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -1564,7 +1570,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>71</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -1583,7 +1589,7 @@
         <DataSegment><Spoint><X>-60</X><Y>24</Y></Spoint><Epoint><X>60</X><Y>24</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>0</X><Y>48</Y></Spoint><Epoint><X>0</X><Y>24</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-40</X><Y>8</Y></Spoint><Epoint><X>40</X><Y>8</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>VCC</Pname>
@@ -1596,11 +1602,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>86</typ>
       </DataPin>
       </datapin>
       <PinCL><string>25_0_0_21</string><string>25_0_0_22</string></PinCL>
-      <CtrIem><X>450</X><Y>770</Y></CtrIem>
+      <CtrIem><X>450</X><Y>1290</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -1609,7 +1615,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>86</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -1628,7 +1634,7 @@
         <DataSegment><Spoint><X>-60</X><Y>24</Y></Spoint><Epoint><X>60</X><Y>24</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>0</X><Y>48</Y></Spoint><Epoint><X>0</X><Y>24</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>-40</X><Y>8</Y></Spoint><Epoint><X>40</X><Y>8</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment>
-      <dataarc />
+      <dataarc></dataarc>
       <datapin>
       <DataPin>
         <Pname>VCC</Pname>
@@ -1641,11 +1647,11 @@
         <ShowNbTxt>false</ShowNbTxt>
         <ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP>
-        <typ>0</typ>
+        <typ>86</typ>
       </DataPin>
       </datapin>
       <PinCL><string>26_0_0_23</string><string>26_0_0_24</string><string>26_0_0_25</string></PinCL>
-      <CtrIem><X>650</X><Y>770</Y></CtrIem>
+      <CtrIem><X>650</X><Y>1290</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap>
       <TL><X>50</X><Y>25</Y></TL>
       <BR><X>210</X><Y>121</Y></BR>
@@ -1654,7 +1660,7 @@
       <GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV>
       <FlipX>0</FlipX><FlipY>0</FlipY>
-      <typ>82</typ>
+      <typ>86</typ>
       <Bottom>false</Bottom>
       <selected>false</selected>
       <focus>false</focus>
@@ -1669,8 +1675,8 @@
       <CFirst>0_1_0_0</CFirst>
       <CLast>10_0_1_0</CLast>
       <LP>
-        <PointF><X>1930</X><Y>250</Y></PointF>
         <PointF><X>810</X><Y>510</Y></PointF>
+        <PointF><X>2410</X><Y>1030</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1685,8 +1691,8 @@
       <CFirst>10_0_0_1</CFirst>
       <CLast>11_1_1_1</CLast>
       <LP>
-        <PointF><X>810</X><Y>510</Y></PointF>
-        <PointF><X>2218</X><Y>250</Y></PointF>
+        <PointF><X>2410</X><Y>1030</Y></PointF>
+        <PointF><X>1098</X><Y>510</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1701,8 +1707,8 @@
       <CFirst>11_1_0_2</CFirst>
       <CLast>22_1_1_2</CLast>
       <LP>
-        <PointF><X>2218</X><Y>250</Y></PointF>
-        <PointF><X>1610</X><Y>510</Y></PointF>
+        <PointF><X>1098</X><Y>510</Y></PointF>
+        <PointF><X>3210</X><Y>1030</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1717,8 +1723,8 @@
       <CFirst>0_0_0_3</CFirst>
       <CLast>1_1_1_3</CLast>
       <LP>
-        <PointF><X>1770</X><Y>250</Y></PointF>
-        <PointF><X>2858</X><Y>250</Y></PointF>
+        <PointF><X>650</X><Y>510</Y></PointF>
+        <PointF><X>1898</X><Y>510</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1733,8 +1739,8 @@
       <CFirst>1_1_0_4</CFirst>
       <CLast>2_1_1_4</CLast>
       <LP>
-        <PointF><X>2858</X><Y>250</Y></PointF>
-        <PointF><X>2570</X><Y>250</Y></PointF>
+        <PointF><X>1898</X><Y>510</Y></PointF>
+        <PointF><X>1610</X><Y>510</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1749,8 +1755,8 @@
       <CFirst>24_0_0_5</CFirst>
       <CLast>1_0_1_5</CLast>
       <LP>
-        <PointF><X>250</X><Y>722</Y></PointF>
-        <PointF><X>2762</X><Y>250</Y></PointF>
+        <PointF><X>250</X><Y>1242</Y></PointF>
+        <PointF><X>1802</X><Y>510</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1765,8 +1771,8 @@
       <CFirst>24_0_0_6</CFirst>
       <CLast>3_0_1_6</CLast>
       <LP>
-        <PointF><X>250</X><Y>722</Y></PointF>
-        <PointF><X>202</X><Y>510</Y></PointF>
+        <PointF><X>250</X><Y>1242</Y></PointF>
+        <PointF><X>1802</X><Y>1030</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1781,8 +1787,8 @@
       <CFirst>24_0_0_7</CFirst>
       <CLast>6_0_1_7</CLast>
       <LP>
-        <PointF><X>250</X><Y>722</Y></PointF>
-        <PointF><X>3402</X><Y>250</Y></PointF>
+        <PointF><X>250</X><Y>1242</Y></PointF>
+        <PointF><X>522</X><Y>770</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1797,8 +1803,8 @@
       <CFirst>24_0_0_8</CFirst>
       <CLast>8_0_1_8</CLast>
       <LP>
-        <PointF><X>250</X><Y>722</Y></PointF>
-        <PointF><X>1002</X><Y>250</Y></PointF>
+        <PointF><X>250</X><Y>1242</Y></PointF>
+        <PointF><X>1162</X><Y>250</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1813,8 +1819,8 @@
       <CFirst>24_0_0_9</CFirst>
       <CLast>9_0_1_9</CLast>
       <LP>
-        <PointF><X>250</X><Y>722</Y></PointF>
-        <PointF><X>1322</X><Y>250</Y></PointF>
+        <PointF><X>250</X><Y>1242</Y></PointF>
+        <PointF><X>202</X><Y>510</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1829,8 +1835,8 @@
       <CFirst>24_0_0_10</CFirst>
       <CLast>11_0_1_10</CLast>
       <LP>
-        <PointF><X>250</X><Y>722</Y></PointF>
-        <PointF><X>2122</X><Y>250</Y></PointF>
+        <PointF><X>250</X><Y>1242</Y></PointF>
+        <PointF><X>1002</X><Y>510</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1845,8 +1851,8 @@
       <CFirst>24_0_0_11</CFirst>
       <CLast>13_0_1_11</CLast>
       <LP>
-        <PointF><X>250</X><Y>722</Y></PointF>
-        <PointF><X>1130</X><Y>510</Y></PointF>
+        <PointF><X>250</X><Y>1242</Y></PointF>
+        <PointF><X>2730</X><Y>1030</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1861,8 +1867,8 @@
       <CFirst>24_0_0_12</CFirst>
       <CLast>14_0_1_12</CLast>
       <LP>
-        <PointF><X>250</X><Y>722</Y></PointF>
-        <PointF><X>4042</X><Y>250</Y></PointF>
+        <PointF><X>250</X><Y>1242</Y></PointF>
+        <PointF><X>1322</X><Y>770</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1877,8 +1883,8 @@
       <CFirst>24_0_0_13</CFirst>
       <CLast>16_0_1_13</CLast>
       <LP>
-        <PointF><X>250</X><Y>722</Y></PointF>
-        <PointF><X>4682</X><Y>250</Y></PointF>
+        <PointF><X>250</X><Y>1242</Y></PointF>
+        <PointF><X>2122</X><Y>770</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1893,8 +1899,8 @@
       <CFirst>24_0_0_14</CFirst>
       <CLast>18_0_1_14</CLast>
       <LP>
-        <PointF><X>250</X><Y>722</Y></PointF>
-        <PointF><X>5322</X><Y>250</Y></PointF>
+        <PointF><X>250</X><Y>1242</Y></PointF>
+        <PointF><X>522</X><Y>1030</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1909,8 +1915,8 @@
       <CFirst>24_0_0_15</CFirst>
       <CLast>21_0_1_15</CLast>
       <LP>
-        <PointF><X>250</X><Y>722</Y></PointF>
-        <PointF><X>5962</X><Y>250</Y></PointF>
+        <PointF><X>250</X><Y>1242</Y></PointF>
+        <PointF><X>1322</X><Y>1030</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1925,8 +1931,8 @@
       <CFirst>2_0_0_16</CFirst>
       <CLast>3_1_1_16</CLast>
       <LP>
-        <PointF><X>2410</X><Y>250</Y></PointF>
-        <PointF><X>298</X><Y>510</Y></PointF>
+        <PointF><X>1450</X><Y>510</Y></PointF>
+        <PointF><X>1898</X><Y>1030</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1941,7 +1947,7 @@
       <CFirst>3_1_0_17</CFirst>
       <CLast>4_0_1_17</CLast>
       <LP>
-        <PointF><X>298</X><Y>510</Y></PointF>
+        <PointF><X>1898</X><Y>1030</Y></PointF>
         <PointF><X>178</X><Y>226</Y></PointF>
       </LP>
       <pGap />
@@ -1974,7 +1980,7 @@
       <CLast>5_1_1_19</CLast>
       <LP>
         <PointF><X>322</X><Y>250</Y></PointF>
-        <PointF><X>3210</X><Y>250</Y></PointF>
+        <PointF><X>330</X><Y>770</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -1989,8 +1995,8 @@
       <CFirst>5_0_0_20</CFirst>
       <CLast>6_1_1_20</CLast>
       <LP>
-        <PointF><X>3050</X><Y>250</Y></PointF>
-        <PointF><X>3498</X><Y>250</Y></PointF>
+        <PointF><X>170</X><Y>770</Y></PointF>
+        <PointF><X>618</X><Y>770</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -2005,8 +2011,8 @@
       <CFirst>25_0_0_21</CFirst>
       <CLast>7_1_1_21</CLast>
       <LP>
-        <PointF><X>450</X><Y>818</Y></PointF>
-        <PointF><X>650</X><Y>510</Y></PointF>
+        <PointF><X>450</X><Y>1338</Y></PointF>
+        <PointF><X>2250</X><Y>1030</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -2021,8 +2027,8 @@
       <CFirst>25_0_0_22</CFirst>
       <CLast>12_1_1_22</CLast>
       <LP>
-        <PointF><X>450</X><Y>818</Y></PointF>
-        <PointF><X>3850</X><Y>250</Y></PointF>
+        <PointF><X>450</X><Y>1338</Y></PointF>
+        <PointF><X>1130</X><Y>770</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -2037,8 +2043,8 @@
       <CFirst>26_0_0_23</CFirst>
       <CLast>7_0_1_23</CLast>
       <LP>
-        <PointF><X>650</X><Y>818</Y></PointF>
-        <PointF><X>490</X><Y>510</Y></PointF>
+        <PointF><X>650</X><Y>1338</Y></PointF>
+        <PointF><X>2090</X><Y>1030</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -2053,8 +2059,8 @@
       <CFirst>26_0_0_24</CFirst>
       <CLast>8_1_1_24</CLast>
       <LP>
-        <PointF><X>650</X><Y>818</Y></PointF>
-        <PointF><X>1098</X><Y>250</Y></PointF>
+        <PointF><X>650</X><Y>1338</Y></PointF>
+        <PointF><X>1258</X><Y>250</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -2069,8 +2075,8 @@
       <CFirst>26_0_0_25</CFirst>
       <CLast>9_1_1_25</CLast>
       <LP>
-        <PointF><X>650</X><Y>818</Y></PointF>
-        <PointF><X>1418</X><Y>250</Y></PointF>
+        <PointF><X>650</X><Y>1338</Y></PointF>
+        <PointF><X>298</X><Y>510</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -2085,8 +2091,8 @@
       <CFirst>12_0_0_26</CFirst>
       <CLast>13_1_1_26</CLast>
       <LP>
-        <PointF><X>3690</X><Y>250</Y></PointF>
-        <PointF><X>1290</X><Y>510</Y></PointF>
+        <PointF><X>970</X><Y>770</Y></PointF>
+        <PointF><X>2890</X><Y>1030</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -2101,8 +2107,8 @@
       <CFirst>13_1_0_27</CFirst>
       <CLast>14_1_1_27</CLast>
       <LP>
-        <PointF><X>1290</X><Y>510</Y></PointF>
-        <PointF><X>4138</X><Y>250</Y></PointF>
+        <PointF><X>2890</X><Y>1030</Y></PointF>
+        <PointF><X>1418</X><Y>770</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -2117,8 +2123,8 @@
       <CFirst>15_1_0_28</CFirst>
       <CLast>23_1_1_28</CLast>
       <LP>
-        <PointF><X>4490</X><Y>250</Y></PointF>
-        <PointF><X>1930</X><Y>510</Y></PointF>
+        <PointF><X>1930</X><Y>770</Y></PointF>
+        <PointF><X>3530</X><Y>1030</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -2133,8 +2139,8 @@
       <CFirst>15_0_0_29</CFirst>
       <CLast>16_1_1_29</CLast>
       <LP>
-        <PointF><X>4330</X><Y>250</Y></PointF>
-        <PointF><X>4778</X><Y>250</Y></PointF>
+        <PointF><X>1770</X><Y>770</Y></PointF>
+        <PointF><X>2218</X><Y>770</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -2149,8 +2155,8 @@
       <CFirst>16_1_0_30</CFirst>
       <CLast>17_1_1_30</CLast>
       <LP>
-        <PointF><X>4778</X><Y>250</Y></PointF>
-        <PointF><X>5130</X><Y>250</Y></PointF>
+        <PointF><X>2218</X><Y>770</Y></PointF>
+        <PointF><X>330</X><Y>1030</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -2165,8 +2171,8 @@
       <CFirst>17_0_0_31</CFirst>
       <CLast>18_1_1_31</CLast>
       <LP>
-        <PointF><X>4970</X><Y>250</Y></PointF>
-        <PointF><X>5418</X><Y>250</Y></PointF>
+        <PointF><X>170</X><Y>1030</Y></PointF>
+        <PointF><X>618</X><Y>1030</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -2181,8 +2187,8 @@
       <CFirst>18_1_0_32</CFirst>
       <CLast>19_0_1_32</CLast>
       <LP>
-        <PointF><X>5418</X><Y>250</Y></PointF>
-        <PointF><X>498</X><Y>226</Y></PointF>
+        <PointF><X>618</X><Y>1030</Y></PointF>
+        <PointF><X>658</X><Y>226</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -2197,8 +2203,8 @@
       <CFirst>19_1_0_33</CFirst>
       <CLast>19_2_1_33</CLast>
       <LP>
-        <PointF><X>498</X><Y>274</Y></PointF>
-        <PointF><X>642</X><Y>250</Y></PointF>
+        <PointF><X>658</X><Y>274</Y></PointF>
+        <PointF><X>802</X><Y>250</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -2213,8 +2219,8 @@
       <CFirst>19_2_0_34</CFirst>
       <CLast>20_1_1_34</CLast>
       <LP>
-        <PointF><X>642</X><Y>250</Y></PointF>
-        <PointF><X>5770</X><Y>250</Y></PointF>
+        <PointF><X>802</X><Y>250</Y></PointF>
+        <PointF><X>1130</X><Y>1030</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>
@@ -2229,8 +2235,8 @@
       <CFirst>20_0_0_35</CFirst>
       <CLast>21_1_1_35</CLast>
       <LP>
-        <PointF><X>5610</X><Y>250</Y></PointF>
-        <PointF><X>6058</X><Y>250</Y></PointF>
+        <PointF><X>970</X><Y>1030</Y></PointF>
+        <PointF><X>1418</X><Y>1030</Y></PointF>
       </LP>
       <pGap />
       <ID>0</ID><idF>0</idF><idL>0</idL>

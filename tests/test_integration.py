@@ -54,7 +54,7 @@ def test_full_pipeline():
         assert 'Pont diviseur de tension' in report
         assert 'Condensateur de découplage' in report
         assert 'Protection par fusible' in report
-        assert 'Snubber RC' in report
+        assert 'Absorbeur RC' in report
         assert 'Pont redresseur (Graetz)' in report
         assert 'Transistor en commutation' in report
         assert 'Suiveur de tension (AOP)' in report

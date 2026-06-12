@@ -21,6 +21,7 @@ Charge un fichier netlist ou un schéma XML, identifie les sous-circuits connus,
 - **Export XML BoardSCH groupé** — schéma organisé par circuit détecté, ouvrable dans le logiciel de design
 - **Patterns personnalisés** — ajouter de nouveaux circuits sans toucher au code
 - **Résolution hiérarchique** — les circuits complexes ont priorité sur les circuits simples
+- **Dipôles équivalents** — une contre-réaction ou une entrée composite (`Rf = R1+R2`, `R//C`…) est réduite en un dipôle unique avant détection, pour reconnaître les montages dont un élément est en réalité un sous-réseau série/parallèle
 
 ---
 
@@ -265,6 +266,25 @@ Les **avertissements** signalent les ambiguïtés :
 
 ---
 
+## Dipôles équivalents (réseaux composites)
+
+Un élément clé d'un montage — typiquement la contre-réaction `Rf` d'un AOP — n'est
+pas toujours un composant unique : il peut être un sous-réseau complexe
+(`Rf = R1+R2` en série, `R//C` en parallèle, filtre en T/L…). Avant la détection,
+ces sous-réseaux passifs sont **réduits en un dipôle équivalent** (`circuit_analyzer/reduction.py`) :
+
+- **série** (chaîne via un nœud interne) et **parallèle** (composants entre les mêmes nœuds) ;
+- type équivalent `R` / `C` / `L`, ou `Z` (impédance composite) si le réseau est mixte ;
+- la réduction ne s'applique **qu'autour des composants actifs** (broches AOP / transistor) :
+  un amortisseur `R//C`, un pont diviseur ou un filtre RC **autonomes** restent intacts ;
+- jamais de fusion à travers un rail (GND / alimentation) ni un point de prélèvement.
+
+Après détection, le dipôle équivalent est ré-expansé vers ses composants réels :
+le rapport, les satellites et l'export XML voient toujours `R1`, `R2`… individuellement.
+Un montage sans réseau composite est analysé exactement comme avant (aucune régression).
+
+---
+
 ## Performance
 
 L'analyse est calibrée pour les netlists industrielles (mesures avec
@@ -361,7 +381,7 @@ Ces topologies ne sont **pas détectables** depuis la netlist seule :
 python -m pytest -q
 ```
 
-286 tests automatisés couvrant le parseur, les 27 patterns, le score de confiance, les composants satellites, les îlots fonctionnels, la performance, les chemins d'application, les alias de nets, le parser de valeurs, le générateur XML, l'import XML et les circuits industriels.
+304 tests automatisés couvrant le parseur, les 27 patterns, le score de confiance, les composants satellites, les îlots fonctionnels, la réduction en dipôles équivalents, la performance, les chemins d'application, les alias de nets, le parser de valeurs, le générateur XML, l'import XML et les circuits industriels.
 
 ---
 
@@ -373,6 +393,7 @@ circuit_analyzer/
 ├── detecteur.py           ← 27 fonctions de détection + score de confiance
 ├── satellites.py          ← rattachement des composants satellites
 ├── ilots.py               ← îlots fonctionnels (structure en étages)
+├── reduction.py           ← réduction série/parallèle en dipôles équivalents
 ├── rapport.py             ← génération du rapport texte
 ├── xml.py                 ← import/export BoardSCH XML
 │
@@ -407,7 +428,7 @@ custom_circuits/
 └── loader.py              ← circuits personnalisés (JSON)
 
 circuits_industriels/      ← schémas BoardSCH générés (12 circuits)
-tests/                     ← 200 tests pytest
+tests/                     ← 304 tests pytest
 docs/
 └── explication_logiciel.md ← explication pédagogique du fonctionnement
 

@@ -12,11 +12,9 @@ import sys
 import io
 
 sys.path.insert(0, os.path.dirname(__file__))
-from circuit_analyzer.parser import parse_file
-from circuit_analyzer.xml_generator import components_to_xml
-from circuit_analyzer.xml_parser import parse_xml
-from circuit_analyzer.graph_builder import build_graph
-from circuit_analyzer.matcher import match_patterns
+from circuit_analyzer.composant import lire_netlist as parse_file, construire_graphe as build_graph
+from circuit_analyzer.xml import generer_xml as components_to_xml, lire_xml as parse_xml
+from circuit_analyzer.detecteur import analyser as match_patterns
 
 if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")

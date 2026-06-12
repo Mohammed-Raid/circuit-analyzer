@@ -145,6 +145,15 @@ def _refs(result, comp_info, typ):
     return [r for r in result["components"]
             if comp_info.get(r, {}).get("type") == typ]
 
+def _ref_on_net(refs, comp_info, net, fallback=None):
+    if not net:
+        return fallback
+    for ref in refs:
+        pins = comp_info.get(ref, {}).get("pins", {})
+        if net in pins.values():
+            return ref
+    return fallback
+
 
 # ── Drawing functions ─────────────────────────────────────────────────────────
 
@@ -204,7 +213,6 @@ def _draw_snubber(d, result, ci):
     d += elm.Line().right(0.5)
     d.push()                                              # save left junction
     d += elm.Resistor().right().label(_lbl(r, ci), loc="top")  # top path
-    right_end = d.here
     d.pop()                                               # back to left junction
     d += elm.Line().down(1.5)
     d += elm.Capacitor().right().label(_lbl(c, ci), loc="bottom")
@@ -251,17 +259,19 @@ def _draw_bridge_rectifier(d, result, ci):
 
     # ── Left column ───────────────────────────────────────────────
     d.add(elm.Dot().at((0, 0)).label("DC−", loc="left"))
-    d.add(elm.Diode().up().at((0, 0)).label(ds[2], loc="left"))  # D3 DC-→AC1
+    # Diode labels omitted — node labels (AC1/DC+/DC−) are sufficient;
+    # component refs are shown in the header chip badges.
+    d.add(elm.Diode().up().at((0, 0)))   # D3
     d.add(elm.Dot().label("AC1", loc="left"))
-    d.add(elm.Diode().up().label(ds[0], loc="left"))             # D1 AC1→DC+
+    d.add(elm.Diode().up())              # D1
     dc_plus_y = d.here[1]
     d.add(elm.Dot().label("DC+", loc="left"))
 
     # ── Right column ──────────────────────────────────────────────
     d.add(elm.Dot().at((COL, 0)).label("DC−", loc="right"))
-    d.add(elm.Diode().up().at((COL, 0)).label(ds[3], loc="right")) # D4 DC-→AC2
+    d.add(elm.Diode().up().at((COL, 0)))  # D4
     d.add(elm.Dot().label("AC2", loc="right"))
-    d.add(elm.Diode().up().label(ds[1], loc="right"))              # D2 AC2→DC+
+    d.add(elm.Diode().up())               # D2
     d.add(elm.Dot().label("DC+", loc="right"))
 
     # ── Connecting rails ──────────────────────────────────────────
@@ -271,28 +281,37 @@ def _draw_bridge_rectifier(d, result, ci):
 
 def _draw_flyback(d, result, ci):
     diode = result["components"][0]
-    d += elm.Line().right(0.5).label("SW", loc="left")
+    d += elm.Line().right(0.5).label("SW", loc="start")
     d += elm.Diode().right().label(_lbl(diode, ci), loc="top")
-    d += elm.Line().right(0.5).label("VCC", loc="right")
+    d += elm.Line().right(0.5).label("VCC", loc="end")
 
 
 def _draw_esd(d, result, ci):
     diode = result["components"][0]
-    d += elm.Line().right(0.5).label("SIG", loc="left")
-    d += elm.Zener().down().label(_lbl(diode, ci), loc="right")
-    d += elm.Ground()
+    # Vertical diodes are broken in schemdraw 0.22 — L-shaped layout with horizontal diode
+    # SIG ──●──[D1→]──┐
+    #                  |
+    #                 GND
+    d.add(elm.Line().right(0.5).label("SIG", loc="start"))
+    sig_pt = d.here
+    d.add(elm.Dot().at(sig_pt))
+    d.add(elm.Diode().right().label(_lbl(diode, ci), loc="top"))
+    d.add(elm.Line().down(1.5))
+    d.add(elm.Ground())
 
 
 # ── AOP patterns ─────────────────────────────────────────────────────────────
 
 def _draw_inverting_amp(d, result, ci):
     rs = _refs(result, ci, "R")
-    rin = rs[0] if rs else "Rin"
-    rf  = rs[1] if len(rs) > 1 else "Rf"
+    # Pattern returns [U, feedback_r, input_r] — rf is first, rin is second
+    rf  = rs[0] if rs else "Rf"
+    rin = rs[1] if len(rs) > 1 else "Rin"
 
     op = d.add(elm.Opamp().anchor("in1").at((4.5, 0)))
 
     d.add(elm.Resistor().at(op.in1).left().label(_lbl(rin, ci), loc="top"))
+    d.add(elm.Dot().label("IN", loc="left"))
     mid_pt = op.in1
     d.add(elm.Line().at(op.in2).left(1))
     d.add(elm.Ground())
@@ -355,6 +374,7 @@ def _draw_integrator(d, result, ci):
 
     op = d.add(elm.Opamp().anchor("in1").at((4.5, 0)))
     d.add(elm.Resistor().at(op.in1).left().label(_lbl(r, ci), loc="top"))
+    d.add(elm.Dot().label("IN", loc="left"))
     mid_pt = op.in1
     d.add(elm.Line().at(op.in2).left(1))
     d.add(elm.Ground())
@@ -374,6 +394,7 @@ def _draw_differentiator(d, result, ci):
 
     op = d.add(elm.Opamp().anchor("in1").at((4.5, 0)))
     d.add(elm.Capacitor().at(op.in1).left().label(_lbl(c, ci), loc="top"))
+    d.add(elm.Dot().label("IN", loc="left"))
     mid_pt = op.in1
     d.add(elm.Line().at(op.in2).left(1))
     d.add(elm.Ground())
@@ -418,26 +439,27 @@ def _draw_schmitt(d, result, ci):
 
 def _draw_differential_amp(d, result, ci):
     rs = _refs(result, ci, "R")
-    r1  = rs[0] if len(rs) > 0 else "R1"
-    rg  = rs[1] if len(rs) > 1 else "Rg"
-    r2  = rs[2] if len(rs) > 2 else "R2"
-    rf  = rs[3] if len(rs) > 3 else "Rf"
+    # Pattern returns [U, r_inp_to_gnd, r_inp_from_src, r_inm_feedback, r_inm_from_src]
+    rg  = rs[0] if len(rs) > 0 else "Rg"   # IN+ → GND  (bias/gain)
+    r1  = rs[1] if len(rs) > 1 else "R1"   # source → IN+ (input)
+    rf  = rs[2] if len(rs) > 2 else "Rf"   # IN- → OUT  (feedback)
+    r2  = rs[3] if len(rs) > 3 else "R2"   # source → IN- (input)
 
-    op = d.add(elm.Opamp().anchor("center").at((5.5, 0)))
+    op = d.add(elm.Opamp().anchor("center").at((6.0, 0)))
 
-    # IN+ path: R1 goes left from IN+; Rg hangs down from end of R1 (avoids opamp body)
-    d.add(elm.Resistor().at(op.in2).left().label(_lbl(r1, ci), loc="top"))
+    # IN+ path: R1 goes left from IN+; loc="bottom" keeps label away from r2 above it
+    d.add(elm.Resistor().at(op.in2).left(1.35).label(_lbl(r1, ci), loc="bottom"))
     in1_junc = d.here                             # left end of R1 = IN1 node
     d.add(elm.Dot().label("IN1", loc="left"))
-    d.add(elm.Resistor().at(in1_junc).down().label(_lbl(rg, ci), loc="right"))
+    d.add(elm.Resistor().at(in1_junc).down(1.25).label(_lbl(rg, ci), loc="top"))
     d.add(elm.Ground())
 
     # IN- path with feedback
     in1_pt = op.in1
-    d.add(elm.Resistor().at(in1_pt).left().label(_lbl(r2, ci), loc="top"))
+    d.add(elm.Resistor().at(in1_pt).left(1.35).label(_lbl(r2, ci), loc="top"))
     d.add(elm.Dot().label("IN2", loc="left"))
-    above = (in1_pt[0], in1_pt[1] + 1.5)
-    d.add(elm.Line().at(in1_pt).up(1.5))
+    above = (in1_pt[0], in1_pt[1] + 1.8)
+    d.add(elm.Line().at(in1_pt).up(1.8))
     d.add(elm.Resistor().at(above).right().tox(op.out[0])
           .label(_lbl(rf, ci), loc="top"))
     d.add(elm.Line().toy(op.out[1]))
@@ -452,24 +474,28 @@ def _draw_summing_amp(d, result, ci):
 
     op = d.add(elm.Opamp().anchor("in1").at((5, 0)))
     in1_pt = op.in1  # summing node (IN-)
-    d.add(elm.Line().at(op.in2).left(1))
+    # Route IN+ straight down to GND — avoids merging visually with the bottom of the input bus
+    d.add(elm.Line().at(op.in2).left(0.65))
+    d.add(elm.Line().down(0.75))
     d.add(elm.Ground())
 
-    spacing = 1.2
-    y_offs = [i * spacing - (n - 1) * spacing / 2 for i in range(n)]
+    spacing = 1.4
+    y_offs = [i * spacing for i in range(n)]
     top_y  = in1_pt[1] + y_offs[-1]
-    bot_y  = in1_pt[1] + y_offs[0]
+    bot_y  = in1_pt[1]
 
     # Vertical bus at in1_pt.x connecting all input ends to summing node
     if n > 1:
         d.add(elm.Line().at((in1_pt[0], bot_y)).toy(top_y))
-        d.add(elm.Dot().at(in1_pt))
+    # Junction dot always present (even n==1, marks summing node clearly)
+    d.add(elm.Dot().at(in1_pt))
 
-    # Input resistors going left from the bus
+    # Input resistors going left from the bus; dot + INx label at each left end
     for i in range(n):
         node_y = in1_pt[1] + y_offs[i]
         d.add(elm.Resistor().at((in1_pt[0], node_y)).left()
               .label(_lbl(inputs[i], ci), loc="top"))
+        d.add(elm.Dot().label(f"IN{i+1}", loc="left"))
 
     # Feedback Rf: up from in1_pt, then tox(out.x), then toy to out
     above_y = top_y + 0.8
@@ -495,13 +521,18 @@ def _draw_bjt_switch(d, result, ci):
 def _draw_common_emitter(d, result, ci):
     q = _ref(result, ci, "Q")
     rs = _refs(result, ci, "R")
-    rb = rs[0] if rs else "Rb"
-    rc = rs[1] if len(rs) > 1 else "Rc"
+    # Pattern returns [Q, r_at_collector, r_at_base] → rs[0]=Rc, rs[1]=Rb
+    q_pins = ci.get(q, {}).get("pins", {})
+    rc = _ref_on_net(rs, ci, q_pins.get("C"), rs[0] if rs else "Rc")
+    remaining = [r for r in rs if r != rc]
+    rb = _ref_on_net(remaining, ci, q_pins.get("B"), remaining[0] if remaining else "Rb")
     t = d.add(elm.BjtNpn().at((3, 0)))
     d.add(elm.Resistor().at(t.base).left().label(_lbl(rb, ci), loc="top"))
     d.add(elm.Dot().label("IN", loc="left"))
-    d.add(elm.Resistor().at(t.collector).up().label(_lbl(rc, ci), loc="right"))
-    d.add(elm.Dot().label("VCC", loc="right"))
+    # loc="bot" on UP element = physical right side at midpoint; no overlap with VCC at top-end
+    d.add(elm.Resistor().at(t.collector).up(1.15).label(_lbl(rc, ci), loc="bot"))
+    d.add(elm.Dot())
+    d.add(elm.Line().up(0.45).label("VCC", loc="top"))
     d.add(elm.Line().at(t.emitter).down(0.5))
     d.add(elm.Ground())
     d.add(elm.Line().at(t.collector).right(1.5).label("OUT", loc="right"))
@@ -510,26 +541,56 @@ def _draw_common_emitter(d, result, ci):
 def _draw_mosfet_switch(d, result, ci):
     m = _ref(result, ci, "M"); r = _ref(result, ci, "R")
     t = d.add(elm.NFet().at((3, 0)))
-    d.add(elm.Resistor().at(t.gate).left().label(_lbl(r, ci), loc="top"))
-    d.add(elm.Dot().label("IN", loc="left"))
+    # In schemdraw 0.22, NFet gate is on the RIGHT side — resistor goes right (no body overlap)
+    d.add(elm.Resistor().at(t.gate).right().label(_lbl(r, ci), loc="top"))
+    d.add(elm.Dot().label("IN", loc="right"))
     d.add(elm.Line().at(t.drain).up(1).label("LOAD", loc="right"))
     d.add(elm.Line().at(t.source).down(0.5))
     d.add(elm.Ground())
 
 
+def _draw_high_side_mosfet(d, result, ci):
+    m = _ref(result, ci, "M")
+    r = _ref(result, ci, "R")
+    t = d.add(elm.NFet().at((3, 0)))
+    # Gate resistor goes right (gate is on right in NFet 0.22)
+    d.add(elm.Resistor().at(t.gate).right().label(_lbl(r, ci), loc="top"))
+    d.add(elm.Dot().label("IN", loc="right"))
+    # Drain at top → VCC power rail
+    d.add(elm.Line().at(t.drain).up(1))
+    d.add(elm.Dot().label("VCC", loc="right"))
+    # Source at bottom → load (not GND)
+    d.add(elm.Line().at(t.source).down(1))
+    d.add(elm.Dot().label("LOAD", loc="left"))
+
+
 def _draw_current_mirror(d, result, ci):
     qs = _refs(result, ci, "Q")
-    q1 = qs[0] if qs else "Q1"
-    q2 = qs[1] if len(qs) > 1 else "Q2"
     t1 = d.add(elm.BjtNpn().at((1.5, 0)))
     t2 = d.add(elm.BjtNpn().at((4.5, 0)))
-    # Shared base connection
-    d.add(elm.Line().at(t1.base).right().to(t2.base))
-    # Diode-connect Q1: collector to base
-    d.add(elm.Line().at(t1.collector).down().to(t1.base))
-    # Collectors
-    d.add(elm.Line().at(t1.collector).up(0.8).label("Iref", loc="right"))
-    d.add(elm.Line().at(t2.collector).up(0.8).label("Iout", loc="right"))
+
+    # Shared base wire + junction dots at both bases
+    d.add(elm.Line().at(t1.base).tox(t2.base[0]))
+    d.add(elm.Dot().at(t1.base))
+    d.add(elm.Dot().at(t2.base))
+
+    # T-junction above Q1 body (collector.y + 0.6 clears the body top)
+    junc_y  = t1.collector[1] + 0.6        # ≈ 1.30
+    junc_pt = (t1.collector[0], junc_y)    # ≈ (2.25, 1.30)
+
+    # Collector → UP to junction
+    d.add(elm.Line().at(t1.collector).toy(junc_y))
+    d.add(elm.Dot().at(junc_pt))            # T-junction dot
+
+    # Diode branch: LEFT then DOWN to Q1.base — stays outside body
+    d.add(elm.Line().at(junc_pt).tox(t1.base[0]))
+    d.add(elm.Line().toy(t1.base[1]))
+
+    # Iref up from the junction; Iout at same absolute height for symmetry
+    iref_top = junc_y + 0.7
+    d.add(elm.Line().at(junc_pt).toy(iref_top).label("Iref", loc="right"))
+    d.add(elm.Line().at(t2.collector).toy(iref_top).label("Iout", loc="right"))
+
     # Emitters to GND
     d.add(elm.Line().at(t1.emitter).down(0.3))
     d.add(elm.Ground())
@@ -545,7 +606,7 @@ _DRAWERS = {
     "Filtre LC":                         _draw_lc_filter,
     "Pont diviseur de tension":          _draw_voltage_divider,
     "Condensateur de découplage":        _draw_decoupling,
-    "Snubber RC":                        _draw_snubber,
+    "Absorbeur RC":                      _draw_snubber,
     "Protection par fusible":            _draw_fuse,
     "Redresseur simple alternance":      _draw_half_wave,
     "Détecteur de crête":                _draw_peak_detector,
@@ -558,11 +619,12 @@ _DRAWERS = {
     "Intégrateur (AOP)":                 _draw_integrator,
     "Dérivateur (AOP)":                  _draw_differentiator,
     "Comparateur (AOP)":                 _draw_comparator,
-    "Trigger de Schmitt (AOP)":          _draw_schmitt,
+    "Bascule de Schmitt (AOP)":          _draw_schmitt,
     "Amplificateur différentiel (AOP)":  _draw_differential_amp,
     "Amplificateur sommateur (AOP)":     _draw_summing_amp,
     "Transistor en commutation":         _draw_bjt_switch,
     "Amplificateur émetteur commun":     _draw_common_emitter,
     "Miroir de courant BJT":             _draw_current_mirror,
     "MOSFET en commutation":             _draw_mosfet_switch,
+    "MOSFET haute-tension (côté haut)": _draw_high_side_mosfet,
 }

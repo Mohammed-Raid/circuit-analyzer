@@ -121,7 +121,7 @@ def test_opamp_patterns_includes_all_new_patterns():
     from circuit_analyzer.patterns.opamp import OPAMP_PATTERNS
     names = [p.name for p in OPAMP_PATTERNS]
     assert 'Dérivateur (AOP)' in names
-    assert 'Trigger de Schmitt (AOP)' in names
+    assert 'Bascule de Schmitt (AOP)' in names
     assert 'Amplificateur différentiel (AOP)' in names
     assert 'Amplificateur sommateur (AOP)' in names
 

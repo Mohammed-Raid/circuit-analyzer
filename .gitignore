@@ -11,3 +11,19 @@ skidl_REPL.*
 # Sorties PyInstaller (packaging/analyseur.spec est versionné)
 build/
 dist/
+
+# ── Artefacts de travail (scratch) — ignorés, jamais versionnés ──────────────
+# Rendus PNG de vérification visuelle
+chk_*/
+# Circuits générés par generate_test_circuits.py
+circuits_test/
+# Bibliothèque de formes externe (non lue par le code, posée à la main)
+Lib/
+# Sorties de profilage / dumps de résultats
+prof.out
+resul*.txt
+# Brouillons XML (noms placeholder)
+circuits_industriels/tata.xml
+circuits_industriels/titit.xml
+# Fichiers de verrouillage temporaires Office
+~$*

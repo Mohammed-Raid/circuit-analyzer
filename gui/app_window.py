@@ -6,15 +6,7 @@ from gui.tab_components import TabComponents
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-# ── Design tokens ────────────────────────────────────────────────────────────
-BG      = "#070d1a"
-SURFACE = "#0f172a"
-CARD    = "#1e293b"
-BORDER  = "#263347"
-TEXT    = "#f1f5f9"
-MUTED   = "#64748b"
-BLUE    = "#3b82f6"
-BLUE_D  = "#1d4ed8"
+from gui.theme import BG, SURFACE, CARD, BORDER, TEXT, MUTED, BLUE, BLUE_D
 
 
 class AppWindow:

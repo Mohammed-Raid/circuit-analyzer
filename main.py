@@ -2,11 +2,10 @@ import argparse
 import sys
 import io
 from pathlib import Path
-from circuit_analyzer.parser import parse_file
-from circuit_analyzer.xml_parser import parse_xml
-from circuit_analyzer.graph_builder import build_graph
-from circuit_analyzer.matcher import match_patterns
-from circuit_analyzer.reporter import generate
+from circuit_analyzer.composant import lire_netlist as parse_file, construire_graphe as build_graph
+from circuit_analyzer.xml import lire_xml as parse_xml
+from circuit_analyzer.detecteur import analyser as match_patterns
+from circuit_analyzer.rapport import generate
 
 # Ensure UTF-8 output on Windows
 if sys.platform == 'win32':

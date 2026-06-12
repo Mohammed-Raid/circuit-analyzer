@@ -23,6 +23,7 @@ from circuit_analyzer.patterns.base import (
 from circuit_analyzer.value_parser import parse_valeur
 from circuit_analyzer.satellites import rattacher_satellites
 from circuit_analyzer.ilots import detecter_ilots
+from circuit_analyzer.reduction import reduire_dipoles, expandre_composites
 
 # Alias français (= les nouvelles fonctions enrichies par le fichier de config)
 est_masse        = is_ground_net
@@ -1466,12 +1467,22 @@ def analyser(graphe, patterns_personnalises=None):
     # Ordre final : complexes → personnalisés → simples
     tous_les_detecteurs = _DETECTEURS_COMPLEXES + list(patterns_personnalises) + _DETECTEURS_SIMPLES
 
+    # Réduction préalable (directive métier en rouge du document de référence) :
+    # les sous-réseaux passifs série/parallèle sont collapsés en dipôles
+    # équivalents, pour que les détecteurs reconnaissent un montage dont la
+    # contre-réaction (ou l'entrée) est un composite « Rf = R1+R2 ». La détection
+    # tourne sur le graphe réduit ; les refs synthétiques (Z#k) sont ré-expansées
+    # juste après, pour que enrichissement, satellites et îlots travaillent sur
+    # les vraies refs et le graphe original.
+    graphe_reduit, expansion = reduire_dipoles(graphe)
+
     composants_utilises: set = set()
     circuits_trouves: list  = []
     supprimes: list         = []
 
     for detecter in tous_les_detecteurs:
-        for match in detecter(graphe):
+        for match in detecter(graphe_reduit):
+            match = expandre_composites(match, expansion)
             # Test anti-vol AVANT enrichissement : inutile de calculer la
             # confiance des matches supprimés (ils peuvent être très nombreux).
             if any(c in composants_utilises for c in match['components']):
