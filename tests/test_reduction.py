@@ -115,6 +115,42 @@ def test_reseau_flottant_non_reduit():
     assert len(list(reduit.edges())) == 2
 
 
+def test_hub_partage_plusieurs_branches_serie():
+    # N branches composites (R série R) entre LE MÊME couple IN-/OUT — topologie
+    # à « hub » partagé. Chaque branche doit fusionner, puis le banc parallèle
+    # résultant fusionne en un seul dipôle. Vérifie l'absence de régression de la
+    # passe série groupée (les centres MMi partagent les voisins INM/OUT).
+    comps = [_aop(in_moins='INM', out='OUT')]
+    attendus = []
+    for i in range(5):
+        comps.append(Composant(f'Ra{i}', 'R', {'1': 'INM', '2': f'M{i}'}, '5k'))
+        comps.append(Composant(f'Rb{i}', 'R', {'1': f'M{i}', '2': 'OUT'}, '5k'))
+        attendus += [f'Ra{i}', f'Rb{i}']
+    reduit, expansion = reduire_dipoles(_graphe(*comps))
+    passives = [(u, v, d) for u, v, d in reduit.edges(data=True)
+                if d['type'] in ('R', 'C', 'L', 'Z')]
+    assert len(passives) == 1                      # tout collapse en 1 dipôle
+    u, v, d = passives[0]
+    assert {u, v} == {'INM', 'OUT'}
+    assert sorted(expansion[d['ref']]) == sorted(attendus)   # aucun ref perdu
+
+
+def test_serie_creant_un_banc_parallele():
+    # X-Ra-M-Rb-Y et déjà un Rc direct X-Y : après la fusion série (Ra+Rb),
+    # un banc parallèle (Ra+Rb)//Rc apparaît et doit fusionner à son tour.
+    g = _graphe(
+        _aop(in_moins='X', out='Y'),
+        Composant('Ra', 'R', {'1': 'X', '2': 'M'}, '5k'),
+        Composant('Rb', 'R', {'1': 'M', '2': 'Y'}, '5k'),
+        Composant('Rc', 'R', {'1': 'X', '2': 'Y'}, '10k'),
+    )
+    reduit, expansion = reduire_dipoles(g)
+    passives = [d for _, _, d in reduit.edges(data=True)
+                if d['type'] in ('R', 'C', 'L', 'Z')]
+    assert len(passives) == 1
+    assert sorted(expansion[passives[0]['ref']]) == ['Ra', 'Rb', 'Rc']
+
+
 # ── Parallèle : deux composants entre les mêmes nœuds → un équivalent ──────────
 
 def test_parallele_deux_resistances():

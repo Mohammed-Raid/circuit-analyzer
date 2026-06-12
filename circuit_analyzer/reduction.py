@@ -149,19 +149,20 @@ def _pass_parallele(W: nx.MultiGraph, ancres: set) -> bool:
 
 
 def _pass_serie(W: nx.MultiGraph, proteges: set, ancres: set) -> bool:
-    """Élimine en une passe tous les nœuds internes de degré 2 disjoints, en
+    """Élimine en une passe tous les nœuds internes de degré 2 éligibles, en
     fusionnant chaque paire d'arêtes en série. Retourne True si au moins une
     fusion a eu lieu.
 
-    Un nœud fusionné modifie ses deux voisins (a, b) : on les marque « touchés »
-    et on diffère tout nœud adjacent à la passe suivante (boucle externe), pour
-    ne jamais réutiliser des données d'arête périmées dans la même passe. Les
-    chaînes longues convergent ainsi en quelques passes au lieu d'un redémarrage
-    complet par fusion."""
-    touches: set = set()
+    Sûreté de la mutation pendant l'itération : les arêtes de chaque nœud sont
+    relues À FRAIS (`W.edges(n)`) au moment où il est traité, jamais mises en
+    cache — il n'y a donc aucune donnée périmée. Seul le nœud-centre est retiré
+    (jamais ses voisins), et chaque nœud n'apparaît qu'une fois dans le snapshot,
+    si bien qu'un nœud retiré n'est jamais revisité. On peut donc fusionner tous
+    les nœuds éligibles d'un coup, y compris des branches qui partagent le même
+    couple de voisins (hub) — cas « N dipôles composites entre IN- et OUT »."""
     change = False
     for n in list(W.nodes()):
-        if n in touches or n in proteges or n not in ancres:
+        if n in proteges or n not in ancres:
             continue
         if W.degree(n) != 2:
             continue
@@ -175,10 +176,6 @@ def _pass_serie(W: nx.MultiGraph, proteges: set, ancres: set) -> bool:
             # Deux arêtes vers le même voisin = banc parallèle : laisser
             # _pass_parallele s'en charger.
             continue
-        if a in touches or b in touches:
-            # Un voisin a déjà fusionné dans cette passe : ses arêtes ont
-            # changé, on diffère ce nœud à la passe suivante.
-            continue
         if _est_rail(a) or _est_rail(b):
             # N est un point de prélèvement vers un rail (sortie de filtre RC,
             # milieu de pont diviseur, amortisseur…). Le fusionner détruirait
@@ -189,7 +186,6 @@ def _pass_serie(W: nx.MultiGraph, proteges: set, ancres: set) -> bool:
         expr = f"{d1['expr']}+{d2['expr']}"
         W.remove_node(n)  # retire le nœud interne et ses deux arêtes
         W.add_edge(a, b, type=type_eq, refs=refs, expr=expr)
-        touches.update((n, a, b))
         change = True
     return change
 
