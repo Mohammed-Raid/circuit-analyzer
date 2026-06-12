@@ -1,0 +1,14 @@
+chore: nettoyage et rangement de la racine du projet
+
+- Suppression de fichiers committes en vrac : filter_msg.py (script one-off
+  d'un ancien filter-branch), testt.txt, et les dumps result_industriel.txt /
+  result_melange.txt / result_test.txt.
+- Deplacement des entrees d'exemple dans exemples/ : sample_circuit.txt,
+  test_circuit_complet.txt, test_industriel.txt, test_melange.txt et
+  "carte pour tester.xml" (commentaire source maj dans circuit_analyzer/xml.py).
+- README : ajout du dossier exemples/ a l'arborescence.
+
+(Le scratch ignore par git — prof.out, report.txt, resul*.txt, skidl_REPL.*,
+chk_*/, circuits_test/ — a aussi ete retire du disque.)
+
+309 tests verts.

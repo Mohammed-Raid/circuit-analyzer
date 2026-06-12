@@ -428,6 +428,7 @@ custom_circuits/
 └── loader.py              ← circuits personnalisés (JSON)
 
 circuits_industriels/      ← schémas BoardSCH générés (12 circuits)
+exemples/                  ← netlists et schéma XML d'exemple (entrées de test)
 tests/                     ← 309 tests pytest
 docs/
 └── explication_logiciel.md ← explication pédagogique du fonctionnement

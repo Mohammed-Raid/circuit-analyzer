@@ -25,7 +25,7 @@ from circuit_analyzer.patterns.base import (
 # FORMES VISUELLES DES COMPOSANTS (coordonnées relatives au centre)
 # =============================================================================
 # Toutes les coordonnées sont en unités BoardSCH, centrées sur (0,0).
-# Source : reverse-engineered depuis "carte pour tester.xml" du logiciel ERetroDesign.
+# Source : reverse-engineered depuis "exemples/carte pour tester.xml" du logiciel ERetroDesign.
 
 _FORME: Dict[str, dict] = {
     "Résistance": {
