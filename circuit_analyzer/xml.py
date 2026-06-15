@@ -78,6 +78,19 @@ _FORME: Dict[str, dict] = {
         <DataSegment><Spoint><X>0</X><Y>-15</Y></Spoint><Epoint><X>40</X><Y>-50</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>0</X><Y>15</Y></Spoint><Epoint><X>40</X><Y>50</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>""",
     },
+    # 2N2B : transistor BJT NPN — géométrie issue de Lib.xml ERetroDesign.
+    # Ordre des pins IMPOSÉ par la bibliothèque : G(base)=0, E(émetteur)=1, C(collecteur)=2.
+    "2N2B": {
+        "pins": {"G": (-36, 0, 0), "E": (36, 48, 1), "C": (36, -48, 2)},
+        "polygon": "",
+        "segment": """
+        <DataSegment><Spoint><X>4</X><Y>48</Y></Spoint><Epoint><X>4</X><Y>-48</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>4</X><Y>-16</Y></Spoint><Epoint><X>36</X><Y>-48</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>4</X><Y>16</Y></Spoint><Epoint><X>36</X><Y>48</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>4</X><Y>0</Y></Spoint><Epoint><X>-36</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>19</X><Y>-31</Y></Spoint><Epoint><X>27</X><Y>-33</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>19</X><Y>-31</Y></Spoint><Epoint><X>22</X><Y>-38</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>""",
+    },
     "MOSFET": {
         "pins": {"G": (-80, 0, 0), "D": (40, -60, 1), "S": (40, 60, 2)},
         "polygon": "",
@@ -214,6 +227,7 @@ _ALIAS = {
     "Vss": "Vss", "VMOT": "Vss", "VBUS": "Vss",
     "Bobine": "Bobine", "Inductance": "Bobine", "Self": "Bobine",
     "Relais": "Relais", "Relais_1FormC": "Relais_1FormC",
+    "2N2B": "2N2B",
 }
 
 # type_composant → (nom_forme_BoardSCH, {broche_lib → broche_forme})
@@ -221,7 +235,7 @@ _TYPE_VERS_FORME = {
     "R": ("Résistance", {"1": "1", "2": "2"}),
     "C": ("Capa",       {"1": "+", "2": "-"}),
     "U": ("AOP",        {"IN+": "+", "IN-": "-", "OUT": "s"}),
-    "Q": ("Transistor", {"B": "B", "C": "C", "E": "E"}),
+    "Q": ("2N2B",       {"B": "G", "C": "C", "E": "E"}),
     "M": ("MOSFET",     {"G": "G", "D": "D", "S": "S"}),
     "D": ("Diode",      {"A": "A", "K": "K", "1": "A", "2": "K"}),
     "F": ("Fusible",    {"1": "1", "2": "2"}),
@@ -942,6 +956,7 @@ _NOM_VERS_TYPE = {
     'OpAmp':       ('U', {'+': 'IN+', '-': 'IN-', 's': 'OUT'}),
     'Op-Amp':      ('U', {'+': 'IN+', '-': 'IN-', 's': 'OUT'}),
     # ── Transistors BJT ──────────────────────────────────────────────────────
+    '2N2B':        ('Q', {'G': 'B', 'E': 'E', 'C': 'C'}),
     'Transistor':  ('Q', {'B': 'B', 'C': 'C', 'E': 'E'}),
     'BJT':         ('Q', {'B': 'B', 'C': 'C', 'E': 'E'}),
     # ── MOSFET ───────────────────────────────────────────────────────────────
