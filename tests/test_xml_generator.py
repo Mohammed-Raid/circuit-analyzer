@@ -168,7 +168,7 @@ def test_power_net_creates_symbol():
     comps = [Component("C1", "C", {"1": "VCC", "2": "GND"}, "100n")]
     xml = components_to_xml(comps)
     assert "<Name>GND</Name>" in xml
-    assert "<Name>VCC</Name>" in xml
+    assert "<Name>VCC+</Name>" in xml
 
 
 def test_distinct_power_rails_not_merged():
@@ -439,10 +439,10 @@ def test_components_to_xml_places_power_symbols_inside_related_group():
     root = ET.fromstring(components_to_xml(comps, results=results))
     power_items = [
         item for item in root.find("CmpntL").findall("DataItem")
-        if item.findtext("Name") in {"VCC", "GND"}
+        if item.findtext("Name") in {"VCC+", "GND"}
     ]
 
-    assert {item.findtext("Name") for item in power_items} == {"VCC", "GND"}
+    assert {item.findtext("Name") for item in power_items} == {"VCC+", "GND"}
     assert all(item.findtext("GpId") == "1" for item in power_items)
     for item in power_items:
         y = int(float(item.find("CtrIem").findtext("Y")))

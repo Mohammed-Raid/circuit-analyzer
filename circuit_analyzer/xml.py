@@ -189,7 +189,7 @@ _ALIAS = {
     "GND": "GND", "AGND": "AGND", "PGND": "GND", "DGND": "GND",
     "VCC": "VCC", "Vcc": "VCC", "+5V": "VCC", "+3.3V": "VCC",
     "Vss": "Vss", "VMOT": "Vss", "VBUS": "Vss",
-    "Bobine": "Bobine", "Inductance": "Bobine",
+    "Bobine": "Bobine", "Inductance": "Bobine", "Self": "Bobine",
 }
 
 # type_composant → (nom_forme_BoardSCH, {broche_lib → broche_forme})
@@ -201,7 +201,7 @@ _TYPE_VERS_FORME = {
     "M": ("MOSFET",     {"G": "G", "D": "D", "S": "S"}),
     "D": ("Diode",      {"A": "A", "K": "K", "1": "A", "2": "K"}),
     "F": ("Fusible",    {"1": "1", "2": "2"}),
-    "L": ("Bobine",     {"1": "1", "2": "2"}),
+    "L": ("Self",       {"1": "1", "2": "2"}),
     "K": ("Relais",     {"A1": "A1", "A2": "A2", "11": "11", "12": "12", "14": "14"}),
     # Composant inconnu (issu d'un XML avec nom non reconnu) → rendu comme résistance placeholder
     "X": ("Résistance", {"1": "1", "2": "2"}),
@@ -210,7 +210,7 @@ _TYPE_VERS_FORME = {
 # Valeur <typ> observée dans les schematics de référence (ERetroDesign)
 _TYP_COMPOSANT = {
     "Résistance": 82, "Capa": 32, "AOP": 79,
-    "GND": 71, "AGND": 71, "VCC": 86, "Vss": 115,
+    "GND": 71, "AGND": 71, "VCC": 86, "VCC+": 86, "VCC-": 71, "Vss": 115,
 }
 
 
@@ -764,14 +764,19 @@ def generer_xml(composants, resultats=None, results=None) -> str:
                 continue
             nets.setdefault(net, []).append((cid, broche_forme))
 
+    # Noms canoniques ERetroDesign pour les rails d'alimentation (Lib.xml)
+    _NOM_ALIM_LIB = {"GND": "GND", "AGND": "GND", "VCC": "VCC+", "Vss": "VCC-"}
+
     for net, broches in nets.items():
         sym = "GND" if is_gnd(net) else ("VCC" if is_power(net) else None)
         if sym:
             rail = net.lstrip('/').upper()
             broche_pwr = "GND" if sym == "GND" else "VCC"
+            nom_lib = _NOM_ALIM_LIB.get(sym, sym)
             for gid, broches_groupe in _grouper_broches_alim(gen, broches).items():
                 px, py = _positionner_symbole_alim(gen, broches_groupe, sym, gid)
-                pcid = gen.ajouter(rail, "", x=px, y=py, forme=sym, group_id=gid)
+                # nom_lib = nom reconnu par ERetroDesign ; rail = valeur affichée
+                pcid = gen.ajouter(nom_lib, rail, x=px, y=py, forme=sym, group_id=gid)
                 for (cid, bp) in broches_groupe:
                     _relier_par_idx(gen, pcid, _idx_broche_forme(gen, pcid, broche_pwr),
                                     cid, _idx_broche_forme(gen, cid, bp))
@@ -931,6 +936,7 @@ _NOMS_ALIMENTATION = {
     'GND', 'AGND', 'PGND', 'DGND', 'VCC', 'VDD', 'VSS', 'Vss', 'Vdd', 'Vcc',
     'VBUS', 'VMOT', 'VREG', 'VREF', 'VOUT', '+5V', '+3.3V', '+12V', '-12V',
     'PE', 'EARTH', 'CHASSIS',
+    'VCC+', 'VCC-',  # noms canoniques ERetroDesign
 }
 
 # Broches critiques par type (manquante → warning)
@@ -1080,6 +1086,12 @@ def lire_xml(chemin: str) -> list:
             return racine_vers_net[cle]
         for (cid, _) in groupes_nets.get(cle, []):
             cnom = elements[cid]['name']
+            cval = elements[cid].get('value', '')
+            # VCC+/VCC- : le nom du rail spécifique est dans <value> (ex. "VMOT_48V")
+            if cnom in ('VCC+', 'VCC-') and cval:
+                norm_val = cval.lstrip('/').upper()
+                if is_power(norm_val) or is_gnd(norm_val):
+                    racine_vers_net[cle] = norm_val; return norm_val
             if cnom in _NET_ALIMENTATION:
                 racine_vers_net[cle] = _NET_ALIMENTATION.get(cnom, cnom.upper())
                 return racine_vers_net[cle]
