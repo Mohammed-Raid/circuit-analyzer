@@ -1,9 +1,18 @@
+"""
+@file test_matcher.py
+@brief Tests automatises pour test_matcher.
+"""
+
 from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
 
 
 def test_matcher_finds_rc_lowpass():
+    """@brief Verifie matcher finds rc lowpass.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
         Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
@@ -14,6 +23,10 @@ def test_matcher_finds_rc_lowpass():
 
 
 def test_matcher_returns_circuit_type_field():
+    """@brief Verifie matcher returns circuit type field.
+
+    @return None
+    """
     comps = [Component('F1', 'F', {'1': 'LINE_IN', '2': 'NET_FUSE'})]
     results = match_patterns(build_graph(comps))
     assert all('circuit_type' in r for r in results)
@@ -22,11 +35,19 @@ def test_matcher_returns_circuit_type_field():
 
 
 def test_matcher_empty_circuit_returns_empty():
+    """@brief Verifie matcher empty circuit returns empty.
+
+    @return None
+    """
     import networkx as nx
     assert match_patterns(nx.MultiGraph()) == []
 
 
 def test_matcher_finds_transistor_switch():
+    """@brief Verifie matcher finds transistor switch.
+
+    @return None
+    """
     comps = [
         Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
         Component('R1', 'R', {'1': 'NET_DRIVE', '2': 'NET_BASE'}, '10k'),
@@ -37,6 +58,10 @@ def test_matcher_finds_transistor_switch():
 
 
 def test_matcher_finds_voltage_follower():
+    """@brief Verifie matcher finds voltage follower.
+
+    @return None
+    """
     comps = [
         Component('U1', 'U', {'IN+': 'NET_IN', 'IN-': 'NET_OUT', 'OUT': 'NET_OUT', 'V+': 'VCC', 'V-': 'GND'}),
     ]
@@ -46,6 +71,10 @@ def test_matcher_finds_voltage_follower():
 
 
 def test_matcher_loads_custom_patterns(tmp_path, monkeypatch):
+    """@brief Verifie matcher loads custom patterns.
+
+    @return None
+    """
     # custom_circuits.json est cherché à la racine de l'application (à côté
     # de l'exe une fois gelée), plus au répertoire courant.
     import json, sys

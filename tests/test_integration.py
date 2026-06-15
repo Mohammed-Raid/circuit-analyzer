@@ -1,3 +1,8 @@
+"""
+@file test_integration.py
+@brief Tests automatises pour test_integration.
+"""
+
 import subprocess, sys, os, tempfile
 from pathlib import Path
 
@@ -37,6 +42,10 @@ U1  NET_SIG  NET_OUT  NET_OUT  VCC  GND
 
 
 def test_full_pipeline():
+    """@brief Verifie full pipeline.
+
+    @return None
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
         netlist_path = Path(tmpdir) / 'circuit.txt'
         report_path = Path(tmpdir) / 'report.txt'

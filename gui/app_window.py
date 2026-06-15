@@ -1,3 +1,7 @@
+"""
+@file app_window.py
+@brief Fenêtre principale CustomTkinter : barre latérale de navigation et onglets.
+"""
 import customtkinter as ctk
 from gui.tab_analyze import TabAnalyze
 from gui.tab_circuits import TabCircuits
@@ -10,7 +14,10 @@ from gui.theme import BG, SURFACE, CARD, BORDER, TEXT, MUTED, BLUE, BLUE_D
 
 
 class AppWindow:
+    """@brief Fenêtre principale de l'application (barre latérale + 3 onglets)."""
+
     def __init__(self):
+        """@brief Construit la fenêtre, ses dimensions et son contenu."""
         self.root = ctk.CTk()
         self.root.title("Circuit Analyzer")
         self.root.geometry("1160x740")
@@ -21,6 +28,7 @@ class AppWindow:
         self._build()
 
     def _build(self):
+        """@brief Construit la barre latérale, les boutons de navigation et les onglets."""
         self.root.grid_columnconfigure(1, weight=1)
         self.root.grid_rowconfigure(0, weight=1)
 
@@ -95,19 +103,33 @@ class AppWindow:
         self._switch(0)
 
     def _switch(self, idx: int):
+        """@brief Active l'onglet d'indice idx et met à jour la navigation.
+
+        @param idx Indice de l'onglet à afficher (0=Analyser, 1=Circuits, 2=Composants).
+        @return None
+        """
         self._active = idx
         for i, btn in enumerate(self._nav_btns):
             btn.set_active(i == idx)
         self._frames[idx].tkraise()
 
     def run(self):
+        """@brief Lance la boucle d'événements Tk (bloquant jusqu'à fermeture)."""
         self.root.mainloop()
 
 
 class _NavButton(ctk.CTkFrame):
-    """Sidebar nav item with icon, label, subtitle and active indicator."""
+    """@brief Élément de navigation latéral : icône, libellé, sous-titre et indicateur actif."""
 
     def __init__(self, parent, icon, label, subtitle, command):
+        """@brief Construit le bouton de navigation.
+
+        @param parent Widget parent.
+        @param icon Icône (emoji) affichée.
+        @param label Libellé principal.
+        @param subtitle Sous-titre descriptif.
+        @param command Callback appelé au clic.
+        """
         super().__init__(parent, fg_color="transparent", corner_radius=10)
         self._cmd = command
         self._active = False
@@ -142,6 +164,11 @@ class _NavButton(ctk.CTkFrame):
             w.bind("<Leave>", self._on_leave)
 
     def set_active(self, active: bool):
+        """@brief Met le bouton en état actif ou inactif (couleurs, accent, gras).
+
+        @param active True pour l'état actif.
+        @return None
+        """
         self._active = active
         if active:
             self._accent.configure(fg_color=BLUE)
@@ -157,9 +184,11 @@ class _NavButton(ctk.CTkFrame):
             self._sub.configure(text_color="#334155")
 
     def _on_enter(self, _=None):
+        """@brief Survol : applique une couleur de fond si le bouton est inactif."""
         if not self._active:
             self.configure(fg_color="#172033")
 
     def _on_leave(self, _=None):
+        """@brief Fin de survol : restaure le fond transparent si inactif."""
         if not self._active:
             self.configure(fg_color="transparent")

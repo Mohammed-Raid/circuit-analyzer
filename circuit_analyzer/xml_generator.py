@@ -1,4 +1,8 @@
-# Redirige vers xml.py — gardé pour la compatibilité des tests existants.
+"""
+@file xml_generator.py
+@brief Shim de compatibilité — réexporte le générateur XML BoardSCH et ses helpers de mise en page.
+@see circuit_analyzer.xml
+"""
 from circuit_analyzer.xml import (
     generer_xml as components_to_xml,
     _grouper_par_circuit as _layout_groups,

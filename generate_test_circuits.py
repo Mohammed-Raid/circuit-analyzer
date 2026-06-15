@@ -1,5 +1,7 @@
 """
-Génère les fichiers XML de test BoardSCH pour tous les types de circuits reconnus.
+@file generate_test_circuits.py
+@brief Génère les fichiers XML de test BoardSCH pour tous les types de circuits reconnus.
+
 Chaque fichier peut être ouvert dans l'app de design ET analysé par Circuit Analyzer.
 
 Usage: python generate_test_circuits.py
@@ -19,6 +21,12 @@ os.makedirs(OUT, exist_ok=True)
 
 
 def save(name: str, gen: BoardSCHGenerator):
+    """@brief Écrit le schéma généré dans circuits_test/<name>.
+
+    @param name Nom du fichier de sortie.
+    @param gen Générateur BoardSCH contenant le schéma.
+    @return None
+    """
     path = os.path.join(OUT, name)
     with open(path, "w", encoding="utf-8") as f:
         f.write(gen.to_xml())
@@ -29,6 +37,7 @@ def save(name: str, gen: BoardSCHGenerator):
 # 1. Filtre RC passe-bas
 # ──────────────────────────────────────────────────────────────────────────────
 def make_rc_lowpass():
+    """@brief Génère le XML de test « Filtre RC passe-bas »."""
     g = BoardSCHGenerator()
     r1  = g.add("Résistance", "10k",  x=300,  y=400)
     c1  = g.add("Capa",       "100n", x=500,  y=400)
@@ -42,6 +51,7 @@ def make_rc_lowpass():
 # 2. Filtre RC passe-haut
 # ──────────────────────────────────────────────────────────────────────────────
 def make_rc_highpass():
+    """@brief Génère le XML de test « Filtre RC passe-haut »."""
     g = BoardSCHGenerator()
     c1  = g.add("Capa",       "100n", x=300,  y=400)
     r1  = g.add("Résistance", "10k",  x=500,  y=400)
@@ -55,6 +65,7 @@ def make_rc_highpass():
 # 3. Condensateur de découplage
 # ──────────────────────────────────────────────────────────────────────────────
 def make_decoupling():
+    """@brief Génère le XML de test « Condensateur de découplage »."""
     g = BoardSCHGenerator()
     vcc = g.add("VCC",  "",      x=300,  y=260)
     c1  = g.add("Capa", "100n", x=300,  y=400)
@@ -68,6 +79,7 @@ def make_decoupling():
 # 4. Pont diviseur de tension
 # ──────────────────────────────────────────────────────────────────────────────
 def make_voltage_divider():
+    """@brief Génère le XML de test « Pont diviseur de tension »."""
     g = BoardSCHGenerator()
     vcc = g.add("VCC",        "",     x=300,  y=260)
     r1  = g.add("Résistance", "10k",  x=300,  y=400, angle=90)
@@ -83,6 +95,7 @@ def make_voltage_divider():
 # 5. Absorbeur RC (Snubber)
 # ──────────────────────────────────────────────────────────────────────────────
 def make_snubber():
+    """@brief Génère le XML de test « Absorbeur RC » (snubber)."""
     g = BoardSCHGenerator()
     r1 = g.add("Résistance", "100",  x=300,  y=360)
     c1 = g.add("Capa",       "10n",  x=300,  y=480)
@@ -98,6 +111,7 @@ def make_snubber():
 # 6. Amplificateur inverseur (AOP)
 # ──────────────────────────────────────────────────────────────────────────────
 def make_inv_amp():
+    """@brief Génère le XML de test « Amplificateur inverseur (AOP) »."""
     g = BoardSCHGenerator()
     u1   = g.add("AOP",        "LM741", x=600,  y=500)
     rin  = g.add("Résistance", "10k",   x=380,  y=476)   # input R at IN-
@@ -114,6 +128,7 @@ def make_inv_amp():
 # 7. Amplificateur non-inverseur (AOP)
 # ──────────────────────────────────────────────────────────────────────────────
 def make_noninv_amp():
+    """@brief Génère le XML de test « Amplificateur non-inverseur (AOP) »."""
     g = BoardSCHGenerator()
     u1  = g.add("AOP",        "LM741", x=600,  y=500)
     rf  = g.add("Résistance", "100k",  x=520,  y=330)    # feedback
@@ -130,6 +145,7 @@ def make_noninv_amp():
 # 8. Suiveur de tension (AOP)
 # ──────────────────────────────────────────────────────────────────────────────
 def make_follower():
+    """@brief Génère le XML de test « Suiveur de tension (AOP) »."""
     g = BoardSCHGenerator()
     u1 = g.add("AOP", "LM741", x=500, y=500)
     # IN- directly wired to OUT (same net)
@@ -141,6 +157,7 @@ def make_follower():
 # 9. Intégrateur (AOP)
 # ──────────────────────────────────────────────────────────────────────────────
 def make_integrator():
+    """@brief Génère le XML de test « Intégrateur (AOP) »."""
     g = BoardSCHGenerator()
     u1  = g.add("AOP",   "LM741", x=600,  y=500)
     r1  = g.add("Résistance", "10k",  x=380,  y=476)
@@ -157,6 +174,7 @@ def make_integrator():
 # 10. Dérivateur (AOP)
 # ──────────────────────────────────────────────────────────────────────────────
 def make_differentiator():
+    """@brief Génère le XML de test « Dérivateur (AOP) »."""
     g = BoardSCHGenerator()
     u1  = g.add("AOP",        "LM741", x=600,  y=500)
     c1  = g.add("Capa",       "100n",  x=380,  y=476)
@@ -173,6 +191,7 @@ def make_differentiator():
 # 11. Comparateur (AOP) — pas de rétroaction
 # ──────────────────────────────────────────────────────────────────────────────
 def make_comparator():
+    """@brief Génère le XML de test « Comparateur (AOP) » (sans rétroaction)."""
     g = BoardSCHGenerator()
     u1 = g.add("AOP", "LM339", x=500, y=500)
     # No feedback — just two inputs and output
@@ -184,6 +203,7 @@ def make_comparator():
 # 12. Bascule de Schmitt (AOP) — rétroaction positive
 # ──────────────────────────────────────────────────────────────────────────────
 def make_schmitt():
+    """@brief Génère le XML de test « Bascule de Schmitt (AOP) » (rétroaction positive)."""
     g = BoardSCHGenerator()
     u1 = g.add("AOP",        "LM741", x=500,  y=500)
     rf = g.add("Résistance", "100k",  x=420,  y=350)
@@ -196,6 +216,7 @@ def make_schmitt():
 # 13. Amplificateur différentiel (AOP)
 # ──────────────────────────────────────────────────────────────────────────────
 def make_diff_amp():
+    """@brief Génère le XML de test « Amplificateur différentiel (AOP) »."""
     g = BoardSCHGenerator()
     u1  = g.add("AOP",        "LM741", x=700,  y=500)
     r1  = g.add("Résistance", "10k",   x=480,  y=452)   # IN+ input R
@@ -216,6 +237,7 @@ def make_diff_amp():
 # 14. Amplificateur sommateur (AOP)
 # ──────────────────────────────────────────────────────────────────────────────
 def make_summing_amp():
+    """@brief Génère le XML de test « Amplificateur sommateur (AOP) »."""
     g = BoardSCHGenerator()
     u1  = g.add("AOP",        "LM741", x=700,  y=500)
     rf  = g.add("Résistance", "100k",  x=620,  y=330)
@@ -236,6 +258,7 @@ def make_summing_amp():
 # 15. Transistor en commutation (BJT NPN)
 # ──────────────────────────────────────────────────────────────────────────────
 def make_bjt_switch():
+    """@brief Génère le XML de test « Transistor en commutation » (BJT NPN)."""
     g = BoardSCHGenerator()
     q1  = g.add("Transistor", "BC547", x=500,  y=500)
     r1  = g.add("Résistance", "1k",    x=280,  y=500)   # base R
@@ -249,6 +272,7 @@ def make_bjt_switch():
 # 16. Amplificateur émetteur commun (BJT)
 # ──────────────────────────────────────────────────────────────────────────────
 def make_ce_amp():
+    """@brief Génère le XML de test « Amplificateur émetteur commun » (BJT)."""
     g = BoardSCHGenerator()
     q1  = g.add("Transistor", "BC547", x=500,  y=500)
     rb  = g.add("Résistance", "100k",  x=280,  y=500)   # base bias
@@ -266,6 +290,7 @@ def make_ce_amp():
 # 17. Miroir de courant BJT
 # ──────────────────────────────────────────────────────────────────────────────
 def make_current_mirror():
+    """@brief Génère le XML de test « Miroir de courant BJT »."""
     g = BoardSCHGenerator()
     q1   = g.add("Transistor", "BC547", x=400,  y=500)   # reference
     q2   = g.add("Transistor", "BC547", x=600,  y=500)   # output
@@ -283,6 +308,7 @@ def make_current_mirror():
 # 18. MOSFET en commutation
 # ──────────────────────────────────────────────────────────────────────────────
 def make_mosfet_switch():
+    """@brief Génère le XML de test « MOSFET en commutation »."""
     g = BoardSCHGenerator()
     m1  = g.add("MOSFET",     "IRF540", x=500,  y=500)
     rg  = g.add("Résistance", "100",    x=280,  y=500)   # gate R
@@ -296,6 +322,7 @@ def make_mosfet_switch():
 # 19. Pont redresseur (Graetz)
 # ──────────────────────────────────────────────────────────────────────────────
 def make_bridge_rectifier():
+    """@brief Génère le XML de test « Pont redresseur (Graetz) »."""
     g = BoardSCHGenerator()
     d1 = g.add("Diode", "1N4007", x=400, y=300)
     d2 = g.add("Diode", "1N4007", x=600, y=300)
@@ -316,6 +343,7 @@ def make_bridge_rectifier():
 # 20. Protection par fusible
 # ──────────────────────────────────────────────────────────────────────────────
 def make_fuse():
+    """@brief Génère le XML de test « Protection par fusible »."""
     g = BoardSCHGenerator()
     f1 = g.add("Fusible", "500mA", x=400, y=400)
     save("protection_fusible.xml", g)
@@ -325,7 +353,7 @@ def make_fuse():
 # 21. Circuit combiné (plusieurs patterns sur une carte)
 # ──────────────────────────────────────────────────────────────────────────────
 def make_combined():
-    """Une carte complète avec filtre RC + AOP inverseur + transistor + fusible."""
+    """@brief Génère le XML de test « circuit combiné » (filtre RC + AOP inverseur + transistor + fusible)."""
     g = BoardSCHGenerator()
     # Fusible en entrée
     f1   = g.add("Fusible",    "500mA", x=100,  y=300)

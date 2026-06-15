@@ -1,3 +1,8 @@
+"""
+@file test_xml_generator.py
+@brief Tests automatises pour test_xml_generator.
+"""
+
 """Tests for the BoardSCH XML generator and the components→XML→components round-trip."""
 import tempfile
 import os
@@ -11,6 +16,7 @@ from circuit_analyzer.matcher import match_patterns
 
 
 def _xml_to_components(xml: str):
+    """@brief Helper de test pour xml to components."""
     with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False, encoding="utf-8") as f:
         f.write(xml)
         path = f.name
@@ -23,6 +29,10 @@ def _xml_to_components(xml: str):
 # ── Generator basics ──────────────────────────────────────────────────────────
 
 def test_generator_produces_valid_xml():
+    """@brief Verifie generator produces valid xml.
+
+    @return None
+    """
     g = BoardSCHGenerator()
     r1 = g.add("Résistance", "10k", x=200, y=400)
     c1 = g.add("Capa", "100n", x=400, y=400)
@@ -36,6 +46,10 @@ def test_generator_produces_valid_xml():
 
 
 def test_generator_connection_format():
+    """@brief Verifie generator connection format.
+
+    @return None
+    """
     # CFirst/CLast must follow compId_pinIdx_end_wireIdx so xml_parser can read it
     g = BoardSCHGenerator()
     r1 = g.add("Résistance", "10k")
@@ -47,6 +61,10 @@ def test_generator_connection_format():
 
 
 def test_generator_unknown_pin_raises():
+    """@brief Verifie generator unknown pin raises.
+
+    @return None
+    """
     g = BoardSCHGenerator()
     r1 = g.add("Résistance", "10k")
     c1 = g.add("Capa", "100n")
@@ -57,6 +75,10 @@ def test_generator_unknown_pin_raises():
 # ── Round-trip: Component → XML → Component preserves topology ────────────────
 
 def test_roundtrip_rc_lowpass():
+    """@brief Verifie roundtrip rc lowpass.
+
+    @return None
+    """
     comps = [
         Component("R1", "R", {"1": "NET_MID", "2": "NET_IN"}, "10k"),
         Component("C1", "C", {"1": "NET_MID", "2": "GND"}, "100n"),
@@ -68,6 +90,10 @@ def test_roundtrip_rc_lowpass():
 
 
 def test_roundtrip_inverting_amp():
+    """@brief Verifie roundtrip inverting amp.
+
+    @return None
+    """
     comps = [
         Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
                               "V+": "VCC", "V-": "GND"}),
@@ -81,6 +107,10 @@ def test_roundtrip_inverting_amp():
 
 
 def test_roundtrip_transistor_switch():
+    """@brief Verifie roundtrip transistor switch.
+
+    @return None
+    """
     comps = [
         Component("Q1", "Q", {"B": "NET_BASE", "C": "NET_COLL", "E": "GND"}),
         Component("R1", "R", {"1": "NET_BASE", "2": "NET_DRV"}, "1k"),
@@ -92,6 +122,10 @@ def test_roundtrip_transistor_switch():
 
 
 def test_roundtrip_preserves_component_count():
+    """@brief Verifie roundtrip preserves component count.
+
+    @return None
+    """
     comps = [
         Component("R1", "R", {"1": "A", "2": "B"}),
         Component("R2", "R", {"1": "B", "2": "GND"}),
@@ -105,6 +139,10 @@ def test_roundtrip_preserves_component_count():
 
 
 def test_roundtrip_combined_multi_pattern():
+    """@brief Verifie roundtrip combined multi pattern.
+
+    @return None
+    """
     comps = [
         Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
                               "V+": "VCC", "V-": "GND"}),
@@ -122,6 +160,10 @@ def test_roundtrip_combined_multi_pattern():
 
 
 def test_power_net_creates_symbol():
+    """@brief Verifie power net creates symbol.
+
+    @return None
+    """
     # A GND net must produce a GND symbol so the design app shows it
     comps = [Component("C1", "C", {"1": "VCC", "2": "GND"}, "100n")]
     xml = components_to_xml(comps)
@@ -130,6 +172,10 @@ def test_power_net_creates_symbol():
 
 
 def test_distinct_power_rails_not_merged():
+    """@brief Verifie distinct power rails not merged.
+
+    @return None
+    """
     # Two distinct supply rails must stay distinct after round-trip, otherwise
     # decoupling caps on different rails would falsely collapse together.
     comps = [
@@ -149,6 +195,10 @@ def test_distinct_power_rails_not_merged():
 
 
 def test_relay_survives_roundtrip():
+    """@brief Verifie relay survives roundtrip.
+
+    @return None
+    """
     # A relay coil (type K) must be drawable and survive the round-trip
     comps = [
         Component("K1", "K", {"A1": "VCC", "A2": "NET_SW",
@@ -164,6 +214,10 @@ def test_relay_survives_roundtrip():
 
 
 def test_industrial_netlist_roundtrip_no_loss():
+    """@brief Verifie industrial netlist roundtrip no loss.
+
+    @return None
+    """
     # A multi-rail industrial-style circuit must not LOSE any pattern through XML
     # (the greedy matcher may add an equivalent one, but never drop structure).
     from circuit_analyzer.parser import parse_file
@@ -186,6 +240,10 @@ from circuit_analyzer.xml_generator import _layout_groups, _Block, _place_blocks
 
 
 def test_layout_groups_one_block_per_pattern():
+    """@brief Verifie layout groups one block per pattern.
+
+    @return None
+    """
     comps = [
         Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
                               "V+": "VCC", "V-": "GND"}),
@@ -201,6 +259,10 @@ def test_layout_groups_one_block_per_pattern():
 
 
 def test_layout_groups_unclassified_go_to_divers():
+    """@brief Verifie layout groups unclassified go to divers.
+
+    @return None
+    """
     comps = [
         Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
         Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
@@ -220,6 +282,10 @@ def test_layout_groups_unclassified_go_to_divers():
 
 
 def test_place_blocks_groups_are_spatially_separated():
+    """@brief Verifie place blocks groups are spatially separated.
+
+    @return None
+    """
     # Two blocks: components within a block are closer to each other than to
     # the other block's components.
     a = [Component("R1", "R", {"1": "X", "2": "Y"}),
@@ -237,7 +303,44 @@ def test_place_blocks_groups_are_spatially_separated():
     assert inter > intra, f"inter-block gap ({inter}) must exceed intra-block spacing ({intra})"
 
 
+def test_place_blocks_relay_driver_uses_two_dimensional_layout():
+    """@brief Verifie que la commande de relais n'est pas aplatie sur une ligne.
+
+    @return None
+    """
+    comps = [
+        Component("K1", "K", {"A1": "VCC", "A2": "SW"}),
+        Component("Q1", "Q", {"B": "BASE", "C": "SW", "E": "GND"}),
+        Component("D1", "D", {"A": "SW", "K": "VCC"}),
+    ]
+    pos = _place_blocks([_Block("Commande de relais", comps)])
+
+    assert pos["K1"][1] == pos["D1"][1]
+    assert pos["Q1"][1] > pos["K1"][1]
+    assert pos["K1"][0] < pos["Q1"][0] < pos["D1"][0]
+
+
+def test_place_blocks_generic_groups_wrap_to_compact_grid():
+    """@brief Verifie qu'un groupe generique de 3 composants forme une grille compacte.
+
+    @return None
+    """
+    comps = [
+        Component("R1", "R", {"1": "A", "2": "B"}),
+        Component("R2", "R", {"1": "B", "2": "C"}),
+        Component("C1", "C", {"1": "C", "2": "GND"}),
+    ]
+    pos = _place_blocks([_Block("Filtre quelconque", comps)])
+
+    assert len({y for _, y in pos.values()}) > 1
+    assert max(x for x, _ in pos.values()) - min(x for x, _ in pos.values()) < 3 * 320
+
+
 def test_components_to_xml_backward_compatible_without_results():
+    """@brief Verifie components to xml backward compatible without results.
+
+    @return None
+    """
     # No results → must produce identical output to the legacy grid path.
     comps = [
         Component("R1", "R", {"1": "A", "2": "B"}),
@@ -249,6 +352,10 @@ def test_components_to_xml_backward_compatible_without_results():
 
 
 def test_components_to_xml_grouped_roundtrip_preserved():
+    """@brief Verifie components to xml grouped roundtrip preserved.
+
+    @return None
+    """
     # With results, the round-trip must still detect the same patterns:
     # grouping changes only coordinates, never connectivity.
     comps = [
@@ -269,6 +376,10 @@ def test_components_to_xml_grouped_roundtrip_preserved():
 
 
 def test_components_to_xml_grouped_positions_differ_from_grid():
+    """@brief Verifie components to xml grouped positions differ from grid.
+
+    @return None
+    """
     # When results are given, at least one component must land at a different
     # position than the naive grid, proving the grouped path is active.
     comps = [
@@ -286,3 +397,53 @@ def test_components_to_xml_grouped_positions_differ_from_grid():
     assert xml_grid != xml_grouped, (
         "Grouped layout must produce different coordinates from the legacy grid"
     )
+
+
+def test_components_to_xml_grouped_writes_native_boardsch_groups():
+    """@brief Verifie que le layout groupe ecrit aussi des groupes BoardSCH natifs.
+
+    @return None
+    """
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    results = [{"circuit_type": "Amplificateur inverseur (AOP)",
+                "components": ["U1", "R1", "R2"], "nodes": []}]
+
+    xml = components_to_xml(comps, results=results)
+
+    assert "<GrpL>" in xml
+    assert "<Gid>1</Gid>" in xml
+    assert "<Begrp>true</Begrp>" in xml
+    assert "<BeIngrp>true</BeIngrp>" in xml
+
+
+def test_components_to_xml_places_power_symbols_inside_related_group():
+    """@brief Verifie que les alimentations d'un circuit groupe restent proches du groupe.
+
+    @return None
+    """
+    import xml.etree.ElementTree as ET
+
+    comps = [
+        Component("K1", "K", {"A1": "VCC", "A2": "SW"}),
+        Component("Q1", "Q", {"B": "BASE", "C": "SW", "E": "GND"}),
+        Component("D1", "D", {"A": "SW", "K": "VCC"}),
+    ]
+    results = [{"circuit_type": "Commande de relais",
+                "components": ["K1", "Q1", "D1"], "nodes": ["VCC", "SW", "GND"]}]
+
+    root = ET.fromstring(components_to_xml(comps, results=results))
+    power_items = [
+        item for item in root.find("CmpntL").findall("DataItem")
+        if item.findtext("Name") in {"VCC", "GND"}
+    ]
+
+    assert {item.findtext("Name") for item in power_items} == {"VCC", "GND"}
+    assert all(item.findtext("GpId") == "1" for item in power_items)
+    for item in power_items:
+        y = int(float(item.find("CtrIem").findtext("Y")))
+        assert 120 <= y <= 570

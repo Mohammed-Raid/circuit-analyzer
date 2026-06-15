@@ -1,5 +1,6 @@
 """
-ilots.py — Détection d'îlots fonctionnels (structure en étages du schéma).
+@file ilots.py
+@brief Détection d'îlots fonctionnels (structure en étages du schéma).
 
 Principe : deux composants appartiennent au même îlot s'ils partagent un net
 signal (non-rail). GND/VCC/PE connectent électriquement tout le schéma mais ne
@@ -23,7 +24,12 @@ from circuit_analyzer.satellites import _est_rail
 
 
 def _find(parent: dict, x: str) -> str:
-    """Racine Union-Find avec compression de chemin."""
+    """@brief Racine Union-Find avec compression de chemin.
+
+    @param parent Dict parent de l'Union-Find.
+    @param x Élément dont on cherche la racine.
+    @return str Racine de la classe d'équivalence de x.
+    """
     while parent[x] != x:
         parent[x] = parent[parent[x]]
         x = parent[x]
@@ -31,13 +37,25 @@ def _find(parent: dict, x: str) -> str:
 
 
 def _union(parent: dict, a: str, b: str) -> None:
+    """@brief Fusionne les classes d'équivalence de a et b.
+
+    @param parent Dict parent de l'Union-Find (muté en place).
+    @param a Premier élément.
+    @param b Second élément.
+    @return None
+    """
     ra, rb = _find(parent, a), _find(parent, b)
     if ra != rb:
         parent[rb] = ra
 
 
 def _categorie_dominante(circuits: list, indices: list) -> str:
-    """Catégorie fonctionnelle majoritaire des circuits d'un îlot."""
+    """@brief Catégorie fonctionnelle majoritaire des circuits d'un îlot.
+
+    @param circuits Liste de tous les circuits détectés.
+    @param indices Indices (dans circuits) des circuits de l'îlot.
+    @return str Catégorie dominante (ou catégories à égalité, jointes par ' + ').
+    """
     compteur = Counter(
         circuits[i].get('functional_category', 'divers') for i in indices
     )
@@ -50,13 +68,11 @@ def _categorie_dominante(circuits: list, indices: list) -> str:
 
 def detecter_ilots(graphe, circuits: list) -> list[dict]:
     """
-    Découpe le circuit en îlots fonctionnels.
+    @brief Découpe le circuit en îlots fonctionnels (connexité hors rails).
 
-    Arguments :
-        graphe   : graphe NetworkX construit par construire_graphe()
-        circuits : liste des matches d'analyser() (peut être vide)
-
-    Retourne la liste des îlots triés par taille décroissante.
+    @param graphe Graphe NetworkX construit par construire_graphe().
+    @param circuits Liste des matches d'analyser() (peut être vide).
+    @return list[dict] Îlots triés par taille décroissante (label, categorie, composants, circuits, rail).
     """
     comps = graphe.graph.get('components', {})
     if not comps:

@@ -1,6 +1,8 @@
 """
-Convertit des netlists .txt en schémas BoardSCH .xml ouvrables dans le logiciel
-de design. Convertit tout le dossier simulations/ (circuits industriels réels) en
+@file netlist_to_xml.py
+@brief Convertit des netlists .txt en schémas BoardSCH .xml ouvrables dans le logiciel de design.
+
+Convertit tout le dossier simulations/ (circuits industriels réels) en
 un coup, puis vérifie que chaque XML est correctement analysé.
 
 Usage:
@@ -24,7 +26,12 @@ OUT = "circuits_industriels"
 
 
 def convert(txt_path: str, xml_path: str) -> tuple[int, list[str]]:
-    """Read a netlist, write a BoardSCH XML, return (component count, detected patterns)."""
+    """@brief Lit une netlist, écrit un XML BoardSCH, puis vérifie par re-analyse.
+
+    @param txt_path Chemin de la netlist source.
+    @param xml_path Chemin du XML à écrire.
+    @return tuple (nombre de composants relus, liste triée des patterns détectés).
+    """
     comps = parse_file(txt_path)
     xml = components_to_xml(comps, results=match_patterns(build_graph(comps)))
     with open(xml_path, "w", encoding="utf-8") as f:
@@ -38,6 +45,7 @@ def convert(txt_path: str, xml_path: str) -> tuple[int, list[str]]:
 
 
 def convert_all():
+    """@brief Convertit toutes les netlists de simulations/ en XML dans circuits_industriels/."""
     os.makedirs(OUT, exist_ok=True)
     if not os.path.isdir(SRC):
         print(f"Dossier {SRC}/ introuvable.")
@@ -68,6 +76,11 @@ def convert_all():
 
 
 def convert_one(txt_path: str):
+    """@brief Convertit une seule netlist en XML dans circuits_industriels/.
+
+    @param txt_path Chemin de la netlist à convertir.
+    @return None
+    """
     os.makedirs(OUT, exist_ok=True)
     base = os.path.splitext(os.path.basename(txt_path))[0]
     xml_path = os.path.join(OUT, base + ".xml")

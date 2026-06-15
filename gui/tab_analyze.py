@@ -1,5 +1,10 @@
+"""
+@file tab_analyze.py
+@brief Onglet « Analyser » : chargement d'un fichier, analyse, cartes de résultats et exports.
+"""
 import tkinter as tk
 import customtkinter as ctk
+from pathlib import Path
 from tkinter import filedialog, messagebox
 from circuit_analyzer.composant import lire_netlist as parse_file, construire_graphe as build_graph
 from circuit_analyzer.xml import lire_xml as parse_xml, generer_xml as components_to_xml
@@ -28,6 +33,11 @@ TYPE_COLORS = {
 }
 
 def _type_style(name: str):
+    """@brief Style visuel (fond, texte, icône) associé à un type de circuit.
+
+    @param name Nom du circuit détecté.
+    @return tuple (couleur_fond, couleur_texte, icône).
+    """
     for key, style in TYPE_COLORS.items():
         if key.lower() in name.lower():
             return style
@@ -35,7 +45,13 @@ def _type_style(name: str):
 
 
 class TabAnalyze:
+    """@brief Onglet « Analyser » : sélection de fichier, analyse et affichage des résultats."""
+
     def __init__(self, parent):
+        """@brief Construit l'onglet et son état interne.
+
+        @param parent Widget parent (zone de contenu).
+        """
         self.frame = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
         self._file_path = tk.StringVar()
         self._report_text = ""
@@ -47,6 +63,7 @@ class TabAnalyze:
         self._build()
 
     def _build(self):
+        """@brief Construit l'en-tête, le sélecteur de fichier, les statistiques et la zone de résultats."""
         # ── Page header ──────────────────────────────────────────────────────
         header = ctk.CTkFrame(self.frame, fg_color=CARD,
                               corner_radius=0, height=70)
@@ -91,6 +108,13 @@ class TabAnalyze:
                       fg_color="#1e293b", hover_color="#263347",
                       border_width=1, border_color=BORDER,
                       command=self._browse).pack(side="left", padx=(0, 8))
+
+        ctk.CTkButton(pin, text="Charger demo",
+                      width=130, height=38, corner_radius=8,
+                      font=ctk.CTkFont("Segoe UI", 12),
+                      fg_color="#0f766e", hover_color="#115e59",
+                      border_width=1, border_color=BORDER,
+                      command=self._load_demo).pack(side="left", padx=(0, 8))
 
         self._analyze_btn = ctk.CTkButton(
             pin, text="▶  Analyser",
@@ -181,6 +205,7 @@ class TabAnalyze:
     # ── Actions ──────────────────────────────────────────────────────────────
 
     def _browse(self):
+        """@brief Ouvre un sélecteur de fichier et mémorise le chemin choisi."""
         path = filedialog.askopenfilename(
             title="Choisir un fichier netlist",
             filetypes=[
@@ -193,7 +218,24 @@ class TabAnalyze:
         if path:
             self._file_path.set(path)
 
+    def _load_demo(self):
+        """@brief Charge le fichier de demo recommande et lance l'analyse."""
+        path = _find_demo_file()
+        if not path:
+            messagebox.showerror(
+                "Demo introuvable",
+                "Aucun fichier de demo disponible dans circuits_industriels/ ou exemples/.",
+            )
+            return
+        self._file_path.set(path)
+        self._analyze()
+
     def _analyze(self):
+        """@brief Analyse le fichier sélectionné et met à jour statistiques et cartes.
+
+        Lit la netlist/XML, construit le graphe, lance la détection, génère le
+        rapport et affiche les résultats ; gère les erreurs via des boîtes de dialogue.
+        """
         path = self._file_path.get().strip()
         if not path:
             messagebox.showwarning("Attention",
@@ -258,6 +300,7 @@ class TabAnalyze:
             self._analyze_btn.configure(state="normal", text="▶  Analyser")
 
     def _save(self):
+        """@brief Sauvegarde le rapport texte courant dans un fichier choisi par l'utilisateur."""
         if not self._report_text:
             messagebox.showinfo("Info", "Aucun rapport à sauvegarder.")
             return
@@ -271,13 +314,17 @@ class TabAnalyze:
             messagebox.showinfo("Succès", f"Rapport sauvegardé :\n{path}")
 
     def _export_xml(self):
+        """@brief Exporte le schéma BoardSCH XML (groupé par circuit) vers un fichier."""
         if not self._comps:
             messagebox.showinfo("Info", "Analysez d'abord un circuit.")
             return
+        current_path = self._file_path.get().strip()
+        stem = Path(current_path).stem if current_path else "schema"
         path = filedialog.asksaveasfilename(
             defaultextension=".xml",
             filetypes=[("Schéma BoardSCH", "*.xml")],
             title="Exporter le schéma pour le logiciel de design",
+            initialfile=f"{stem}_groupe.xml",
         )
         if not path:
             return
@@ -292,13 +339,19 @@ class TabAnalyze:
             messagebox.showerror("Erreur export XML", str(e))
 
     def _on_scroll_configure(self, _=None):
+        """@brief Met à jour la zone défilable du canvas après reconfiguration du contenu."""
         self._canvas.configure(
             scrollregion=self._canvas.bbox("all"))
 
     def _on_canvas_resize(self, event):
+        """@brief Ajuste la largeur de la fenêtre interne au redimensionnement du canvas.
+
+        @param event Événement Tk de configuration (porte la nouvelle largeur).
+        """
         self._canvas.itemconfig(self._canvas_win, width=event.width)
 
     def _copy(self):
+        """@brief Copie le rapport texte courant dans le presse-papiers."""
         if not self._report_text:
             messagebox.showinfo("Info", "Aucun rapport à copier.")
             return
@@ -309,15 +362,27 @@ class TabAnalyze:
     # ── Card rendering ───────────────────────────────────────────────────────
 
     def _on_mousewheel(self, event):
-        """Single handler — registered once on _results_view so every child inherits it."""
+        """@brief Gestionnaire unique de molette, enregistré sur _results_view pour tous les enfants.
+
+        @param event Événement Tk de molette (porte le delta).
+        """
         self._canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def _render_cards(self, results: list, unclassified: list):
+        """@brief Affiche les cartes de circuits, regroupées par catégorie, plus les sections annexes.
+
+        @param results Circuits détectés (sortie de analyser()).
+        @param unclassified Références non classifiées.
+        @return None
+        """
         # Clear old cards
         for w in self._results_view.winfo_children():
             w.destroy()
 
         self._empty_state.grid_remove()
+
+        self._render_executive_summary(results, unclassified)
+        self._render_group_preview(results)
 
         # Structure en étages (îlots fonctionnels)
         self._render_islands(results)
@@ -353,8 +418,112 @@ class TabAnalyze:
         # Unclassified section
         self._render_unclassified(unclassified)
 
+    def _render_executive_summary(self, results: list, unclassified: list):
+        """@brief Affiche le résumé exécutif en tête des résultats.
+
+        @param results Circuits détectés (sortie de analyser()).
+        @param unclassified Références non classifiées.
+        @return None
+        """
+        classified = {ref for r in results for ref in r.get("components", [])}
+        summary = _build_executive_summary(
+            results,
+            total=len(self._comps),
+            classified_count=len(classified),
+            unclassified=unclassified,
+        )
+
+        card = ctk.CTkFrame(self._results_view,
+                            fg_color=CARD,
+                            corner_radius=8,
+                            border_width=1,
+                            border_color=BORDER)
+        card.pack(fill="x", padx=16, pady=(14, 8))
+
+        header = ctk.CTkFrame(card, fg_color="transparent")
+        header.pack(fill="x", padx=16, pady=(14, 8))
+        ctk.CTkLabel(header, text="Résumé exécutif",
+                     font=ctk.CTkFont("Segoe UI", 15, "bold"),
+                     text_color=TEXT).pack(side="left")
+        ctk.CTkLabel(header, text="Vue rapide pour la présentation",
+                     font=ctk.CTkFont("Segoe UI", 11),
+                     text_color=MUTED).pack(side="left", padx=12)
+
+        lines = (
+            ("Analyse", summary["headline"], BLUE),
+            ("Classification", summary["classification"], "#10b981"),
+            ("Lecture rapide", summary["reading"], TEXT),
+            ("À vérifier", summary["review"], "#f59e0b"),
+        )
+        for label, value, color in lines:
+            row = ctk.CTkFrame(card, fg_color="transparent")
+            row.pack(fill="x", padx=16, pady=(0, 8))
+            ctk.CTkLabel(row, text=label,
+                         font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                         text_color=color,
+                         width=110,
+                         anchor="w").pack(side="left")
+            ctk.CTkLabel(row, text=value,
+                         font=ctk.CTkFont("Segoe UI", 11),
+                         text_color=TEXT,
+                         anchor="w",
+                         justify="left",
+                         wraplength=760).pack(side="left", fill="x", expand=True)
+
+    def _render_group_preview(self, results: list):
+        """@brief Affiche un apercu compact des groupes detectes.
+
+        @param results Circuits detectes.
+        @return None
+        """
+        groups = _build_group_preview(results)
+        if not groups:
+            return
+
+        hdr = ctk.CTkFrame(self._results_view, fg_color="transparent")
+        hdr.pack(fill="x", padx=16, pady=(12, 2))
+        ctk.CTkLabel(hdr, text="APERCU DES GROUPES",
+                     font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                     text_color=BLUE).pack(side="left")
+        ctk.CTkFrame(hdr, height=1, fg_color=BORDER).pack(
+            side="left", fill="x", expand=True, padx=10)
+
+        grid = ctk.CTkFrame(self._results_view, fg_color="transparent")
+        grid.pack(fill="x", padx=16, pady=(2, 8))
+        grid.grid_columnconfigure((0, 1, 2), weight=1)
+        for i, group in enumerate(groups):
+            bg, fg, icon = _type_style(group["title"])
+            card = ctk.CTkFrame(grid, fg_color=bg, corner_radius=8,
+                                border_width=1, border_color=_darken(bg))
+            card.grid(row=i // 3, column=i % 3, sticky="ew", padx=4, pady=4)
+
+            top = ctk.CTkFrame(card, fg_color="transparent")
+            top.pack(fill="x", padx=10, pady=(8, 2))
+            ctk.CTkLabel(top, text=icon,
+                         font=ctk.CTkFont(size=14),
+                         text_color=fg).pack(side="left", padx=(0, 5))
+            ctk.CTkLabel(top, text=group["title"],
+                         font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                         text_color=fg,
+                         wraplength=190,
+                         justify="left").pack(side="left", fill="x", expand=True)
+            ctk.CTkLabel(top, text=group["confidence"],
+                         font=ctk.CTkFont("Segoe UI", 9, "bold"),
+                         text_color=fg).pack(side="right")
+
+            ctk.CTkLabel(card, text="  ".join(group["refs"]),
+                         font=ctk.CTkFont("Consolas", 10, "bold"),
+                         text_color=TEXT,
+                         wraplength=250,
+                         justify="left",
+                         anchor="w").pack(fill="x", padx=10, pady=(2, 8))
+
     def _render_islands(self, results):
-        """Panneau repliable « Structure en étages » (îlots fonctionnels)."""
+        """@brief Affiche le panneau repliable « Structure en étages » (îlots fonctionnels).
+
+        @param results Résultats d'analyse (avec attribut .ilots).
+        @return None
+        """
         ilots = getattr(results, 'ilots', [])
         if not ilots:
             return
@@ -372,6 +541,11 @@ class TabAnalyze:
                 fill="x", padx=16, pady=3)
 
     def _render_unclassified(self, unclassified: list):
+        """@brief Affiche la section des composants non classifiés.
+
+        @param unclassified Références non classifiées.
+        @return None
+        """
         if unclassified:
             uch = ctk.CTkFrame(self._results_view,
                                fg_color="transparent")
@@ -405,7 +579,17 @@ class TabAnalyze:
 # ── Helper widgets ────────────────────────────────────────────────────────────
 
 class _StatCard(ctk.CTkFrame):
+    """@brief Carte de statistique (icône, valeur, libellé) de la barre de résultats."""
+
     def __init__(self, parent, value, label, color, icon):
+        """@brief Construit la carte de statistique.
+
+        @param parent Widget parent.
+        @param value Valeur initiale affichée.
+        @param label Libellé sous la valeur.
+        @param color Couleur d'accent.
+        @param icon Icône affichée.
+        """
         super().__init__(parent, corner_radius=12,
                          fg_color=CARD,
                          border_width=1, border_color=BORDER)
@@ -421,11 +605,22 @@ class _StatCard(ctk.CTkFrame):
                      text_color=MUTED).pack(pady=(2, 12))
 
     def update(self, value: str):
+        """@brief Met à jour la valeur affichée.
+
+        @param value Nouvelle valeur (chaîne).
+        @return None
+        """
         self._val.configure(text=value)
 
 
 class _EmptyState(ctk.CTkFrame):
+    """@brief Écran d'accueil affiché tant qu'aucun circuit n'a été chargé."""
+
     def __init__(self, parent):
+        """@brief Construit l'écran vide.
+
+        @param parent Widget parent.
+        """
         super().__init__(parent, fg_color="transparent")
         ctk.CTkLabel(self, text="📂",
                      font=ctk.CTkFont(size=56),
@@ -440,9 +635,15 @@ class _EmptyState(ctk.CTkFrame):
 
 
 class _IslandSection(ctk.CTkFrame):
-    """Section repliable pour un îlot fonctionnel (structure en étages)."""
+    """@brief Section repliable pour un îlot fonctionnel (structure en étages)."""
 
     def __init__(self, parent, ilot: dict, results):
+        """@brief Construit la section d'un îlot.
+
+        @param parent Widget parent.
+        @param ilot Dict décrivant l'îlot (label, composants, circuits).
+        @param results Résultats d'analyse (pour résoudre les circuits par indice).
+        """
         super().__init__(parent, corner_radius=10,
                          fg_color=CARD,
                          border_width=1, border_color=BORDER)
@@ -488,6 +689,7 @@ class _IslandSection(ctk.CTkFrame):
                          justify="left").pack(fill="x", pady=1)
 
     def _toggle(self):
+        """@brief Replie ou déplie le contenu de la section."""
         self._ouvert = not self._ouvert
         if self._ouvert:
             self._contenu.pack(fill="x", padx=20, pady=(0, 8))
@@ -498,7 +700,15 @@ class _IslandSection(ctk.CTkFrame):
 
 
 class _CircuitCard(ctk.CTkFrame):
+    """@brief Carte d'un circuit détecté (type, composants, nœuds, ouverture du schéma)."""
+
     def __init__(self, parent, result: dict, comp_info: dict = None):
+        """@brief Construit la carte d'un circuit.
+
+        @param parent Widget parent.
+        @param result Match du circuit détecté.
+        @param comp_info Dict {ref -> infos composant} pour le rendu du schéma.
+        """
         bg, fg, icon = _type_style(result["circuit_type"])
         super().__init__(parent, corner_radius=12,
                          fg_color=bg,
@@ -558,36 +768,219 @@ class _CircuitCard(ctk.CTkFrame):
                          justify="left", anchor="w").pack(side="left")
 
     def _open_schema(self):
+        """@brief Ouvre la fenêtre de schéma du circuit de cette carte."""
         show_circuit(self._result, self._comp_info)
 
 
 # ── Utilities ────────────────────────────────────────────────────────────────
 
 def _category(name: str) -> str:
-    if "AOP" in name:           return "AMPLIFICATEURS OPÉRATIONNELS"
-    if any(x in name for x in ("Transistor", "MOSFET", "Miroir", "Relais")):
+    """@brief Catégorie d'affichage (en-tête de section) d'un type de circuit.
+
+    @param name Nom du circuit détecté.
+    @return str Libellé de catégorie.
+    """
+    lower = name.lower()
+    if "aop" in lower:           return "AMPLIFICATEURS OPÉRATIONNELS"
+    if any(x in lower for x in ("transistor", "mosfet", "miroir", "relais")):
         return "TRANSISTORS & COMMUTATION"
-    if any(x in name for x in ("Pont", "Redresseur", "Crête", "Roue")):
+    if any(x in lower for x in ("pont", "redresseur", "crête", "roue")):
         return "REDRESSEURS & DIODES"
-    if any(x in name for x in ("Filtre", "Condensateur", "Absorbeur", "LC", "RC")):
+    if any(x in lower for x in ("filtre", "condensateur", "absorbeur", "lc", "rc")):
         return "FILTRES & PASSIFS"
-    if any(x in name for x in ("Diviseur", "Fusible", "Protection", "ESD")):
+    if any(x in lower for x in ("diviseur", "fusible", "protection", "esd")):
         return "PROTECTION & AUTRES"
     return "AUTRES"
 
 
+def _build_executive_summary(results: list, total: int,
+                             classified_count: int, unclassified: list) -> dict:
+    """@brief Construit les textes du résumé exécutif après analyse.
+
+    @param results Circuits détectés.
+    @param total Nombre total de composants analysés.
+    @param classified_count Nombre de composants rattachés à un circuit détecté.
+    @param unclassified Références non classifiées.
+    @return dict Textes prêts à afficher dans le bloc résumé.
+    """
+    nb_circuits = len(results)
+    if nb_circuits == 0:
+        headline = (
+            f"Analyse terminée : {total} composant{_s(total)} analysé{_s(total)}, "
+            "aucun circuit reconnu."
+        )
+        reading = "Le schéma ne correspond pas encore aux patterns intégrés."
+    else:
+        headline = (
+            f"Analyse terminée : {total} composant{_s(total)} analysé{_s(total)}, "
+            f"{nb_circuits} circuit{_s(nb_circuits)} reconnu{_s(nb_circuits)}."
+        )
+        categories = _format_category_list(results)
+        reading = f"Le schéma contient principalement {categories}."
+
+    pct = int(100 * classified_count / total) if total else 0
+    classification = (
+        f"{classified_count} composant{_s(classified_count)} "
+        f"classé{_s(classified_count)} ({pct}%)."
+    )
+
+    review_points = _count_review_points(results, unclassified)
+    if review_points == 0:
+        review = "Aucun point bloquant identifié pour cette première lecture."
+    elif nb_circuits == 0 and review_points == len(unclassified):
+        review = f"{review_points} composant{_s(review_points)} restent non classifiés."
+    else:
+        review = (
+            f"{review_points} point{_s(review_points)} nécessitent "
+            "une vérification ingénieur."
+        )
+
+    return {
+        "headline": headline,
+        "classification": classification,
+        "reading": reading,
+        "review": review,
+    }
+
+
+def _find_demo_file(root=None) -> str:
+    """@brief Trouve le fichier de demo prioritaire pour la presentation.
+
+    @param root Racine du projet (optionnelle, pour les tests).
+    @return str Chemin du fichier trouve, ou chaine vide.
+    """
+    if root is not None:
+        base = Path(root)
+    else:
+        from circuit_analyzer.chemins import racine_application
+        base = racine_application()
+    candidates = [
+        base / "circuits_industriels" / "relay_driver.xml",
+        base / "exemples" / "test_circuit_complet.txt",
+        base / "circuits_industriels" / "smps_full.xml",
+    ]
+    for path in candidates:
+        if path.exists():
+            return str(path)
+    return ""
+
+
+def _build_group_preview(results: list, limit: int = 9) -> list:
+    """@brief Construit les donnees d'affichage de l'apercu des groupes.
+
+    @param results Circuits detectes.
+    @param limit Nombre maximum de groupes affiches.
+    @return list[dict] Groupes synthetiques pour la GUI.
+    """
+    preview = []
+    for result in results[:limit]:
+        refs = list(result.get("components", []))
+        refs += [
+            sat["ref"]
+            for sat in result.get("satellites", [])
+            if sat.get("status") == "sure" and sat.get("ref") not in refs
+        ]
+        confidence = result.get("confidence")
+        confidence_text = "" if confidence is None else f"{int(round(confidence * 100))}%"
+        title = result.get("circuit_type", "Circuit detecte")
+        preview.append({
+            "title": title,
+            "category": _category(title),
+            "refs": refs,
+            "confidence": confidence_text,
+        })
+    return preview
+
+
+def _format_category_list(results: list) -> str:
+    """@brief Résume les catégories fonctionnelles dominantes des circuits.
+
+    @param results Circuits détectés.
+    @return str Liste courte de catégories en français courant.
+    """
+    labels = []
+    for result in results:
+        category = _category(result.get("circuit_type", ""))
+        if "COMMUTATION" in category:
+            label = "de la commutation"
+        elif "PROTECTION" in category or "DIODES" in category:
+            label = "de la protection"
+        elif "FILTRES" in category:
+            label = "du filtrage"
+        elif "OPÉRATIONNELS" in category:
+            label = "de l'amplification"
+        else:
+            label = "des fonctions annexes"
+        if label not in labels:
+            labels.append(label)
+    return _join_fr(labels[:3]) if labels else "des fonctions non classifiées"
+
+
+def _count_review_points(results: list, unclassified: list) -> int:
+    """@brief Compte les éléments à signaler comme points de vérification.
+
+    @param results Circuits détectés.
+    @param unclassified Références non classifiées.
+    @return int Nombre de points à vérifier.
+    """
+    total = len(unclassified)
+    for result in results:
+        total += len(result.get("warnings", []))
+        total += sum(1 for sat in result.get("satellites", [])
+                     if sat.get("status") == "possible")
+    return total
+
+
+def _join_fr(items: list) -> str:
+    """@brief Joint une liste courte avec des virgules et un dernier 'et'.
+
+    @param items Éléments textuels à joindre.
+    @return str Phrase jointe.
+    """
+    if len(items) <= 1:
+        return items[0] if items else ""
+    if len(items) == 2:
+        return f"{items[0]} et {items[1]}"
+    return f"{', '.join(items[:-1])} et {items[-1]}"
+
+
+def _s(count: int) -> str:
+    """@brief Suffixe pluriel français minimal.
+
+    @param count Quantité à tester.
+    @return str 's' si count > 1, sinon chaîne vide.
+    """
+    return "s" if count > 1 else ""
+
+
 def _darken(hex_color: str) -> str:
+    """@brief Assombrit une couleur hexadécimale.
+
+    @param hex_color Couleur au format '#rrggbb'.
+    @return str Couleur assombrie '#rrggbb'.
+    """
     r, g, b = int(hex_color[1:3], 16), int(hex_color[3:5], 16), int(hex_color[5:7], 16)
     r, g, b = max(0, r - 20), max(0, g - 20), max(0, b - 20)
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def _brighten(hex_color: str) -> str:
+    """@brief Éclaircit une couleur hexadécimale.
+
+    @param hex_color Couleur au format '#rrggbb'.
+    @return str Couleur éclaircie '#rrggbb'.
+    """
     r, g, b = int(hex_color[1:3], 16), int(hex_color[3:5], 16), int(hex_color[5:7], 16)
     r, g, b = min(255, r + 60), min(255, g + 60), min(255, b + 60)
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def _chunks(lst, n):
+    """@brief Découpe une liste en tranches successives de n éléments.
+
+    @param lst Liste à découper.
+    @param n Taille de chaque tranche.
+    @return generator Tranches successives (listes).
+    """
     for i in range(0, len(lst), n):
         yield lst[i:i + n]

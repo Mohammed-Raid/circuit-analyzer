@@ -1,3 +1,8 @@
+"""
+@file test_performance.py
+@brief Tests automatises pour test_performance.
+"""
+
 """Garde-fou performance : échoue si un comportement quadratique revient.
 
 Seuil volontairement large (5 s pour 1000 composants, ~0.2 s attendu) pour
@@ -12,6 +17,7 @@ from circuit_analyzer.matcher import match_patterns
 
 
 def _bloc(i: int) -> list:
+    """@brief Helper de test pour bloc."""
     """Même étage de relais que tools/benchmark.py (8 composants)."""
     p = f'B{i}_'
     return [
@@ -28,6 +34,10 @@ def _bloc(i: int) -> list:
 
 
 def test_1000_composants_en_moins_de_5_secondes():
+    """@brief Verifie 1000 composants en moins de 5 secondes.
+
+    @return None
+    """
     composants = []
     for i in range(125):           # 125 blocs x 8 = 1000 composants
         composants.extend(_bloc(i))

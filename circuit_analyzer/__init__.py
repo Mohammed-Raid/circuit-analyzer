@@ -1,5 +1,6 @@
 """
-circuit_analyzer — Analyseur de circuits électroniques.
+@file __init__.py
+@brief circuit_analyzer — Analyseur de circuits électroniques (package racine).
 
 API principale :
     from circuit_analyzer.composant import lire_netlist, construire_graphe

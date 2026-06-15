@@ -1,4 +1,9 @@
 """
+@file test_ilots.py
+@brief Tests automatises pour test_ilots.
+"""
+
+"""
 test_ilots.py — Tests de la détection d'îlots fonctionnels.
 """
 import pytest
@@ -9,6 +14,7 @@ from circuit_analyzer.ilots import detecter_ilots
 
 
 def _match(circuit_type, components, nodes, categorie='divers', confidence=0.8):
+    """@brief Helper de test pour match."""
     return {'circuit_type': circuit_type, 'components': list(components),
             'nodes': list(nodes), 'functional_category': categorie,
             'confidence': confidence, 'satellites': []}
@@ -19,6 +25,10 @@ def _match(circuit_type, components, nodes, categorie='divers', confidence=0.8):
 # =============================================================================
 
 def test_deux_ilots_disjoints():
+    """@brief Verifie deux ilots disjoints.
+
+    @return None
+    """
     comps = [
         # Îlot A : filtre RC
         Component('R1', 'R', {'1': 'NET_A1', '2': 'NET_A2'}, '10k'),
@@ -35,6 +45,10 @@ def test_deux_ilots_disjoints():
     assert {'R2', 'C2'} in groupes
 
 def test_gnd_ne_fusionne_pas_les_ilots():
+    """@brief Verifie gnd ne fusionne pas les ilots.
+
+    @return None
+    """
     # Les deux îlots partagent GND : ils doivent rester séparés
     comps = [
         Component('R1', 'R', {'1': 'NET_A', '2': 'GND'}, '10k'),
@@ -45,6 +59,10 @@ def test_gnd_ne_fusionne_pas_les_ilots():
     assert len(ilots) == 2
 
 def test_net_signal_fusionne():
+    """@brief Verifie net signal fusionne.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'NET_A', '2': 'NET_MID'}, '10k'),
         Component('R2', 'R', {'1': 'NET_MID', '2': 'NET_B'}, '10k'),
@@ -55,6 +73,10 @@ def test_net_signal_fusionne():
     assert set(ilots[0]['composants']) == {'R1', 'R2'}
 
 def test_aop_multibroches_unionne_ses_nets():
+    """@brief Verifie aop multibroches unionne ses nets.
+
+    @return None
+    """
     comps = [
         Component('U1', 'U', {'IN+': 'NET_P', 'IN-': 'NET_M',
                               'OUT': 'NET_O', 'V+': 'VCC', 'V-': 'GND'}),
@@ -72,6 +94,10 @@ def test_aop_multibroches_unionne_ses_nets():
 # =============================================================================
 
 def test_rail_only_groupes_par_rail():
+    """@brief Verifie rail only groupes par rail.
+
+    @return None
+    """
     comps = [
         Component('C1', 'C', {'1': 'VCC_12V', '2': 'GND'}, '100nF'),
         Component('C2', 'C', {'1': 'VCC_12V', '2': 'GND'}, '10uF'),
@@ -88,6 +114,10 @@ def test_rail_only_groupes_par_rail():
         assert i['rail'] in i['label']
 
 def test_gnd_only_va_en_non_identifie():
+    """@brief Verifie gnd only va en non identifie.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'GND', '2': 'GND'}, '0R'),
     ]
@@ -103,6 +133,10 @@ def test_gnd_only_va_en_non_identifie():
 # =============================================================================
 
 def test_categorie_majoritaire():
+    """@brief Verifie categorie majoritaire.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'N1', '2': 'N2'}, '10k'),
         Component('R2', 'R', {'1': 'N2', '2': 'N3'}, '10k'),
@@ -121,6 +155,10 @@ def test_categorie_majoritaire():
     assert ilots[0]['circuits'] == [0, 1, 2]
 
 def test_egalite_liste_les_categories():
+    """@brief Verifie egalite liste les categories.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'N1', '2': 'N2'}, '10k'),
         Component('R2', 'R', {'1': 'N2', '2': 'N3'}, '10k'),
@@ -134,6 +172,10 @@ def test_egalite_liste_les_categories():
     assert ilots[0]['categorie'] == 'commutation + filtrage'
 
 def test_sans_circuit_non_identifie():
+    """@brief Verifie sans circuit non identifie.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'N1', '2': 'N2'}, '10k'),
     ]
@@ -142,6 +184,10 @@ def test_sans_circuit_non_identifie():
     assert ilots[0]['categorie'] == 'non identifié'
 
 def test_tri_par_taille_decroissante_et_numerotation():
+    """@brief Verifie tri par taille decroissante et numerotation.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'N1', '2': 'N2'}, '10k'),
         Component('R2', 'R', {'1': 'M1', '2': 'M2'}, '10k'),
@@ -154,6 +200,10 @@ def test_tri_par_taille_decroissante_et_numerotation():
     assert ilots[1]['label'].startswith('Îlot 2')
 
 def test_composants_tries():
+    """@brief Verifie composants tries.
+
+    @return None
+    """
     comps = [
         Component('R9', 'R', {'1': 'N1', '2': 'N2'}, '10k'),
         Component('C1', 'C', {'1': 'N2', '2': 'N3'}, '1nF'),
@@ -163,6 +213,10 @@ def test_composants_tries():
     assert ilots[0]['composants'] == sorted(ilots[0]['composants'])
 
 def test_labels_cp1252():
+    """@brief Verifie labels cp1252.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'N1', '2': 'N2'}, '10k'),
         Component('C1', 'C', {'1': 'VCC', '2': 'GND'}, '100nF'),
@@ -177,6 +231,7 @@ def test_labels_cp1252():
 # =============================================================================
 
 def _circuit_deux_etages():
+    """@brief Helper de test pour circuit deux etages."""
     return [
         # Étage 1 : filtre RC
         Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
@@ -189,12 +244,20 @@ def _circuit_deux_etages():
     ]
 
 def test_e2e_ilots_attache_aux_resultats():
+    """@brief Verifie e2e ilots attache aux resultats.
+
+    @return None
+    """
     results = match_patterns(build_graph(_circuit_deux_etages()))
     assert hasattr(results, 'ilots')
     assert isinstance(results.ilots, list)
     assert len(results.ilots) >= 2
 
 def test_e2e_indices_circuits_coherents():
+    """@brief Verifie e2e indices circuits coherents.
+
+    @return None
+    """
     results = match_patterns(build_graph(_circuit_deux_etages()))
     for ilot in results.ilots:
         for idx in ilot['circuits']:
@@ -204,6 +267,10 @@ def test_e2e_indices_circuits_coherents():
                        for ref in match['components'])
 
 def test_e2e_etages_separes():
+    """@brief Verifie e2e etages separes.
+
+    @return None
+    """
     results = match_patterns(build_graph(_circuit_deux_etages()))
     groupes = [set(i['composants']) for i in results.ilots]
     assert any({'R1', 'C1'} <= g for g in groupes)
@@ -212,6 +279,10 @@ def test_e2e_etages_separes():
     assert not any({'R1', 'R2'} <= g for g in groupes)
 
 def test_resultats_analyse_ilots_par_defaut():
+    """@brief Verifie resultats analyse ilots par defaut.
+
+    @return None
+    """
     from circuit_analyzer.detecteur import ResultatsAnalyse
     r = ResultatsAnalyse()
     assert r.ilots == []
@@ -225,6 +296,10 @@ from circuit_analyzer.rapport import generer_rapport
 
 
 def test_rapport_section_etages():
+    """@brief Verifie rapport section etages.
+
+    @return None
+    """
     comps = _circuit_deux_etages()
     refs = [c.ref for c in comps]
     results = match_patterns(build_graph(comps))
@@ -233,6 +308,10 @@ def test_rapport_section_etages():
     assert 'Îlot 1' in rapport
 
 def test_rapport_etages_numeros_circuits_coherents():
+    """@brief Verifie rapport etages numeros circuits coherents.
+
+    @return None
+    """
     comps = _circuit_deux_etages()
     refs = [c.ref for c in comps]
     results = match_patterns(build_graph(comps))
@@ -243,6 +322,10 @@ def test_rapport_etages_numeros_circuits_coherents():
     assert '[1]' in section
 
 def test_rapport_etages_absente_si_list_simple():
+    """@brief Verifie rapport etages absente si list simple.
+
+    @return None
+    """
     # compat : un appel avec une simple list (sans .ilots) ne plante pas
     comps = _circuit_deux_etages()
     refs = [c.ref for c in comps]
@@ -251,6 +334,10 @@ def test_rapport_etages_absente_si_list_simple():
     assert '=== STRUCTURE EN ETAGES ===' not in rapport
 
 def test_rapport_etages_ilot_sans_circuit_liste_composants():
+    """@brief Verifie rapport etages ilot sans circuit liste composants.
+
+    @return None
+    """
     comps = [
         Component('X1', 'R', {'1': 'NET_Z1', '2': 'NET_Z2'}),
     ]
@@ -261,6 +348,10 @@ def test_rapport_etages_ilot_sans_circuit_liste_composants():
     assert 'X1' in section
 
 def test_rapport_etages_ligne_autres_pour_membres_hors_circuits():
+    """@brief Verifie rapport etages ligne autres pour membres hors circuits.
+
+    @return None
+    """
     # R9 est dans l'îlot du filtre mais n'appartient à aucun circuit listé
     # ni aux satellites sûrs -> il doit apparaître sur la ligne « Autres »
     comps = [
@@ -276,6 +367,10 @@ def test_rapport_etages_ligne_autres_pour_membres_hors_circuits():
 
 
 def test_rapport_etages_cp1252():
+    """@brief Verifie rapport etages cp1252.
+
+    @return None
+    """
     comps = _circuit_deux_etages()
     refs = [c.ref for c in comps]
     results = match_patterns(build_graph(comps))
@@ -292,6 +387,10 @@ from circuit_analyzer.xml import _grouper_par_circuit
 
 
 def test_xml_blocs_ordonnes_par_ilot():
+    """@brief Verifie xml blocs ordonnes par ilot.
+
+    @return None
+    """
     comps = _circuit_deux_etages()
     results = match_patterns(build_graph(comps))
     blocs = _grouper_par_circuit(comps, results)
@@ -302,6 +401,10 @@ def test_xml_blocs_ordonnes_par_ilot():
     assert labels == attendu
 
 def test_xml_divers_reste_dernier():
+    """@brief Verifie xml divers reste dernier.
+
+    @return None
+    """
     comps = _circuit_deux_etages() + [
         Component('R9', 'R', {'1': 'NET_SEUL', '2': 'NET_SEUL2'}),
     ]
@@ -311,6 +414,10 @@ def test_xml_divers_reste_dernier():
         assert blocs[-1].label == 'Divers'
 
 def test_xml_compat_list_simple():
+    """@brief Verifie xml compat list simple.
+
+    @return None
+    """
     # une simple list (sans .ilots) doit garder l'ordre de détection historique
     comps = _circuit_deux_etages()
     results = match_patterns(build_graph(comps))

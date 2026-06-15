@@ -1,4 +1,9 @@
 """
+@file test_reduction.py
+@brief Tests automatises pour test_reduction.
+"""
+
+"""
 Tests de circuit_analyzer/reduction.py — réduction des sous-réseaux passifs
 en dipôles équivalents (directive rouge du document : « créer le dipôle Rf »).
 """
@@ -7,16 +12,19 @@ from circuit_analyzer.reduction import reduire_dipoles, expandre_composites
 
 
 def _graphe(*composants):
+    """@brief Helper de test pour graphe."""
     return construire_graphe(list(composants))
 
 
 # Composant actif servant d'ancre : la réduction n'opère que sur les réseaux
 # passifs reliés à au moins une broche active (directive métier).
 def _aop(in_plus='P', in_moins='M', out='O'):
+    """@brief Helper de test pour aop."""
     return Composant('U1', 'U', {'IN+': in_plus, 'IN-': in_moins, 'OUT': out})
 
 
 def _aretes(graphe):
+    """@brief Helper de test pour aretes."""
     """Liste (frozenset(nœuds), type, ref) des arêtes, pour comparaison stable."""
     return sorted(
         (tuple(sorted((u, v))), d['type'], d['ref'])
@@ -27,6 +35,10 @@ def _aretes(graphe):
 # ── Préservation de la valeur (non-régression stricte) ─────────────────────────
 
 def test_singleton_conserve_sa_valeur_reelle():
+    """@brief Verifie singleton conserve sa valeur reelle.
+
+    @return None
+    """
     # Un passif non fusionné (R de feedback unique, ancré par l'AOP) doit garder
     # sa value d'origine dans le graphe réduit — pas son ref comme value.
     g = _graphe(
@@ -40,6 +52,10 @@ def test_singleton_conserve_sa_valeur_reelle():
 
 
 def test_reseau_flottant_conserve_valeurs():
+    """@brief Verifie reseau flottant conserve valeurs.
+
+    @return None
+    """
     # Pont diviseur non ancré : intact, valeurs comprises.
     g = _graphe(
         Composant('R1', 'R', {'1': 'VCC', '2': 'DIV'}, '10k'),
@@ -53,6 +69,10 @@ def test_reseau_flottant_conserve_valeurs():
 # ── Non-régression : aucun composite → graphe inchangé ─────────────────────────
 
 def test_aucune_reduction_si_pas_de_composite():
+    """@brief Verifie aucune reduction si pas de composite.
+
+    @return None
+    """
     g = _graphe(
         Composant('R1', 'R', {'1': 'A', '2': 'B'}, '10k'),
         Composant('R2', 'R', {'1': 'B', '2': 'GND'}, '1k'),
@@ -71,6 +91,10 @@ def test_aucune_reduction_si_pas_de_composite():
 # ── Série : deux résistances en chaîne → une R équivalente ─────────────────────
 
 def test_serie_deux_resistances():
+    """@brief Verifie serie deux resistances.
+
+    @return None
+    """
     # INM ─[R1]─ MID ─[R2]─ OUT ; MID interne, ancré par l'AOP (INM, OUT)
     g = _graphe(
         _aop(in_moins='INM', out='OUT'),
@@ -89,6 +113,10 @@ def test_serie_deux_resistances():
 
 
 def test_serie_trois_resistances():
+    """@brief Verifie serie trois resistances.
+
+    @return None
+    """
     g = _graphe(
         _aop(in_moins='A', out='D'),
         Composant('R1', 'R', {'1': 'A', '2': 'B'}, '1k'),
@@ -105,6 +133,10 @@ def test_serie_trois_resistances():
 
 
 def test_reseau_flottant_non_reduit():
+    """@brief Verifie reseau flottant non reduit.
+
+    @return None
+    """
     # Réseau passif sans broche active : ne doit PAS être réduit (snubber, etc.)
     g = _graphe(
         Composant('R1', 'R', {'1': 'A', '2': 'MID'}, '10k'),
@@ -116,6 +148,10 @@ def test_reseau_flottant_non_reduit():
 
 
 def test_hub_partage_plusieurs_branches_serie():
+    """@brief Verifie hub partage plusieurs branches serie.
+
+    @return None
+    """
     # N branches composites (R série R) entre LE MÊME couple IN-/OUT — topologie
     # à « hub » partagé. Chaque branche doit fusionner, puis le banc parallèle
     # résultant fusionne en un seul dipôle. Vérifie l'absence de régression de la
@@ -136,6 +172,10 @@ def test_hub_partage_plusieurs_branches_serie():
 
 
 def test_serie_creant_un_banc_parallele():
+    """@brief Verifie serie creant un banc parallele.
+
+    @return None
+    """
     # X-Ra-M-Rb-Y et déjà un Rc direct X-Y : après la fusion série (Ra+Rb),
     # un banc parallèle (Ra+Rb)//Rc apparaît et doit fusionner à son tour.
     g = _graphe(
@@ -154,6 +194,10 @@ def test_serie_creant_un_banc_parallele():
 # ── Parallèle : deux composants entre les mêmes nœuds → un équivalent ──────────
 
 def test_parallele_deux_resistances():
+    """@brief Verifie parallele deux resistances.
+
+    @return None
+    """
     # R1//R2 entre IN- et OUT (contre-réaction), ancré par l'AOP
     g = _graphe(
         _aop(in_moins='X', out='Y'),
@@ -170,6 +214,10 @@ def test_parallele_deux_resistances():
 
 
 def test_parallele_R_et_C_donne_impedance_composite():
+    """@brief Verifie parallele R et C donne impedance composite.
+
+    @return None
+    """
     # R // C en contre-réaction : type équivalent 'Z' (ni résistif ni capacitif pur)
     g = _graphe(
         _aop(in_moins='X', out='Y'),
@@ -188,6 +236,10 @@ def test_parallele_R_et_C_donne_impedance_composite():
 # ── Protection : un rail ne doit jamais être éliminé ───────────────────────────
 
 def test_noeud_masse_jamais_elimine():
+    """@brief Verifie noeud masse jamais elimine.
+
+    @return None
+    """
     # R1 vers GND, R2 depuis GND : GND est un rail, NE DOIT PAS fusionner
     g = _graphe(
         Composant('R1', 'R', {'1': 'A', '2': 'GND'}, '10k'),
@@ -199,6 +251,10 @@ def test_noeud_masse_jamais_elimine():
 
 
 def test_broche_active_jamais_eliminee():
+    """@brief Verifie broche active jamais eliminee.
+
+    @return None
+    """
     # MID est la broche IN- d'un AOP → protégée ; pas de fusion série à travers elle
     g = _graphe(
         Composant('U1', 'U', {'IN+': 'P', 'IN-': 'MID', 'OUT': 'OUT'}),
@@ -213,6 +269,10 @@ def test_broche_active_jamais_eliminee():
 # ── expandre_composites ────────────────────────────────────────────────────────
 
 def test_expandre_preserve_ordre():
+    """@brief Verifie expandre preserve ordre.
+
+    @return None
+    """
     match = {'components': ['U1', 'Z#1', 'Rin'], 'nodes': []}
     expansion = {'Z#1': ['R1', 'R2']}
     out = expandre_composites(match, expansion)
@@ -222,5 +282,9 @@ def test_expandre_preserve_ordre():
 
 
 def test_expandre_sans_expansion_retourne_match():
+    """@brief Verifie expandre sans expansion retourne match.
+
+    @return None
+    """
     match = {'components': ['U1', 'R1'], 'nodes': []}
     assert expandre_composites(match, {}) is match

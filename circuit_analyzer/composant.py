@@ -1,5 +1,6 @@
 """
-composant.py — Tout ce qui concerne les composants électroniques.
+@file composant.py
+@brief Tout ce qui concerne les composants électroniques.
 
 Ce fichier regroupe :
   1. La classe Composant (description d'un composant)
@@ -39,16 +40,24 @@ COMPONENT_TYPES = TYPES_COMPOSANTS
 
 
 def chemin_bibliotheque() -> Path:
-    """Chemin par défaut de component_library.json : à la racine de
-    l'application (à côté de l'exe une fois gelée), pas au CWD."""
+    """@brief Chemin par défaut de component_library.json.
+
+    À la racine de l'application (à côté de l'exe une fois gelée), pas au CWD.
+
+    @return Path Chemin du fichier de bibliothèque de composants.
+    """
     from circuit_analyzer.chemins import racine_application
     return racine_application() / 'component_library.json'
 
 
 def charger_bibliotheque(chemin_json=None) -> dict:
     """
-    Charge la bibliothèque de composants.
+    @brief Charge la bibliothèque de composants.
+
     Commence par les types par défaut, puis applique les modifications du fichier JSON.
+
+    @param chemin_json Chemin du JSON de personnalisation (défaut : chemin_bibliotheque()).
+    @return dict Bibliothèque {type -> {'name', 'pins'}} fusionnée.
     """
     bibliotheque = copy.deepcopy(TYPES_COMPOSANTS)
     chemin = Path(chemin_json) if chemin_json is not None else chemin_bibliotheque()
@@ -60,7 +69,12 @@ def charger_bibliotheque(chemin_json=None) -> dict:
 
 
 def get_pins(type_comp: str, chemin_json=None) -> list[str]:
-    """Retourne les noms de broches pour un type de composant donné."""
+    """@brief Retourne les noms de broches pour un type de composant donné.
+
+    @param type_comp Type du composant (ex. 'R', 'U', 'Q').
+    @param chemin_json Chemin du JSON de personnalisation (optionnel).
+    @return list[str] Noms de broches ; ['1', '2'] par défaut si type inconnu.
+    """
     bib = charger_bibliotheque(chemin_json)
     entree = bib.get(type_comp)
     return entree.get('pins', ['1', '2']) if entree else ['1', '2']
@@ -77,7 +91,7 @@ load_library = charger_bibliotheque
 @dataclass
 class Composant:
     """
-    Représente un composant électronique avec ses connexions.
+    @brief Représente un composant électronique avec ses connexions.
 
     Attributs :
         ref  : référence unique (ex: 'R1', 'C2', 'U1')
@@ -93,12 +107,16 @@ class Composant:
 
     @property
     def net1(self) -> str:
-        """Premier nœud du composant."""
+        """@brief Premier nœud du composant.
+        @return str Net de la première broche, ou '' si aucune broche.
+        """
         return list(self.pins.values())[0] if self.pins else ''
 
     @property
     def net2(self) -> str:
-        """Deuxième nœud du composant."""
+        """@brief Deuxième nœud du composant.
+        @return str Net de la seconde broche, ou '' s'il y en a moins de deux.
+        """
         vals = list(self.pins.values())
         return vals[1] if len(vals) > 1 else ''
 
@@ -113,9 +131,14 @@ Component = Composant
 
 def _trouver_type(ref: str, bibliotheque: dict) -> str:
     """
-    Devine le type d'un composant à partir de sa référence.
+    @brief Devine le type d'un composant à partir de sa référence.
+
     Essaie les préfixes de 3 lettres, puis 2, puis 1.
     Exemple : 'SW1' → 'SW', 'R12' → 'R'
+
+    @param ref Référence du composant (ex. 'R12', 'SW1').
+    @param bibliotheque Bibliothèque des types reconnus.
+    @return str Type deviné (préfixe connu), sinon la première lettre en majuscule.
     """
     for longueur in range(min(3, len(ref)), 0, -1):
         prefixe = ref[:longueur].upper()
@@ -126,15 +149,15 @@ def _trouver_type(ref: str, bibliotheque: dict) -> str:
 
 def lire_netlist(chemin: str, bibliotheque: dict = None) -> list[Composant]:
     """
-    Lit un fichier netlist et retourne la liste des composants.
+    @brief Lit un fichier netlist et retourne la liste des composants.
 
     Format d'une ligne :
         REFERENCE  NOEUD1  NOEUD2  [VALEUR]
 
-    Lève ValueError si :
-        - Une référence est dupliquée
-        - Un composant a trop peu de nœuds
-        - Une ligne a un format invalide
+    @param chemin Chemin du fichier netlist à lire.
+    @param bibliotheque Bibliothèque des types (défaut : charger_bibliotheque()).
+    @return list[Composant] Composants lus dans l'ordre du fichier.
+    @throws ValueError Si une référence est dupliquée, invalide, ou a trop peu de nœuds.
     """
     if bibliotheque is None:
         bibliotheque = charger_bibliotheque()
@@ -193,12 +216,15 @@ parse_file = lire_netlist
 
 def construire_graphe(composants: list[Composant]) -> nx.MultiGraph:
     """
-    Transforme la liste de composants en graphe NetworkX.
+    @brief Transforme la liste de composants en graphe NetworkX.
 
     - Chaque NŒUD du graphe = un nœud électrique (NET_IN, GND, VCC…)
     - Chaque ARÊTE          = un composant à 2 broches (R, C, L, D, F)
     - Les composants multi-broches (AOP, transistors) sont dans graphe.graph['components']
       car ils ne peuvent pas être représentés par une simple arête.
+
+    @param composants Liste des composants à représenter.
+    @return nx.MultiGraph Graphe (arêtes 2-broches + dict annexe 'components').
     """
     graphe = nx.MultiGraph()
     graphe.graph['components'] = {c.ref: c for c in composants}

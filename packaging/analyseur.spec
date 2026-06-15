@@ -9,17 +9,45 @@ Deux exécutables dans un seul dossier dist/AnalyseurCircuits/ :
 Build : python tools/build_exe.py  (ou : pyinstaller packaging/analyseur.spec)
 """
 import os
+import sys
 
 from PyInstaller.utils.hooks import collect_data_files
 
 RACINE = os.path.abspath(os.path.join(SPECPATH, '..'))
+PY_BASE = sys.base_prefix
 
 # custom_circuits.loader est importé paresseusement dans analyser() :
 # PyInstaller ne le voit pas en scannant les imports de main.py.
 _CACHES = ['custom_circuits', 'custom_circuits.loader']
 
+# Tkinter est requis par CustomTkinter. Sur l'installation Python 3.14 locale,
+# le hook PyInstaller peut considérer Tcl/Tk comme "broken" et l'exclure malgré
+# un import tkinter fonctionnel. On force donc le package, l'extension native,
+# les DLL Tcl/Tk et les scripts Tcl/Tk dans l'exe GUI.
+_TK_HIDDEN = [
+    'tkinter',
+    'tkinter.filedialog',
+    'tkinter.messagebox',
+    'tkinter.ttk',
+    '_tkinter',
+]
+
+_TK_BINARIES = [
+    (os.path.join(PY_BASE, 'DLLs', '_tkinter.pyd'), '.'),
+    (os.path.join(PY_BASE, 'DLLs', 'tcl86t.dll'), '.'),
+    (os.path.join(PY_BASE, 'DLLs', 'tk86t.dll'), '.'),
+]
+
+_TK_DATAS = [
+    (os.path.join(PY_BASE, 'Lib', 'tkinter'), 'tkinter'),
+    # Ces noms doivent correspondre aux constantes attendues par
+    # PyInstaller/hooks/rthooks/pyi_rth__tkinter.py.
+    (os.path.join(PY_BASE, 'tcl', 'tcl8.6'), '_tcl_data'),
+    (os.path.join(PY_BASE, 'tcl', 'tk8.6'), '_tk_data'),
+]
+
 # Assets requis au runtime (thèmes customtkinter, polices schemdraw).
-_DONNEES_GUI = collect_data_files('customtkinter') + collect_data_files('schemdraw')
+_DONNEES_GUI = collect_data_files('customtkinter') + collect_data_files('schemdraw') + _TK_DATAS
 
 _EXCLUSIONS = ['PyQt5', 'PyQt6', 'PySide2', 'PySide6', 'IPython', 'jupyter']
 
@@ -28,7 +56,8 @@ a_gui = Analysis(
     [os.path.join(RACINE, 'app.py')],
     pathex=[RACINE],
     datas=_DONNEES_GUI,
-    hiddenimports=_CACHES,
+    binaries=_TK_BINARIES,
+    hiddenimports=_CACHES + _TK_HIDDEN,
     excludes=_EXCLUSIONS,
     # Seul le backend TkAgg est utilisé (gui/circuit_viewer.py).
     hooksconfig={'matplotlib': {'backends': ['TkAgg']}},

@@ -1,6 +1,7 @@
 """
-descriptions.py — Description courte de chaque circuit intégré, affichée dans
-la fiche lecture seule de l'onglet Circuits.
+@file descriptions.py
+@brief Description courte de chaque circuit intégré, affichée dans la fiche
+       lecture seule de l'onglet Circuits.
 
 Le test tests/test_descriptions.py vérifie que chaque nom de NOMS_CIRCUITS
 a sa description : ajouter un détecteur impose d'ajouter une entrée ici.

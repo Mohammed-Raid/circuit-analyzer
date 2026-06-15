@@ -1,3 +1,7 @@
+"""
+@file tab_circuits.py
+@brief Onglet « Circuits » : patterns reconnus (intégrés consultables, personnalisés éditables).
+"""
 import tkinter as tk
 import customtkinter as ctk
 from tkinter import messagebox
@@ -16,7 +20,7 @@ _BASE_NAMES = NOMS_CIRCUITS
 
 class TabCircuits:
     """
-    Onglet « Circuits » : patterns reconnus par l'analyseur.
+    @brief Onglet « Circuits » : patterns reconnus par l'analyseur.
 
     Même grammaire que l'onglet Composants : liste sectionnée à gauche
     (INTÉGRÉS détectés automatiquement / PERSONNALISÉS modifiables), bandeau
@@ -27,6 +31,10 @@ class TabCircuits:
     """
 
     def __init__(self, parent):
+        """@brief Construit l'onglet, charge les circuits et affiche le mode « nouveau ».
+
+        @param parent Widget parent (zone de contenu).
+        """
         self.frame = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
         self._custom: list = []
         self._current_idx: int | None = None       # index du perso en édition
@@ -43,6 +51,7 @@ class TabCircuits:
     # ── Construction ─────────────────────────────────────────────────────────
 
     def _build(self):
+        """@brief Construit l'en-tête, la liste sectionnée et le formulaire (composants + conditions)."""
         header = ctk.CTkFrame(self.frame, fg_color=CARD,
                               corner_radius=0, height=70)
         header.pack(fill="x")
@@ -145,7 +154,7 @@ class TabCircuits:
         self._btn_save.grid(row=0, column=0, sticky="ew")
 
     def _build_conditions(self):
-        """Une case par condition, avec sa description courte en dessous."""
+        """@brief Crée une case à cocher par condition, avec sa description courte en dessous."""
         for label in CONDITION_LABELS:
             var = tk.BooleanVar()
             self._cond_vars[label] = var
@@ -164,6 +173,7 @@ class TabCircuits:
         lier_molette(self._cond_scroll)
 
     def _build_comp_checkboxes(self):
+        """@brief (Re)construit les cases à cocher des composants requis depuis la bibliothèque."""
         for w in self._comp_scroll.winfo_children():
             w.destroy()
         self._comp_vars = {}
@@ -183,6 +193,12 @@ class TabCircuits:
     # ── Modes du formulaire ──────────────────────────────────────────────────
 
     def _definir_mode(self, mode: str, texte: str):
+        """@brief Bascule le formulaire en mode nouveau / édition / lecture seule.
+
+        @param mode Mode cible ('nouveau', 'edition', 'lecture').
+        @param texte Texte du bandeau d'état.
+        @return None
+        """
         self._mode = mode
         self._bandeau.definir(mode, texte)
         lecture = (mode == 'lecture')
@@ -207,12 +223,18 @@ class TabCircuits:
             self._btn_save.grid(row=0, column=0, sticky="ew")
 
     def _afficher_nouveau(self):
+        """@brief Affiche un formulaire vierge en mode « nouveau »."""
         self._current_idx = None
         self._remplir_formulaire('', set(), set())
         self._definir_mode('nouveau', "➕  Nouveau circuit personnalisé")
         self._prendre_snapshot()
 
     def _afficher_perso(self, idx: int):
+        """@brief Affiche un circuit personnalisé en mode édition.
+
+        @param idx Index du circuit personnalisé.
+        @return None
+        """
         self._current_idx = idx
         c = self._custom[idx]
         self._remplir_formulaire(c.get("name", ""),
@@ -222,6 +244,11 @@ class TabCircuits:
         self._prendre_snapshot()
 
     def _afficher_integre(self, nom: str):
+        """@brief Affiche un circuit intégré en lecture seule (détecté par le code).
+
+        @param nom Nom du circuit intégré.
+        @return None
+        """
         self._current_idx = None
         self._remplir_formulaire(nom, set(), set())
         self._definir_mode(
@@ -229,6 +256,13 @@ class TabCircuits:
         self._prendre_snapshot()
 
     def _remplir_formulaire(self, nom: str, composants: set, conditions: set):
+        """@brief Remplit le formulaire (nom, cases composants, cases conditions).
+
+        @param nom Nom du circuit.
+        @param composants Ensemble des types de composants requis cochés.
+        @param conditions Ensemble des conditions cochées.
+        @return None
+        """
         # Réactiver avant d'écrire : un widget disabled ignore les set()
         self._name_entry.configure(state="normal")
         self._name_var.set(nom)
@@ -240,14 +274,21 @@ class TabCircuits:
     # ── Anti-perte de saisie ─────────────────────────────────────────────────
 
     def _etat_courant(self) -> tuple:
+        """@brief Instantané (nom, composants cochés, conditions cochées) du formulaire.
+        @return tuple État courant, pour détecter les modifications non sauvegardées.
+        """
         return (self._name_var.get().strip(),
                 frozenset(k for k, v in self._comp_vars.items() if v.get()),
                 frozenset(l for l, v in self._cond_vars.items() if v.get()))
 
     def _prendre_snapshot(self):
+        """@brief Mémorise l'état courant comme référence anti-perte de saisie."""
         self._etat_initial = self._etat_courant()
 
     def _confirmer_abandon(self) -> bool:
+        """@brief Vrai si on peut quitter le formulaire (rien à perdre, ou confirmé).
+        @return bool True si l'abandon est autorisé.
+        """
         if self._mode == 'lecture' or self._etat_courant() == self._etat_initial:
             return True
         return messagebox.askyesno(
@@ -258,6 +299,7 @@ class TabCircuits:
     # ── Données ──────────────────────────────────────────────────────────────
 
     def _load(self):
+        """@brief Reconstruit les cases composants, charge les circuits personnalisés et peuple la liste."""
         self._build_comp_checkboxes()
         self._custom = load_custom_circuits()
         self._liste.remplir(
@@ -266,6 +308,7 @@ class TabCircuits:
         )
 
     def refresh_component_list(self):
+        """@brief Reconstruit les cases composants en conservant les choix (la bibliothèque a changé)."""
         # La bibliothèque a changé : reconstruire les cases en gardant les choix.
         coches = {k for k, v in self._comp_vars.items() if v.get()}
         self._build_comp_checkboxes()
@@ -279,6 +322,12 @@ class TabCircuits:
     # ── Actions ──────────────────────────────────────────────────────────────
 
     def _sur_selection(self, section: str, index: int):
+        """@brief Gère la sélection d'un circuit dans la liste (intégré ou personnalisé).
+
+        @param section Section sélectionnée ('integre' ou 'perso').
+        @param index Index dans la section.
+        @return None
+        """
         if not self._confirmer_abandon():
             self._liste.deselectionner()
             return
@@ -288,12 +337,14 @@ class TabCircuits:
             self._afficher_perso(index)
 
     def _nouveau(self):
+        """@brief Démarre la création d'un nouveau circuit (après confirmation d'abandon)."""
         if not self._confirmer_abandon():
             return
         self._liste.deselectionner()
         self._afficher_nouveau()
 
     def _supprimer(self):
+        """@brief Supprime le circuit personnalisé en cours d'édition (avec confirmation)."""
         if self._mode != 'edition' or self._current_idx is None:
             messagebox.showinfo(
                 "Info", "Sélectionnez d'abord un circuit personnalisé (★).\n"
@@ -307,6 +358,7 @@ class TabCircuits:
             self._afficher_nouveau()
 
     def _sauvegarder(self):
+        """@brief Valide et enregistre le circuit personnalisé saisi (nom, composants, conditions)."""
         name = self._name_var.get().strip()
         if not name:
             messagebox.showerror("Erreur", "Nom obligatoire.")

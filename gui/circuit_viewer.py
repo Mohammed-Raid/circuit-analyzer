@@ -1,6 +1,12 @@
 """
-Schematic viewer using schemdraw 0.22 + matplotlib TkAgg backend.
-Each detected circuit pattern has a dedicated drawing function.
+@file circuit_viewer.py
+@brief Visualiseur de schémas (schemdraw 0.22 + backend matplotlib TkAgg).
+
+Chaque pattern de circuit détecté a sa propre fonction de dessin, enregistrée
+dans _DRAWERS. Les fonctions _draw_* reçoivent toutes (d, result, ci) :
+  @param d Dessin schemdraw en cours.
+  @param result Match du circuit détecté.
+  @param ci Dict {ref -> infos composant} (comp_info).
 """
 import customtkinter as ctk
 import matplotlib
@@ -24,6 +30,13 @@ _COMP_COLORS = {
 # ── Public entry point ────────────────────────────────────────────────────────
 
 def show_circuit(result: dict, comp_info: dict, parent=None):
+    """@brief Ouvre une fenêtre affichant le schéma d'un circuit détecté.
+
+    @param result Match du circuit détecté (type, composants, nœuds).
+    @param comp_info Dict {ref -> {type, value, pins}} des composants.
+    @param parent Fenêtre parente (optionnel).
+    @return None
+    """
     name    = result["circuit_type"]
     drawer  = _DRAWERS.get(name)
 
@@ -88,6 +101,13 @@ def show_circuit(result: dict, comp_info: dict, parent=None):
 # ── Figure builder ────────────────────────────────────────────────────────────
 
 def _make_fig(result, comp_info, drawer_fn):
+    """@brief Construit la figure matplotlib du schéma (ou un texte de repli).
+
+    @param result Match du circuit détecté.
+    @param comp_info Dict des infos composants.
+    @param drawer_fn Fonction de dessin dédiée, ou None.
+    @return matplotlib.figure.Figure La figure prête à afficher.
+    """
     plt.close("all")
     fig, ax = plt.subplots(figsize=(8, 4.5))
     fig.patch.set_facecolor(SCH_BG)
@@ -118,6 +138,13 @@ def _make_fig(result, comp_info, drawer_fn):
 
 
 def _export(fig, name, parent):
+    """@brief Exporte la figure en PNG/SVG via une boîte de dialogue.
+
+    @param fig Figure matplotlib à exporter.
+    @param name Nom du circuit (titre par défaut).
+    @param parent Fenêtre parente de la boîte de dialogue.
+    @return None
+    """
     from tkinter import filedialog
     path = filedialog.asksaveasfilename(
         parent=parent, defaultextension=".png",
@@ -132,20 +159,48 @@ def _export(fig, name, parent):
 # ── Label helpers ─────────────────────────────────────────────────────────────
 
 def _lbl(ref, comp_info):
+    """@brief Libellé d'un composant : « ref\\nvaleur » ou « ref » si pas de valeur.
+
+    @param ref Référence du composant.
+    @param comp_info Dict des infos composants.
+    @return str Libellé prêt à afficher.
+    """
     val = comp_info.get(ref, {}).get("value", "")
     return f"{ref}\n{val}" if val else ref
 
 def _ref(result, comp_info, typ):
+    """@brief Première référence d'un type donné dans le circuit.
+
+    @param result Match du circuit détecté.
+    @param comp_info Dict des infos composants.
+    @param typ Type recherché ('R', 'C', 'Q'…).
+    @return str Référence trouvée, sinon le premier composant ou '?'.
+    """
     for r in result["components"]:
         if comp_info.get(r, {}).get("type") == typ:
             return r
     return result["components"][0] if result["components"] else "?"
 
 def _refs(result, comp_info, typ):
+    """@brief Toutes les références d'un type donné dans le circuit.
+
+    @param result Match du circuit détecté.
+    @param comp_info Dict des infos composants.
+    @param typ Type recherché.
+    @return list[str] Références de ce type.
+    """
     return [r for r in result["components"]
             if comp_info.get(r, {}).get("type") == typ]
 
 def _ref_on_net(refs, comp_info, net, fallback=None):
+    """@brief Première référence (parmi refs) dont une broche touche un net donné.
+
+    @param refs Références candidates.
+    @param comp_info Dict des infos composants.
+    @param net Net recherché.
+    @param fallback Valeur retournée si aucune correspondance.
+    @return str|None Référence trouvée, sinon fallback.
+    """
     if not net:
         return fallback
     for ref in refs:
@@ -158,6 +213,7 @@ def _ref_on_net(refs, comp_info, net, fallback=None):
 # ── Drawing functions ─────────────────────────────────────────────────────────
 
 def _draw_rc_lowpass(d, result, ci):
+    """@brief Dessine le schéma « Filtre RC passe-bas »."""
     r = _ref(result, ci, "R"); c = _ref(result, ci, "C")
     d += elm.Resistor().right().label(_lbl(r, ci), loc="top")
     d.push()
@@ -168,6 +224,7 @@ def _draw_rc_lowpass(d, result, ci):
 
 
 def _draw_rc_highpass(d, result, ci):
+    """@brief Dessine le schéma « Filtre RC passe-haut »."""
     c = _ref(result, ci, "C"); r = _ref(result, ci, "R")
     d += elm.Capacitor().right().label(_lbl(c, ci), loc="top")
     d.push()
@@ -178,6 +235,7 @@ def _draw_rc_highpass(d, result, ci):
 
 
 def _draw_lc_filter(d, result, ci):
+    """@brief Dessine le schéma « Filtre LC »."""
     l = _ref(result, ci, "L"); c = _ref(result, ci, "C")
     d += elm.Inductor().right().label(_lbl(l, ci), loc="top")
     d.push()
@@ -188,6 +246,7 @@ def _draw_lc_filter(d, result, ci):
 
 
 def _draw_voltage_divider(d, result, ci):
+    """@brief Dessine le schéma « Pont diviseur de tension »."""
     rs = _refs(result, ci, "R")
     r1 = rs[0] if rs else result["components"][0]
     r2 = rs[1] if len(rs) > 1 else result["components"][1]
@@ -201,6 +260,7 @@ def _draw_voltage_divider(d, result, ci):
 
 
 def _draw_decoupling(d, result, ci):
+    """@brief Dessine le schéma « Condensateur de découplage »."""
     c = _ref(result, ci, "C")
     d += elm.Line().right(1).label("VCC", loc="left")
     d += elm.Capacitor().down().label(_lbl(c, ci), loc="right")
@@ -208,6 +268,7 @@ def _draw_decoupling(d, result, ci):
 
 
 def _draw_snubber(d, result, ci):
+    """@brief Dessine le schéma « Absorbeur RC » (snubber, R // C)."""
     r = _ref(result, ci, "R"); c = _ref(result, ci, "C")
     # Parallel: top branch = R, bottom branch = C
     d += elm.Line().right(0.5)
@@ -221,11 +282,13 @@ def _draw_snubber(d, result, ci):
 
 
 def _draw_fuse(d, result, ci):
+    """@brief Dessine le schéma « Protection par fusible »."""
     f = result["components"][0]
     d += elm.Fuse().right().label(_lbl(f, ci), loc="top")
 
 
 def _draw_half_wave(d, result, ci):
+    """@brief Dessine le schéma « Redresseur simple alternance »."""
     diode = _ref(result, ci, "D"); r = _ref(result, ci, "R")
     d += elm.Diode().right().label(_lbl(diode, ci), loc="top")
     d.push()
@@ -236,6 +299,7 @@ def _draw_half_wave(d, result, ci):
 
 
 def _draw_peak_detector(d, result, ci):
+    """@brief Dessine le schéma « Détecteur de crête »."""
     diode = _ref(result, ci, "D"); c = _ref(result, ci, "C")
     d += elm.Diode().right().label(_lbl(diode, ci), loc="top")
     d.push()
@@ -246,10 +310,12 @@ def _draw_peak_detector(d, result, ci):
 
 
 def _draw_bridge_rectifier(d, result, ci):
-    """Two-column layout: all diodes point UP.
-    Left col:  DC- → D3 → AC1 → D1 → DC+
-    Right col: DC- → D4 → AC2 → D2 → DC+
-    Horizontal rails connect top (DC+) and bottom (DC-).
+    """@brief Dessine le schéma « Pont redresseur (Graetz) ».
+
+    Disposition en deux colonnes, toutes les diodes pointant vers le haut :
+      colonne gauche  : DC- → D3 → AC1 → D1 → DC+
+      colonne droite  : DC- → D4 → AC2 → D2 → DC+
+    Les rails horizontaux relient le haut (DC+) et le bas (DC-).
     """
     ds = _refs(result, ci, "D")
     while len(ds) < 4:
@@ -280,6 +346,7 @@ def _draw_bridge_rectifier(d, result, ci):
 
 
 def _draw_flyback(d, result, ci):
+    """@brief Dessine le schéma « Diode de roue libre »."""
     diode = result["components"][0]
     d += elm.Line().right(0.5).label("SW", loc="start")
     d += elm.Diode().right().label(_lbl(diode, ci), loc="top")
@@ -287,6 +354,7 @@ def _draw_flyback(d, result, ci):
 
 
 def _draw_esd(d, result, ci):
+    """@brief Dessine le schéma « Diode de protection ESD »."""
     diode = result["components"][0]
     # Vertical diodes are broken in schemdraw 0.22 — L-shaped layout with horizontal diode
     # SIG ──●──[D1→]──┐
@@ -303,6 +371,7 @@ def _draw_esd(d, result, ci):
 # ── AOP patterns ─────────────────────────────────────────────────────────────
 
 def _draw_inverting_amp(d, result, ci):
+    """@brief Dessine le schéma « Amplificateur inverseur (AOP) »."""
     rs = _refs(result, ci, "R")
     # Pattern returns [U, feedback_r, input_r] — rf is first, rin is second
     rf  = rs[0] if rs else "Rf"
@@ -326,6 +395,7 @@ def _draw_inverting_amp(d, result, ci):
 
 
 def _draw_non_inverting_amp(d, result, ci):
+    """@brief Dessine le schéma « Amplificateur non-inverseur (AOP) »."""
     rs = _refs(result, ci, "R")
     rf  = rs[0] if rs else "Rf"
     rg  = rs[1] if len(rs) > 1 else "Rg"
@@ -350,6 +420,7 @@ def _draw_non_inverting_amp(d, result, ci):
 
 
 def _draw_follower(d, result, ci):
+    """@brief Dessine le schéma « Suiveur de tension (AOP) »."""
     op = d.add(elm.Opamp().anchor("in2").at((4.5, 0)))
     d.add(elm.Line().at(op.in2).left(1.2).label("IN", loc="left"))
 
@@ -368,6 +439,7 @@ def _draw_follower(d, result, ci):
 
 
 def _draw_integrator(d, result, ci):
+    """@brief Dessine le schéma « Intégrateur (AOP) »."""
     rs = _refs(result, ci, "R"); cs = _refs(result, ci, "C")
     r = rs[0] if rs else "R"
     c = cs[0] if cs else "C"
@@ -388,6 +460,7 @@ def _draw_integrator(d, result, ci):
 
 
 def _draw_differentiator(d, result, ci):
+    """@brief Dessine le schéma « Dérivateur (AOP) »."""
     cs = _refs(result, ci, "C"); rs = _refs(result, ci, "R")
     c = cs[0] if cs else "C"
     r = rs[0] if rs else "R"
@@ -408,6 +481,7 @@ def _draw_differentiator(d, result, ci):
 
 
 def _draw_comparator(d, result, ci):
+    """@brief Dessine le schéma « Comparateur (AOP) »."""
     op = d.add(elm.Opamp().anchor("center").at((4.5, 0)))
     d.add(elm.Line().at(op.in2).left(1.2).label("IN+", loc="left"))
     d.add(elm.Line().at(op.in1).left(1.2).label("IN−", loc="left"))
@@ -415,6 +489,7 @@ def _draw_comparator(d, result, ci):
 
 
 def _draw_schmitt(d, result, ci):
+    """@brief Dessine le schéma « Bascule de Schmitt (AOP) »."""
     rs = _refs(result, ci, "R")
     rf = rs[0] if rs else "Rf"
 
@@ -438,6 +513,7 @@ def _draw_schmitt(d, result, ci):
 
 
 def _draw_differential_amp(d, result, ci):
+    """@brief Dessine le schéma « Amplificateur différentiel (AOP) »."""
     rs = _refs(result, ci, "R")
     # Pattern returns [U, r_inp_to_gnd, r_inp_from_src, r_inm_feedback, r_inm_from_src]
     rg  = rs[0] if len(rs) > 0 else "Rg"   # IN+ → GND  (bias/gain)
@@ -467,6 +543,7 @@ def _draw_differential_amp(d, result, ci):
 
 
 def _draw_summing_amp(d, result, ci):
+    """@brief Dessine le schéma « Amplificateur sommateur (AOP) »."""
     rs = _refs(result, ci, "R")
     rf = rs[0] if rs else "Rf"
     inputs = rs[1:] if len(rs) > 1 else ["Ra", "Rb"]
@@ -509,6 +586,7 @@ def _draw_summing_amp(d, result, ci):
 # ── Transistor patterns ───────────────────────────────────────────────────────
 
 def _draw_bjt_switch(d, result, ci):
+    """@brief Dessine le schéma « Transistor en commutation »."""
     q = _ref(result, ci, "Q"); r = _ref(result, ci, "R")
     t = d.add(elm.BjtNpn().at((3, 0)))
     d.add(elm.Resistor().at(t.base).left().label(_lbl(r, ci), loc="top"))
@@ -519,6 +597,7 @@ def _draw_bjt_switch(d, result, ci):
 
 
 def _draw_common_emitter(d, result, ci):
+    """@brief Dessine le schéma « Amplificateur émetteur commun »."""
     q = _ref(result, ci, "Q")
     rs = _refs(result, ci, "R")
     # Pattern returns [Q, r_at_collector, r_at_base] → rs[0]=Rc, rs[1]=Rb
@@ -539,6 +618,7 @@ def _draw_common_emitter(d, result, ci):
 
 
 def _draw_mosfet_switch(d, result, ci):
+    """@brief Dessine le schéma « MOSFET en commutation »."""
     m = _ref(result, ci, "M"); r = _ref(result, ci, "R")
     t = d.add(elm.NFet().at((3, 0)))
     # In schemdraw 0.22, NFet gate is on the RIGHT side — resistor goes right (no body overlap)
@@ -550,6 +630,7 @@ def _draw_mosfet_switch(d, result, ci):
 
 
 def _draw_high_side_mosfet(d, result, ci):
+    """@brief Dessine le schéma « MOSFET haute-tension (côté haut) »."""
     m = _ref(result, ci, "M")
     r = _ref(result, ci, "R")
     t = d.add(elm.NFet().at((3, 0)))
@@ -565,6 +646,7 @@ def _draw_high_side_mosfet(d, result, ci):
 
 
 def _draw_current_mirror(d, result, ci):
+    """@brief Dessine le schéma « Miroir de courant BJT »."""
     qs = _refs(result, ci, "Q")
     t1 = d.add(elm.BjtNpn().at((1.5, 0)))
     t2 = d.add(elm.BjtNpn().at((4.5, 0)))
@@ -600,6 +682,7 @@ def _draw_current_mirror(d, result, ci):
 
 # ── Pattern registry ──────────────────────────────────────────────────────────
 
+## @brief Registre {nom de circuit -> fonction de dessin schemdraw}.
 _DRAWERS = {
     "Filtre RC passe-bas":               _draw_rc_lowpass,
     "Filtre RC passe-haut":              _draw_rc_highpass,

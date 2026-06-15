@@ -1,5 +1,6 @@
 """
-xml.py — Lecture et génération de schémas BoardSCH au format XML.
+@file xml.py
+@brief Lecture et génération de schémas BoardSCH au format XML.
 
 Ce fichier regroupe deux fonctions principales :
   - lire_xml(chemin)              : lit un fichier .xml BoardSCH → liste de Composant
@@ -219,33 +220,59 @@ _TYP_COMPOSANT = {
 
 @dataclass
 class _Comp:
-    cid: int; name: str; value: str; x: int; y: int; angle: int = 0; shape: str = ""
+    """@brief Composant placé sur le schéma (id, nom de forme, valeur, position, forme)."""
+    cid: int; name: str; value: str; x: int; y: int; angle: int = 0; shape: str = ""; group_id: int = 0
 
 @dataclass
 class _Wire:
-    wid: int; c1: int; p1: int; c2: int; p2: int
+    """@brief Fil reliant la broche p1 du composant c1 à la broche p2 du composant c2."""
+    wid: int; c1: int; p1: int; c2: int; p2: int; group_id: int = 0
 
 
 class _Generateur:
-    """Constructeur interne de schéma BoardSCH XML."""
+    """@brief Constructeur interne de schéma BoardSCH XML."""
 
     def __init__(self):
+        """@brief Initialise un générateur vide (aucun composant ni fil)."""
         self._comps: List[_Comp] = []
         self._wires: List[_Wire] = []
         self._wire_id = 0
 
-    def ajouter(self, nom, valeur="", x=0, y=0, angle=0, forme="") -> int:
+    def ajouter(self, nom, valeur="", x=0, y=0, angle=0, forme="", group_id=0) -> int:
+        """@brief Ajoute un composant au schéma.
+
+        @param nom Nom de la forme BoardSCH (ex. 'Résistance', 'AOP').
+        @param valeur Valeur affichée du composant.
+        @param x Abscisse du centre.
+        @param y Ordonnée du centre.
+        @param angle Angle de rotation (degrés).
+        @param forme Forme explicite (sinon déduite du nom).
+        @param group_id Identifiant de groupe BoardSCH (0 = aucun groupe).
+        @return int Identifiant (cid) du composant ajouté.
+        """
         cid = len(self._comps)
-        self._comps.append(_Comp(cid, nom, valeur, x, y, angle, forme))
+        self._comps.append(_Comp(cid, nom, valeur, x, y, angle, forme, group_id))
         return cid
 
     def relier(self, cid1, broche1, cid2, broche2):
+        """@brief Relie deux broches par un fil.
+
+        @param cid1 Composant source.
+        @param broche1 Nom de la broche source.
+        @param cid2 Composant destination.
+        @param broche2 Nom de la broche destination.
+        @return None
+        """
         p1 = self._idx_broche(cid1, broche1)
         p2 = self._idx_broche(cid2, broche2)
         wid = self._wire_id; self._wire_id += 1
-        self._wires.append(_Wire(wid, cid1, p1, cid2, p2))
+        group_id = _groupe_commun(self, cid1, cid2)
+        self._wires.append(_Wire(wid, cid1, p1, cid2, p2, group_id))
 
     def vers_xml(self) -> str:
+        """@brief Sérialise le schéma complet en chaîne XML BoardSCH.
+        @return str Document XML BoardSCH.
+        """
         parties = ['<?xml version="1.0" encoding="utf-8"?>',
                    '<BoardSCH xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
                    'xmlns:xsd="http://www.w3.org/2001/XMLSchema">', '  <CmpntL>']
@@ -258,10 +285,66 @@ class _Generateur:
         parties += ['  </CmpntL>', '  <lineL>']
         for w in self._wires:
             parties.append(self._xml_fil(w))
-        parties += ['  </lineL>', '  <CCmpntL />', '  <GrpL />', '  <zoom>1</zoom>', '</BoardSCH>']
+        parties += ['  </lineL>', '  <CCmpntL />', self._xml_groupes(), '  <zoom>1</zoom>', '</BoardSCH>']
         return '\n'.join(parties)
 
+    def _xml_groupes(self) -> str:
+        """@brief Sérialise les groupes BoardSCH natifs déduits des GpId.
+
+        @return str Fragment XML <GrpL> ou <GrpL /> si aucun groupe.
+        """
+        groupes = sorted({c.group_id for c in self._comps if c.group_id})
+        if not groupes:
+            return "  <GrpL />"
+
+        parties = ["  <GrpL>"]
+        for gid in groupes:
+            items = [c.cid for c in self._comps if c.group_id == gid]
+            lignes = [w.wid for w in self._wires if w.group_id == gid]
+            if not items:
+                continue
+            rect = self._rect_groupe(items)
+            parties.append(f"""    <GRPS>
+      <CtrG><X>{rect['width'] // 2}</X><Y>{rect['height'] // 2}</Y></CtrG>
+      <Gid>{gid}</Gid>
+      <GRect>
+        <Location><X>{rect['x']}</X><Y>{rect['y']}</Y></Location>
+        <Size><Width>{rect['width']}</Width><Height>{rect['height']}</Height></Size>
+        <X>{rect['x']}</X><Y>{rect['y']}</Y><Width>{rect['width']}</Width><Height>{rect['height']}</Height>
+      </GRect>
+      <Selected>false</Selected>
+      <IidL>{''.join(f'<int>{i}</int>' for i in items)}</IidL>
+      <LidL>{''.join(f'<int>{i}</int>' for i in lignes)}</LidL>
+    </GRPS>""")
+        parties.append("  </GrpL>")
+        return "\n".join(parties)
+
+    def _rect_groupe(self, item_ids: list[int]) -> dict:
+        """@brief Calcule un rectangle englobant simple pour un groupe BoardSCH.
+
+        @param item_ids Identifiants des composants du groupe.
+        @return dict Coordonnées x/y/width/height.
+        """
+        marge_x = 140
+        marge_y = 110
+        xs = []
+        ys = []
+        for cid in item_ids:
+            comp = self._comps[cid]
+            xs.extend([comp.x - marge_x, comp.x + marge_x])
+            ys.extend([comp.y - marge_y, comp.y + marge_y])
+        x0, x1 = min(xs), max(xs)
+        y0, y1 = min(ys), max(ys)
+        return {"x": x0, "y": y0, "width": x1 - x0, "height": y1 - y0}
+
     def _idx_broche(self, cid, nom_broche) -> int:
+        """@brief Index interne d'une broche nommée sur un composant.
+
+        @param cid Identifiant du composant.
+        @param nom_broche Nom de la broche recherchée.
+        @return int Index de broche dans la forme.
+        @throws ValueError Si la broche n'existe pas sur la forme du composant.
+        """
         forme_nom = _ALIAS.get(self._comps[cid].name, self._comps[cid].name)
         forme = _FORME.get(forme_nom, {})
         broches = forme.get("pins", {})
@@ -271,6 +354,12 @@ class _Generateur:
         return broches[nom_broche][2]
 
     def _xml_composant(self, comp, noeuds_pins) -> str:
+        """@brief Sérialise un composant (DataItem) en fragment XML.
+
+        @param comp Composant interne (_Comp) à sérialiser.
+        @param noeuds_pins Dict {(cid, pidx) -> [refs de nœud]} construit depuis les fils.
+        @return str Fragment XML <DataItem> du composant.
+        """
         cle_forme = comp.shape or comp.name
         nom_forme = _ALIAS.get(cle_forme, cle_forme)
         forme = _FORME.get(nom_forme, {"pins": {}, "polygon": "", "segment": ""})
@@ -302,14 +391,19 @@ class _Generateur:
       <PinCL>{pin_cl}</PinCL>
       <CtrIem><X>{comp.x}</X><Y>{comp.y}</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap><TL><X>50</X><Y>25</Y></TL><BR><X>210</X><Y>121</Y></BR>
-      <angle>{comp.angle}</angle><id>{comp.cid}</id><GpId>0</GpId>
+      <angle>{comp.angle}</angle><id>{comp.cid}</id><GpId>{comp.group_id}</GpId>
       <zmH>1</zmH><zmV>1</zmV><FlipX>0</FlipX><FlipY>0</FlipY>
       <typ>{typ_val}</typ>
       <Bottom>false</Bottom><selected>false</selected><focus>false</focus>
-      <Visible>true</Visible><Top>true</Top><Begrp>false</Begrp><freeze>false</freeze>
+      <Visible>true</Visible><Top>true</Top><Begrp>{_bool_xml(bool(comp.group_id))}</Begrp><freeze>false</freeze>
     </DataItem>"""
 
     def _xml_fil(self, w) -> str:
+        """@brief Sérialise un fil (Line) en fragment XML.
+
+        @param w Fil interne (_Wire) à sérialiser.
+        @return str Fragment XML <Line> du fil.
+        """
         c1, c2 = self._comps[w.c1], self._comps[w.c2]
         f1 = _FORME.get(_ALIAS.get(c1.shape or c1.name, c1.shape or c1.name), {}).get("pins", {})
         f2 = _FORME.get(_ALIAS.get(c2.shape or c2.name, c2.shape or c2.name), {}).get("pins", {})
@@ -320,9 +414,9 @@ class _Generateur:
         return f"""    <Line>
       <CFirst>{w.c1}_{w.p1}_0_{w.wid}</CFirst><CLast>{w.c2}_{w.p2}_1_{w.wid}</CLast>
       <LP><PointF><X>{x1}</X><Y>{y1}</Y></PointF><PointF><X>{x2}</X><Y>{y2}</Y></PointF></LP>
-      <pGap /><ID>0</ID><idF>0</idF><idL>0</idL><GpId>0</GpId>
+      <pGap /><ID>0</ID><idF>0</idF><idL>0</idL><GpId>{w.group_id}</GpId>
       <Visible>true</Visible><select>false</select><Top>true</Top><Bottom>false</Bottom>
-      <BeIngrp>false</BeIngrp><VltgL>0</VltgL>
+      <BeIngrp>{_bool_xml(bool(w.group_id))}</BeIngrp><VltgL>0</VltgL>
     </Line>"""
 
 
@@ -331,16 +425,25 @@ _BLOCS_PAR_RANGEE = 3
 _GAP_BLOCS   = 160
 _LARG_COMP   = 320
 _HAUT_RANGEE = 260
+_LARG_BLOC   = 720
+_HAUT_BLOC   = 460
+_PAS_X_BLOC  = 260
+_PAS_Y_BLOC  = 190
 
 
 @dataclass
 class _Bloc:
+    """@brief Bloc de mise en page : un libellé de circuit et ses composants."""
     label: str
     comps: list
 
 
 def _refs_du_bloc(r) -> list:
-    """Refs d'un circuit + ses satellites sûrs (les « possibles » restent en Divers)."""
+    """@brief Refs d'un circuit + ses satellites sûrs (les « possibles » restent en Divers).
+
+    @param r Match d'un circuit détecté.
+    @return list Références du circuit et de ses satellites sûrs.
+    """
     refs = list(r["components"])
     refs += [s['ref'] for s in r.get('satellites', []) if s.get('status') == 'sure']
     return refs
@@ -348,8 +451,13 @@ def _refs_du_bloc(r) -> list:
 
 def _ordre_des_circuits(resultats) -> list:
     """
-    Ordre d'émission des blocs : les circuits du même îlot fonctionnel sont
-    consécutifs (si .ilots est disponible), sinon ordre de détection.
+    @brief Ordre d'émission des blocs (circuits d'un même îlot consécutifs).
+
+    Les circuits du même îlot fonctionnel sont consécutifs si .ilots est
+    disponible, sinon ordre de détection.
+
+    @param resultats Sortie de detecteur.analyser() (avec éventuellement .ilots).
+    @return list Indices des circuits dans l'ordre d'émission.
     """
     indices = list(range(len(resultats or [])))
     ilots = getattr(resultats, 'ilots', [])
@@ -361,7 +469,14 @@ def _ordre_des_circuits(resultats) -> list:
 
 
 def _grouper_par_circuit(composants, resultats):
-    """Regroupe les composants par circuit détecté. Composants non classifiés → bloc 'Divers'."""
+    """@brief Regroupe les composants par circuit détecté.
+
+    Les composants non classifiés vont dans un bloc 'Divers'.
+
+    @param composants Liste des composants du schéma.
+    @param resultats Sortie de detecteur.analyser() (ou None).
+    @return list[_Bloc] Blocs de mise en page (un par circuit + 'Divers' éventuel).
+    """
     comp_par_ref = {c.ref: c for c in composants if _TYPE_VERS_FORME.get(c.type) is not None}
     ordre = _ordre_des_circuits(resultats)
     type_du_ref: dict = {}
@@ -379,35 +494,245 @@ def _grouper_par_circuit(composants, resultats):
             blocs.append(b)
     divers = [c for ref, c in comp_par_ref.items() if ref not in type_du_ref]
     if divers:
-        blocs.append(_Bloc("Divers", divers))
-    return blocs
+        # Satellites "possible" : le détecteur les a classés incertains, ne pas forcer
+        # leur rattachement (ils doivent rester visibles en Divers).
+        satellites_possibles = {
+            sat['ref']
+            for r in (resultats or [])
+            for sat in r.get('satellites', [])
+            if isinstance(sat, dict) and sat.get('status') != 'sure'
+        }
+
+        # 1. Rattacher au groupe le plus proche par NET signal partagé.
+        nets_du_groupe: dict = {}  # label -> set(nets)
+        for r in (resultats or []):
+            label = r["circuit_type"]
+            for ref in _refs_du_bloc(r):
+                c = comp_par_ref.get(ref)
+                if c:
+                    for net in getattr(c, 'pins', {}).values():
+                        if net and net != 'NC' and not is_gnd(net) and not is_power(net):
+                            nets_du_groupe.setdefault(label, set()).add(net)
+        restants = []
+        for c in divers:
+            if c.ref in satellites_possibles:
+                restants.append(c)
+                continue
+            pins_c = set(v for v in getattr(c, 'pins', {}).values()
+                         if v and v != 'NC' and not is_gnd(v) and not is_power(v))
+            cible = next((b for b in blocs
+                          if nets_du_groupe.get(b.label, set()) & pins_c), None)
+            if cible is not None:
+                cible.comps.append(c)
+                type_du_ref[c.ref] = cible.label
+            else:
+                restants.append(c)
+        # 2. Parmi les restants, regrouper par cluster de nets partagés.
+        #    Les composants isolés (aucun net partagé) sont fusionnés en un seul
+        #    bloc Divers au lieu d'un bloc par composant.
+        if restants:
+            clusters = _clusteriser_par_nets(restants)
+            multi = [cl for cl in clusters if len(cl) > 1]
+            solo  = [cl[0] for cl in clusters if len(cl) == 1]
+            for cluster in multi:
+                blocs.append(_Bloc("Divers", cluster))
+            if solo:
+                blocs.append(_Bloc("Divers", solo))
+
+    # Fusionner les blocs singleton (1 composant) d'un même label non-Divers.
+    # Ex : 5 condensateurs de découplage détectés séparément → 1 seul bloc.
+    singletons: dict = {}
+    blocs_out = []
+    for b in blocs:
+        if len(b.comps) == 1 and b.label != "Divers":
+            singletons.setdefault(b.label, []).append(b.comps[0])
+        else:
+            blocs_out.append(b)
+    for label, comps_list in singletons.items():
+        blocs_out.append(_Bloc(label, comps_list))
+    return blocs_out
+
+
+def _clusteriser_par_nets(comps) -> list:
+    """@brief Regroupe les composants isolés en clusters par nets partagés (Union-Find).
+
+    @param comps Liste de Composant à partitionner.
+    @return list[list[Composant]] Clusters de composants interconnectés.
+    """
+    n = len(comps)
+    parent = list(range(n))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(i, j):
+        parent[find(i)] = find(j)
+
+    net_vers_idx: dict = {}
+    for i, c in enumerate(comps):
+        for net in getattr(c, 'pins', {}).values():
+            if net and net != 'NC' and not is_gnd(net) and not is_power(net):
+                if net in net_vers_idx:
+                    union(i, net_vers_idx[net])
+                else:
+                    net_vers_idx[net] = i
+
+    clusters: dict = {}
+    for i, c in enumerate(comps):
+        clusters.setdefault(find(i), []).append(c)
+    return list(clusters.values())
 
 
 def _positionner_blocs(blocs) -> Dict[str, Tuple[int, int]]:
-    """Calcule la position (x, y) de chaque composant selon son bloc."""
-    pos = {}; x = 250; y = 250; col = 0
-    for blk in blocs:
-        for j, comp in enumerate(blk.comps):
-            pos[comp.ref] = (x + j * _LARG_COMP, y)
-        x += max(len(blk.comps), 1) * _LARG_COMP + _GAP_BLOCS
-        col += 1
-        if col >= _BLOCS_PAR_RANGEE:
-            col = 0; x = 250; y += _HAUT_RANGEE
+    """@brief Calcule la position (x, y) de chaque composant selon son bloc.
+
+    @param blocs Liste de _Bloc à disposer en grille.
+    @return dict {ref -> (x, y)} Positions de chaque composant.
+    """
+    pos = {}
+    for idx, blk in enumerate(blocs):
+        col = idx % _BLOCS_PAR_RANGEE
+        row = idx // _BLOCS_PAR_RANGEE
+        x = 250 + col * (_LARG_BLOC + _GAP_BLOCS)
+        y = 250 + row * _HAUT_BLOC
+        pos.update(_positionner_composants_bloc(blk, x, y))
     return pos
+
+
+def _positionner_composants_bloc(bloc: _Bloc, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+    """@brief Place les composants a l'interieur d'un bloc visuel.
+
+    @param bloc Bloc de circuit detecte.
+    @param x Origine horizontale du bloc.
+    @param y Origine verticale du bloc.
+    @return dict {ref -> (x, y)} Positions absolues.
+    """
+    if "commande de relais" in bloc.label.lower():
+        return _positionner_commande_relais(bloc.comps, x, y)
+    if "pont diviseur" in bloc.label.lower():
+        return _positionner_pont_diviseur(bloc.comps, x, y)
+    label_low = bloc.label.lower()
+    if any(k in label_low for k in ("aop", "amplificateur", "comparateur", "intégrateur",
+                                     "dérivateur", "suiveur", "bascule", "sommateur")):
+        return _positionner_aop(bloc.comps, x, y)
+    if any(k in label_low for k in ("filtre rc", "absorbeur rc", "condensateur de découp")):
+        return _positionner_rc(bloc.comps, x, y)
+    return _positionner_grille_compacte(bloc.comps, x, y)
+
+
+def _positionner_commande_relais(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+    """@brief Gabarit compact pour relais + transistor/MOSFET + diode de roue libre."""
+    pos = {}
+    relais = [c for c in comps if c.type == "K"]
+    switchs = [c for c in comps if c.type in {"Q", "M"}]
+    diodes = [c for c in comps if c.type == "D"]
+    autres = [c for c in comps if c.type not in {"K", "Q", "M", "D"}]
+
+    if relais:
+        pos[relais[0].ref] = (x, y)
+    if switchs:
+        pos[switchs[0].ref] = (x + _PAS_X_BLOC, y + _PAS_Y_BLOC)
+    if diodes:
+        pos[diodes[0].ref] = (x + 2 * _PAS_X_BLOC, y)
+
+    restants = relais[1:] + switchs[1:] + diodes[1:] + autres
+    pos.update(_positionner_grille_compacte(restants, x, y + 2 * _PAS_Y_BLOC))
+    return pos
+
+
+def _positionner_pont_diviseur(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+    """@brief Gabarit vertical pour un pont diviseur et ses annexes eventuelles."""
+    pos = {}
+    resistances = [c for c in comps if c.type == "R"]
+    autres = [c for c in comps if c.type != "R"]
+    for j, comp in enumerate(resistances[:2]):
+        pos[comp.ref] = (x, y + j * _PAS_Y_BLOC)
+    for j, comp in enumerate(resistances[2:] + autres):
+        pos[comp.ref] = (x + _PAS_X_BLOC, y + j * _PAS_Y_BLOC)
+    return pos
+
+
+def _positionner_aop(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+    """@brief Gabarit AOP : opamp centré, résistances à gauche/droite, condensateurs en bas."""
+    pos = {}
+    aops = [c for c in comps if c.type in {"U", "AOP"}]
+    resistances = [c for c in comps if c.type == "R"]
+    caps = [c for c in comps if c.type == "C"]
+    autres = [c for c in comps if c.type not in {"U", "AOP", "R", "C"}]
+
+    if aops:
+        pos[aops[0].ref] = (x + _PAS_X_BLOC, y)
+    for j, r in enumerate(resistances[:2]):
+        pos[r.ref] = (x + j * 2 * _PAS_X_BLOC, y + _PAS_Y_BLOC)
+    restants = aops[1:] + resistances[2:] + caps + autres
+    pos.update(_positionner_grille_compacte(restants, x, y + 2 * _PAS_Y_BLOC))
+    return pos
+
+
+def _positionner_rc(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+    """@brief Gabarit RC : résistance à gauche, condensateur à droite.
+    Si pas de résistance (cap seul), le condensateur est placé à x sans offset."""
+    pos = {}
+    resistances = [c for c in comps if c.type == "R"]
+    caps = [c for c in comps if c.type == "C"]
+    autres = [c for c in comps if c.type not in {"R", "C"}]
+
+    if resistances:
+        pos[resistances[0].ref] = (x, y)
+        if caps:
+            pos[caps[0].ref] = (x + _PAS_X_BLOC, y)
+        restants = resistances[1:] + caps[1:] + autres
+    else:
+        if caps:
+            pos[caps[0].ref] = (x, y)
+        restants = caps[1:] + autres
+    pos.update(_positionner_grille_compacte(restants, x, y + _PAS_Y_BLOC))
+    return pos
+
+
+def _positionner_grille_compacte(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+    """@brief Placement par defaut en petite grille 2 colonnes."""
+    return {
+        comp.ref: (x + (j % 2) * _PAS_X_BLOC, y + (j // 2) * _PAS_Y_BLOC)
+        for j, comp in enumerate(comps)
+    }
+
+
+def _ids_groupes_par_ref(blocs) -> Dict[str, int]:
+    """@brief Associe chaque référence composant à son identifiant de groupe BoardSCH.
+
+    @param blocs Blocs de mise en page issus de _grouper_par_circuit().
+    @return dict {ref -> group_id}; les IDs commencent à 1.
+    """
+    ids = {}
+    for gid, bloc in enumerate(blocs, start=1):
+        for comp in bloc.comps:
+            ids[comp.ref] = gid
+    return ids
 
 
 def generer_xml(composants, resultats=None, results=None) -> str:
     """
-    Convertit une liste de composants en schéma BoardSCH XML.
+    @brief Convertit une liste de composants en schéma BoardSCH XML.
 
     Si `resultats` (sortie de detecteur.analyser()) est fourni, les composants
     sont groupés par circuit détecté. Sinon, grille simple.
+
+    @param composants Liste des composants à représenter.
+    @param resultats Résultats d'analyse pour grouper par circuit (optionnel).
+    @param results Alias anglais de `resultats`.
+    @return str Document XML BoardSCH.
     """
     gen = _Generateur()
     PER_RANGEE = 4
 
     resultats = resultats or results   # accepter les deux noms de paramètre
-    positions = _positionner_blocs(_grouper_par_circuit(composants, resultats)) if resultats else None
+    blocs = _grouper_par_circuit(composants, resultats) if resultats else []
+    positions = _positionner_blocs(blocs) if blocs else None
+    ids_groupes = _ids_groupes_par_ref(blocs) if blocs else {}
 
     ref_vers_cid = {}
     ref_vers_map = {}
@@ -421,7 +746,8 @@ def generer_xml(composants, resultats=None, results=None) -> str:
         else:
             x = 250 + (i % PER_RANGEE) * _LARG_COMP
             y = 250 + (i // PER_RANGEE) * _HAUT_RANGEE
-        cid = gen.ajouter(nom_forme, comp.value, x=x, y=y)
+        cid = gen.ajouter(nom_forme, comp.value, x=x, y=y,
+                          group_id=ids_groupes.get(comp.ref, 0))
         ref_vers_cid[comp.ref] = cid
         ref_vers_map[comp.ref] = plan_broches
 
@@ -438,25 +764,17 @@ def generer_xml(composants, resultats=None, results=None) -> str:
                 continue
             nets.setdefault(net, []).append((cid, broche_forme))
 
-    PWR_PAR_RANGEE = _BLOCS_PAR_RANGEE * 3
-    pwr_x = 250; pwr_col = 0
-    pwr_y = (max(y for _, y in positions.values()) + _HAUT_RANGEE) if positions else \
-            (250 + ((len(composants) // PER_RANGEE) + 1) * _HAUT_RANGEE)
-
     for net, broches in nets.items():
         sym = "GND" if is_gnd(net) else ("VCC" if is_power(net) else None)
         if sym:
             rail = net.lstrip('/').upper()
             broche_pwr = "GND" if sym == "GND" else "VCC"
-            pcid = gen.ajouter(rail, "", x=pwr_x, y=pwr_y, forme=sym)
-            pwr_col += 1
-            if pwr_col >= PWR_PAR_RANGEE:
-                pwr_col = 0; pwr_x = 250; pwr_y += _HAUT_RANGEE
-            else:
-                pwr_x += 200
-            for (cid, bp) in broches:
-                _relier_par_idx(gen, pcid, _idx_broche_forme(gen, pcid, broche_pwr),
-                                cid, _idx_broche_forme(gen, cid, bp))
+            for gid, broches_groupe in _grouper_broches_alim(gen, broches).items():
+                px, py = _positionner_symbole_alim(gen, broches_groupe, sym, gid)
+                pcid = gen.ajouter(rail, "", x=px, y=py, forme=sym, group_id=gid)
+                for (cid, bp) in broches_groupe:
+                    _relier_par_idx(gen, pcid, _idx_broche_forme(gen, pcid, broche_pwr),
+                                    cid, _idx_broche_forme(gen, cid, bp))
         else:
             for k in range(len(broches) - 1):
                 c1, bp1 = broches[k]; c2, bp2 = broches[k+1]
@@ -466,7 +784,55 @@ def generer_xml(composants, resultats=None, results=None) -> str:
     return gen.vers_xml()
 
 
+def _grouper_broches_alim(gen, broches) -> dict:
+    """@brief Regroupe les broches d'un rail par groupe BoardSCH.
+
+    @param gen Generateur contenant les composants deja places.
+    @param broches Liste (cid, broche_forme) connectee au meme rail.
+    @return dict {group_id -> [(cid, broche_forme)]}.
+    """
+    groupes = {}
+    for cid, bp in broches:
+        groupes.setdefault(gen._comps[cid].group_id, []).append((cid, bp))
+    return groupes
+
+
+def _positionner_symbole_alim(gen, broches, sym: str, group_id: int) -> Tuple[int, int]:
+    """@brief Place un symbole VCC/GND pres des composants qu'il alimente.
+
+    @param gen Generateur contenant les composants deja places.
+    @param broches Broches cible du rail.
+    @param sym Forme d'alimentation ('VCC' ou 'GND').
+    @param group_id Groupe BoardSCH concerne (0 si aucun).
+    @return tuple Position (x, y) du symbole.
+    """
+    points = []
+    for cid, bp in broches:
+        comp = gen._comps[cid]
+        forme_nom = _ALIAS.get(comp.shape or comp.name, comp.shape or comp.name)
+        pins = _FORME.get(forme_nom, {}).get("pins", {})
+        if bp in pins:
+            lx, ly, _ = pins[bp]
+            points.append((comp.x + lx, comp.y + ly))
+    if not points:
+        return (250, 250 + group_id * _HAUT_RANGEE)
+
+    x = int(sum(px for px, _ in points) / len(points))
+    if sym == "GND":
+        y = max(py for _, py in points) + 70
+    else:
+        y = min(py for _, py in points) - 80
+    return (x, int(y))
+
+
 def _idx_broche_forme(gen, cid, broche) -> int:
+    """@brief Index d'une broche nommée sur un composant déjà placé dans le générateur.
+
+    @param gen Générateur (_Generateur).
+    @param cid Identifiant du composant.
+    @param broche Nom de la broche.
+    @return int Index de broche dans la forme.
+    """
     comp = gen._comps[cid]
     cle = comp.shape or comp.name
     nom = _ALIAS.get(cle, cle)
@@ -474,8 +840,35 @@ def _idx_broche_forme(gen, cid, broche) -> int:
 
 
 def _relier_par_idx(gen, c1, p1, c2, p2):
+    """@brief Crée un fil entre deux broches déjà résolues en index.
+
+    @param gen Générateur (_Generateur, muté en place).
+    @param c1 Composant source.
+    @param p1 Index de broche source.
+    @param c2 Composant destination.
+    @param p2 Index de broche destination.
+    @return None
+    """
     wid = gen._wire_id; gen._wire_id += 1
-    gen._wires.append(_Wire(wid, c1, p1, c2, p2))
+    gen._wires.append(_Wire(wid, c1, p1, c2, p2, _groupe_commun(gen, c1, c2)))
+
+
+def _groupe_commun(gen, c1, c2) -> int:
+    """@brief Groupe commun à deux composants, si les deux appartiennent au même.
+
+    @param gen Générateur contenant les composants.
+    @param c1 Identifiant du premier composant.
+    @param c2 Identifiant du second composant.
+    @return int GpId commun, ou 0 si aucun groupe commun.
+    """
+    g1 = gen._comps[c1].group_id
+    g2 = gen._comps[c2].group_id
+    return g1 if g1 and g1 == g2 else 0
+
+
+def _bool_xml(valeur: bool) -> str:
+    """@brief Convertit un booléen Python au format texte attendu par BoardSCH."""
+    return "true" if valeur else "false"
 
 
 # Alias anglais pour la compatibilité
@@ -551,11 +944,16 @@ _BROCHES_CRITIQUES: Dict[str, list] = {
 
 class ListeComposantsXML(list):
     """
-    Liste de Composant retournée par lire_xml().
-    Compatible avec list classique.
+    @brief Liste de Composant retournée par lire_xml(), compatible avec list.
+
     Attribut .warnings : avertissements non-bloquants rencontrés pendant la lecture.
     """
     def __init__(self, composants=None):
+        """@brief Initialise la liste de composants XML et ses avertissements.
+
+        @param composants Composants initiaux à placer dans la liste (optionnel).
+        @return None
+        """
         super().__init__(composants or [])
         self.warnings: list[str] = []
 
@@ -569,7 +967,12 @@ _NET_ALIMENTATION: Dict[str, str] = {
 
 
 def _analyser_ref_noeud(nid: str) -> tuple:
-    """Parse 'compId_pinIdx_...' → (compId, pinIdx)."""
+    """@brief Parse 'compId_pinIdx_...' → (compId, pinIdx).
+
+    @param nid Référence de nœud BoardSCH (ex. '3_1_0_42').
+    @return tuple (compId, pinIdx) en entiers.
+    @throws ValueError Si la référence est mal formée.
+    """
     parties = nid.split('_')
     if len(parties) < 2:
         raise ValueError(f"Référence de nœud invalide : {nid!r}")
@@ -581,10 +984,14 @@ def _analyser_ref_noeud(nid: str) -> tuple:
 
 def lire_xml(chemin: str) -> list:
     """
-    Lit un fichier BoardSCH XML et retourne une liste de Composant.
+    @brief Lit un fichier BoardSCH XML et retourne une liste de Composant.
 
     Utilise l'algorithme Union-Find pour reconstruire les nœuds électriques
     à partir des fils (lignes) du schéma.
+
+    @param chemin Chemin du fichier .xml BoardSCH.
+    @return ListeComposantsXML Composants lus, avec l'attribut .warnings.
+    @throws ValueError Si le fichier XML est invalide.
     """
     try:
         arbre = ET.parse(chemin)
@@ -612,6 +1019,11 @@ def lire_xml(chemin: str) -> list:
     parent: Dict[tuple, tuple] = {}
 
     def trouver(x):
+        """@brief Trouve la racine Union-Find d'une broche avec compression de chemin.
+
+        @param x Tuple (id composant, index broche).
+        @return tuple Racine canonique du groupe de broches.
+        """
         if x not in parent:
             parent[x] = x
         racine_uf = x
@@ -623,6 +1035,12 @@ def lire_xml(chemin: str) -> list:
         return racine_uf
 
     def unir(x, y):
+        """@brief Fusionne deux groupes Union-Find de broches reliées.
+
+        @param x Première broche (id composant, index broche).
+        @param y Deuxième broche (id composant, index broche).
+        @return None
+        """
         px, py = trouver(x), trouver(y)
         if px != py:
             parent[px] = py
@@ -652,6 +1070,11 @@ def lire_xml(chemin: str) -> list:
     compteur = 0
 
     def nom_net(cle):
+        """@brief Attribue un nom électrique stable à un groupe de broches.
+
+        @param cle Racine Union-Find du groupe de broches.
+        @return str Nom du net (rail reconnu ou NET# généré).
+        """
         nonlocal compteur
         if cle in racine_vers_net:
             return racine_vers_net[cle]

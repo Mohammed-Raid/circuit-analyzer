@@ -1,5 +1,6 @@
 """
-reduction.py — Réduction des sous-réseaux passifs en dipôles équivalents.
+@file reduction.py
+@brief Réduction des sous-réseaux passifs en dipôles équivalents.
 
 Directive métier (annotation manuscrite en ROUGE du document de référence
 « montages Electroniques de base.doc », section 4 — Montage sommateur) :
@@ -34,14 +35,22 @@ TYPES_REDUCTIBLES = {'R', 'C', 'L'}
 
 
 def _est_rail(net) -> bool:
-    """Vrai si le net est une masse, une alimentation ou une terre de protection."""
+    """@brief Vrai si le net est une masse, une alimentation ou une terre de protection.
+
+    @param net Nom du net à tester (chaîne, éventuellement vide/None).
+    @return bool True si le net est un rail (GND / alimentation / terre de protection).
+    """
     if not net:
         return False
     return is_ground_net(net) or is_power_net(net) or is_protective_earth_net(net)
 
 
 def _combiner_type(t1: str, t2: str) -> str:
-    """Type de l'équivalent : le type commun, ou 'Z' (impédance composite) si mixte.
+    """@brief Type de l'équivalent : le type commun, ou 'Z' (impédance composite) si mixte.
+
+    @param t1 Type du premier composant ('R', 'C' ou 'L').
+    @param t2 Type du second composant.
+    @return str Le type commun si t1 == t2, sinon 'Z' (impédance composite).
 
     Limitation connue : un dipôle mixte (ex. R série C, le cas « (R1+C)R2 » du
     document) devient un type 'Z' qu'AUCUN détecteur actuel ne reconnaît
@@ -53,10 +62,15 @@ def _combiner_type(t1: str, t2: str) -> str:
 
 def _noeuds_proteges(graphe) -> set:
     """
-    Nœuds qu'on ne doit JAMAIS éliminer par réduction série :
+    @brief Ensemble des nœuds qu'on ne doit JAMAIS éliminer par réduction série.
+
+    Sont protégés :
       - rails (GND / alim / terre de protection) ;
       - broches d'un composant multi-broches (AOP, transistor, relais…) ;
       - nœuds touchés par une arête non réductible (diode, fusible, SW…).
+
+    @param graphe Le MultiGraph NetworkX d'origine (arêtes passives + dict 'components').
+    @return set Ensemble des noms de nœuds protégés.
     """
     proteges = set()
     for n in graphe.nodes():
@@ -73,8 +87,13 @@ def _noeuds_proteges(graphe) -> set:
 
 
 def _graphe_de_travail(graphe) -> nx.MultiGraph:
-    """MultiGraph ne contenant que les arêtes passives réductibles, annotées
-    pour la fusion (refs constitutives + expression lisible)."""
+    """@brief Construit le MultiGraph de travail des seules arêtes passives réductibles.
+
+    Chaque arête est annotée pour la fusion (refs constitutives + expression lisible).
+
+    @param graphe Le MultiGraph NetworkX d'origine.
+    @return nx.MultiGraph Sous-graphe des arêtes R/C/L, annotées (type, refs, expr, value).
+    """
     W = nx.MultiGraph()
     for u, v, data in graphe.edges(data=True):
         if data.get('type') in TYPES_REDUCTIBLES:
@@ -88,8 +107,13 @@ def _graphe_de_travail(graphe) -> nx.MultiGraph:
 
 
 def _pins_actives(graphe) -> set:
-    """Nœuds reliés à une broche d'un composant actif (multi-broches : AOP,
-    transistor, relais…). Ce sont les ancres de la directive métier."""
+    """@brief Nœuds reliés à une broche d'un composant actif (multi-broches).
+
+    AOP, transistor, relais… Ce sont les ancres de la directive métier.
+
+    @param graphe Le MultiGraph NetworkX d'origine (dict 'components').
+    @return set Ensemble des nets connectés à une broche d'un composant non-2-broches.
+    """
     pins = set()
     for comp in graphe.graph.get('components', {}).values():
         if len(comp.pins) != 2:
@@ -99,10 +123,15 @@ def _pins_actives(graphe) -> set:
 
 def _noeuds_ancres(W: nx.MultiGraph, pins_actives: set) -> set:
     """
-    Nœuds appartenant à une composante connexe passive qui touche au moins une
-    broche active. Seuls ces nœuds sont éligibles à la réduction : un réseau
-    passif flottant (snubber R//C, pont diviseur, filtre RC) n'est PAS ancré et
-    reste intact pour les détecteurs simples.
+    @brief Nœuds d'une composante connexe passive touchant au moins une broche active.
+
+    Seuls ces nœuds sont éligibles à la réduction : un réseau passif flottant
+    (snubber R//C, pont diviseur, filtre RC) n'est PAS ancré et reste intact pour
+    les détecteurs simples.
+
+    @param W Graphe de travail des arêtes passives réductibles.
+    @param pins_actives Ensemble des nets reliés à un composant actif (cf. _pins_actives).
+    @return set Ensemble des nœuds ancrés (éligibles à la réduction).
     """
     ancres = set()
     for composante in nx.connected_components(W):
@@ -112,17 +141,22 @@ def _noeuds_ancres(W: nx.MultiGraph, pins_actives: set) -> set:
 
 
 def _pass_parallele(W: nx.MultiGraph, ancres: set) -> bool:
-    """Fusionne TOUS les bancs d'arêtes parallèles (même paire de nœuds) en une
-    seule passe. Retourne True si au moins une fusion a eu lieu.
+    """@brief Fusionne en une seule passe tous les bancs d'arêtes parallèles.
 
-    Les bancs parallèles sont indépendants entre eux (fusionner (u,v) ne touche
-    aucune autre paire de nœuds), on peut donc tous les traiter d'un coup —
-    inutile de relancer un balayage complet après chaque fusion.
+    (Arêtes partageant la même paire de nœuds.) Les bancs parallèles sont
+    indépendants entre eux (fusionner (u,v) ne touche aucune autre paire de
+    nœuds), on peut donc tous les traiter d'un coup — inutile de relancer un
+    balayage complet après chaque fusion.
 
     Conditions :
       - le banc doit être ancré à un composant actif (sinon un R//C flottant
         est un amortisseur autonome, pas une contre-réaction) ;
-      - aucune extrémité ne doit être un rail (composants de prélèvement)."""
+      - aucune extrémité ne doit être un rail (composants de prélèvement).
+
+    @param W Graphe de travail (modifié en place).
+    @param ancres Ensemble des nœuds ancrés à un composant actif.
+    @return bool True si au moins une fusion parallèle a eu lieu.
+    """
     paires = set()
     for u, v in W.edges():
         if u == v or _est_rail(u) or _est_rail(v):
@@ -149,9 +183,14 @@ def _pass_parallele(W: nx.MultiGraph, ancres: set) -> bool:
 
 
 def _pass_serie(W: nx.MultiGraph, proteges: set, ancres: set) -> bool:
-    """Élimine en une passe tous les nœuds internes de degré 2 éligibles, en
-    fusionnant chaque paire d'arêtes en série. Retourne True si au moins une
-    fusion a eu lieu.
+    """@brief Élimine en une passe tous les nœuds internes de degré 2 éligibles.
+
+    Fusionne chaque paire d'arêtes en série en un dipôle équivalent.
+
+    @param W Graphe de travail (modifié en place).
+    @param proteges Nœuds à ne jamais éliminer (cf. _noeuds_proteges).
+    @param ancres Nœuds ancrés à un composant actif (cf. _noeuds_ancres).
+    @return bool True si au moins une fusion série a eu lieu.
 
     Sûreté de la mutation pendant l'itération : les arêtes de chaque nœud sont
     relues À FRAIS (`W.edges(n)`) au moment où il est traité, jamais mises en
@@ -192,10 +231,10 @@ def _pass_serie(W: nx.MultiGraph, proteges: set, ancres: set) -> bool:
 
 def reduire_dipoles(graphe):
     """
-    Réduit les sous-réseaux passifs série/parallèle du graphe en dipôles
-    équivalents.
+    @brief Réduit les sous-réseaux passifs série/parallèle du graphe en dipôles équivalents.
 
-    Retourne (graphe_reduit, expansion) :
+    @param graphe Le MultiGraph NetworkX d'origine.
+    @return tuple (graphe_reduit, expansion) où :
       - graphe_reduit : copie du graphe où chaque sous-réseau composite est
         remplacé par une arête unique (ref synthétique 'Z#k', type équivalent,
         value = expression lisible « R1+R2 », « (R1//C1) »…) ;
@@ -246,9 +285,14 @@ def reduire_dipoles(graphe):
 
 def expandre_composites(match: dict, expansion: dict) -> dict:
     """
+    @brief Ré-expanse les refs synthétiques d'un match vers leurs composants réels.
+
     Remplace, dans match['components'], chaque ref synthétique par ses refs
     réelles (en préservant l'ordre — la contre-réaction reste avant l'entrée).
-    Retourne une copie ; ne modifie pas le match d'origine.
+
+    @param match Dict du circuit détecté (clé 'components' = liste de refs).
+    @param expansion Dict {ref_synthetique -> [refs_reelles]} produit par reduire_dipoles.
+    @return dict Copie du match aux refs réelles ; le match d'origine n'est pas modifié.
     """
     if not expansion:
         return match

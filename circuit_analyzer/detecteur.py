@@ -1,5 +1,6 @@
 """
-Détection des circuits électroniques dans un graphe de connexions.
+@file detecteur.py
+@brief Détection des circuits électroniques dans un graphe de connexions.
 
 Chaque fonction de ce fichier détecte un type de circuit précis.
 Elles prennent toutes le graphe NetworkX en entrée et retournent
@@ -34,7 +35,11 @@ is_power = is_power_net
 
 
 def _est_rail(noeud) -> bool:
-    """Vrai si le nœud est une masse, une alimentation ou une terre de protection."""
+    """@brief Vrai si le nœud est une masse, une alimentation ou une terre de protection.
+
+    @param noeud Nom du nœud à tester.
+    @return bool True si le nœud est un rail (GND / alimentation / terre de protection).
+    """
     return bool(noeud) and (
         est_masse(noeud) or est_alimentation(noeud) or is_protective_earth_net(noeud)
     )
@@ -42,8 +47,12 @@ def _est_rail(noeud) -> bool:
 
 def _voisins_de_type(graphe, noeud, type_composant):
     """
-    Retourne la liste de (ref_composant, autre_noeud) pour tous les composants
-    d'un type donné connectés au nœud indiqué.
+    @brief Composants d'un type donné connectés à un nœud, avec leur autre extrémité.
+
+    @param graphe Graphe NetworkX du circuit.
+    @param noeud Nœud autour duquel chercher.
+    @param type_composant Type recherché ('R', 'C', 'L', 'D'…).
+    @return list[tuple] Liste de (ref_composant, autre_noeud).
 
     Exemple : _voisins_de_type(graphe, 'NET1', 'R') retourne toutes les
     résistances connectées au nœud NET1, avec l'autre extrémité de chaque R.
@@ -62,7 +71,10 @@ def _voisins_de_type(graphe, noeud, type_composant):
 
 def detecter_amplificateur_inverseur(graphe):
     """
-    Amplificateur inverseur : AOP avec une R d'entrée sur IN- et une R de feedback (OUT → IN-).
+    @brief Amplificateur inverseur : AOP avec une R d'entrée sur IN- et une R de feedback (OUT → IN-).
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
 
     Schéma :
         IN ──[R_entree]── IN- ──[R_feedback]── OUT
@@ -102,7 +114,10 @@ def detecter_amplificateur_inverseur(graphe):
 
 def detecter_amplificateur_non_inverseur(graphe):
     """
-    Amplificateur non-inverseur : AOP avec R de feedback (OUT → IN-) et R vers GND sur IN-.
+    @brief Amplificateur non-inverseur : AOP avec R de feedback (OUT → IN-) et R vers GND sur IN-.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
 
     Schéma :
         IN ──── IN+
@@ -139,7 +154,10 @@ def detecter_amplificateur_non_inverseur(graphe):
 
 def detecter_suiveur_tension(graphe):
     """
-    Suiveur de tension (buffer) : la sortie est directement reliée à IN-.
+    @brief Suiveur de tension (buffer) : la sortie est directement reliée à IN-.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Le gain est exactement 1 (pas de composants autour de l'AOP).
 
     Schéma :
@@ -169,7 +187,10 @@ def detecter_suiveur_tension(graphe):
 
 def detecter_integrateur(graphe):
     """
-    Intégrateur : AOP avec R d'entrée sur IN- et condensateur de feedback (OUT → IN-).
+    @brief Intégrateur : AOP avec R d'entrée sur IN- et condensateur de feedback (OUT → IN-).
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     La sortie est proportionnelle à l'intégrale du signal d'entrée.
 
     Schéma :
@@ -209,7 +230,10 @@ def detecter_integrateur(graphe):
 
 def detecter_derivateur(graphe):
     """
-    Dérivateur : AOP avec condensateur d'entrée sur IN- et R de feedback (OUT → IN-).
+    @brief Dérivateur : AOP avec condensateur d'entrée sur IN- et R de feedback (OUT → IN-).
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     La sortie est proportionnelle à la dérivée du signal d'entrée.
 
     Schéma :
@@ -249,7 +273,10 @@ def detecter_derivateur(graphe):
 
 def detecter_bascule_schmitt(graphe):
     """
-    Bascule de Schmitt : AOP avec contre-réaction POSITIVE (R de OUT vers IN+).
+    @brief Bascule de Schmitt : AOP avec contre-réaction POSITIVE (R de OUT vers IN+).
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Crée une hystérésis qui évite les oscillations sur les seuils.
 
     Schéma :
@@ -288,7 +315,10 @@ def detecter_bascule_schmitt(graphe):
 
 def detecter_comparateur(graphe):
     """
-    Comparateur : AOP sans aucune contre-réaction.
+    @brief Comparateur : AOP sans aucune contre-réaction.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     La sortie bascule selon quel seuil est le plus grand (IN+ ou IN-).
     C'est le mode le plus basique : l'AOP est utilisé "en boucle ouverte".
     """
@@ -329,7 +359,10 @@ def detecter_comparateur(graphe):
 
 def detecter_amplificateur_differentiel(graphe):
     """
-    Amplificateur différentiel : AOP avec 4 résistances formant un pont.
+    @brief Amplificateur différentiel : AOP avec 4 résistances formant un pont.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Mesure la DIFFÉRENCE entre deux tensions d'entrée.
 
     Schéma :
@@ -370,7 +403,10 @@ def detecter_amplificateur_differentiel(graphe):
 
 def detecter_amplificateur_sommateur(graphe):
     """
-    Amplificateur sommateur : AOP avec plusieurs R d'entrée sur IN-.
+    @brief Amplificateur sommateur : AOP avec plusieurs R d'entrée sur IN-.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Calcule la somme (pondérée) de plusieurs signaux.
 
     Schéma :
@@ -411,7 +447,10 @@ def detecter_amplificateur_sommateur(graphe):
 
 def detecter_transistor_commutation(graphe):
     """
-    Transistor BJT en commutation : émetteur à la masse, R sur la base.
+    @brief Transistor BJT en commutation : émetteur à la masse, R sur la base.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Le transistor sert d'interrupteur commandé par la base.
 
     Schéma :
@@ -450,7 +489,10 @@ def detecter_transistor_commutation(graphe):
 
 def detecter_amplificateur_emetteur_commun(graphe):
     """
-    Amplificateur émetteur commun : BJT avec R au collecteur ET R à la base.
+    @brief Amplificateur émetteur commun : BJT avec R au collecteur ET R à la base.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Configuration d'amplification la plus courante avec les BJT.
 
     Schéma :
@@ -487,7 +529,10 @@ def detecter_amplificateur_emetteur_commun(graphe):
 
 def detecter_miroir_courant(graphe):
     """
-    Miroir de courant BJT : deux transistors avec la base commune et les émetteurs à GND.
+    @brief Miroir de courant BJT : deux transistors avec la base commune et les émetteurs à GND.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Copie un courant de référence vers une charge.
 
     Schéma :
@@ -529,7 +574,10 @@ def detecter_miroir_courant(graphe):
 
 def detecter_mosfet_commutation(graphe):
     """
-    MOSFET en commutation (côté bas) : source à la masse, R sur la grille.
+    @brief MOSFET en commutation (côté bas) : source à la masse, R sur la grille.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Fonctionne comme un interrupteur commandé par la tension de grille.
     """
     resultats = []
@@ -561,7 +609,10 @@ def detecter_mosfet_commutation(graphe):
 
 def detecter_mosfet_cote_haut(graphe):
     """
-    MOSFET côté haut : drain sur rail d'alimentation, source NON à la masse.
+    @brief MOSFET côté haut : drain sur rail d'alimentation, source NON à la masse.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Utilisé pour commuter la puissance vers la charge depuis le haut.
     """
     resultats = []
@@ -595,7 +646,10 @@ def detecter_mosfet_cote_haut(graphe):
 
 def detecter_commande_relais(graphe):
     """
-    Commande de relais : bobine de relais K alimentée par un transistor (BJT ou MOSFET).
+    @brief Commande de relais : bobine de relais K alimentée par un transistor (BJT ou MOSFET).
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Le transistor commute la bobine du relais.
 
     Schéma :
@@ -659,7 +713,10 @@ def detecter_commande_relais(graphe):
 
 def detecter_pont_redresseur(graphe):
     """
-    Pont redresseur de Graetz : 4 diodes formant un cycle fermé (pont en H).
+    @brief Pont redresseur de Graetz : 4 diodes formant un cycle fermé (pont en H).
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Convertit une tension alternative en tension continue.
 
     Schéma (en forme de losange) :
@@ -716,7 +773,10 @@ def detecter_pont_redresseur(graphe):
 
 def detecter_diode_roue_libre(graphe):
     """
-    Diode de roue libre : cathode sur l'alimentation, anode sur le nœud de commutation.
+    @brief Diode de roue libre : cathode sur l'alimentation, anode sur le nœud de commutation.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Protège le transistor contre les surtensions des charges inductives (moteurs, relais).
 
     Schéma :
@@ -747,7 +807,10 @@ def detecter_diode_roue_libre(graphe):
 
 def detecter_diode_protection_esd(graphe):
     """
-    Diode de protection ESD / TVS / Zener.
+    @brief Diode de protection ESD / TVS / Zener.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Protège les entrées/sorties contre les décharges électrostatiques.
 
     Reconnaissance : une broche de la diode est à la masse (anode OU cathode).
@@ -776,7 +839,10 @@ def detecter_diode_protection_esd(graphe):
 
 def detecter_redresseur_simple(graphe):
     """
-    Redresseur simple alternance : diode + résistance de charge vers GND.
+    @brief Redresseur simple alternance : diode + résistance de charge vers GND.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     La forme la plus simple de redressement.
 
     Schéma :
@@ -822,7 +888,10 @@ def detecter_redresseur_simple(graphe):
 
 def detecter_detecteur_crete(graphe):
     """
-    Détecteur de crête : diode + condensateur vers GND.
+    @brief Détecteur de crête : diode + condensateur vers GND.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Le condensateur se charge au pic du signal et le mémorise.
 
     Schéma :
@@ -861,7 +930,10 @@ def detecter_detecteur_crete(graphe):
 
 def detecter_condensateur_decouplage(graphe):
     """
-    Condensateur de découplage : C directement entre une alimentation et la masse.
+    @brief Condensateur de découplage : C directement entre une alimentation et la masse.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Filtre les parasites haute fréquence sur les rails d'alimentation.
     Placé juste à côté des circuits intégrés.
 
@@ -897,7 +969,10 @@ def detecter_condensateur_decouplage(graphe):
 
 def detecter_filtre_rc_passe_bas(graphe):
     """
-    Filtre RC passe-bas : R en série + C vers GND.
+    @brief Filtre RC passe-bas : R en série + C vers GND.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Laisse passer les basses fréquences, atténue les hautes.
 
     Schéma :
@@ -934,7 +1009,10 @@ def detecter_filtre_rc_passe_bas(graphe):
 
 def detecter_filtre_rc_passe_haut(graphe):
     """
-    Filtre RC passe-haut : C en série + R vers GND.
+    @brief Filtre RC passe-haut : C en série + R vers GND.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Laisse passer les hautes fréquences, atténue les basses.
 
     Schéma :
@@ -972,7 +1050,10 @@ def detecter_filtre_rc_passe_haut(graphe):
 
 def detecter_filtre_lc(graphe):
     """
-    Filtre LC : inductance en série + condensateur vers GND.
+    @brief Filtre LC : inductance en série + condensateur vers GND.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Utilisé dans les alimentations à découpage pour filtrer le courant.
 
     Schéma :
@@ -1005,7 +1086,10 @@ def detecter_filtre_lc(graphe):
 
 def detecter_pont_diviseur(graphe):
     """
-    Pont diviseur de tension : deux résistances en série entre deux points.
+    @brief Pont diviseur de tension : deux résistances en série entre deux points.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Crée une tension intermédiaire à partir d'une tension plus élevée.
 
     Schéma :
@@ -1044,7 +1128,10 @@ def detecter_pont_diviseur(graphe):
 
 def detecter_absorbeur_rc(graphe):
     """
-    Absorbeur RC (snubber) : résistance et condensateur en PARALLÈLE.
+    @brief Absorbeur RC (snubber) : résistance et condensateur en PARALLÈLE.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Absorbe les surtensions transitoires, protège les interrupteurs.
 
     Schéma :
@@ -1081,7 +1168,10 @@ def detecter_absorbeur_rc(graphe):
 
 def detecter_fusible(graphe):
     """
-    Protection par fusible : composant F seul dans le circuit.
+    @brief Protection par fusible : composant F seul dans le circuit.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Se coupe en cas de surintensité pour protéger le reste du circuit.
     """
     resultats = []
@@ -1107,12 +1197,18 @@ def detecter_fusible(graphe):
 
 class ResultatsAnalyse(list):
     """
-    Liste de circuits détectés. Entièrement compatible avec list.
+    @brief Liste de circuits détectés, compatible avec list, enrichie de métadonnées.
+
     Attributs supplémentaires :
         .supprimes : matches ignorés car leurs composants étaient déjà pris
         .ilots     : îlots fonctionnels (structure en étages du schéma)
     """
     def __init__(self, matches=None):
+        """@brief Initialise la liste de résultats et ses métadonnées.
+
+        @param matches Matches initiaux à placer dans la liste (optionnel).
+        @return None
+        """
         super().__init__(matches or [])
         self.supprimes: list[dict] = []
         self.ilots: list[dict] = []
@@ -1151,7 +1247,14 @@ _CATEGORIES: dict[str, str] = {
 
 
 def _valeur(graphe, ref: str) -> str:
-    """Retourne la valeur d'un composant (cherche dans le dict multi-broches et dans les arêtes)."""
+    """@brief Retourne la valeur d'un composant.
+
+    Cherche dans le dict des composants multi-broches puis dans les arêtes.
+
+    @param graphe Graphe NetworkX du circuit.
+    @param ref Référence du composant recherché.
+    @return str Valeur du composant, ou '' si absente/introuvable.
+    """
     if not ref:
         return ''
     comp = graphe.graph.get('components', {}).get(ref)
@@ -1165,10 +1268,14 @@ def _valeur(graphe, ref: str) -> str:
 
 def _enrichir(match: dict, graphe) -> dict:
     """
-    Ajoute confidence, confidence_level, reasons, warnings, functional_category
-    et locked_components à un match de détection.
+    @brief Enrichit un match de détection avec confiance, raisons et avertissements.
 
-    Ne modifie pas le dict original (retourne une copie enrichie).
+    Ajoute confidence, confidence_level, reasons, warnings, functional_category
+    et locked_components.
+
+    @param match Match brut ({'circuit_type', 'components', 'nodes'}).
+    @param graphe Graphe NetworkX d'origine (pour lire les valeurs des composants).
+    @return dict Copie enrichie du match ; le dict original n'est pas modifié.
     """
     ct     = match['circuit_type']
     comps  = match['components']
@@ -1435,17 +1542,15 @@ match_patterns = None  # défini après analyser()
 
 def analyser(graphe, patterns_personnalises=None):
     """
-    Analyse le graphe et retourne tous les circuits détectés.
+    @brief Analyse le graphe et retourne tous les circuits détectés.
 
     Chaque composant ne peut appartenir qu'à UN SEUL circuit.
     Les circuits complexes sont prioritaires sur les circuits simples.
 
-    Arguments :
-        graphe               : le graphe NetworkX construit par graph_builder.py
-        patterns_personnalises : liste optionnelle de fonctions de détection supplémentaires
-
-    Retourne :
-        liste de dicts {'circuit_type': str, 'components': list, 'nodes': list}
+    @param graphe Le graphe NetworkX construit par graph_builder.py.
+    @param patterns_personnalises Liste optionnelle de fonctions de détection supplémentaires.
+    @return ResultatsAnalyse Liste enrichie de dicts {'circuit_type', 'components', 'nodes', …},
+            avec les attributs .supprimes (matches ignorés) et .ilots (structure en étages).
     """
     # Charger les patterns personnalisés depuis l'interface graphique (si présents)
     # Ils s'insèrent entre les circuits complexes et les circuits simples.
@@ -1456,7 +1561,17 @@ def analyser(graphe, patterns_personnalises=None):
             # Les patterns custom retournent {'components': ..., 'nodes': ...} sans 'circuit_type'.
             # On crée une fonction wrapper qui ajoute le nom du circuit.
             def _envelopper(pattern):
+                """@brief Adapte un objet Pattern personnalisé en fonction détecteur.
+
+                @param pattern Instance de Pattern personnalisé chargée depuis le JSON.
+                @return callable Détecteur qui ajoute la clé 'circuit_type' aux matches.
+                """
                 def detecter(graphe):
+                    """@brief Exécute le pattern personnalisé sur un graphe.
+
+                    @param graphe Graphe NetworkX à analyser.
+                    @return generator Matches enrichis avec le nom du circuit personnalisé.
+                    """
                     for match in pattern.match(graphe):
                         yield {**match, 'circuit_type': pattern.name}
                 return detecter

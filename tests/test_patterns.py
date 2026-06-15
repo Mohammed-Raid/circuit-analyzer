@@ -1,3 +1,8 @@
+"""
+@file test_patterns.py
+@brief Tests automatises pour test_patterns.
+"""
+
 from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.patterns.basic_circuits import (
@@ -8,6 +13,10 @@ from circuit_analyzer.patterns.basic_circuits import (
 
 
 def test_rc_lowpass_found():
+    """@brief Verifie rc lowpass found.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
         Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
@@ -18,6 +27,10 @@ def test_rc_lowpass_found():
 
 
 def test_rc_lowpass_not_found_when_c_not_to_gnd():
+    """@brief Verifie rc lowpass not found when c not to gnd.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
         Component('C1', 'C', {'1': 'NET_MID', '2': 'NET_OUT'}, '100nF'),
@@ -26,6 +39,10 @@ def test_rc_lowpass_not_found_when_c_not_to_gnd():
 
 
 def test_rc_highpass_found():
+    """@brief Verifie rc highpass found.
+
+    @return None
+    """
     comps = [
         Component('C1', 'C', {'1': 'NET_IN', '2': 'NET_MID'}, '100nF'),
         Component('R1', 'R', {'1': 'NET_MID', '2': 'GND'}, '10k'),
@@ -36,6 +53,10 @@ def test_rc_highpass_found():
 
 
 def test_rc_highpass_not_found_when_r_not_to_gnd():
+    """@brief Verifie rc highpass not found when r not to gnd.
+
+    @return None
+    """
     comps = [
         Component('C1', 'C', {'1': 'NET_IN', '2': 'NET_MID'}, '100nF'),
         Component('R1', 'R', {'1': 'NET_MID', '2': 'NET_OUT'}, '10k'),
@@ -44,6 +65,10 @@ def test_rc_highpass_not_found_when_r_not_to_gnd():
 
 
 def test_lc_filter_found():
+    """@brief Verifie lc filter found.
+
+    @return None
+    """
     comps = [
         Component('L1', 'L', {'1': 'NET_IN', '2': 'NET_MID'}, '10uH'),
         Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
@@ -54,6 +79,10 @@ def test_lc_filter_found():
 
 
 def test_voltage_divider_found():
+    """@brief Verifie voltage divider found.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'VCC', '2': 'NET_DIV'}, '10k'),
         Component('R2', 'R', {'1': 'NET_DIV', '2': 'GND'}, '4.7k'),
@@ -64,11 +93,19 @@ def test_voltage_divider_found():
 
 
 def test_voltage_divider_not_found_for_single_resistor():
+    """@brief Verifie voltage divider not found for single resistor.
+
+    @return None
+    """
     comps = [Component('R1', 'R', {'1': 'VCC', '2': 'GND'}, '10k')]
     assert VoltageDivider().match(build_graph(comps)) == []
 
 
 def test_decoupling_cap_found():
+    """@brief Verifie decoupling cap found.
+
+    @return None
+    """
     comps = [Component('C1', 'C', {'1': 'VCC', '2': 'GND'}, '100nF')]
     matches = DecouplingCapacitor().match(build_graph(comps))
     assert len(matches) == 1
@@ -76,11 +113,19 @@ def test_decoupling_cap_found():
 
 
 def test_decoupling_cap_not_found_between_two_signal_nets():
+    """@brief Verifie decoupling cap not found between two signal nets.
+
+    @return None
+    """
     comps = [Component('C1', 'C', {'1': 'NET_A', '2': 'NET_B'}, '100nF')]
     assert DecouplingCapacitor().match(build_graph(comps)) == []
 
 
 def test_fuse_found():
+    """@brief Verifie fuse found.
+
+    @return None
+    """
     comps = [Component('F1', 'F', {'1': 'LINE_IN', '2': 'NET_FUSE'})]
     matches = FuseProtection().match(build_graph(comps))
     assert len(matches) == 1
@@ -88,6 +133,10 @@ def test_fuse_found():
 
 
 def test_rc_snubber_found():
+    """@brief Verifie rc snubber found.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'NET_A', '2': 'NET_B'}, '100'),
         Component('C1', 'C', {'1': 'NET_A', '2': 'NET_B'}, '10nF'),
@@ -98,6 +147,10 @@ def test_rc_snubber_found():
 
 
 def test_rc_snubber_not_found_when_not_parallel():
+    """@brief Verifie rc snubber not found when not parallel.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'NET_A', '2': 'NET_B'}, '100'),
         Component('C1', 'C', {'1': 'NET_B', '2': 'NET_C'}, '10nF'),
@@ -106,6 +159,10 @@ def test_rc_snubber_not_found_when_not_parallel():
 
 
 def test_bridge_rectifier_found():
+    """@brief Verifie bridge rectifier found.
+
+    @return None
+    """
     comps = [
         Component('D1', 'D', {'A': 'AC_POS', 'K': 'DC_POS'}),
         Component('D2', 'D', {'A': 'AC_NEG', 'K': 'DC_POS'}),

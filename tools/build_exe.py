@@ -1,5 +1,6 @@
 """
-build_exe.py — Construit la distribution Windows de l'application.
+@file build_exe.py
+@brief Construit la distribution Windows de l'application.
 
 Usage : python tools/build_exe.py
 
@@ -25,10 +26,15 @@ DOSSIER_APP = DIST / 'AnalyseurCircuits'
 
 
 def etape(titre: str) -> None:
+    """@brief Affiche un titre d'étape de build.
+    @param titre Libellé de l'étape.
+    @return None
+    """
     print(f'\n=== {titre} ===', flush=True)
 
 
 def verifier_pyinstaller() -> None:
+    """@brief Vérifie que PyInstaller est installé (arrête le build sinon)."""
     etape('1/5 Vérification de PyInstaller')
     try:
         import PyInstaller
@@ -38,9 +44,10 @@ def verifier_pyinstaller() -> None:
 
 
 def build() -> None:
+    """@brief Lance PyInstaller depuis le .spec et vérifie la présence des exes produits."""
     etape('2/5 Build PyInstaller (plusieurs minutes)')
     if DOSSIER_APP.exists():
-        shutil.rmtree(DOSSIER_APP)
+        shutil.rmtree(DOSSIER_APP, ignore_errors=True)
     resultat = subprocess.run(
         [sys.executable, '-m', 'PyInstaller',
          str(RACINE / 'packaging' / 'analyseur.spec'),
@@ -57,14 +64,24 @@ def build() -> None:
 
 
 def copier_config() -> None:
+    """@brief Copie config/net_aliases.json et circuits_industriels/ à côté des exes."""
     etape('3/5 Copie de config/net_aliases.json (fichier éditable)')
-    cible = DOSSIER_APP / 'config'
-    cible.mkdir(exist_ok=True)
-    shutil.copy2(RACINE / 'config' / 'net_aliases.json', cible / 'net_aliases.json')
-    print(f'-> {cible / "net_aliases.json"}')
+    cible_cfg = DOSSIER_APP / 'config'
+    cible_cfg.mkdir(exist_ok=True)
+    shutil.copy2(RACINE / 'config' / 'net_aliases.json', cible_cfg / 'net_aliases.json')
+    print(f'-> {cible_cfg / "net_aliases.json"}')
+
+    src_ci = RACINE / 'circuits_industriels'
+    if src_ci.exists():
+        cible_ci = DOSSIER_APP / 'circuits_industriels'
+        if cible_ci.exists():
+            shutil.rmtree(cible_ci)
+        shutil.copytree(src_ci, cible_ci)
+        print(f'-> {cible_ci} ({len(list(cible_ci.iterdir()))} fichiers)')
 
 
 def test_de_fumee() -> None:
+    """@brief Test de fumée : analyse relay_driver.xml avec l'exe CLI fraîchement compilé."""
     etape('4/5 Test de fumée (analyse de relay_driver.xml avec l\'exe CLI)')
     with tempfile.TemporaryDirectory() as tmp:
         rapport = Path(tmp) / 'rapport.txt'
@@ -83,6 +100,9 @@ def test_de_fumee() -> None:
 
 
 def zipper() -> Path:
+    """@brief Crée l'archive zip de la distribution.
+    @return Path Chemin de l'archive créée.
+    """
     etape('5/5 Création du zip')
     archive = shutil.make_archive(
         str(DIST / f'AnalyseurCircuits-{VERSION}'), 'zip',

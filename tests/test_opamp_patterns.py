@@ -1,3 +1,8 @@
+"""
+@file test_opamp_patterns.py
+@brief Tests automatises pour test_opamp_patterns.
+"""
+
 from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.patterns.opamp import (
@@ -7,6 +12,10 @@ from circuit_analyzer.patterns.opamp import (
 
 
 def test_inverting_amp_found():
+    """@brief Verifie inverting amp found.
+
+    @return None
+    """
     comps = [
         Component('U1', 'U', {'IN+': 'GND', 'IN-': 'NET_INM', 'OUT': 'NET_OUT', 'V+': 'VCC', 'V-': 'GND2'}),
         Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_INM'}, '10k'),
@@ -20,6 +29,10 @@ def test_inverting_amp_found():
 
 
 def test_inverting_amp_not_found_without_feedback():
+    """@brief Verifie inverting amp not found without feedback.
+
+    @return None
+    """
     comps = [
         Component('U1', 'U', {'IN+': 'GND', 'IN-': 'NET_INM', 'OUT': 'NET_OUT', 'V+': 'VCC', 'V-': 'GND2'}),
         Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_INM'}, '10k'),
@@ -28,6 +41,10 @@ def test_inverting_amp_not_found_without_feedback():
 
 
 def test_non_inverting_amp_found():
+    """@brief Verifie non inverting amp found.
+
+    @return None
+    """
     comps = [
         Component('U1', 'U', {'IN+': 'NET_IN', 'IN-': 'NET_INM', 'OUT': 'NET_OUT', 'V+': 'VCC', 'V-': 'GND'}),
         Component('R1', 'R', {'1': 'NET_INM', '2': 'NET_OUT'}, '100k'),
@@ -41,6 +58,10 @@ def test_non_inverting_amp_found():
 
 
 def test_non_inverting_amp_not_found_without_gnd_resistor():
+    """@brief Verifie non inverting amp not found without gnd resistor.
+
+    @return None
+    """
     comps = [
         Component('U1', 'U', {'IN+': 'NET_IN', 'IN-': 'NET_INM', 'OUT': 'NET_OUT', 'V+': 'VCC', 'V-': 'GND'}),
         Component('R1', 'R', {'1': 'NET_INM', '2': 'NET_OUT'}, '100k'),
@@ -49,6 +70,10 @@ def test_non_inverting_amp_not_found_without_gnd_resistor():
 
 
 def test_voltage_follower_found():
+    """@brief Verifie voltage follower found.
+
+    @return None
+    """
     comps = [
         Component('U1', 'U', {'IN+': 'NET_IN', 'IN-': 'NET_OUT', 'OUT': 'NET_OUT', 'V+': 'VCC', 'V-': 'GND'}),
     ]
@@ -58,6 +83,10 @@ def test_voltage_follower_found():
 
 
 def test_voltage_follower_not_found_when_no_direct_feedback():
+    """@brief Verifie voltage follower not found when no direct feedback.
+
+    @return None
+    """
     comps = [
         Component('U1', 'U', {'IN+': 'NET_IN', 'IN-': 'NET_INM', 'OUT': 'NET_OUT', 'V+': 'VCC', 'V-': 'GND'}),
     ]
@@ -65,6 +94,10 @@ def test_voltage_follower_not_found_when_no_direct_feedback():
 
 
 def test_integrator_found():
+    """@brief Verifie integrator found.
+
+    @return None
+    """
     comps = [
         Component('U1', 'U', {'IN+': 'GND', 'IN-': 'NET_INM', 'OUT': 'NET_OUT', 'V+': 'VCC', 'V-': 'GND2'}),
         Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_INM'}, '10k'),
@@ -78,6 +111,10 @@ def test_integrator_found():
 
 
 def test_integrator_not_found_without_feedback_cap():
+    """@brief Verifie integrator not found without feedback cap.
+
+    @return None
+    """
     comps = [
         Component('U1', 'U', {'IN+': 'GND', 'IN-': 'NET_INM', 'OUT': 'NET_OUT', 'V+': 'VCC', 'V-': 'GND2'}),
         Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_INM'}, '10k'),
@@ -86,6 +123,10 @@ def test_integrator_not_found_without_feedback_cap():
 
 
 def test_comparator_found():
+    """@brief Verifie comparator found.
+
+    @return None
+    """
     comps = [
         Component('U1', 'U', {'IN+': 'NET_IN', 'IN-': 'NET_REF', 'OUT': 'NET_OUT', 'V+': 'VCC', 'V-': 'GND'}),
     ]
@@ -95,6 +136,10 @@ def test_comparator_found():
 
 
 def test_comparator_not_found_when_follower():
+    """@brief Verifie comparator not found when follower.
+
+    @return None
+    """
     comps = [
         Component('U1', 'U', {'IN+': 'NET_IN', 'IN-': 'NET_OUT', 'OUT': 'NET_OUT', 'V+': 'VCC', 'V-': 'GND'}),
     ]
@@ -102,6 +147,10 @@ def test_comparator_not_found_when_follower():
 
 
 def test_comparator_not_found_when_feedback_resistor_present():
+    """@brief Verifie comparator not found when feedback resistor present.
+
+    @return None
+    """
     comps = [
         Component('U1', 'U', {'IN+': 'NET_IN', 'IN-': 'NET_INM', 'OUT': 'NET_OUT', 'V+': 'VCC', 'V-': 'GND'}),
         Component('R1', 'R', {'1': 'NET_INM', '2': 'NET_OUT'}, '100k'),

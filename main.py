@@ -1,3 +1,7 @@
+"""
+@file main.py
+@brief Point d'entrée en ligne de commande : analyse une netlist/XML et écrit un rapport.
+"""
 import argparse
 import sys
 import io
@@ -14,6 +18,14 @@ if sys.platform == 'win32':
 
 
 def main():
+    """@brief Analyse le fichier passé en argument et écrit/affiche le rapport.
+
+    Lit les options (input, --output, --format), lit la netlist/XML, lance la
+    détection, génère le rapport et l'écrit sur disque ; termine avec un code
+    d'erreur si le fichier est introuvable ou invalide.
+
+    @return None
+    """
     parser = argparse.ArgumentParser(
         description='Analyse un circuit et identifie les sous-circuits de base.'
     )

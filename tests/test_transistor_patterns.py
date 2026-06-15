@@ -1,3 +1,8 @@
+"""
+@file test_transistor_patterns.py
+@brief Tests automatises pour test_transistor_patterns.
+"""
+
 from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.patterns.transistor import (
@@ -6,6 +11,10 @@ from circuit_analyzer.patterns.transistor import (
 
 
 def test_transistor_switch_found():
+    """@brief Verifie transistor switch found.
+
+    @return None
+    """
     comps = [
         Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
         Component('R1', 'R', {'1': 'NET_DRIVE', '2': 'NET_BASE'}, '10k'),
@@ -16,6 +25,10 @@ def test_transistor_switch_found():
 
 
 def test_transistor_switch_not_found_without_base_resistor():
+    """@brief Verifie transistor switch not found without base resistor.
+
+    @return None
+    """
     comps = [
         Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
     ]
@@ -23,6 +36,10 @@ def test_transistor_switch_not_found_without_base_resistor():
 
 
 def test_transistor_switch_not_found_when_emitter_not_gnd():
+    """@brief Verifie transistor switch not found when emitter not gnd.
+
+    @return None
+    """
     comps = [
         Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'NET_EMIT'}),
         Component('R1', 'R', {'1': 'NET_DRIVE', '2': 'NET_BASE'}, '10k'),
@@ -31,6 +48,10 @@ def test_transistor_switch_not_found_when_emitter_not_gnd():
 
 
 def test_common_emitter_found():
+    """@brief Verifie common emitter found.
+
+    @return None
+    """
     comps = [
         Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
         Component('R1', 'R', {'1': 'VCC', '2': 'NET_COLL'}, '1k'),
@@ -44,6 +65,10 @@ def test_common_emitter_found():
 
 
 def test_common_emitter_not_found_without_collector_resistor():
+    """@brief Verifie common emitter not found without collector resistor.
+
+    @return None
+    """
     comps = [
         Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
         Component('R2', 'R', {'1': 'VCC', '2': 'NET_BASE'}, '10k'),
@@ -52,6 +77,10 @@ def test_common_emitter_not_found_without_collector_resistor():
 
 
 def test_current_mirror_found():
+    """@brief Verifie current mirror found.
+
+    @return None
+    """
     comps = [
         Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL1', 'E': 'GND'}),
         Component('Q2', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL2', 'E': 'GND'}),
@@ -62,6 +91,10 @@ def test_current_mirror_found():
 
 
 def test_current_mirror_not_found_when_bases_differ():
+    """@brief Verifie current mirror not found when bases differ.
+
+    @return None
+    """
     comps = [
         Component('Q1', 'Q', {'B': 'NET_BASE1', 'C': 'NET_COLL1', 'E': 'GND'}),
         Component('Q2', 'Q', {'B': 'NET_BASE2', 'C': 'NET_COLL2', 'E': 'GND'}),
@@ -70,6 +103,10 @@ def test_current_mirror_not_found_when_bases_differ():
 
 
 def test_mosfet_switch_found():
+    """@brief Verifie mosfet switch found.
+
+    @return None
+    """
     comps = [
         Component('M1', 'M', {'G': 'NET_GATE', 'D': 'NET_DRAIN', 'S': 'GND'}),
         Component('R1', 'R', {'1': 'NET_CTRL', '2': 'NET_GATE'}, '100'),
@@ -80,6 +117,10 @@ def test_mosfet_switch_found():
 
 
 def test_mosfet_switch_not_found_when_source_not_gnd():
+    """@brief Verifie mosfet switch not found when source not gnd.
+
+    @return None
+    """
     comps = [
         Component('M1', 'M', {'G': 'NET_GATE', 'D': 'NET_DRAIN', 'S': 'NET_SOURCE'}),
         Component('R1', 'R', {'1': 'NET_CTRL', '2': 'NET_GATE'}, '100'),

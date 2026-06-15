@@ -1,4 +1,9 @@
 """
+@file test_code_review_fixes.py
+@brief Tests automatises pour test_code_review_fixes.
+"""
+
+"""
 Regression tests for the 8 bugs found by code review.
 """
 import json, os, tempfile, pytest
@@ -10,6 +15,7 @@ from circuit_analyzer.patterns.basic_circuits import HalfWaveRectifier, PeakDete
 
 
 def _write_tmp(content):
+    """@brief Helper de test pour write tmp."""
     f = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8')
     f.write(content)
     f.close()
@@ -19,6 +25,10 @@ def _write_tmp(content):
 # ── Fix 1: matcher.py except broadened to Exception ──────────────────────────
 
 def test_malformed_custom_circuits_json_does_not_crash(tmp_path, monkeypatch):
+    """@brief Verifie malformed custom circuits json does not crash.
+
+    @return None
+    """
     # A malformed custom_circuits.json must not crash match_patterns()
     (tmp_path / 'custom_circuits.json').write_text('{ not valid json }', encoding='utf-8')
     monkeypatch.chdir(tmp_path)
@@ -34,6 +44,10 @@ def test_malformed_custom_circuits_json_does_not_crash(tmp_path, monkeypatch):
 # ── Fix 2: HalfWaveRectifier uses cathode only ────────────────────────────────
 
 def test_half_wave_rectifier_not_found_on_anode_load():
+    """@brief Verifie half wave rectifier not found on anode load.
+
+    @return None
+    """
     # R1 is on the ANODE (input) side — must NOT be reported as a rectifier
     comps = [
         Component('D1', 'D', {'A': 'NET_AC', 'K': 'NET_DC'}),
@@ -43,6 +57,10 @@ def test_half_wave_rectifier_not_found_on_anode_load():
 
 
 def test_half_wave_rectifier_found_on_cathode_load():
+    """@brief Verifie half wave rectifier found on cathode load.
+
+    @return None
+    """
     # R1 is on the CATHODE (output) side — must be reported as a rectifier
     comps = [
         Component('D1', 'D', {'A': 'NET_AC', 'K': 'NET_DC'}),
@@ -55,6 +73,10 @@ def test_half_wave_rectifier_found_on_cathode_load():
 
 
 def test_peak_detector_not_found_on_anode_cap():
+    """@brief Verifie peak detector not found on anode cap.
+
+    @return None
+    """
     # C1 is on the ANODE (input) side — must NOT be reported as a peak detector
     comps = [
         Component('D1', 'D', {'A': 'NET_IN', 'K': 'NET_PEAK'}),
@@ -66,6 +88,10 @@ def test_peak_detector_not_found_on_anode_cap():
 # ── Fix 3: main.py ValueError handled ────────────────────────────────────────
 
 def test_main_exits_cleanly_on_duplicate_ref(tmp_path):
+    """@brief Verifie main exits cleanly on duplicate ref.
+
+    @return None
+    """
     import subprocess, sys
     netlist = tmp_path / 'bad.txt'
     netlist.write_text('R1 VCC GND 10k\nR1 NET_A NET_B 4k7\n', encoding='utf-8')
@@ -82,6 +108,10 @@ def test_main_exits_cleanly_on_duplicate_ref(tmp_path):
 # ── Fix 4: _check_condition unknown label returns False ───────────────────────
 
 def test_unknown_condition_label_does_not_pass():
+    """@brief Verifie unknown condition label does not pass.
+
+    @return None
+    """
     from custom_circuits.loader import CustomCircuitPattern
     defn = {'name': 'Test', 'components': ['R'], 'conditions': ['Condition inconnue']}
     pattern = CustomCircuitPattern(defn)
@@ -93,6 +123,10 @@ def test_unknown_condition_label_does_not_pass():
 # ── Fix 5: case-insensitive duplicate ref detection ───────────────────────────
 
 def test_lowercase_duplicate_ref_raises():
+    """@brief Verifie lowercase duplicate ref raises.
+
+    @return None
+    """
     path = _write_tmp("R1 NET_A NET_B 10k\nr1 NET_C NET_D 4k7\n")
     with pytest.raises(ValueError, match="[Rr]1"):
         parse_file(path)
@@ -102,6 +136,10 @@ def test_lowercase_duplicate_ref_raises():
 # ── Fix 6: unvalidated ref token raises ──────────────────────────────────────
 
 def test_numeric_ref_raises():
+    """@brief Verifie numeric ref raises.
+
+    @return None
+    """
     path = _write_tmp("10k VCC GND\n")
     with pytest.raises(ValueError, match="invalide"):
         parse_file(path)
@@ -109,6 +147,10 @@ def test_numeric_ref_raises():
 
 
 def test_value_shifted_left_raises():
+    """@brief Verifie value shifted left raises.
+
+    @return None
+    """
     path = _write_tmp("100nF NET_A NET_B\n")
     with pytest.raises(ValueError, match="invalide"):
         parse_file(path)
@@ -118,6 +160,10 @@ def test_value_shifted_left_raises():
 # ── Fix 7+8: OPAMP_PATTERNS complete, ALL_PATTERNS correct order ─────────────
 
 def test_opamp_patterns_includes_all_new_patterns():
+    """@brief Verifie opamp patterns includes all new patterns.
+
+    @return None
+    """
     from circuit_analyzer.patterns.opamp import OPAMP_PATTERNS
     names = [p.name for p in OPAMP_PATTERNS]
     assert 'Dérivateur (AOP)' in names
@@ -127,6 +173,10 @@ def test_opamp_patterns_includes_all_new_patterns():
 
 
 def test_all_patterns_decoupling_before_rc_lowpass():
+    """@brief Verifie all patterns decoupling before rc lowpass.
+
+    @return None
+    """
     from circuit_analyzer.patterns.basic_circuits import ALL_PATTERNS
     names = [p.name for p in ALL_PATTERNS]
     assert names.index('Condensateur de découplage') < names.index('Filtre RC passe-bas')

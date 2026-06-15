@@ -1,5 +1,7 @@
 """
-Vérifie que chaque fichier XML généré est correctement reconnu par l'analyseur.
+@file verify_test_circuits.py
+@brief Vérifie que chaque fichier XML généré est correctement reconnu par l'analyseur.
+
 Compare le pattern détecté au pattern attendu (déduit du nom de fichier).
 
 Usage: python verify_test_circuits.py
@@ -46,6 +48,11 @@ EXPECTED = {
 
 
 def analyze(path):
+    """@brief Analyse un fichier XML de test et retourne ses composants et patterns.
+
+    @param path Chemin du fichier XML de test à analyser.
+    @return tuple (composants, résultats de détection).
+    """
     comps   = parse_xml(path)
     graph   = build_graph(comps)
     results = match_patterns(graph)
@@ -53,6 +60,10 @@ def analyze(path):
 
 
 def main():
+    """@brief Lance la vérification de tous les circuits XML générés.
+
+    @return None
+    """
     passed = 0
     failed = 0
     for fname, expected in EXPECTED.items():

@@ -1,5 +1,6 @@
 """
-rapport.py — Génération du rapport texte après analyse.
+@file rapport.py
+@brief Génération du rapport texte après analyse.
 """
 from collections import Counter
 
@@ -17,13 +18,13 @@ _PLAFOND_SUPPRIMES = 50
 def generer_rapport(resultats, fichier: str,
                     total_composants: int, tous_refs: list[str] = None) -> str:
     """
-    Génère un rapport texte enrichi à partir des résultats de analyser().
+    @brief Génère un rapport texte enrichi à partir des résultats de analyser().
 
-    Arguments :
-        resultats        : sortie de detecteur.analyser() (ResultatsAnalyse ou list)
-        fichier          : nom du fichier analysé
-        total_composants : nombre total de composants dans le circuit
-        tous_refs        : liste de toutes les références (pour afficher non-classifiés)
+    @param resultats Sortie de detecteur.analyser() (ResultatsAnalyse ou list).
+    @param fichier Nom du fichier analysé.
+    @param total_composants Nombre total de composants dans le circuit.
+    @param tous_refs Liste de toutes les références (pour afficher les non-classifiés).
+    @return str Rapport texte complet (compatible cp1252).
     """
     # Compter par catégorie fonctionnelle
     categories: Counter = Counter()
@@ -160,6 +161,16 @@ def generer_rapport(resultats, fichier: str,
 
 # Alias anglais pour la compatibilité
 def generate(results, input_file, total_components, all_refs=None, format='txt'):
+    """@brief Alias anglais de generer_rapport() avec sélection de format.
+
+    @param results Sortie de detecteur.analyser().
+    @param input_file Nom du fichier analysé.
+    @param total_components Nombre total de composants.
+    @param all_refs Liste de toutes les références (optionnel).
+    @param format Format de sortie ; seul 'txt' est implémenté.
+    @return str Rapport texte.
+    @throws ValueError Si le format demandé n'est pas supporté.
+    """
     if format == 'txt':
         return generer_rapport(results, input_file, total_components, all_refs)
     raise ValueError(f"Format non supporté : {format}")

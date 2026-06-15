@@ -1,4 +1,9 @@
 """
+@file test_reduction_integration.py
+@brief Tests automatises pour test_reduction_integration.
+"""
+
+"""
 Tests d'intégration : la réduction en dipôles équivalents permet de détecter
 des montages dont la contre-réaction / l'entrée est un réseau composite.
 Couvre la directive rouge du document : « créer le dipôle Rf complexe ».
@@ -8,10 +13,15 @@ from circuit_analyzer.detecteur import analyser
 
 
 def _types(resultats):
+    """@brief Helper de test pour types."""
     return {c['circuit_type'] for c in resultats}
 
 
 def test_inverseur_avec_feedback_compose_serie():
+    """@brief Verifie inverseur avec feedback compose serie.
+
+    @return None
+    """
     # Feedback Rf = R1 + R2 (série) entre OUT et IN- ; sans réduction, le nœud
     # MID intermédiaire empêche la détection.
     composants = [
@@ -29,6 +39,10 @@ def test_inverseur_avec_feedback_compose_serie():
 
 
 def test_inverseur_simple_toujours_detecte():
+    """@brief Verifie inverseur simple toujours detecte.
+
+    @return None
+    """
     # Non-régression : un feedback mono-résistance reste détecté à l'identique.
     composants = [
         Composant('U1', 'U', {'IN+': 'GND', 'IN-': 'INM', 'OUT': 'OUT'}),
@@ -41,6 +55,10 @@ def test_inverseur_simple_toujours_detecte():
 
 
 def test_feedback_mixte_R_serie_C_non_classifie():
+    """@brief Verifie feedback mixte R serie C non classifie.
+
+    @return None
+    """
     # Limitation connue : un feedback R série C devient un dipôle de type 'Z'
     # qu'aucun détecteur ne reconnaît. On épingle ce comportement (non-détection
     # volontaire plutôt que faux positif) pour qu'il ne soit pas pris pour un bug.

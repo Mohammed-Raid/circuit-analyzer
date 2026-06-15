@@ -1,3 +1,7 @@
+"""
+@file loader.py
+@brief Chargement, sauvegarde et matching des circuits personnalisés (créés via l'interface).
+"""
 import json
 from pathlib import Path
 from circuit_analyzer.chemins import racine_application
@@ -7,8 +11,12 @@ CUSTOM_CIRCUITS_FILE = 'custom_circuits.json'
 
 
 def chemin_custom_circuits() -> Path:
-    """Chemin par défaut du fichier des circuits personnalisés : à la racine
-    de l'application (à côté de l'exe une fois gelée), pas au CWD."""
+    """@brief Chemin par défaut du fichier des circuits personnalisés.
+
+    À la racine de l'application (à côté de l'exe une fois gelée), pas au CWD.
+
+    @return Path Chemin de custom_circuits.json.
+    """
     return racine_application() / CUSTOM_CIRCUITS_FILE
 
 CONDITION_LABELS = [
@@ -32,6 +40,11 @@ CONDITION_DESCRIPTIONS = {
 
 
 def load_custom_circuits(path=None) -> list[dict]:
+    """@brief Charge les définitions de circuits personnalisés depuis le JSON.
+
+    @param path Chemin du fichier (défaut : chemin_custom_circuits()).
+    @return list[dict] Liste des définitions, ou [] si le fichier est absent.
+    """
     p = Path(path) if path is not None else chemin_custom_circuits()
     if not p.exists():
         return []
@@ -40,26 +53,54 @@ def load_custom_circuits(path=None) -> list[dict]:
 
 
 def save_custom_circuits(circuits: list[dict], path=None) -> None:
+    """@brief Sauvegarde les définitions de circuits personnalisés en JSON (UTF-8).
+
+    @param circuits Liste des définitions à écrire.
+    @param path Chemin du fichier (défaut : chemin_custom_circuits()).
+    @return None
+    """
     p = Path(path) if path is not None else chemin_custom_circuits()
     with open(p, 'w', encoding='utf-8') as f:
         json.dump(circuits, f, ensure_ascii=False, indent=2)
 
 
 def get_custom_patterns(path=None) -> list['CustomCircuitPattern']:
+    """@brief Construit les objets Pattern à partir des définitions personnalisées.
+
+    @param path Chemin du fichier JSON (défaut : chemin_custom_circuits()).
+    @return list[CustomCircuitPattern] Un pattern par définition chargée.
+    """
     return [CustomCircuitPattern(d) for d in load_custom_circuits(path)]
 
 
 class CustomCircuitPattern(Pattern):
+    """@brief Pattern défini par l'utilisateur (types de composants requis + conditions topologiques)."""
+
     def __init__(self, definition: dict):
+        """@brief Construit le pattern depuis sa définition JSON.
+
+        @param definition Dict {'name', 'components', 'conditions'}.
+        """
         self._name = definition['name']
         self._required_types = set(definition.get('components', []))
         self._conditions = list(definition.get('conditions', []))
 
     @property
     def name(self) -> str:
+        """@brief Nom du circuit personnalisé.
+        @return str Nom affiché du pattern.
+        """
         return self._name
 
     def match(self, graph) -> list[dict]:
+        """@brief Recherche le circuit personnalisé dans le graphe.
+
+        Exige que tous les types requis soient présents et que toutes les
+        conditions topologiques soient satisfaites.
+
+        @param graph Le MultiGraph NetworkX du circuit.
+        @return list[dict] Un match {'components', 'nodes'} si tout est satisfait, sinon [].
+        """
         all_comps = graph.graph.get('components', {})
         found = {ref: comp for ref, comp in all_comps.items()
                  if comp.type in self._required_types}
@@ -78,6 +119,13 @@ class CustomCircuitPattern(Pattern):
         return [{'components': list(found.keys()), 'nodes': []}]
 
     def _check_condition(self, condition: str, graph, found: dict) -> bool:
+        """@brief Vérifie une condition topologique sur les composants trouvés.
+
+        @param condition Libellé de la condition (cf. CONDITION_LABELS).
+        @param graph Le MultiGraph NetworkX du circuit.
+        @param found Dict {ref -> Composant} des composants des types requis.
+        @return bool True si la condition est satisfaite ; False si non remplie ou inconnue.
+        """
         if condition == "C connecté à GND":
             for u, v, d in graph.edges(data=True):
                 if d['type'] == 'C' and d['ref'] in found:
