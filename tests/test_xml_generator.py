@@ -208,7 +208,7 @@ def test_relay_survives_roundtrip():
         Component("D1", "D", {"A": "NET_SW", "K": "VCC"}),
     ]
     xml = components_to_xml(comps)
-    assert "<Name>Relais</Name>" in xml
+    assert "<Name>Relais_1FormC</Name>" in xml
     back = _xml_to_components(xml)
     assert any(c.type == "K" for c in back)
 

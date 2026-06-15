@@ -175,6 +175,29 @@ _FORME: Dict[str, dict] = {
         <DataSegment><Spoint><X>40</X><Y>0</Y></Spoint><Epoint><X>100</X><Y>-40</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>40</X><Y>0</Y></Spoint><Epoint><X>100</X><Y>40</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>""",
     },
+    "Relais_1FormC": {
+        "pins": {
+            "A1":  (-64, -44, 0),
+            "A2":  (-64,  44, 1),
+            "COM": ( 48,  44, 2),
+            "NC":  ( 28, -44, 3),
+            "NO":  ( 67, -44, 4),
+        },
+        "polygon": """
+        <DataPolygon><point><X>-80</X><Y>-48</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
+        <DataPolygon><point><X>-80</X><Y>48</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
+        <DataPolygon><point><X>80</X><Y>48</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
+        <DataPolygon><point><X>80</X><Y>-48</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>""",
+        "segment": """
+        <DataSegment><Spoint><X>-48</X><Y>0</Y></Spoint><Epoint><X>-80</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>48</X><Y>0</Y></Spoint><Epoint><X>80</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>21</X><Y>43</Y></Spoint><Epoint><X>80</X><Y>43</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>-21</X><Y>0</Y></Spoint><Epoint><X>-80</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>21</X><Y>-43</Y></Spoint><Epoint><X>80</X><Y>-43</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>-21</X><Y>0</Y></Spoint><Epoint><X>21</X><Y>-43</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>21</X><Y>-43</Y></Spoint><Epoint><X>7</X><Y>-43</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>21</X><Y>-43</Y></Spoint><Epoint><X>21</X><Y>-29</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>""",
+    },
 }
 
 # Alias noms utilisés par lire_xml → noms dans _FORME
@@ -190,6 +213,7 @@ _ALIAS = {
     "VCC": "VCC", "Vcc": "VCC", "+5V": "VCC", "+3.3V": "VCC",
     "Vss": "Vss", "VMOT": "Vss", "VBUS": "Vss",
     "Bobine": "Bobine", "Inductance": "Bobine", "Self": "Bobine",
+    "Relais": "Relais", "Relais_1FormC": "Relais_1FormC",
 }
 
 # type_composant → (nom_forme_BoardSCH, {broche_lib → broche_forme})
@@ -202,7 +226,7 @@ _TYPE_VERS_FORME = {
     "D": ("Diode",      {"A": "A", "K": "K", "1": "A", "2": "K"}),
     "F": ("Fusible",    {"1": "1", "2": "2"}),
     "L": ("Self",       {"1": "1", "2": "2"}),
-    "K": ("Relais",     {"A1": "A1", "A2": "A2", "11": "11", "12": "12", "14": "14"}),
+    "K": ("Relais_1FormC", {"A1": "A1", "A2": "A2", "11": "COM", "12": "NC", "14": "NO"}),
     # Composant inconnu (issu d'un XML avec nom non reconnu) → rendu comme résistance placeholder
     "X": ("Résistance", {"1": "1", "2": "2"}),
 }
@@ -923,8 +947,9 @@ _NOM_VERS_TYPE = {
     # ── MOSFET ───────────────────────────────────────────────────────────────
     'MOSFET':      ('M', {'G': 'G', 'D': 'D', 'S': 'S'}),
     # ── Relais ───────────────────────────────────────────────────────────────
-    'Relais':      ('K', {'A1': 'A1', 'A2': 'A2', '11': '11', '12': '12', '14': '14'}),
-    'Relay':       ('K', {'A1': 'A1', 'A2': 'A2', '11': '11', '12': '12', '14': '14'}),
+    'Relais':        ('K', {'A1': 'A1', 'A2': 'A2', '11': '11', '12': '12', '14': '14'}),
+    'Relais_1FormC': ('K', {'A1': 'A1', 'A2': 'A2', 'COM': '11', 'NC': '12', 'NO': '14'}),
+    'Relay':         ('K', {'A1': 'A1', 'A2': 'A2', '11': '11', '12': '12', '14': '14'}),
     # ── Fusibles ─────────────────────────────────────────────────────────────
     'Fusible':     ('F', {'1': '1', '2': '2'}),
     'Fuse':        ('F', {'1': '1', '2': '2'}),
