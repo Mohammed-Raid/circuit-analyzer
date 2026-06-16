@@ -18,7 +18,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-VERSION = '1.2.0'
+VERSION = '1.3.0'
 
 RACINE = Path(__file__).resolve().parent.parent
 DIST = RACINE / 'dist'
