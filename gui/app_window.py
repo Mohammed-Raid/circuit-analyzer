@@ -38,7 +38,9 @@ class AppWindow:
                                fg_color=SURFACE)
         sidebar.grid(row=0, column=0, sticky="nsew")
         sidebar.grid_propagate(False)
-        sidebar.grid_rowconfigure(4, weight=1)
+        # La zone de navigation (row 3) absorbe l'espace et défile : aucun onglet
+        # n'est jamais coupé, même fenêtre courte ou mise à l'échelle Windows 150 %.
+        sidebar.grid_rowconfigure(3, weight=1)
 
         # Logo block
         logo = ctk.CTkFrame(sidebar, fg_color="transparent")
@@ -63,9 +65,10 @@ class AppWindow:
                      text_color=MUTED).grid(
                          row=2, column=0, sticky="w", padx=22, pady=(0, 6))
 
-        # Nav items
-        nav_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
-        nav_frame.grid(row=3, column=0, sticky="nsew", padx=10)
+        # Nav items — zone défilable pour que les onglets restent toujours
+        # accessibles même si la hauteur disponible est insuffisante.
+        nav_frame = ctk.CTkScrollableFrame(sidebar, fg_color="transparent")
+        nav_frame.grid(row=3, column=0, sticky="nsew", padx=6)
 
         items = [
             ("🔍", "Analyser",    "Lire et analyser"),

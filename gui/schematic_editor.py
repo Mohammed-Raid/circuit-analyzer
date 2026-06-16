@@ -127,9 +127,31 @@ class SchematicEditor(tk.Frame):
     # ── Construction ─────────────────────────────────────────────────────────
 
     def _build(self):
-        palette = tk.Frame(self, bg="#1e293b", width=136)
-        palette.pack(side="left", fill="y")
-        palette.pack_propagate(False)
+        # Palette défilable : conteneur fixe (largeur 152) + canvas interne, pour
+        # que tous les composants/boutons restent accessibles même fenêtre courte
+        # ou avec la mise à l'échelle Windows (125/150 %).
+        palette_outer = tk.Frame(self, bg="#1e293b", width=152)
+        palette_outer.pack(side="left", fill="y")
+        palette_outer.pack_propagate(False)
+
+        pcanvas = tk.Canvas(palette_outer, bg="#1e293b", highlightthickness=0,
+                            bd=0, width=136)
+        psb = tk.Scrollbar(palette_outer, orient="vertical", command=pcanvas.yview)
+        pcanvas.configure(yscrollcommand=psb.set)
+        psb.pack(side="right", fill="y")
+        pcanvas.pack(side="left", fill="both", expand=True)
+
+        palette = tk.Frame(pcanvas, bg="#1e293b")
+        pcanvas.create_window((0, 0), window=palette, anchor="nw", width=136)
+        palette.bind("<Configure>",
+                     lambda _e: pcanvas.configure(scrollregion=pcanvas.bbox("all")))
+        # Molette active seulement quand le curseur est sur la palette (sinon
+        # elle entrerait en conflit avec le défilement du canvas de dessin).
+        pcanvas.bind("<Enter>", lambda _e: pcanvas.bind_all(
+            "<MouseWheel>",
+            lambda ev: pcanvas.yview_scroll(int(-ev.delta / 120), "units")))
+        pcanvas.bind("<Leave>", lambda _e: pcanvas.unbind_all("<MouseWheel>"))
+
         self._build_palette(palette)
 
         wrap = tk.Frame(self, bg="#0f172a")
