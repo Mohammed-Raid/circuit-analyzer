@@ -25,17 +25,33 @@ CONDITION_LABELS = [
     "R vers alimentation",
     "Émetteur/Source à GND",
     "Feedback OUT→IN-",
+    "Au moins 2 résistances",
+    "Au moins 2 condensateurs",
+    "R et C connectés au même nœud signal",
+    "Transistor émetteur à GND",
+    "Diode cathode sur alimentation",
+    "Pas de transistor dans le circuit",
+    "Self (inductance) présente",
+    "Relais présent",
 ]
 
 # Explication courte affichée sous chaque case dans l'onglet Circuits : les
 # libellés ci-dessus sont trop laconiques pour un non-initié. Toute entrée de
 # CONDITION_LABELS doit avoir sa description ici (garanti par un test).
 CONDITION_DESCRIPTIONS = {
-    "C connecté à GND":       "un condensateur du circuit touche la masse",
-    "R en série":             "une résistance partage un nœud avec un autre composant",
-    "R vers alimentation":    "une résistance est reliée à un rail d'alimentation",
-    "Émetteur/Source à GND":  "l'émetteur (BJT) ou la source (MOSFET) est à la masse",
-    "Feedback OUT→IN-":       "la sortie de l'AOP reboucle sur l'entrée inverseuse",
+    "C connecté à GND":                   "un condensateur du circuit touche la masse",
+    "R en série":                         "une résistance partage un nœud avec un autre composant",
+    "R vers alimentation":                "une résistance est reliée à un rail d'alimentation",
+    "Émetteur/Source à GND":              "l'émetteur (BJT) ou la source (MOSFET) est à la masse",
+    "Feedback OUT→IN-":                   "la sortie de l'AOP reboucle sur l'entrée inverseuse",
+    "Au moins 2 résistances":             "le circuit contient au minimum deux résistances",
+    "Au moins 2 condensateurs":           "le circuit contient au minimum deux condensateurs",
+    "R et C connectés au même nœud signal": "une résistance et un condensateur partagent un nœud non-rail",
+    "Transistor émetteur à GND":          "le BJT a son émetteur directement à la masse",
+    "Diode cathode sur alimentation":     "la cathode de la diode est reliée à un rail positif (VCC)",
+    "Pas de transistor dans le circuit":  "aucun BJT ni MOSFET n'est présent dans les composants requis",
+    "Self (inductance) présente":         "une self (type L) fait partie du circuit",
+    "Relais présent":                     "un relais électromécanique (type K) est dans le circuit",
 }
 
 
@@ -173,6 +189,48 @@ class CustomCircuitPattern(Pattern):
                     if r_nets & set(o_comp.pins.values()):
                         return True
             return False
+
+        if condition == "Au moins 2 résistances":
+            return sum(1 for comp in found.values() if comp.type == 'R') >= 2
+
+        if condition == "Au moins 2 condensateurs":
+            return sum(1 for comp in found.values() if comp.type == 'C') >= 2
+
+        if condition == "R et C connectés au même nœud signal":
+            r_nets = set()
+            c_nets = set()
+            for comp in found.values():
+                nets = {n for n in comp.pins.values() if n and not is_gnd(n) and not is_power(n)}
+                if comp.type == 'R':
+                    r_nets |= nets
+                elif comp.type == 'C':
+                    c_nets |= nets
+            return bool(r_nets & c_nets)
+
+        if condition == "Transistor émetteur à GND":
+            for comp in found.values():
+                if comp.type == 'Q':
+                    e = comp.pins.get('E', '')
+                    if e and is_gnd(e):
+                        return True
+            return False
+
+        if condition == "Diode cathode sur alimentation":
+            for comp in found.values():
+                if comp.type == 'D':
+                    k = comp.pins.get('K', '')
+                    if k and is_power(k):
+                        return True
+            return False
+
+        if condition == "Pas de transistor dans le circuit":
+            return not any(comp.type in ('Q', 'M') for comp in found.values())
+
+        if condition == "Self (inductance) présente":
+            return any(comp.type == 'L' for comp in found.values())
+
+        if condition == "Relais présent":
+            return any(comp.type == 'K' for comp in found.values())
 
         # Unknown condition — fail safe rather than silently accepting
         return False

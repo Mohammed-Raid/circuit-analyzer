@@ -10,6 +10,7 @@ from circuit_analyzer.composant import lire_netlist as parse_file, construire_gr
 from circuit_analyzer.xml import lire_xml as parse_xml, generer_xml as components_to_xml
 from circuit_analyzer.detecteur import analyser as match_patterns
 from circuit_analyzer.rapport import generate
+from circuit_analyzer.drc import verifier_drc
 from gui.circuit_viewer import show_circuit
 
 from gui.theme import BG, CARD, CARD2, BORDER, TEXT, MUTED, BLUE
@@ -54,12 +55,14 @@ class TabAnalyze:
         """
         self.frame = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
         self._file_path = tk.StringVar()
-        self._report_text = ""
-        self._results = []
-        self._all_refs = []
-        self._unclassified = []
-        self._comp_info = {}
-        self._comps = []          # parsed Component objects (for XML export)
+        self._report_text    = ""
+        self._results        = []
+        self._all_refs       = []
+        self._unclassified   = []
+        self._comp_info      = {}
+        self._comps          = []
+        self._graph          = None
+        self._drc_violations = []
         self._build()
 
     def _build(self):
@@ -201,6 +204,15 @@ class TabAnalyze:
                       fg_color="#1e293b", hover_color="#263347",
                       border_width=1, border_color=BORDER,
                       command=self._export_xml).pack(side="left", padx=8, pady=8)
+        self._btn_reseau = ctk.CTkButton(
+            bar_inner, text="🕸  Vue réseau",
+            width=140, height=34, corner_radius=8,
+            font=ctk.CTkFont("Segoe UI", 11),
+            fg_color="#1e293b", hover_color="#263347",
+            border_width=1, border_color=BORDER,
+            state="disabled",
+            command=self._open_network_viewer)
+        self._btn_reseau.pack(side="left", padx=8, pady=8)
 
     # ── Actions ──────────────────────────────────────────────────────────────
 
@@ -256,11 +268,14 @@ class TabAnalyze:
             results  = match_patterns(graph)
             all_refs = [c.ref for c in comps]
             report   = generate(results, path, len(comps), all_refs=all_refs)
+            drc      = verifier_drc(results, graph)
 
-            self._report_text = report
-            self._results     = results
-            self._all_refs    = all_refs
-            self._comps       = comps
+            self._report_text    = report
+            self._results        = results
+            self._all_refs       = all_refs
+            self._comps          = comps
+            self._graph          = graph
+            self._drc_violations = drc
 
             classified  = {ref for r in results for ref in r["components"]}
             unclassified = [r for r in all_refs if r not in classified]
@@ -276,6 +291,7 @@ class TabAnalyze:
 
             self._stats_row.pack(fill="x", padx=20, before=self._body)
             self._scroll_outer.grid()
+            self._btn_reseau.configure(state="normal")
             # Build comp_info dict for the schematic viewer
             self._comp_info = {
                 c.ref: {"type": c.type, "value": c.value, "pins": c.pins}
@@ -419,6 +435,9 @@ class TabAnalyze:
 
         # Unclassified section
         self._render_unclassified(unclassified)
+
+        # DRC violations section
+        self._render_drc(self._drc_violations)
 
     def _render_executive_summary(self, results: list, unclassified: list):
         """@brief Affiche le résumé exécutif en tête des résultats.
@@ -576,6 +595,60 @@ class TabAnalyze:
                                  fg_color="#7f1d1d",
                                  corner_radius=4).pack(
                                      side="left", padx=3)
+
+    def _render_drc(self, violations: list):
+        """@brief Affiche la section DRC (règles de conception).
+
+        @param violations Liste de violations {'rule', 'severity', 'message', 'refs'}.
+        @return None
+        """
+        if not violations:
+            return
+
+        hdr = ctk.CTkFrame(self._results_view, fg_color="transparent")
+        hdr.pack(fill="x", padx=16, pady=(16, 2))
+        ctk.CTkLabel(hdr, text="RÈGLES DE CONCEPTION",
+                     font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                     text_color="#f97316").pack(side="left")
+        ctk.CTkFrame(hdr, height=1, fg_color="#7c2d12").pack(
+            side="left", fill="x", expand=True, padx=10)
+
+        for v in violations:
+            is_warn = v.get("severity") == "warning"
+            bg      = "#1c0f06" if is_warn else "#06101c"
+            border  = "#7c2d12" if is_warn else "#1e3a5f"
+            badge   = "#f97316" if is_warn else "#60a5fa"
+            label   = "⚠ AVERTISSEMENT" if is_warn else "ℹ INFO"
+
+            card = ctk.CTkFrame(self._results_view,
+                                fg_color=bg,
+                                corner_radius=10,
+                                border_width=1,
+                                border_color=border)
+            card.pack(fill="x", padx=16, pady=3)
+
+            top = ctk.CTkFrame(card, fg_color="transparent")
+            top.pack(fill="x", padx=12, pady=(8, 2))
+            ctk.CTkLabel(top, text=label,
+                         font=ctk.CTkFont("Segoe UI", 9, "bold"),
+                         text_color=badge).pack(side="left")
+            ctk.CTkLabel(top, text=v.get("rule", ""),
+                         font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                         text_color="#e2e8f0").pack(side="left", padx=8)
+
+            ctk.CTkLabel(card, text=v.get("message", ""),
+                         font=ctk.CTkFont("Segoe UI", 10),
+                         text_color="#94a3b8",
+                         wraplength=640,
+                         justify="left").pack(
+                             anchor="w", padx=12, pady=(2, 8))
+
+    def _open_network_viewer(self):
+        """@brief Ouvre la fenêtre de visualisation du réseau de composants."""
+        if self._graph is None:
+            return
+        from gui.network_viewer import NetworkGraphViewer
+        NetworkGraphViewer(self._graph, self._results)
 
 
 # ── Helper widgets ────────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ from circuit_analyzer.composant import lire_netlist as parse_file, construire_gr
 from circuit_analyzer.xml import lire_xml as parse_xml
 from circuit_analyzer.detecteur import analyser as match_patterns
 from circuit_analyzer.rapport import generate
+from circuit_analyzer.drc import verifier_drc
 
 # Ensure UTF-8 output on Windows
 if sys.platform == 'win32':
@@ -50,7 +51,15 @@ def main():
     all_refs = [c.ref for c in components]
     graph = build_graph(components)
     results = match_patterns(graph)
+    violations = verifier_drc(results, graph)
     report = generate(results, args.input, len(components), all_refs=all_refs, format=args.format)
+
+    if violations:
+        lines = ["\n\n── RÈGLES DE CONCEPTION (DRC) ──"]
+        for v in violations:
+            sev = "⚠" if v["severity"] == "warning" else "ℹ"
+            lines.append(f"  {sev} [{v['rule']}] {v['message']}")
+        report += "\n".join(lines)
 
     output_path = Path(args.output)
     output_path.write_text(report, encoding='utf-8')
