@@ -447,3 +447,60 @@ def test_components_to_xml_places_power_symbols_inside_related_group():
     for item in power_items:
         y = int(float(item.find("CtrIem").findtext("Y")))
         assert 120 <= y <= 570
+
+
+# ── Régression : symbole inductance = Self (pas Bobine) ───────────────────────
+
+def test_inductance_genere_self_pas_bobine():
+    """@brief Régression : le générateur doit écrire <Name>Self</Name> pour une inductance.
+
+    Si ce test casse, c'est qu'un commit a réintroduit 'Bobine' à la place de 'Self'
+    dans _TYPE_VERS_FORME ou _FORME — réouvrir circuit_analyzer/xml.py et corriger.
+
+    @return None
+    """
+    import re
+    comps = [Component("L1", "L", {"1": "NET_A", "2": "NET_B"}, "10uH")]
+    xml = components_to_xml(comps)
+    noms = re.findall(r"<Name>(.*?)</Name>", xml)
+    assert "Self" in noms, f"Attendu 'Self' dans les noms XML, obtenu : {noms}"
+    assert "Bobine" not in noms, (
+        "Régression détectée : 'Bobine' ne doit pas apparaître dans le XML généré. "
+        "ERetroDesign afficherait le mauvais symbole (cercles verts)."
+    )
+
+
+def test_alias_bobine_pointe_vers_self():
+    """@brief Régression : _ALIAS['Bobine'] et _ALIAS['Self'] doivent pointer sur 'Self'.
+
+    Garantit que les anciens fichiers XML lus avec <Name>Bobine</Name> utilisent
+    le bon template interne 'Self' (arcs rouges) et non l'ancien 'Bobine' (cercles verts).
+
+    @return None
+    """
+    from circuit_analyzer.xml import _ALIAS, _FORME
+    assert _ALIAS.get("Self") == "Self", "_ALIAS['Self'] doit être 'Self'"
+    assert _ALIAS.get("Bobine") == "Self", "_ALIAS['Bobine'] doit pointer sur 'Self'"
+    assert "Self" in _FORME, "Le template 'Self' doit exister dans _FORME"
+    assert "Bobine" not in _FORME, (
+        "'Bobine' ne doit plus être une clé dans _FORME — renommer en 'Self'"
+    )
+
+
+def test_circuits_industriels_sans_bobine():
+    """@brief Régression : aucun fichier XML de circuits_industriels ne doit avoir <Name>Bobine</Name>.
+
+    @return None
+    """
+    from pathlib import Path
+    import re
+    dossier = Path(__file__).resolve().parent.parent / "circuits_industriels"
+    fichiers_avec_bobine = []
+    for f in sorted(dossier.glob("*.xml")):
+        contenu = f.read_text(encoding="utf-8", errors="replace")
+        if re.search(r"<Name>Bobine</Name>", contenu):
+            fichiers_avec_bobine.append(f.name)
+    assert not fichiers_avec_bobine, (
+        f"Fichiers XML avec <Name>Bobine</Name> (doit être <Name>Self</Name>) : "
+        f"{fichiers_avec_bobine}"
+    )
