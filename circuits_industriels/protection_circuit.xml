@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <BoardSCH xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <CmpntL>
     <DataItem>
@@ -829,7 +829,7 @@
       <Visible>true</Visible><Top>true</Top><Begrp>true</Begrp><freeze>false</freeze>
     </DataItem>
     <DataItem>
-      <Name>Bobine</Name><Group /><reference /><value>10uH</value>
+      <Name>Self</Name><Group /><reference /><value>10uH</value>
       <datapolygon></datapolygon><datasegment>
         <DataSegment><Spoint><X>-48</X><Y>0</Y></Spoint><Epoint><X>-80</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>48</X><Y>0</Y></Spoint><Epoint><X>80</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment><dataarc>
@@ -935,7 +935,7 @@
       <Visible>true</Visible><Top>true</Top><Begrp>true</Begrp><freeze>false</freeze>
     </DataItem>
     <DataItem>
-      <Name>Bobine</Name><Group /><reference /><value>100uH</value>
+      <Name>Self</Name><Group /><reference /><value>100uH</value>
       <datapolygon></datapolygon><datasegment>
         <DataSegment><Spoint><X>-48</X><Y>0</Y></Spoint><Epoint><X>-80</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
         <DataSegment><Spoint><X>48</X><Y>0</Y></Spoint><Epoint><X>80</X><Y>0</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment><dataarc>

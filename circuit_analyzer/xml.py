@@ -162,7 +162,7 @@ _FORME: Dict[str, dict] = {
         "segment": """
         <DataSegment><Spoint><X>0</X><Y>32</Y></Spoint><Epoint><X>0</X><Y>16</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>""",
     },
-    "Bobine": {
+    "Self": {
         "pins": {"1": (-80, 0, 0), "2": (80, 0, 1)},
         "polygon": "",
         "segment": """
@@ -225,7 +225,7 @@ _ALIAS = {
     "GND": "GND", "AGND": "AGND", "PGND": "GND", "DGND": "GND",
     "VCC": "VCC", "Vcc": "VCC", "+5V": "VCC", "+3.3V": "VCC",
     "Vss": "Vss", "VMOT": "Vss", "VBUS": "Vss",
-    "Bobine": "Bobine", "Inductance": "Bobine", "Self": "Bobine",
+    "Self": "Self", "Bobine": "Self", "Inductance": "Self",
     "Relais": "Relais", "Relais_1FormC": "Relais_1FormC",
     "2N2B": "2N2B",
 }
