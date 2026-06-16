@@ -846,26 +846,23 @@ def _build_executive_summary(results: list, total: int,
 
 
 def _find_demo_file(root=None) -> str:
-    """@brief Trouve le fichier de demo prioritaire pour la presentation.
+    """@brief Choisit un fichier de demo au hasard dans circuits_industriels/.
 
     @param root Racine du projet (optionnelle, pour les tests).
-    @return str Chemin du fichier trouve, ou chaine vide.
+    @return str Chemin du fichier choisi, ou chaine vide.
     """
+    import random as _random
     if root is not None:
         base = Path(root)
     else:
         from circuit_analyzer.chemins import racine_application
         base = racine_application()
-    candidates = [
-        base / "circuits_industriels" / "pid_controller.xml",
-        base / "circuits_industriels" / "motor_control.xml",
-        base / "circuits_industriels" / "smps_full.xml",
-        base / "exemples" / "test_circuit_complet.txt",
-    ]
-    for path in candidates:
-        if path.exists():
-            return str(path)
-    return ""
+    dossier = base / "circuits_industriels"
+    fichiers = sorted(dossier.glob("*.xml")) if dossier.exists() else []
+    if fichiers:
+        return str(_random.choice(fichiers))
+    fallback = base / "exemples" / "test_circuit_complet.txt"
+    return str(fallback) if fallback.exists() else ""
 
 
 def _build_group_preview(results: list, limit: int = 9) -> list:

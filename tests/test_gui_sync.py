@@ -97,16 +97,19 @@ def test_executive_summary_handles_no_detection():
     assert summary["review"] == "4 composants restent non classifiés."
 
 
-def test_find_demo_file_prefers_pid_controller(tmp_path):
-    """@brief Vérifie que le démo par défaut est pid_controller.xml.
+def test_find_demo_file_picks_random_xml(tmp_path):
+    """@brief Vérifie que _find_demo_file retourne un XML du dossier circuits_industriels.
 
     @return None
     """
-    demo = tmp_path / "circuits_industriels" / "pid_controller.xml"
-    demo.parent.mkdir()
-    demo.write_text("<BoardSCH />", encoding="utf-8")
+    ci = tmp_path / "circuits_industriels"
+    ci.mkdir()
+    fichiers = ["relay_driver.xml", "pid_controller.xml", "buck_converter.xml"]
+    for nom in fichiers:
+        (ci / nom).write_text("<BoardSCH />", encoding="utf-8")
 
-    assert _find_demo_file(tmp_path) == str(demo)
+    result = _find_demo_file(tmp_path)
+    assert result in [str(ci / nom) for nom in fichiers]
 
 
 def test_build_group_preview_keeps_circuit_and_satellite_refs():
