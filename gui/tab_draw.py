@@ -39,7 +39,7 @@ class TabDraw:
                      font=ctk.CTkFont("Segoe UI", 18, "bold"),
                      text_color=TEXT).pack(side="left", pady=18)
         ctk.CTkLabel(hinner,
-                     text="Palette → clic pour placer  ·  Clic sur un pin → fil  ·  Double-clic → modifier",
+                     text="Palette → clic pour placer  ·  Clic sur un pin → fil  ·  Broche rouge = non câblée  ·  Double-clic → modifier",
                      font=ctk.CTkFont("Segoe UI", 11),
                      text_color=MUTED).pack(side="left", padx=14, pady=18)
 

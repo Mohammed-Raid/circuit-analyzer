@@ -37,6 +37,7 @@ COMP_DEFS: dict = {
 
 _PIN_R = 5     # rayon visuel pin
 _HIT_R = 12   # rayon détection clic sur pin
+_PIN_OFF = "#ef4444"   # contour des broches NON connectées (rouge = à câbler)
 
 
 def _rotate_pin(dx: int, dy: int, rotation: int) -> tuple[int, int]:
@@ -378,8 +379,9 @@ class SchematicEditor(tk.Frame):
                                      text="GND", fill=color,
                                      font=("Consolas", max(7, int(8*z))), tags=tag)
             # pin circle
+            pfill, pout = self._pin_style(comp.id, "1", color)
             self._canvas.create_oval(spx-pr, spy-pr, spx+pr, spy+pr,
-                                     fill="#0f172a", outline=color,
+                                     fill=pfill, outline=pout,
                                      width=max(1, int(2*z)),
                                      tags=(tag, f"pin_{comp.id}_1"))
 
@@ -404,8 +406,9 @@ class SchematicEditor(tk.Frame):
             self._canvas.create_text(scx+tx*z, scy+ty*z,
                                      text="VCC", fill=color,
                                      font=("Consolas", max(7, int(8*z))), tags=tag)
+            pfill, pout = self._pin_style(comp.id, "1", color)
             self._canvas.create_oval(spx-pr, spy-pr, spx+pr, spy+pr,
-                                     fill="#0f172a", outline=color,
+                                     fill=pfill, outline=pout,
                                      width=max(1, int(2*z)),
                                      tags=(tag, f"pin_{comp.id}_1"))
 
@@ -438,8 +441,9 @@ class SchematicEditor(tk.Frame):
                 rdx, rdy = _rotate_pin(pdx, pdy, rot)
                 spx = scx + rdx * z
                 spy = scy + rdy * z
+                pfill, pout = self._pin_style(comp.id, pn, color)
                 self._canvas.create_oval(spx-pr, spy-pr, spx+pr, spy+pr,
-                                         fill="#0f172a", outline=color,
+                                         fill=pfill, outline=pout,
                                          width=max(1, int(2*z)),
                                          tags=(tag, f"pin_{comp.id}_{pn}"))
                 if nb_pins > 2:
@@ -476,6 +480,20 @@ class SchematicEditor(tk.Frame):
         for w in self._wires:
             if w.from_comp_id == comp_id or w.to_comp_id == comp_id:
                 self._draw_wire(w)
+
+    def _pin_connected(self, comp_id: int, pin: str) -> bool:
+        """@brief Vrai si au moins un fil est rattaché à cette broche."""
+        return any(
+            (w.from_comp_id == comp_id and w.from_pin == pin) or
+            (w.to_comp_id == comp_id and w.to_pin == pin)
+            for w in self._wires
+        )
+
+    def _pin_style(self, comp_id: int, pin: str, color: str) -> tuple[str, str]:
+        """@brief (fill, outline) d'une broche : pleine si connectée, rouge creuse sinon."""
+        if self._pin_connected(comp_id, pin):
+            return color, color
+        return "#0f172a", _PIN_OFF
 
     # ── Hit-testing (en coordonnées monde) ───────────────────────────────────
 
@@ -663,6 +681,11 @@ class SchematicEditor(tk.Frame):
         self._next_id += 1
         self._wires.append(wire)
         self._draw_wire(wire)
+        # Rafraîchit les broches des 2 composants (passent de « rouge » à pleines)
+        for cid in (src_cid, dst_cid):
+            if cid in self._comps:
+                self._draw_comp(self._comps[cid])
+                self._redraw_wires_of(cid)
         self._cancel_wiring()
 
     def _cancel_wiring(self):
@@ -768,12 +791,19 @@ class SchematicEditor(tk.Frame):
         if self._selected_id == comp_id:
             self._canvas.delete(f"sel_{comp_id}")
             self._selected_id = None
+        # Composants voisins dont une broche redeviendra non connectée.
+        voisins = set()
         for w in [w for w in self._wires
                   if w.from_comp_id == comp_id or w.to_comp_id == comp_id]:
+            voisins.add(w.to_comp_id if w.from_comp_id == comp_id else w.from_comp_id)
             self._canvas.delete(f"wire_{w.id}")
             self._wires.remove(w)
         self._canvas.delete(f"comp_{comp_id}")
         self._comps.pop(comp_id, None)
+        for cid in voisins:
+            if cid in self._comps:
+                self._draw_comp(self._comps[cid])
+                self._redraw_wires_of(cid)
 
     def _delete_wire(self, wire_id: int):
         wire = next((w for w in self._wires if w.id == wire_id), None)
@@ -781,6 +811,11 @@ class SchematicEditor(tk.Frame):
             self._push_undo()
             self._canvas.delete(f"wire_{wire_id}")
             self._wires.remove(wire)
+            # Broches des 2 extrémités : peuvent redevenir non connectées (rouge).
+            for cid in (wire.from_comp_id, wire.to_comp_id):
+                if cid in self._comps:
+                    self._draw_comp(self._comps[cid])
+                    self._redraw_wires_of(cid)
 
     def clear_all(self):
         from tkinter import messagebox
