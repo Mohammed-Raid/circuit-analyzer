@@ -56,7 +56,7 @@ class TabDraw:
         bar_inner.pack(fill="both", padx=28)
 
         ctk.CTkLabel(bar_inner,
-                     text="Suppr = effacer composant sélectionné  ·  Échap = annuler  ·  Clic droit = menu",
+                     text="Suppr = effacer  ·  Ctrl+Z = annuler  ·  Échap = sortir du mode  ·  Clic droit = menu",
                      font=ctk.CTkFont("Segoe UI", 10),
                      text_color=MUTED).pack(side="left", pady=10)
 

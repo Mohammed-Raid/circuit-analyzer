@@ -2,6 +2,7 @@
 @file schematic_editor.py
 @brief Éditeur de schéma interactif : palette, canvas zoomable, placement, rotation, câblage.
 """
+import copy
 import math
 import tkinter as tk
 from dataclasses import dataclass, field
@@ -95,11 +96,50 @@ class SchematicEditor(tk.Frame):
 
         # drag
         self._drag_comp_id: Optional[int] = None
+        self._drag_moved:   bool          = False
+
+        # pile d'annulation (Ctrl+Z) : instantanés de l'état avant mutation
+        self._undo_stack: list = []
+        self._UNDO_MAX = 50
 
         # boutons palette (pour feedback visuel actif/inactif)
         self._palette_btns: dict[str, tk.Button] = {}
 
         self._build()
+
+    # ── Annulation (Ctrl+Z) ───────────────────────────────────────────────────
+
+    def _push_undo(self):
+        """@brief Empile un instantané de l'état courant avant une mutation."""
+        snap = (
+            copy.deepcopy(self._comps),
+            copy.deepcopy(self._wires),
+            dict(self._counters),
+            self._next_id,
+        )
+        self._undo_stack.append(snap)
+        if len(self._undo_stack) > self._UNDO_MAX:
+            self._undo_stack.pop(0)
+
+    def _undo(self, _=None):
+        """@brief Restaure le dernier instantané empilé (Ctrl+Z)."""
+        if not self._undo_stack:
+            self._set_status("Rien à\nannuler")
+            return
+        comps, wires, counters, next_id = self._undo_stack.pop()
+        self._comps    = comps
+        self._wires    = wires
+        self._counters = counters
+        self._next_id  = next_id
+        # Réinitialise les états transitoires qui pourraient pointer vers des
+        # éléments disparus.
+        self._selected_id  = None
+        self._drag_comp_id = None
+        self._drag_moved   = False
+        if self._state == "wiring":
+            self._cancel_wiring()
+        self._redraw_all()
+        self._set_status("Annulé ↶")
 
     # ── Système de coordonnées ────────────────────────────────────────────────
 
@@ -206,7 +246,7 @@ class SchematicEditor(tk.Frame):
 
         self._status_lbl = tk.Label(
             parent,
-            text="Clic palette\npour placer\nR = rotation\nCtrl+molette zoom",
+            text="Clic palette\npour placer\nR = rotation\nCtrl+Z = annuler\nCtrl+molette zoom",
             fg="#475569", bg="#1e293b",
             font=("Segoe UI", 7), justify="center",
         )
@@ -245,6 +285,8 @@ class SchematicEditor(tk.Frame):
         c.bind("<Escape>",           self._on_escape)
         c.bind("<r>",                self._on_rotate)
         c.bind("<R>",                self._on_rotate)
+        c.bind("<Control-z>",        self._undo)
+        c.bind("<Control-Z>",        self._undo)
         c.bind("<Control-MouseWheel>", self._on_zoom)
         c.bind("<MouseWheel>",       lambda e: c.yview_scroll(int(-e.delta / 120), "units"))
         c.bind("<Shift-MouseWheel>", lambda e: c.xview_scroll(int(-e.delta / 120), "units"))
@@ -286,6 +328,7 @@ class SchematicEditor(tk.Frame):
 
     def _place_comp(self, wx: int, wy: int):
         """Place un composant en coordonnées monde — reste en mode placing."""
+        self._push_undo()
         t    = self._place_type
         defn = COMP_DEFS[t]
         n    = self._counters.get(t, 0) + 1
@@ -506,6 +549,7 @@ class SchematicEditor(tk.Frame):
         if comp_id:
             self._select(comp_id)
             self._drag_comp_id = comp_id
+            self._drag_moved   = False
         else:
             self._deselect()
 
@@ -515,6 +559,11 @@ class SchematicEditor(tk.Frame):
             swx, swy = self._snap(wx, wy)
             comp = self._comps.get(self._drag_comp_id)
             if comp and (comp.cx != swx or comp.cy != swy):
+                # Empile l'annulation une seule fois, au premier déplacement réel
+                # (un simple clic de sélection ne crée pas d'instantané).
+                if not self._drag_moved:
+                    self._push_undo()
+                    self._drag_moved = True
                 comp.cx, comp.cy = swx, swy
                 self._draw_comp(comp)
                 self._redraw_wires_of(self._drag_comp_id)
@@ -523,6 +572,7 @@ class SchematicEditor(tk.Frame):
 
     def _on_b1_release(self, _=None):
         self._drag_comp_id = None
+        self._drag_moved   = False
 
     def _on_motion(self, event):
         if self._state == "wiring" and self._wire_src:
@@ -608,6 +658,7 @@ class SchematicEditor(tk.Frame):
                     {w.to_comp_id, w.to_pin} == {dst_cid, dst_pin}):
                 self._cancel_wiring()
                 return
+        self._push_undo()
         wire = WireInst(self._next_id, src_cid, src_pin, dst_cid, dst_pin)
         self._next_id += 1
         self._wires.append(wire)
@@ -653,6 +704,7 @@ class SchematicEditor(tk.Frame):
     def _rotate_comp(self, comp_id: int):
         comp = self._comps.get(comp_id)
         if comp and comp.comp_type not in ("GND", "VCC"):
+            self._push_undo()
             comp.rotation = (comp.rotation + 90) % 360
             self._draw_comp(comp)
             self._redraw_wires_of(comp_id)
@@ -690,6 +742,9 @@ class SchematicEditor(tk.Frame):
         def _save():
             r = vars_list[0].get().strip()
             v = vars_list[1].get().strip()
+            # N'empile une annulation que si quelque chose change vraiment.
+            if (r and r != comp.ref) or (v and v != comp.value):
+                self._push_undo()
             if r: comp.ref   = r
             if v: comp.value = v
             self._draw_comp(comp)
@@ -707,6 +762,9 @@ class SchematicEditor(tk.Frame):
             self._delete_comp(self._selected_id)
 
     def _delete_comp(self, comp_id: int):
+        if comp_id not in self._comps:
+            return
+        self._push_undo()
         if self._selected_id == comp_id:
             self._canvas.delete(f"sel_{comp_id}")
             self._selected_id = None
@@ -720,6 +778,7 @@ class SchematicEditor(tk.Frame):
     def _delete_wire(self, wire_id: int):
         wire = next((w for w in self._wires if w.id == wire_id), None)
         if wire:
+            self._push_undo()
             self._canvas.delete(f"wire_{wire_id}")
             self._wires.remove(wire)
 
@@ -728,6 +787,9 @@ class SchematicEditor(tk.Frame):
         if (self._comps or self._wires) and not messagebox.askyesno(
                 "Effacer", "Effacer tout le schéma ?", parent=self):
             return
+        # Empile avant d'effacer pour que Ctrl+Z restaure le schéma.
+        if self._comps or self._wires:
+            self._push_undo()
         self._canvas.delete("all")
         self._comps.clear()
         self._wires.clear()
