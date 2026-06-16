@@ -631,7 +631,7 @@ class _EmptyState(ctk.CTkFrame):
                      font=ctk.CTkFont("Segoe UI", 18, "bold"),
                      text_color="#334155").pack()
         ctk.CTkLabel(self,
-                     text="Cliquez sur Parcourir pour charger\nun fichier netlist .txt ou schéma .xml",
+                     text="Cliquez sur Parcourir pour charger\nun fichier netlist .txt / .cir / .sp / .net / .xml",
                      font=ctk.CTkFont("Segoe UI", 13),
                      text_color=MUTED, justify="center").pack(pady=8)
 
@@ -857,9 +857,10 @@ def _find_demo_file(root=None) -> str:
         from circuit_analyzer.chemins import racine_application
         base = racine_application()
     candidates = [
-        base / "circuits_industriels" / "relay_driver.xml",
-        base / "exemples" / "test_circuit_complet.txt",
+        base / "circuits_industriels" / "pid_controller.xml",
+        base / "circuits_industriels" / "motor_control.xml",
         base / "circuits_industriels" / "smps_full.xml",
+        base / "exemples" / "test_circuit_complet.txt",
     ]
     for path in candidates:
         if path.exists():

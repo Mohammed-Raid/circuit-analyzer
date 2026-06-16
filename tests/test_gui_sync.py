@@ -97,12 +97,12 @@ def test_executive_summary_handles_no_detection():
     assert summary["review"] == "4 composants restent non classifiés."
 
 
-def test_find_demo_file_prefers_industrial_relay_driver(tmp_path):
-    """@brief Vérifie le fichier de démonstration privilégié.
+def test_find_demo_file_prefers_pid_controller(tmp_path):
+    """@brief Vérifie que le démo par défaut est pid_controller.xml.
 
     @return None
     """
-    demo = tmp_path / "circuits_industriels" / "relay_driver.xml"
+    demo = tmp_path / "circuits_industriels" / "pid_controller.xml"
     demo.parent.mkdir()
     demo.write_text("<BoardSCH />", encoding="utf-8")
 
