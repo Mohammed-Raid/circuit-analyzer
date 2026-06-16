@@ -89,6 +89,7 @@ class NetworkGraphViewer(ctk.CTkToplevel):
             import networkx as nx
         except ImportError:
             self._positions: dict = {}
+            self._comp_edges: list = []
             return
 
         composants = self._graph.graph.get('components', {})
@@ -113,6 +114,23 @@ class NetworkGraphViewer(ctk.CTkToplevel):
 
         pos = nx.spring_layout(G, seed=42, k=2.0 / math.sqrt(max(len(G), 1)))
         self._positions = pos   # {ref: array([x, y])} in [-1, 1]
+
+        # Précalcule les arêtes composant↔composant (ref1, ref2, net) une seule
+        # fois — _draw() est rappelé à chaque pan/zoom/resize, on évite ainsi de
+        # refaire le balayage O(E²) du graphe à chaque image.
+        self._comp_edges: list = []
+        seen_edges: set = set()
+        for u, v, d in self._graph.edges(data=True):
+            ref = d.get('ref')
+            if ref is None:
+                continue
+            for u2, v2, d2 in self._graph.edges(u, data=True):
+                ref2 = d2.get('ref')
+                if ref2 and ref2 != ref:
+                    key = tuple(sorted([ref, ref2]))
+                    if key not in seen_edges:
+                        seen_edges.add(key)
+                        self._comp_edges.append((ref, ref2, u))
 
         # Normalize to [0.1, 0.9]
         if pos:
@@ -219,27 +237,18 @@ class NetworkGraphViewer(ctk.CTkToplevel):
                 fill="#ef4444", font=("Segoe UI", 13))
             return
 
-        # ── Arêtes (nets partagés) ────────────────────────────────────────────
-        drawn_pairs: set = set()
-        net_labels: dict = {}   # (ref1,ref2) -> net name
-        for u, v, d in self._graph.edges(data=True):
-            ref = d.get('ref')
-            if ref is None:
+        # ── Arêtes (nets partagés) — depuis la liste précalculée ──────────────
+        for ref, ref2, net in getattr(self, '_comp_edges', []):
+            if ref not in self._positions or ref2 not in self._positions:
                 continue
-            for u2, v2, d2 in self._graph.edges(u, data=True):
-                ref2 = d2.get('ref')
-                if ref2 and ref2 != ref:
-                    key = tuple(sorted([ref, ref2]))
-                    if key not in drawn_pairs and ref in self._positions and ref2 in self._positions:
-                        drawn_pairs.add(key)
-                        x1, y1 = self._world_to_screen(*self._positions[ref])
-                        x2, y2 = self._world_to_screen(*self._positions[ref2])
-                        self._canvas.create_line(x1, y1, x2, y2,
-                                                 fill=_EDGE_COLOR, width=1.5, tags="edge")
-                        mx, my = (x1 + x2) / 2, (y1 + y2) / 2
-                        self._canvas.create_text(mx, my, text=u,
-                                                 fill=_NET_LABEL_CLR,
-                                                 font=("Consolas", 7), tags="netlabel")
+            x1, y1 = self._world_to_screen(*self._positions[ref])
+            x2, y2 = self._world_to_screen(*self._positions[ref2])
+            self._canvas.create_line(x1, y1, x2, y2,
+                                     fill=_EDGE_COLOR, width=1.5, tags="edge")
+            mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+            self._canvas.create_text(mx, my, text=net,
+                                     fill=_NET_LABEL_CLR,
+                                     font=("Consolas", 7), tags="netlabel")
 
         # ── Nœuds (composants) ────────────────────────────────────────────────
         r = max(14, int(18 * self._scale))

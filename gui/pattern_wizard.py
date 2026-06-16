@@ -603,12 +603,16 @@ class PatternWizard(ctk.CTkToplevel):
     def _build_pattern_dict(self) -> dict:
         """@brief Construit le dict JSON du pattern en cours de création.
 
+        Le champ "components" contient les *types* (R, C, Q…), pas les références :
+        c'est ce qu'attend CustomCircuitPattern et ce qui est réellement
+        sauvegardé par _create_pattern(). L'aperçu reflète donc l'artefact final.
+
         @return dict Pattern partiel ou complet selon l'étape.
         """
         d: dict = {}
-        refs = self._selected_refs()
-        if refs:
-            d["components"] = refs
+        types = self._selected_types()
+        if types:
+            d["components"] = types
 
         name = self._name_var.get().strip()
         if name:

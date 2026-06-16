@@ -15,7 +15,7 @@ from gui.theme import BG, SURFACE, CARD, BORDER, TEXT, MUTED, BLUE, BLUE_D
 
 
 class AppWindow:
-    """@brief Fenêtre principale de l'application (barre latérale + 3 onglets)."""
+    """@brief Fenêtre principale de l'application (barre latérale + 4 onglets)."""
 
     def __init__(self):
         """@brief Construit la fenêtre, ses dimensions et son contenu."""
@@ -112,7 +112,7 @@ class AppWindow:
     def _switch(self, idx: int):
         """@brief Active l'onglet d'indice idx et met à jour la navigation.
 
-        @param idx Indice de l'onglet à afficher (0=Analyser, 1=Circuits, 2=Composants).
+        @param idx Indice de l'onglet à afficher (0=Analyser, 1=Schéma, 2=Circuits, 3=Composants).
         @return None
         """
         self._active = idx
