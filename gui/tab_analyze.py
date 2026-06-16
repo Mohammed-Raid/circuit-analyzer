@@ -257,6 +257,7 @@ class TabAnalyze:
             return
 
         self._analyze_btn.configure(state="disabled", text="⏳  Analyse…")
+        self._btn_reseau.configure(state="disabled")
         self.frame.update()
 
         try:
@@ -304,16 +305,22 @@ class TabAnalyze:
             self._stats_row.pack_forget()
             self._scroll_outer.grid_remove()
             self._empty_state.grid()
+            self._graph = None
+            self._drc_violations = []
         except ValueError as e:
             messagebox.showerror("Erreur netlist", str(e))
             self._stats_row.pack_forget()
             self._scroll_outer.grid_remove()
             self._empty_state.grid()
+            self._graph = None
+            self._drc_violations = []
         except Exception as e:
             messagebox.showerror("Erreur", str(e))
             self._stats_row.pack_forget()
             self._scroll_outer.grid_remove()
             self._empty_state.grid()
+            self._graph = None
+            self._drc_violations = []
         finally:
             self._analyze_btn.configure(state="normal", text="▶  Analyser")
 

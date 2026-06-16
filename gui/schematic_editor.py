@@ -1,24 +1,23 @@
 """
 @file schematic_editor.py
-@brief Éditeur de schéma interactif : palette, canvas avec grille, placement, câblage.
+@brief Éditeur de schéma interactif : palette, canvas zoomable, placement, rotation, câblage.
 """
+import math
 import tkinter as tk
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
-GRID = 20  # pas de la grille en pixels
+GRID = 20  # pas de la grille en coordonnées monde
 
-# ── Définitions des composants ────────────────────────────────────────────────
-# pins : {nom_pin: (dx, dy)} — déplacement depuis le centre du composant
 COMP_DEFS: dict = {
     "R":   {"label": "Résistance",   "color": "#f97316", "w": 80, "h": 40,
-            "pins": {"1": (-40, 0),  "2": (40, 0)},          "default_value": "10k"},
+            "pins": {"1": (-40, 0),  "2": (40, 0)},           "default_value": "10k"},
     "C":   {"label": "Condensateur", "color": "#3b82f6", "w": 60, "h": 40,
-            "pins": {"1": (-30, 0),  "2": (30, 0)},          "default_value": "100n"},
+            "pins": {"1": (-30, 0),  "2": (30, 0)},           "default_value": "100n"},
     "L":   {"label": "Self",         "color": "#8b5cf6", "w": 80, "h": 40,
-            "pins": {"1": (-40, 0),  "2": (40, 0)},          "default_value": "10µH"},
+            "pins": {"1": (-40, 0),  "2": (40, 0)},           "default_value": "10µH"},
     "D":   {"label": "Diode",        "color": "#22c55e", "w": 60, "h": 40,
-            "pins": {"A": (-30, 0),  "K": (30, 0)},          "default_value": "1N4148"},
+            "pins": {"A": (-30, 0),  "K": (30, 0)},           "default_value": "1N4148"},
     "Q":   {"label": "BJT",          "color": "#ec4899", "w": 60, "h": 80,
             "pins": {"B": (-30, 0),  "C": (30, -30), "E": (30, 30)},
             "default_value": "2N2222"},
@@ -30,13 +29,30 @@ COMP_DEFS: dict = {
                      "11": (40, -20),  "12": (40, 20)},
             "default_value": "RY1"},
     "GND": {"label": "GND",          "color": "#94a3b8", "w": 40, "h": 40,
-            "pins": {"1": (0, -20)},                          "default_value": "GND"},
+            "pins": {"1": (0, -20)},                           "default_value": "GND"},
     "VCC": {"label": "VCC",          "color": "#ef4444", "w": 40, "h": 40,
-            "pins": {"1": (0, 20)},                           "default_value": "VCC"},
+            "pins": {"1": (0, 20)},                            "default_value": "VCC"},
 }
 
-_PIN_RADIUS  = 5    # rayon visuel des pins
-_HIT_RADIUS  = 12   # rayon de détection clic sur pin
+_PIN_R = 5     # rayon visuel pin
+_HIT_R = 12   # rayon détection clic sur pin
+
+
+def _rotate_pin(dx: int, dy: int, rotation: int) -> tuple[int, int]:
+    """Tourne un vecteur (dx,dy) de `rotation` degrés dans le sens horaire."""
+    if rotation == 90:  return (dy, -dx)
+    if rotation == 180: return (-dx, -dy)
+    if rotation == 270: return (-dy, dx)
+    return (dx, dy)
+
+
+def _dist_to_segment(px, py, ax, ay, bx, by) -> float:
+    """Distance du point (px,py) au segment (ax,ay)-(bx,by)."""
+    dx, dy = bx - ax, by - ay
+    if dx == 0 and dy == 0:
+        return math.hypot(px - ax, py - ay)
+    t = max(0.0, min(1.0, ((px - ax)*dx + (py - ay)*dy) / (dx*dx + dy*dy)))
+    return math.hypot(px - ax - t*dx, py - ay - t*dy)
 
 
 @dataclass
@@ -45,8 +61,9 @@ class CompInst:
     ref:       str
     comp_type: str
     value:     str
-    cx:        int
+    cx:        int      # coordonnées monde
     cy:        int
+    rotation:  int = 0  # 0, 90, 180, 270
 
 
 @dataclass
@@ -59,54 +76,72 @@ class WireInst:
 
 
 class SchematicEditor(tk.Frame):
-    """@brief Canvas interactif pour dessiner un schéma électronique.
-
-    États internes : idle | placing | wiring.
-    """
+    """@brief Canvas interactif pour dessiner un schéma — zoom, rotation, câblage."""
 
     def __init__(self, parent):
         super().__init__(parent, bg="#0f172a")
-        self._comps:   dict[int, CompInst] = {}
-        self._wires:   list[WireInst]      = []
-        self._next_id: int                 = 1
-        self._counters: dict[str, int]     = {}
+        self._comps:    dict[int, CompInst] = {}
+        self._wires:    list[WireInst]      = []
+        self._next_id:  int                 = 1
+        self._counters: dict[str, int]      = {}
+        self._zoom:     float               = 1.0
 
-        # état machine
+        # machine à états : idle | placing | wiring
         self._state       = "idle"
-        self._place_type: Optional[str]             = None
-        self._selected_id: Optional[int]            = None
+        self._place_type: Optional[str]            = None
+        self._selected_id: Optional[int]           = None
         self._wire_src:   Optional[tuple[int, str]] = None
-        self._rubber_band: Optional[int]            = None
+        self._rubber_band: Optional[int]           = None
 
         # drag
-        self._drag_comp_id: Optional[int]   = None
-        self._drag_last:    Optional[tuple] = None
+        self._drag_comp_id: Optional[int] = None
+
+        # boutons palette (pour feedback visuel actif/inactif)
+        self._palette_btns: dict[str, tk.Button] = {}
 
         self._build()
+
+    # ── Système de coordonnées ────────────────────────────────────────────────
+
+    def _w2s(self, wx, wy):
+        """Monde → écran (canvas)."""
+        return wx * self._zoom, wy * self._zoom
+
+    def _s2w(self, sx, sy):
+        """Écran → monde."""
+        return sx / self._zoom, sy / self._zoom
+
+    def _cc(self, event):
+        """Coordonnées canvas (écran) depuis un événement."""
+        return self._canvas.canvasx(event.x), self._canvas.canvasy(event.y)
+
+    def _cw(self, event):
+        """Coordonnées monde depuis un événement."""
+        sx, sy = self._cc(event)
+        return self._s2w(sx, sy)
+
+    def _snap(self, wx, wy):
+        """Aligne sur la grille (en coordonnées monde)."""
+        return round(wx / GRID) * GRID, round(wy / GRID) * GRID
 
     # ── Construction ─────────────────────────────────────────────────────────
 
     def _build(self):
-        # palette gauche
         palette = tk.Frame(self, bg="#1e293b", width=136)
         palette.pack(side="left", fill="y")
         palette.pack_propagate(False)
         self._build_palette(palette)
 
-        # zone canvas + scrollbars
         wrap = tk.Frame(self, bg="#0f172a")
         wrap.pack(side="left", fill="both", expand=True)
         wrap.grid_columnconfigure(0, weight=1)
         wrap.grid_rowconfigure(0, weight=1)
 
-        self._canvas = tk.Canvas(
-            wrap, bg="#0f172a", highlightthickness=0,
-            scrollregion=(0, 0, 2400, 1800),
-        )
+        self._canvas = tk.Canvas(wrap, bg="#0f172a", highlightthickness=0,
+                                  scrollregion=(0, 0, 2400, 1800))
         vsb = tk.Scrollbar(wrap, orient="vertical",   command=self._canvas.yview)
         hsb = tk.Scrollbar(wrap, orient="horizontal", command=self._canvas.xview)
         self._canvas.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-
         self._canvas.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
         hsb.grid(row=1, column=0, sticky="ew")
@@ -118,18 +153,19 @@ class SchematicEditor(tk.Frame):
         tk.Label(parent, text="COMPOSANTS", fg="#64748b", bg="#1e293b",
                  font=("Segoe UI", 8, "bold")).pack(pady=(14, 4), padx=8, anchor="w")
 
-        for comp_type, defn in COMP_DEFS.items():
+        for ct, defn in COMP_DEFS.items():
             color = defn["color"]
-            short_label = defn["label"][:11]
             b = tk.Button(
                 parent,
-                text=f"{comp_type}  {short_label}",
-                bg="#1e293b", fg=color, activebackground="#263347",
-                activeforeground=color, relief="flat", anchor="w",
+                text=f"{ct}  {defn['label'][:11]}",
+                bg="#1e293b", fg=color,
+                activebackground="#263347", activeforeground=color,
+                relief="flat", anchor="w",
                 font=("Segoe UI", 9, "bold"), cursor="hand2", padx=10,
-                command=lambda t=comp_type: self._start_placing(t),
+                command=lambda t=ct: self._start_placing(t),
             )
             b.pack(fill="x", padx=4, pady=2)
+            self._palette_btns[ct] = b
 
         tk.Frame(parent, bg="#334155", height=1).pack(fill="x", padx=8, pady=8)
 
@@ -138,7 +174,6 @@ class SchematicEditor(tk.Frame):
                   activeforeground="#ef4444", relief="flat", anchor="w",
                   font=("Segoe UI", 9), cursor="hand2", padx=10,
                   command=self._delete_selected).pack(fill="x", padx=4, pady=2)
-
         tk.Button(parent, text="⬜  Effacer tout",
                   bg="#1e293b", fg="#94a3b8", activebackground="#263347",
                   activeforeground="#94a3b8", relief="flat", anchor="w",
@@ -148,32 +183,70 @@ class SchematicEditor(tk.Frame):
         tk.Frame(parent, bg="#334155", height=1).pack(fill="x", padx=8, pady=8)
 
         self._status_lbl = tk.Label(
-            parent, text="Cliquer sur\nla palette\npour placer",
+            parent,
+            text="Clic palette\npour placer\nR = rotation\nCtrl+molette zoom",
             fg="#475569", bg="#1e293b",
-            font=("Segoe UI", 8), justify="center",
+            font=("Segoe UI", 7), justify="center",
         )
         self._status_lbl.pack(padx=8, pady=4)
 
     def _draw_grid(self):
-        for x in range(0, 2400, GRID):
-            for y in range(0, 1800, GRID):
-                self._canvas.create_oval(x - 1, y - 1, x + 1, y + 1,
-                                         fill="#1e293b", outline="", tags="grid")
+        """Grille légère (lignes) — 210 items au lieu de 10 800."""
+        self._canvas.delete("grid")
+        z = self._zoom
+        W = int(2400 * z)
+        H = int(1800 * z)
+        step = GRID * z
+        x = 0.0
+        while x <= W + 1:
+            ix = int(x)
+            self._canvas.create_line(ix, 0, ix, H, fill="#141e2e", width=1, tags="grid")
+            x += step
+        y = 0.0
+        while y <= H + 1:
+            iy = int(y)
+            self._canvas.create_line(0, iy, W, iy, fill="#141e2e", width=1, tags="grid")
+            y += step
+        self._canvas.configure(scrollregion=(0, 0, W, H))
+        self._canvas.tag_lower("grid")
 
     def _bind_events(self):
         c = self._canvas
-        c.bind("<Button-1>",        self._on_click)
-        c.bind("<B1-Motion>",       self._on_b1_motion)
-        c.bind("<ButtonRelease-1>", self._on_b1_release)
-        c.bind("<Motion>",          self._on_motion)
-        c.bind("<Double-Button-1>", self._on_double_click)
-        c.bind("<Button-3>",        self._on_right_click)
-        c.bind("<Delete>",          self._on_delete)
-        c.bind("<BackSpace>",       self._on_delete)
-        c.bind("<Escape>",          self._on_escape)
-        c.bind("<MouseWheel>",      lambda e: c.yview_scroll(int(-e.delta / 120), "units"))
-        c.bind("<Shift-MouseWheel>",lambda e: c.xview_scroll(int(-e.delta / 120), "units"))
+        c.bind("<Button-1>",         self._on_click)
+        c.bind("<B1-Motion>",        self._on_b1_motion)
+        c.bind("<ButtonRelease-1>",  self._on_b1_release)
+        c.bind("<Motion>",           self._on_motion)
+        c.bind("<Double-Button-1>",  self._on_double_click)
+        c.bind("<Button-3>",         self._on_right_click)
+        c.bind("<Delete>",           self._on_delete)
+        c.bind("<BackSpace>",        self._on_delete)
+        c.bind("<Escape>",           self._on_escape)
+        c.bind("<r>",                self._on_rotate)
+        c.bind("<R>",                self._on_rotate)
+        c.bind("<Control-MouseWheel>", self._on_zoom)
+        c.bind("<MouseWheel>",       lambda e: c.yview_scroll(int(-e.delta / 120), "units"))
+        c.bind("<Shift-MouseWheel>", lambda e: c.xview_scroll(int(-e.delta / 120), "units"))
         c.focus_set()
+
+    # ── Zoom ─────────────────────────────────────────────────────────────────
+
+    def _on_zoom(self, event):
+        factor = 1.15 if event.delta > 0 else (1 / 1.15)
+        self._zoom = max(0.2, min(5.0, self._zoom * factor))
+        self._redraw_all()
+
+    def _redraw_all(self):
+        """Redessine tout le canvas (utilisé après zoom)."""
+        self._canvas.delete("all")
+        self._draw_grid()
+        for comp in self._comps.values():
+            self._draw_comp(comp)
+        for wire in self._wires:
+            self._draw_wire(wire)
+        if self._selected_id is not None:
+            sid = self._selected_id
+            self._selected_id = None
+            self._select(sid)
 
     # ── Placement ────────────────────────────────────────────────────────────
 
@@ -183,76 +256,134 @@ class SchematicEditor(tk.Frame):
         self._state      = "placing"
         self._place_type = comp_type
         self._canvas.configure(cursor="crosshair")
-        self._set_status(f"Clic pour\nplacer {comp_type}")
+        # Feedback visuel dans la palette
+        for t, btn in self._palette_btns.items():
+            btn.configure(bg="#1e293b", relief="flat")
+        self._palette_btns[comp_type].configure(bg="#263347", relief="groove")
+        self._set_status(f"Clic pour\nplacer {comp_type}\nÉchap = annuler")
 
-    def _place_comp(self, cx: int, cy: int):
-        t     = self._place_type
-        defn  = COMP_DEFS[t]
-        n     = self._counters.get(t, 0) + 1
+    def _place_comp(self, wx: int, wy: int):
+        """Place un composant en coordonnées monde — reste en mode placing."""
+        t    = self._place_type
+        defn = COMP_DEFS[t]
+        n    = self._counters.get(t, 0) + 1
         self._counters[t] = n
-        ref   = f"{t}{n}" if t not in ("GND", "VCC") else f"{t}{n}"
-        comp  = CompInst(self._next_id, ref, t, defn["default_value"], cx, cy)
+        # GND et VCC n'ont pas de numéro affiché
+        ref  = f"{t}{n}" if t not in ("GND", "VCC") else t
+        comp = CompInst(self._next_id, ref, t, defn["default_value"], wx, wy)
         self._next_id += 1
         self._comps[comp.id] = comp
         self._draw_comp(comp)
-        self._state      = "idle"
-        self._place_type = None
-        self._canvas.configure(cursor="")
-        self._set_status("Prêt")
+        # Reste en mode placing (Échap pour sortir)
+        self._set_status(f"Placé {ref}\nClic = autre\nÉchap = stop")
 
     # ── Rendu ────────────────────────────────────────────────────────────────
 
     def _draw_comp(self, comp: CompInst):
         defn  = COMP_DEFS[comp.comp_type]
         color = defn["color"]
-        cx, cy = comp.cx, comp.cy
-        w2, h2 = defn["w"] // 2, defn["h"] // 2
-        tag   = f"comp_{comp.id}"
+        z     = self._zoom
+        rot   = comp.rotation
+        scx, scy = self._w2s(comp.cx, comp.cy)
+        w2, h2   = defn["w"] // 2, defn["h"] // 2
+        # Pour 90°/270°, les dimensions s'échangent
+        rw2 = (w2 if rot % 180 == 0 else h2) * z
+        rh2 = (h2 if rot % 180 == 0 else w2) * z
+        pr   = max(2, _PIN_R * z)
+        tag  = f"comp_{comp.id}"
         self._canvas.delete(tag)
 
         if comp.comp_type == "GND":
-            self._canvas.create_line(cx, cy - 20, cx, cy, fill=color, width=2, tags=tag)
+            dx, dy = _rotate_pin(0, -20, rot)
+            spx, spy = scx + dx*z, scy + dy*z  # pin (haut)
+            d1x, d1y = _rotate_pin(0, -20, rot)
+            d2x, d2y = _rotate_pin(0, 0, rot)
+            self._canvas.create_line(scx+d1x*z, scy+d1y*z,
+                                     scx+d2x*z, scy+d2y*z,
+                                     fill=color, width=max(1, int(2*z)), tags=tag)
             for i, hw in enumerate([16, 10, 5]):
-                yy = cy + i * 5
-                self._canvas.create_line(cx - hw, yy, cx + hw, yy,
-                                         fill=color, width=2, tags=tag)
-            self._canvas.create_text(cx, cy - 25, text=comp.ref,
-                                     fill=color, font=("Consolas", 8), tags=tag)
-        elif comp.comp_type == "VCC":
-            self._canvas.create_line(cx, cy + 20, cx, cy + 2, fill=color, width=2, tags=tag)
-            self._canvas.create_polygon(cx - 10, cy + 2, cx + 10, cy + 2, cx, cy - 14,
-                                        fill=color, outline="", tags=tag)
-            self._canvas.create_text(cx, cy + 28, text=comp.ref,
-                                     fill=color, font=("Consolas", 8), tags=tag)
-        else:
-            # Rectangle avec coin arrondi (simulé)
-            self._canvas.create_rectangle(cx - w2, cy - h2, cx + w2, cy + h2,
-                                          fill="#0f172a", outline=color, width=2, tags=tag)
-            # Type badge (coin haut-gauche)
-            self._canvas.create_text(cx - w2 + 6, cy - h2 + 8,
-                                     text=comp.comp_type,
-                                     fill=color, font=("Consolas", 8, "bold"),
-                                     anchor="w", tags=tag)
-            # Ref (centre haut)
-            self._canvas.create_text(cx, cy - 6, text=comp.ref,
-                                     fill="#e2e8f0", font=("Consolas", 9, "bold"), tags=tag)
-            # Valeur (centre bas)
-            self._canvas.create_text(cx, cy + 8, text=comp.value,
-                                     fill="#64748b", font=("Consolas", 8), tags=tag)
+                bx, by = _rotate_pin(0, i*5, rot)
+                lx, ly = _rotate_pin(hw, i*5, rot)
+                rx, ry = _rotate_pin(-hw, i*5, rot)
+                self._canvas.create_line(
+                    scx+lx*z, scy+ly*z, scx+rx*z, scy+ry*z,
+                    fill=color, width=max(1, int(2*z)), tags=tag)
+            tx, ty = _rotate_pin(0, -28, rot)
+            self._canvas.create_text(scx+tx*z, scy+ty*z,
+                                     text="GND", fill=color,
+                                     font=("Consolas", max(7, int(8*z))), tags=tag)
+            # pin circle
+            self._canvas.create_oval(spx-pr, spy-pr, spx+pr, spy+pr,
+                                     fill="#0f172a", outline=color,
+                                     width=max(1, int(2*z)),
+                                     tags=(tag, f"pin_{comp.id}_1"))
 
-        # Pins
-        for pin_name, (dx, dy) in defn["pins"].items():
-            px, py = cx + dx, cy + dy
-            self._canvas.create_oval(px - _PIN_RADIUS, py - _PIN_RADIUS,
-                                     px + _PIN_RADIUS, py + _PIN_RADIUS,
-                                     fill="#0f172a", outline=color, width=2,
-                                     tags=(tag, f"pin_{comp.id}_{pin_name}"))
-            # petit label pin si composant complexe (>2 pins)
-            if len(defn["pins"]) > 2:
-                anchor = "e" if dx < 0 else "w"
-                self._canvas.create_text(px + (-8 if dx < 0 else 8), py,
-                                         text=pin_name, fill="#475569",
-                                         font=("Consolas", 7), anchor=anchor, tags=tag)
+        elif comp.comp_type == "VCC":
+            dx, dy = _rotate_pin(0, 20, rot)
+            spx, spy = scx + dx*z, scy + dy*z  # pin (bas)
+            d1x, d1y = _rotate_pin(0, 20, rot)
+            d2x, d2y = _rotate_pin(0, 2, rot)
+            self._canvas.create_line(scx+d1x*z, scy+d1y*z,
+                                     scx+d2x*z, scy+d2y*z,
+                                     fill=color, width=max(1, int(2*z)), tags=tag)
+            # Flèche triangulaire
+            p0x, p0y = _rotate_pin(-10, 2, rot)
+            p1x, p1y = _rotate_pin(10, 2, rot)
+            p2x, p2y = _rotate_pin(0, -14, rot)
+            self._canvas.create_polygon(
+                scx+p0x*z, scy+p0y*z,
+                scx+p1x*z, scy+p1y*z,
+                scx+p2x*z, scy+p2y*z,
+                fill=color, outline="", tags=tag)
+            tx, ty = _rotate_pin(0, 30, rot)
+            self._canvas.create_text(scx+tx*z, scy+ty*z,
+                                     text="VCC", fill=color,
+                                     font=("Consolas", max(7, int(8*z))), tags=tag)
+            self._canvas.create_oval(spx-pr, spy-pr, spx+pr, spy+pr,
+                                     fill="#0f172a", outline=color,
+                                     width=max(1, int(2*z)),
+                                     tags=(tag, f"pin_{comp.id}_1"))
+
+        else:
+            # Rectangle + labels
+            self._canvas.create_rectangle(
+                scx - rw2, scy - rh2, scx + rw2, scy + rh2,
+                fill="#0f172a", outline=color,
+                width=max(1, int(2*z)), tags=tag)
+            lbx, lby = _rotate_pin(-w2 + 6, -h2 + 8, rot)
+            self._canvas.create_text(
+                scx + lbx*z, scy + lby*z,
+                text=comp.comp_type, fill=color,
+                font=("Consolas", max(6, int(8*z)), "bold"),
+                anchor="center", tags=tag)
+            rx, ry = _rotate_pin(0, -8, rot)
+            self._canvas.create_text(scx+rx*z, scy+ry*z,
+                                     text=comp.ref, fill="#e2e8f0",
+                                     font=("Consolas", max(7, int(9*z)), "bold"),
+                                     tags=tag)
+            vx, vy = _rotate_pin(0, 8, rot)
+            self._canvas.create_text(scx+vx*z, scy+vy*z,
+                                     text=comp.value, fill="#64748b",
+                                     font=("Consolas", max(6, int(8*z))),
+                                     tags=tag)
+
+            # Pins
+            nb_pins = len(defn["pins"])
+            for pn, (pdx, pdy) in defn["pins"].items():
+                rdx, rdy = _rotate_pin(pdx, pdy, rot)
+                spx = scx + rdx * z
+                spy = scy + rdy * z
+                self._canvas.create_oval(spx-pr, spy-pr, spx+pr, spy+pr,
+                                         fill="#0f172a", outline=color,
+                                         width=max(1, int(2*z)),
+                                         tags=(tag, f"pin_{comp.id}_{pn}"))
+                if nb_pins > 2:
+                    anch = "e" if rdx < 0 else "w"
+                    ox = -8*z if rdx < 0 else 8*z
+                    self._canvas.create_text(spx+ox, spy,
+                                             text=pn, fill="#475569",
+                                             font=("Consolas", max(5, int(7*z))),
+                                             anchor=anch, tags=tag)
 
     def _draw_wire(self, wire: WireInst):
         ca = self._comps.get(wire.from_comp_id)
@@ -260,125 +391,159 @@ class SchematicEditor(tk.Frame):
         if not ca or not cb:
             return
         dx_a, dy_a = COMP_DEFS[ca.comp_type]["pins"][wire.from_pin]
+        rdx_a, rdy_a = _rotate_pin(dx_a, dy_a, ca.rotation)
         dx_b, dy_b = COMP_DEFS[cb.comp_type]["pins"][wire.to_pin]
-        x1, y1 = ca.cx + dx_a, ca.cy + dy_a
-        x2, y2 = cb.cx + dx_b, cb.cy + dy_b
+        rdx_b, rdy_b = _rotate_pin(dx_b, dy_b, cb.rotation)
+
+        wx1, wy1 = ca.cx + rdx_a, ca.cy + rdy_a
+        wx2, wy2 = cb.cx + rdx_b, cb.cy + rdy_b
+        sx1, sy1 = self._w2s(wx1, wy1)
+        sx2, sy2 = self._w2s(wx2, wy2)
+
         tag = f"wire_{wire.id}"
         self._canvas.delete(tag)
-        # routage Manhattan : horizontal puis vertical
-        self._canvas.create_line(x1, y1, x2, y1, x2, y2,
-                                 fill="#475569", width=2,
-                                 joinstyle="round", tags=tag)
+        lw = max(1, int(2 * self._zoom))
+        self._canvas.create_line(sx1, sy1, sx2, sy1, sx2, sy2,
+                                  fill="#475569", width=lw,
+                                  joinstyle="round", tags=tag)
 
     def _redraw_wires_of(self, comp_id: int):
         for w in self._wires:
             if w.from_comp_id == comp_id or w.to_comp_id == comp_id:
                 self._draw_wire(w)
 
-    # ── Hit-testing ──────────────────────────────────────────────────────────
+    # ── Hit-testing (en coordonnées monde) ───────────────────────────────────
 
-    def _cc(self, event):
-        """Coordonnées canvas depuis un événement (scroll corrigé)."""
-        return self._canvas.canvasx(event.x), self._canvas.canvasy(event.y)
-
-    def _snap(self, x, y):
-        return round(x / GRID) * GRID, round(y / GRID) * GRID
-
-    def _find_pin_at(self, x, y) -> Optional[tuple[int, str]]:
+    def _find_pin_at(self, wx, wy) -> Optional[tuple[int, str]]:
+        tol = _HIT_R / self._zoom  # rayon de détection en coordonnées monde
         for comp in self._comps.values():
             for pn, (dx, dy) in COMP_DEFS[comp.comp_type]["pins"].items():
-                px, py = comp.cx + dx, comp.cy + dy
-                if (x - px) ** 2 + (y - py) ** 2 <= _HIT_RADIUS ** 2:
+                rdx, rdy = _rotate_pin(dx, dy, comp.rotation)
+                px, py = comp.cx + rdx, comp.cy + rdy
+                if (wx - px)**2 + (wy - py)**2 <= tol**2:
                     return (comp.id, pn)
         return None
 
-    def _find_comp_at(self, x, y) -> Optional[int]:
+    def _find_comp_at(self, wx, wy) -> Optional[int]:
         for comp in self._comps.values():
             defn = COMP_DEFS[comp.comp_type]
-            w2, h2 = defn["w"] // 2 + 6, defn["h"] // 2 + 6
-            if comp.cx - w2 <= x <= comp.cx + w2 and comp.cy - h2 <= y <= comp.cy + h2:
+            rot  = comp.rotation
+            w2 = (defn["w"] // 2 if rot % 180 == 0 else defn["h"] // 2) + 6
+            h2 = (defn["h"] // 2 if rot % 180 == 0 else defn["w"] // 2) + 6
+            if comp.cx - w2 <= wx <= comp.cx + w2 and comp.cy - h2 <= wy <= comp.cy + h2:
                 return comp.id
         return None
 
-    # ── Gestionnaires d'événements ────────────────────────────────────────────
+    def _find_wire_at(self, wx, wy, tol=8) -> Optional[int]:
+        """Cherche un fil proche de (wx,wy) en coordonnées monde."""
+        tol_w = tol / self._zoom
+        for w in self._wires:
+            ca = self._comps.get(w.from_comp_id)
+            cb = self._comps.get(w.to_comp_id)
+            if not ca or not cb:
+                continue
+            dx_a, dy_a = COMP_DEFS[ca.comp_type]["pins"][w.from_pin]
+            rdx_a, rdy_a = _rotate_pin(dx_a, dy_a, ca.rotation)
+            dx_b, dy_b = COMP_DEFS[cb.comp_type]["pins"][w.to_pin]
+            rdx_b, rdy_b = _rotate_pin(dx_b, dy_b, cb.rotation)
+            x1, y1 = ca.cx + rdx_a, ca.cy + rdy_a
+            x2, y2 = cb.cx + rdx_b, cb.cy + rdy_b
+            # Fil en L : (x1,y1)→(x2,y1)→(x2,y2)
+            d1 = _dist_to_segment(wx, wy, x1, y1, x2, y1)
+            d2 = _dist_to_segment(wx, wy, x2, y1, x2, y2)
+            if min(d1, d2) < tol_w:
+                return w.id
+        return None
+
+    # ── Événements ───────────────────────────────────────────────────────────
 
     def _on_click(self, event):
         self._canvas.focus_set()
-        cx, cy = self._cc(event)
-        sx, sy = self._snap(cx, cy)
+        wx, wy   = self._cw(event)
+        swx, swy = self._snap(wx, wy)
 
         if self._state == "placing":
-            self._place_comp(sx, sy)
+            self._place_comp(swx, swy)
             return
 
         if self._state == "wiring":
-            pin = self._find_pin_at(cx, cy)
+            pin = self._find_pin_at(wx, wy)
             if pin and pin != self._wire_src:
                 self._complete_wire(pin)
             else:
                 self._cancel_wiring()
             return
 
-        # IDLE : priorité pin > corps de composant
-        pin = self._find_pin_at(cx, cy)
+        # IDLE : priorité pin > composant
+        pin = self._find_pin_at(wx, wy)
         if pin:
             self._start_wiring(pin)
             return
 
-        comp_id = self._find_comp_at(cx, cy)
+        comp_id = self._find_comp_at(wx, wy)
         if comp_id:
             self._select(comp_id)
             self._drag_comp_id = comp_id
-            self._drag_last    = (cx, cy)
         else:
             self._deselect()
 
     def _on_b1_motion(self, event):
         if self._state == "idle" and self._drag_comp_id is not None:
-            cx, cy = self._cc(event)
-            sx, sy = self._snap(cx, cy)
+            wx, wy   = self._cw(event)
+            swx, swy = self._snap(wx, wy)
             comp = self._comps.get(self._drag_comp_id)
-            if comp and (comp.cx != sx or comp.cy != sy):
-                comp.cx, comp.cy = sx, sy
+            if comp and (comp.cx != swx or comp.cy != swy):
+                comp.cx, comp.cy = swx, swy
                 self._draw_comp(comp)
                 self._redraw_wires_of(self._drag_comp_id)
-                # déplacer aussi le cadre de sélection
                 self._deselect()
                 self._select(self._drag_comp_id)
 
-    def _on_b1_release(self, event):
+    def _on_b1_release(self, _=None):
         self._drag_comp_id = None
-        self._drag_last    = None
 
     def _on_motion(self, event):
         if self._state == "wiring" and self._wire_src:
-            cx, cy = self._cc(event)
+            sx, sy = self._cc(event)
             comp = self._comps.get(self._wire_src[0])
             if comp:
                 dx, dy = COMP_DEFS[comp.comp_type]["pins"][self._wire_src[1]]
-                x1, y1 = comp.cx + dx, comp.cy + dy
+                rdx, rdy = _rotate_pin(dx, dy, comp.rotation)
+                x1, y1 = self._w2s(comp.cx + rdx, comp.cy + rdy)
                 if self._rubber_band:
                     self._canvas.delete(self._rubber_band)
                 self._rubber_band = self._canvas.create_line(
-                    x1, y1, cx, y1, cx, cy,
-                    fill="#4ade80", width=2, dash=(5, 3),
-                )
+                    x1, y1, sx, y1, sx, sy,
+                    fill="#4ade80", width=max(1, int(2*self._zoom)), dash=(5, 3))
 
     def _on_double_click(self, event):
-        cx, cy = self._cc(event)
-        comp_id = self._find_comp_at(cx, cy)
+        wx, wy  = self._cw(event)
+        comp_id = self._find_comp_at(wx, wy)
         if comp_id:
             self._edit_comp(comp_id)
 
     def _on_right_click(self, event):
-        cx, cy = self._cc(event)
-        comp_id = self._find_comp_at(cx, cy)
+        wx, wy = self._cw(event)
+
+        # Priorité 1 : fil
+        wire_id = self._find_wire_at(wx, wy)
+        if wire_id is not None:
+            m = tk.Menu(self._canvas, tearoff=0, bg="#1e293b", fg="white",
+                        activebackground="#3b82f6", activeforeground="white")
+            m.add_command(label="🗑  Supprimer ce fil",
+                          command=lambda: self._delete_wire(wire_id))
+            m.post(event.x_root, event.y_root)
+            return
+
+        # Priorité 2 : composant
+        comp_id = self._find_comp_at(wx, wy)
         if not comp_id:
             return
         self._select(comp_id)
         m = tk.Menu(self._canvas, tearoff=0, bg="#1e293b", fg="white",
                     activebackground="#3b82f6", activeforeground="white")
-        m.add_command(label="✏  Modifier…", command=lambda: self._edit_comp(comp_id))
+        m.add_command(label="✏  Modifier…",  command=lambda: self._edit_comp(comp_id))
+        m.add_command(label="↻  Rotation",   command=lambda: self._rotate_comp(comp_id))
         m.add_separator()
         m.add_command(label="🗑  Supprimer", command=lambda: self._delete_comp(comp_id))
         m.post(event.x_root, event.y_root)
@@ -393,23 +558,29 @@ class SchematicEditor(tk.Frame):
             self._state      = "idle"
             self._place_type = None
             self._canvas.configure(cursor="")
+            for btn in self._palette_btns.values():
+                btn.configure(bg="#1e293b", relief="flat")
             self._set_status("Prêt")
         else:
             self._deselect()
 
-    # ── Câblage ───────────────────────────────────────────────────────────────
+    def _on_rotate(self, _=None):
+        if self._selected_id is not None:
+            self._rotate_comp(self._selected_id)
+
+    # ── Câblage ──────────────────────────────────────────────────────────────
 
     def _start_wiring(self, pin: tuple[int, str]):
         self._state    = "wiring"
         self._wire_src = pin
         self._canvas.configure(cursor="crosshair")
         comp = self._comps[pin[0]]
-        self._set_status(f"Câblage depuis\n{comp.ref}.{pin[1]}\nClic sur un pin")
+        self._set_status(f"Fil depuis\n{comp.ref}.{pin[1]}\nClic = cible\nÉchap = annuler")
 
     def _complete_wire(self, dst: tuple[int, str]):
         src_cid, src_pin = self._wire_src
         dst_cid, dst_pin = dst
-        # pas de doublon
+        # éviter les doublons
         for w in self._wires:
             if ({w.from_comp_id, w.from_pin} == {src_cid, src_pin} and
                     {w.to_comp_id, w.to_pin} == {dst_cid, dst_pin}):
@@ -430,7 +601,7 @@ class SchematicEditor(tk.Frame):
         self._canvas.configure(cursor="")
         self._set_status("Prêt")
 
-    # ── Sélection ─────────────────────────────────────────────────────────────
+    # ── Sélection ────────────────────────────────────────────────────────────
 
     def _select(self, comp_id: int):
         if self._selected_id == comp_id:
@@ -440,13 +611,15 @@ class SchematicEditor(tk.Frame):
         comp = self._comps.get(comp_id)
         if comp:
             defn  = COMP_DEFS[comp.comp_type]
-            w2, h2 = defn["w"] // 2, defn["h"] // 2
+            rot   = comp.rotation
+            z     = self._zoom
+            rw2 = ((defn["w"] // 2 if rot % 180 == 0 else defn["h"] // 2) + 5) * z
+            rh2 = ((defn["h"] // 2 if rot % 180 == 0 else defn["w"] // 2) + 5) * z
+            scx, scy = self._w2s(comp.cx, comp.cy)
             self._canvas.create_rectangle(
-                comp.cx - w2 - 5, comp.cy - h2 - 5,
-                comp.cx + w2 + 5, comp.cy + h2 + 5,
-                outline="#4ade80", width=2, dash=(5, 3),
-                tags=f"sel_{comp_id}",
-            )
+                scx - rw2, scy - rh2, scx + rw2, scy + rh2,
+                outline="#4ade80", width=max(1, int(2*z)),
+                dash=(5, 3), tags=f"sel_{comp_id}")
 
     def _deselect(self):
         if self._selected_id is not None:
@@ -454,6 +627,16 @@ class SchematicEditor(tk.Frame):
             self._selected_id = None
 
     # ── Édition / suppression ─────────────────────────────────────────────────
+
+    def _rotate_comp(self, comp_id: int):
+        comp = self._comps.get(comp_id)
+        if comp and comp.comp_type not in ("GND", "VCC"):
+            comp.rotation = (comp.rotation + 90) % 360
+            self._draw_comp(comp)
+            self._redraw_wires_of(comp_id)
+            if self._selected_id == comp_id:
+                self._deselect()
+                self._select(comp_id)
 
     def _edit_comp(self, comp_id: int):
         comp = self._comps.get(comp_id)
@@ -467,30 +650,26 @@ class SchematicEditor(tk.Frame):
         dlg.grab_set()
         dlg.lift()
 
-        for row, (lbl, var_init) in enumerate([("Référence :", comp.ref),
-                                                ("Valeur :", comp.value)]):
+        fields = [("Référence :", comp.ref), ("Valeur :", comp.value)]
+        vars_list = []
+        for row, (lbl, val) in enumerate(fields):
             tk.Label(dlg, text=lbl, fg="#94a3b8", bg="#1e293b",
                      font=("Segoe UI", 10)).grid(row=row, column=0, padx=14,
                                                   pady=(14 if row == 0 else 6, 4),
                                                   sticky="w")
-            var = tk.StringVar(value=var_init)
-            e   = tk.Entry(dlg, textvariable=var, bg="#0f172a", fg="white",
-                           font=("Segoe UI", 11), relief="flat", width=16,
-                           insertbackground="white")
-            e.grid(row=row, column=1, padx=(0, 14),
-                   pady=(14 if row == 0 else 6, 4))
-            if row == 0:
-                ref_var = var
-            else:
-                val_var = var
+            v = tk.StringVar(value=val)
+            tk.Entry(dlg, textvariable=v, bg="#0f172a", fg="white",
+                     font=("Segoe UI", 11), relief="flat", width=16,
+                     insertbackground="white").grid(row=row, column=1,
+                                                     padx=(0, 14),
+                                                     pady=(14 if row == 0 else 6, 4))
+            vars_list.append(v)
 
         def _save():
-            r = ref_var.get().strip()
-            v = val_var.get().strip()
-            if r:
-                comp.ref   = r
-            if v:
-                comp.value = v
+            r = vars_list[0].get().strip()
+            v = vars_list[1].get().strip()
+            if r: comp.ref   = r
+            if v: comp.value = v
             self._draw_comp(comp)
             self._redraw_wires_of(comp_id)
             dlg.destroy()
@@ -509,13 +688,18 @@ class SchematicEditor(tk.Frame):
         if self._selected_id == comp_id:
             self._canvas.delete(f"sel_{comp_id}")
             self._selected_id = None
-        to_rm = [w for w in self._wires
-                 if w.from_comp_id == comp_id or w.to_comp_id == comp_id]
-        for w in to_rm:
+        for w in [w for w in self._wires
+                  if w.from_comp_id == comp_id or w.to_comp_id == comp_id]:
             self._canvas.delete(f"wire_{w.id}")
             self._wires.remove(w)
         self._canvas.delete(f"comp_{comp_id}")
         self._comps.pop(comp_id, None)
+
+    def _delete_wire(self, wire_id: int):
+        wire = next((w for w in self._wires if w.id == wire_id), None)
+        if wire:
+            self._canvas.delete(f"wire_{wire_id}")
+            self._wires.remove(wire)
 
     def clear_all(self):
         from tkinter import messagebox
@@ -526,28 +710,26 @@ class SchematicEditor(tk.Frame):
         self._comps.clear()
         self._wires.clear()
         self._counters.clear()
-        self._next_id     = 1
-        self._state       = "idle"
-        self._selected_id = None
-        self._wire_src    = None
-        self._rubber_band = None
+        self._next_id      = 1
+        self._state        = "idle"
+        self._selected_id  = None
+        self._wire_src     = None
+        self._rubber_band  = None
         self._drag_comp_id = None
+        for btn in self._palette_btns.values():
+            btn.configure(bg="#1e293b", relief="flat")
         self._draw_grid()
         self._set_status("Prêt")
 
     # ── Export netlist ────────────────────────────────────────────────────────
 
     def to_netlist(self) -> str:
-        """@brief Génère une netlist SPICE depuis le schéma courant.
-
-        @return str Netlist SPICE (vide si aucun composant).
-        """
+        """@brief Génère une netlist SPICE depuis le schéma courant."""
         real_comps = {cid: c for cid, c in self._comps.items()
                       if c.comp_type not in ("GND", "VCC")}
         if not real_comps:
             return ""
 
-        # Union-Find sur les nœuds "{comp_id}:{pin_name}"
         parent: dict[str, str] = {}
 
         def find(x: str) -> str:
@@ -564,11 +746,9 @@ class SchematicEditor(tk.Frame):
         for w in self._wires:
             union(f"{w.from_comp_id}:{w.from_pin}", f"{w.to_comp_id}:{w.to_pin}")
 
-        # Nommer les nets
         net_names:   dict[str, str] = {}
         net_counter: list[int]      = [0]
 
-        # Priorité aux nœuds GND / VCC (nets spéciaux)
         for comp in self._comps.values():
             if comp.comp_type in ("GND", "VCC"):
                 root = find(f"{comp.id}:1")
@@ -583,13 +763,13 @@ class SchematicEditor(tk.Frame):
 
         lines = ["* Schéma généré par Circuit Analyzer — éditeur interactif", ""]
         for comp in real_comps.values():
-            pins   = COMP_DEFS[comp.comp_type]["pins"]
-            nets   = " ".join(net_of(f"{comp.id}:{pn}") for pn in pins)
+            pins = COMP_DEFS[comp.comp_type]["pins"]
+            nets = " ".join(net_of(f"{comp.id}:{pn}") for pn in pins)
             lines.append(f"{comp.ref} {nets} {comp.value}")
 
         return "\n".join(lines)
 
-    # ── Utilitaires ───────────────────────────────────────────────────────────
+    # ── Utilitaires ──────────────────────────────────────────────────────────
 
     def _set_status(self, text: str):
         self._status_lbl.configure(text=text)

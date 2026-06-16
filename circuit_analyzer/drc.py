@@ -94,18 +94,12 @@ def verifier_drc(resultats, graphe) -> list[dict]:
                         'refs': refs,
                     })
 
-        # ── Règle 5 : Filtre RC sans découplage ──────────────────────────────
-        if ct in ('Filtre RC passe-bas', 'Filtre RC passe-haut'):
-            if 'decoupling' not in sat_roles:
-                violations.append({
-                    'rule': 'Filtre RC sans découplage',
-                    'severity': 'info',
-                    'message': f"{ct} ({', '.join(refs)}) : aucun condensateur de découplage satellite.",
-                    'refs': refs,
-                })
-
     # ── Règle 6 : Aucun fusible sur le rail VCC (règle globale) ──────────────
-    if a_vcc and not a_fusible:
+    nb_comps_reels = sum(
+        1 for comp in composants.values()
+        if comp.type not in ('GND', 'VCC', 'PWR')
+    )
+    if a_vcc and not a_fusible and nb_comps_reels >= 8:
         violations.append({
             'rule': 'Fusible manquant',
             'severity': 'warning',
