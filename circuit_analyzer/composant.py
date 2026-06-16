@@ -147,9 +147,243 @@ def _trouver_type(ref: str, bibliotheque: dict) -> str:
     return ref[0].upper()
 
 
-def lire_netlist(chemin: str, bibliotheque: dict = None) -> list[Composant]:
+def _detect_format(chemin: str) -> str:
+    """@brief Détecte le format d'un fichier netlist à partir de son contenu.
+
+    @param chemin Chemin du fichier.
+    @return str 'spice' | 'kicad' | 'texte'
     """
-    @brief Lit un fichier netlist et retourne la liste des composants.
+    try:
+        with open(chemin, encoding='utf-8', errors='replace') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith('*'):
+                    return 'spice'
+                if line.startswith('('):
+                    return 'kicad'
+                break
+    except OSError:
+        pass
+    ext = Path(chemin).suffix.lower()
+    if ext in ('.cir', '.sp'):
+        return 'spice'
+    return 'texte'
+
+
+# Ordre des broches pour les netlists SPICE (différent de notre bibliothèque interne)
+_SPICE_PINS: dict[str, list[str]] = {
+    'Q': ['C', 'B', 'E'],      # SPICE BJT : collecteur base émetteur
+    'M': ['D', 'G', 'S'],      # SPICE MOSFET : drain grille source (bulk ignoré)
+    'D': ['A', 'K'],            # SPICE diode : anode cathode
+    'U': ['IN+', 'IN-', 'OUT'], # op-amp simplifié
+}
+
+# Lettres à ignorer dans les netlists SPICE (sources, directives, couplages inductifs)
+_SPICE_IGNORER = frozenset('VIFBEGHIJOPWYZ')
+
+
+def lire_spice(chemin: str, bibliotheque: dict = None) -> list:
+    """@brief Lit une netlist au format SPICE/LTspice.
+
+    Accepte les fichiers .cir / .sp / .net commençant par une ligne '*'.
+    Ordre des broches SPICE : Q → C B E, M → D G S, D → A K.
+
+    @param chemin  Chemin du fichier SPICE.
+    @param bibliotheque Bibliothèque (ignorée — SPICE a ses propres ordres de pins).
+    @return list[Composant] Composants extraits.
+    """
+    composants = []
+    refs_vus: set[str] = set()
+
+    with open(chemin, encoding='utf-8', errors='replace') as f:
+        for num, ligne_brute in enumerate(f, 1):
+            ligne = ligne_brute.strip()
+            # Commentaires et directives SPICE
+            if not ligne or ligne.startswith('*') or ligne.startswith('.'):
+                continue
+
+            mots = ligne.split()
+            ref = mots[0]
+            if not ref or not ref[0].isalpha():
+                continue
+
+            type_comp = _trouver_type(ref, TYPES_COMPOSANTS)
+            # Ignorer sources de tension/courant, éléments non supportés
+            if type_comp in _SPICE_IGNORER:
+                continue
+
+            ref_maj = ref.upper()
+            if ref_maj in refs_vus:
+                continue  # doublons silencieux dans SPICE (sous-circuits, etc.)
+            refs_vus.add(ref_maj)
+
+            # Pins selon convention SPICE ou bibliothèque par défaut
+            noms_broches = _SPICE_PINS.get(type_comp,
+                           TYPES_COMPOSANTS.get(type_comp, {}).get('pins', ['1', '2']))
+            nb = len(noms_broches)
+
+            noeuds_bruts = mots[1:1 + nb]
+            if len(noeuds_bruts) < nb:
+                continue  # ligne incomplète → ignorer
+
+            noeuds = [n.upper() for n in noeuds_bruts]
+            # La valeur est le token après les noeuds, s'il n'est pas un noeud (commence par chiffre ou unité)
+            valeur = ''
+            if len(mots) > 1 + nb:
+                candidate = mots[1 + nb]
+                if candidate[0].isdigit() or candidate[0] in '+-':
+                    valeur = candidate
+                # sinon c'est un nom de modèle SPICE → on l'ignore comme valeur
+
+            broches = dict(zip(noms_broches, noeuds))
+            composants.append(Composant(ref=ref, type=type_comp, pins=broches, value=valeur))
+
+    return composants
+
+
+def lire_kicad_net(chemin: str, bibliotheque: dict = None) -> list:
+    """@brief Lit une netlist KiCad au format S-expression (.net).
+
+    Compatible avec KiCad 5 (net-list) et KiCad 6+ (export).
+    Le nom des broches dans KiCad est mappé vers nos pins internes via la bibliothèque.
+
+    @param chemin  Chemin du fichier .net KiCad.
+    @param bibliotheque Bibliothèque des types (défaut : charger_bibliotheque()).
+    @return list[Composant] Composants extraits.
+    """
+    import re
+
+    if bibliotheque is None:
+        bibliotheque = charger_bibliotheque()
+
+    with open(chemin, encoding='utf-8', errors='replace') as f:
+        content = f.read()
+
+    # --- Étape 1 : extraire valeurs des composants {ref → value} ---
+    comp_values: dict[str, str] = {}
+    for m in re.finditer(
+        r'\(comp\s+\(ref\s+"?([^"\s)]+)"?\).*?\(value\s+"?([^"\s)]+)"?\)',
+        content, re.DOTALL | re.IGNORECASE
+    ):
+        comp_values[m.group(1)] = m.group(2)
+
+    # --- Étape 2 : construire la map {(ref, pin) → net_name} ---
+    pin_to_net: dict[tuple, str] = {}
+    for block in _sexpr_blocks(content, 'net'):
+        name_m = re.search(r'\(name\s+"?([^")\s]*)"?\)', block, re.IGNORECASE)
+        if not name_m:
+            continue
+        raw_name = name_m.group(1).lstrip('/').strip() or 'NC'
+        net_name = raw_name.upper()
+        for node_m in re.finditer(
+            r'\(node\s+\(ref\s+"?([^"\s)]+)"?\)\s*\(pin\s+"?([^"\s)]+)"?\)',
+            block,
+            re.IGNORECASE,
+        ):
+            pin_to_net[(node_m.group(1), node_m.group(2))] = net_name
+
+    # --- Étape 3 : reconstruire les composants ---
+    composants = []
+    refs_vus: set[str] = set()
+
+    # Regrouper les pins par ref
+    ref_pins: dict[str, dict[str, str]] = {}
+    for (ref, pin), net in pin_to_net.items():
+        ref_pins.setdefault(ref, {})[pin] = net
+
+    for ref, pin_map in ref_pins.items():
+        ref_maj = ref.upper()
+        if ref_maj in refs_vus:
+            continue
+        refs_vus.add(ref_maj)
+
+        type_comp = _trouver_type(ref, bibliotheque)
+        noms_internes = bibliotheque.get(type_comp, {}).get('pins', ['1', '2'])
+
+        # Mapper les pins KiCad → nos noms internes (tentative directe d'abord)
+        broches: dict[str, str] = {}
+        for nom_interne in noms_internes:
+            if nom_interne in pin_map:
+                broches[nom_interne] = pin_map[nom_interne]
+        # Pins non reconnues → ajout dans l'ordre de pin_map
+        for kpin, net in pin_map.items():
+            if kpin not in broches and len(broches) < len(noms_internes):
+                nom = noms_internes[len(broches)]
+                broches[nom] = net
+
+        if not broches:
+            continue
+
+        valeur = comp_values.get(ref, '')
+        composants.append(Composant(ref=ref, type=type_comp, pins=broches, value=valeur))
+
+    return composants
+
+
+def _sexpr_blocks(content: str, head: str) -> list[str]:
+    """@brief Extrait les blocs S-expression complets dont la tête vaut `head`.
+
+    @param content Contenu KiCad.
+    @param head Nom de la forme recherchée, par exemple 'net'.
+    @return list[str] Blocs parenthésés complets.
+    """
+    import re
+
+    blocks = []
+    starts = [m.start() for m in re.finditer(r'\(' + re.escape(head) + r'(?=\s|\))', content)]
+    for start in starts:
+        depth = 0
+        in_string = False
+        escape = False
+        for idx in range(start, len(content)):
+            ch = content[idx]
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == '\\':
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+            elif ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth -= 1
+                if depth == 0:
+                    blocks.append(content[start:idx + 1])
+                    break
+        else:
+            return blocks
+    return blocks
+
+
+def lire_netlist(chemin: str, bibliotheque: dict = None) -> list:
+    """@brief Lit un fichier netlist — détecte automatiquement le format.
+
+    Formats supportés :
+      - Texte tabulaire (notre format natif : REF  NET1  NET2  [VALEUR])
+      - SPICE/LTspice (.cir, .sp, .net commençant par '*')
+      - KiCad S-expression (.net commençant par '(')
+
+    @param chemin Chemin du fichier netlist à lire.
+    @param bibliotheque Bibliothèque des types (défaut : charger_bibliotheque()).
+    @return list[Composant] Composants lus dans l'ordre du fichier.
+    @throws ValueError Si le format texte contient des erreurs de syntaxe.
+    """
+    fmt = _detect_format(chemin)
+    if fmt == 'spice':
+        return lire_spice(chemin, bibliotheque)
+    if fmt == 'kicad':
+        return lire_kicad_net(chemin, bibliotheque)
+    return _lire_netlist_texte(chemin, bibliotheque)
+
+
+def _lire_netlist_texte(chemin: str, bibliotheque: dict = None) -> list:
+    """@brief Lit une netlist au format texte tabulaire natif.
 
     Format d'une ligne :
         REFERENCE  NOEUD1  NOEUD2  [VALEUR]
@@ -208,6 +442,9 @@ def lire_netlist(chemin: str, bibliotheque: dict = None) -> list[Composant]:
 
 # Alias anglais
 parse_file = lire_netlist
+lire_spice = lire_spice  # déjà défini, alias pour export
+parse_spice = lire_spice
+parse_kicad_net = lire_kicad_net
 
 
 # =============================================================================

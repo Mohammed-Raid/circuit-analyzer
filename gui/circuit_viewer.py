@@ -645,6 +645,47 @@ def _draw_high_side_mosfet(d, result, ci):
     d.add(elm.Dot().label("LOAD", loc="left"))
 
 
+def _draw_relay_driver(d, result, ci):
+    """@brief Dessine le schéma « Commande de relais » (K + Q/M + diode flyback)."""
+    k   = _ref(result, ci, "K")
+    qs  = _refs(result, ci, "Q")
+    ms  = _refs(result, ci, "M")
+    rbs = _refs(result, ci, "R")
+    dbs = _refs(result, ci, "D")
+
+    use_mosfet = not qs and bool(ms)
+    t = d.add((elm.NFet() if use_mosfet else elm.BjtNpn()).at((3.5, 0)))
+
+    ctrl_pin = t.gate if use_mosfet else t.base
+    coll_pin = t.drain if use_mosfet else t.collector
+    emit_pin = t.source if use_mosfet else t.emitter
+    ctrl_lbl = "VG" if use_mosfet else "CMD"
+
+    # Contrôle : résistance de base ou ligne directe
+    if rbs:
+        d.add(elm.Resistor().at(ctrl_pin).left().label(_lbl(rbs[0], ci), loc="top"))
+        d.add(elm.Dot().label(ctrl_lbl, loc="left"))
+    else:
+        d.add(elm.Line().at(ctrl_pin).left(1).label(ctrl_lbl, loc="left"))
+
+    # Bobine du relais : collecteur → haut → VCC
+    coil_len = 1.8
+    d.add(elm.Inductor2(nturns=3).at(coll_pin).up(coil_len).label(_lbl(k, ci), loc="left"))
+    coil_top = d.here
+    d.add(elm.Dot().at(coil_top))
+    d.add(elm.Line().up(0.3).label("VCC", loc="top"))
+
+    # Diode flyback : anode côté collecteur, cathode côté VCC (protection inductive)
+    diode_lbl = _lbl(dbs[0], ci) if dbs else ""
+    d.add(elm.Line().at(coll_pin).right(1.6))
+    d.add(elm.Diode().up(coil_len).label(diode_lbl, loc="right"))
+    d.add(elm.Line().tox(coil_top[0]))
+
+    # Émetteur → GND
+    d.add(elm.Line().at(emit_pin).down(0.5))
+    d.add(elm.Ground())
+
+
 def _draw_current_mirror(d, result, ci):
     """@brief Dessine le schéma « Miroir de courant BJT »."""
     qs = _refs(result, ci, "Q")
@@ -705,6 +746,7 @@ _DRAWERS = {
     "Bascule de Schmitt (AOP)":          _draw_schmitt,
     "Amplificateur différentiel (AOP)":  _draw_differential_amp,
     "Amplificateur sommateur (AOP)":     _draw_summing_amp,
+    "Commande de relais":                _draw_relay_driver,
     "Transistor en commutation":         _draw_bjt_switch,
     "Amplificateur émetteur commun":     _draw_common_emitter,
     "Miroir de courant BJT":             _draw_current_mirror,

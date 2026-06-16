@@ -5,6 +5,9 @@
 @see circuit_analyzer.composant
 """
 from circuit_analyzer.composant import (
-    Composant as Component, lire_netlist as parse_file,
+    Composant as Component,
+    lire_netlist as parse_file,
+    lire_spice as parse_spice,
+    lire_kicad_net as parse_kicad_net,
     charger_bibliotheque as load_library,
 )

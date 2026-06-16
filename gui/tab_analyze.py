@@ -76,7 +76,7 @@ class TabAnalyze:
         ctk.CTkLabel(hinner, text="Analyser un circuit",
                      font=ctk.CTkFont("Segoe UI", 18, "bold"),
                      text_color=TEXT).pack(side="left", pady=18)
-        ctk.CTkLabel(hinner, text="Chargez un fichier netlist .txt ou schéma .xml",
+        ctk.CTkLabel(hinner, text="Chargez un fichier netlist (.txt .cir .sp .net) ou schéma .xml",
                      font=ctk.CTkFont("Segoe UI", 12),
                      text_color=MUTED).pack(side="left", padx=14, pady=18)
 
@@ -92,7 +92,7 @@ class TabAnalyze:
         self._entry = ctk.CTkEntry(
             pin,
             textvariable=self._file_path,
-            placeholder_text="  Choisir un fichier .txt ou .xml …",
+            placeholder_text="  Choisir un fichier .txt / .cir / .sp / .net / .xml …",
             height=38, corner_radius=8,
             font=ctk.CTkFont("Segoe UI", 12),
             fg_color="#111827", border_color=BORDER,
@@ -209,8 +209,10 @@ class TabAnalyze:
         path = filedialog.askopenfilename(
             title="Choisir un fichier netlist",
             filetypes=[
-                ("Netlists & schémas", "*.txt *.xml"),
+                ("Netlists & schémas", "*.txt *.xml *.cir *.sp *.net"),
                 ("Fichiers texte", "*.txt"),
+                ("SPICE / LTspice", "*.cir *.sp"),
+                ("KiCad netlist", "*.net"),
                 ("Schémas XML (BoardSCH)", "*.xml"),
                 ("Tous", "*.*"),
             ],
