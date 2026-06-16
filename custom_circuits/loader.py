@@ -234,3 +234,21 @@ class CustomCircuitPattern(Pattern):
 
         # Unknown condition — fail safe rather than silently accepting
         return False
+
+
+def suggest_conditions(graph, refs: list) -> list:
+    """@brief Détecte automatiquement les conditions topologiques vraies pour un groupe de composants.
+
+    @param graph MultiGraph NetworkX du circuit.
+    @param refs Liste de références de composants à analyser.
+    @return list[str] Sous-ensemble de CONDITION_LABELS dont la condition est vraie.
+    """
+    composants = graph.graph.get('components', {})
+    found = {ref: composants[ref] for ref in refs if ref in composants}
+    if not found:
+        return []
+    dummy = CustomCircuitPattern({'name': '_', 'components': [], 'conditions': []})
+    return [
+        label for label in CONDITION_LABELS
+        if dummy._check_condition(label, graph, found)
+    ]

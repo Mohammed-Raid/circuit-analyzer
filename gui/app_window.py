@@ -6,6 +6,7 @@ import customtkinter as ctk
 from gui.tab_analyze import TabAnalyze
 from gui.tab_circuits import TabCircuits
 from gui.tab_components import TabComponents
+from gui.tab_draw import TabDraw
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -37,7 +38,7 @@ class AppWindow:
                                fg_color=SURFACE)
         sidebar.grid(row=0, column=0, sticky="nsew")
         sidebar.grid_propagate(False)
-        sidebar.grid_rowconfigure(3, weight=1)
+        sidebar.grid_rowconfigure(4, weight=1)
 
         # Logo block
         logo = ctk.CTkFrame(sidebar, fg_color="transparent")
@@ -68,6 +69,7 @@ class AppWindow:
 
         items = [
             ("🔍", "Analyser",    "Lire et analyser"),
+            ("✏",  "Schéma",     "Dessiner un circuit"),
             ("⚡", "Circuits",    "Patterns personnalisés"),
             ("🔧", "Composants",  "Bibliothèque"),
         ]
@@ -80,7 +82,7 @@ class AppWindow:
         # Footer
         ctk.CTkFrame(sidebar, height=1, fg_color=BORDER).grid(
             row=4, column=0, sticky="ew", padx=18, pady=10)
-        ctk.CTkLabel(sidebar, text="v2.0  ·  144 tests ✓",
+        ctk.CTkLabel(sidebar, text="v1.3  ·  335 tests ✓",
                      font=ctk.CTkFont("Segoe UI", 10),
                      text_color=MUTED).grid(
                          row=5, column=0, pady=(0, 18))
@@ -92,11 +94,16 @@ class AppWindow:
         content.grid_rowconfigure(0, weight=1)
 
         tab_a = TabAnalyze(content)
+        tab_d = TabDraw(content, on_analyze=lambda path: (
+            tab_a._file_path.set(path),
+            tab_a._analyze(),
+            self._switch(0),
+        ))
         tab_c = TabCircuits(content)
         tab_p = TabComponents(content,
                               on_save=tab_c.refresh_component_list)
 
-        self._frames = [tab_a.frame, tab_c.frame, tab_p.frame]
+        self._frames = [tab_a.frame, tab_d.frame, tab_c.frame, tab_p.frame]
         for f in self._frames:
             f.grid(row=0, column=0, sticky="nsew")
 

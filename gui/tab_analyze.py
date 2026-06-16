@@ -595,6 +595,16 @@ class TabAnalyze:
                                  fg_color="#7f1d1d",
                                  corner_radius=4).pack(
                                      side="left", padx=3)
+            if len(unclassified) >= 2:
+                ctk.CTkButton(
+                    uc_card,
+                    text="✨  Suggérer un pattern",
+                    width=200, height=32, corner_radius=8,
+                    font=ctk.CTkFont("Segoe UI", 11),
+                    fg_color="#1e3a5f", hover_color="#1e4a7f",
+                    border_width=1, border_color="#3b82f6",
+                    command=self._ouvrir_wizard_pattern
+                ).pack(anchor="w", padx=14, pady=(4, 10))
 
     def _render_drc(self, violations: list):
         """@brief Affiche la section DRC (règles de conception).
@@ -649,6 +659,26 @@ class TabAnalyze:
             return
         from gui.network_viewer import NetworkGraphViewer
         NetworkGraphViewer(self._graph, self._results)
+
+    def _on_pattern_created(self):
+        """@brief Callback appelé après création d'un pattern depuis le wizard."""
+        from tkinter import messagebox
+        messagebox.showinfo("Pattern créé ✓",
+            "Le pattern a été sauvegardé.\n"
+            "Il sera actif à la prochaine analyse.")
+
+    def _ouvrir_wizard_pattern(self):
+        """@brief Ouvre le wizard de suggestion de pattern pour les composants non classifiés."""
+        if not self._unclassified or self._graph is None:
+            return
+        from gui.pattern_wizard import PatternWizard
+        PatternWizard(
+            self.frame,
+            self._graph,
+            self._unclassified,
+            self._comp_info,
+            on_created=self._on_pattern_created,
+        )
 
 
 # ── Helper widgets ────────────────────────────────────────────────────────────
