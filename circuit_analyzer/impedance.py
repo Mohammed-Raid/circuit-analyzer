@@ -88,8 +88,20 @@ def _passe_serie(W: nx.MultiGraph, bornes: set) -> bool:
     @param bornes Nœuds à ne jamais éliminer.
     @return bool True si au moins une fusion a eu lieu.
     """
+    # Trier pour traiter en priorité les nœuds qui fusionnent des composants
+    # de même type (R+R, C+C…) avant les nœuds hétérogènes (R+C) : cela assure
+    # un résultat déterministe et cohérent (ex. R1+R2//C1 et non R2//R1+C1).
+    def _priorite_serie(n):
+        if n in bornes or W.degree(n) != 2:
+            return 1  # sera ignoré de toute façon
+        aretes = list(W.edges(n, keys=True, data=True))
+        if len(aretes) != 2:
+            return 1
+        (u1, v1, _k1, d1), (u2, v2, _k2, d2) = aretes
+        return 0 if d1['type'] == d2['type'] else 1
+
     change = False
-    for n in list(W.nodes()):
+    for n in sorted(list(W.nodes()), key=_priorite_serie):
         if n in bornes or W.degree(n) != 2:
             continue
         aretes = list(W.edges(n, keys=True, data=True))
@@ -135,7 +147,13 @@ def _passe_parallele(W: nx.MultiGraph, bornes: set) -> bool:
 
     for paire in paires:
         u, v = tuple(paire)
-        paquet = list(W.get_edge_data(u, v).values())
+        # Trier : composites (contenant '+') en premier ; à égalité, conserver
+        # l'ordre d'insertion original (clé entière dans le MultiGraph).
+        paquet = sorted(
+            W.get_edge_data(u, v).items(),
+            key=lambda kd: (0 if '+' in kd[1]['expr'] else 1, kd[0]),
+        )
+        paquet = [d for _k, d in paquet]
         type_eq = paquet[0]['type']
         refs, exprs = [], []
         for d in paquet:

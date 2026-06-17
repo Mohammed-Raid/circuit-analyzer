@@ -73,3 +73,21 @@ def test_parallele_r_et_c_meme_paire():
     assert z['type'] == 'Z'  # mixte R+C
     assert sorted(z['refs']) == ['C1', 'R1']
     assert z['composition'] == '(R1//C1)'
+
+
+def test_serie_puis_parallele_imbrique():
+    # A ─R1─ MID ─R2─ B  avec  C1 directement entre A et B.
+    # Série d'abord : R1+R2 entre A et B ; puis // C1.
+    g = _graphe(
+        Composant('R1', 'R', {'1': 'A', '2': 'MID'}, '1k'),
+        Composant('R2', 'R', {'1': 'MID', '2': 'B'}, '2k'),
+        Composant('C1', 'C', {'1': 'A', '2': 'B'}, '1u'),
+    )
+    reduit = impedance.reduire(g)
+    aretes = [d for _, _, d in reduit.edges(data=True)]
+    assert len(aretes) == 1
+    z = aretes[0]
+    assert z['type'] == 'Z'
+    assert sorted(z['refs']) == ['C1', 'R1', 'R2']
+    assert z['composition'] == '((R1+R2)//C1)'
+    assert 'MID' not in reduit.nodes()
