@@ -313,3 +313,33 @@ def reduire(graphe) -> nx.MultiGraph:
             reduit.remove_node(n)
 
     return reduit
+
+
+def expansion_depuis_graphe(reduit) -> dict:
+    """@brief Table {ref_synthetique -> [refs_reelles]} des arêtes composites du graphe réduit.
+
+    @param reduit Graphe réduit produit par reduire().
+    @return dict Mapping des refs synthétiques 'Zn' vers leurs vraies refs.
+    """
+    expansion = {}
+    for _u, _v, data in reduit.edges(data=True):
+        ref = data.get('ref', '')
+        refs = data.get('refs', [])
+        if len(refs) > 1:
+            expansion[ref] = list(refs)
+    return expansion
+
+
+def expandre_composites(match: dict, expansion: dict) -> dict:
+    """@brief Remplace dans match['components'] chaque ref synthétique par ses vraies refs.
+
+    @param match Dict du circuit détecté (clé 'components').
+    @param expansion Table {ref_synthetique -> [refs_reelles]}.
+    @return dict Copie du match aux vraies refs ; l'original n'est pas modifié.
+    """
+    if not expansion:
+        return match
+    comps = []
+    for ref in match['components']:
+        comps.extend(expansion.get(ref, [ref]))
+    return {**match, 'components': comps}

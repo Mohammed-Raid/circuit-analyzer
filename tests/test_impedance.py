@@ -197,3 +197,22 @@ def test_pont_trois_bornes_non_replie():
     refs = sorted(d['ref'] for _, _, d in reduit.edges(data=True))
     assert refs == ['R1', 'R2', 'R3']
     assert not any(str(d['ref']).startswith('Z') for _, _, d in reduit.edges(data=True))
+
+
+def test_expansion_depuis_graphe_et_expandre():
+    # Chaîne série R1+R2 → Z1 ; l'expansion mappe Z1 -> [R1, R2].
+    g = _graphe(
+        Composant('R1', 'R', {'1': 'IN', '2': 'MID'}, '1k'),
+        Composant('R2', 'R', {'1': 'MID', '2': 'OUT'}, '2k'),
+    )
+    reduit = impedance.reduire(g)
+    exp = impedance.expansion_depuis_graphe(reduit)
+    assert exp == {'Z1': ['R1', 'R2']}
+    # expandre_composites remplace la ref synthétique par les vraies refs.
+    match = {'circuit_type': 'X', 'components': ['Z1'], 'nodes': ['IN', 'OUT']}
+    out = impedance.expandre_composites(match, exp)
+    assert out['components'] == ['R1', 'R2']
+    # match d'origine non muté
+    assert match['components'] == ['Z1']
+    # sans expansion (singleton), la ref passe telle quelle
+    assert impedance.expandre_composites({'components': ['R5']}, {})['components'] == ['R5']
