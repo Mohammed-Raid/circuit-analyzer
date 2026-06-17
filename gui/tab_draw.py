@@ -20,15 +20,19 @@ from circuit_analyzer.xml import lire_xml
 class TabDraw:
     """@brief Onglet éditeur de schéma (palette + canvas + barre d'actions)."""
 
-    def __init__(self, parent, on_analyze: Optional[Callable[[str], None]] = None):
+    def __init__(self, parent, on_analyze: Optional[Callable[[str], None]] = None,
+                 on_pattern_created: Optional[Callable[[], None]] = None):
         """@brief Construit l'onglet.
 
         @param parent     Widget parent (zone de contenu).
         @param on_analyze Callback(path) appelé avec le chemin du fichier netlist
                           temporaire après clic sur « Analyser ».
+        @param on_pattern_created Callback() appelé après création d'un pattern
+                          (pour rafraîchir l'onglet Circuits).
         """
-        self.frame       = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
-        self._on_analyze = on_analyze
+        self.frame               = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
+        self._on_analyze         = on_analyze
+        self._on_pattern_created = on_pattern_created
         self._build()
 
     def _build(self):
@@ -288,9 +292,15 @@ class TabDraw:
         from gui.pattern_wizard import PatternWizard
         PatternWizard(
             self.frame, graph, refs, comp_info,
-            on_created=lambda: messagebox.showinfo(
-                "Pattern créé",
-                "Le pattern a été enregistré.\n"
-                "Il sera reconnu à la prochaine analyse.",
-                parent=self.frame),
+            on_created=self._pattern_created,
         )
+
+    def _pattern_created(self):
+        """@brief Après création d'un pattern : rafraîchit Circuits et confirme."""
+        if self._on_pattern_created:
+            self._on_pattern_created()
+        messagebox.showinfo(
+            "Pattern créé",
+            "Le pattern a été enregistré et ajouté à l'onglet « Circuits ».\n"
+            "Il sera reconnu à la prochaine analyse.",
+            parent=self.frame)

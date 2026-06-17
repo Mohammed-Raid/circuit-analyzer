@@ -48,12 +48,15 @@ def _type_style(name: str):
 class TabAnalyze:
     """@brief Onglet « Analyser » : sélection de fichier, analyse et affichage des résultats."""
 
-    def __init__(self, parent):
+    def __init__(self, parent, on_pattern_created=None):
         """@brief Construit l'onglet et son état interne.
 
         @param parent Widget parent (zone de contenu).
+        @param on_pattern_created Callback() après création d'un pattern
+                                  (rafraîchit l'onglet Circuits).
         """
         self.frame = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
+        self._on_pattern_created_cb = on_pattern_created
         self._file_path = tk.StringVar()
         self._report_text    = ""
         self._results        = []
@@ -670,8 +673,10 @@ class TabAnalyze:
     def _on_pattern_created(self):
         """@brief Callback appelé après création d'un pattern depuis le wizard."""
         from tkinter import messagebox
+        if self._on_pattern_created_cb:
+            self._on_pattern_created_cb()
         messagebox.showinfo("Pattern créé ✓",
-            "Le pattern a été sauvegardé.\n"
+            "Le pattern a été sauvegardé et ajouté à l'onglet « Circuits ».\n"
             "Il sera actif à la prochaine analyse.")
 
     def _ouvrir_wizard_pattern(self):

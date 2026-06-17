@@ -307,6 +307,19 @@ class TabCircuits:
             personnalises=[c.get("name", "") for c in self._custom],
         )
 
+    def refresh_circuits(self):
+        """@brief Recharge la liste des patterns personnalisés (créés depuis un autre onglet).
+
+        Appelé après la création d'un pattern via l'éditeur ou l'analyse : sans
+        ça, le pattern enregistré dans le fichier n'apparaît dans cette liste qu'au
+        prochain démarrage. Ne touche pas au formulaire en cours d'édition.
+        """
+        self._custom = load_custom_circuits()
+        self._liste.remplir(
+            integres=list(_BASE_NAMES),
+            personnalises=[c.get("name", "") for c in self._custom],
+        )
+
     def refresh_component_list(self):
         """@brief Reconstruit les cases composants en conservant les choix (la bibliothèque a changé)."""
         # La bibliothèque a changé : reconstruire les cases en gardant les choix.

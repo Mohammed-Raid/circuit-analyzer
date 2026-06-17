@@ -96,12 +96,22 @@ class AppWindow:
         content.grid_columnconfigure(0, weight=1)
         content.grid_rowconfigure(0, weight=1)
 
-        tab_a = TabAnalyze(content)
-        tab_d = TabDraw(content, on_analyze=lambda path: (
-            tab_a._file_path.set(path),
-            tab_a._analyze(),
-            self._switch(0),
-        ))
+        # Liaison tardive : tab_c n'existe pas encore quand tab_a/tab_d sont créés,
+        # mais ce callback n'est appelé qu'après une action utilisateur (le nom
+        # tab_c est alors résolu).
+        def _on_pattern_created():
+            # Un pattern vient d'être créé (éditeur/analyse) : recharger la liste
+            # de l'onglet Circuits, sinon il n'y apparaît qu'au prochain démarrage.
+            tab_c.refresh_circuits()
+
+        tab_a = TabAnalyze(content, on_pattern_created=_on_pattern_created)
+        tab_d = TabDraw(content,
+                        on_analyze=lambda path: (
+                            tab_a._file_path.set(path),
+                            tab_a._analyze(),
+                            self._switch(0),
+                        ),
+                        on_pattern_created=_on_pattern_created)
         tab_c = TabCircuits(content)
 
         def _on_lib_change():
