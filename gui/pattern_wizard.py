@@ -15,6 +15,7 @@ import customtkinter as ctk
 from custom_circuits.loader import (
     CONDITION_LABELS,
     CONDITION_DESCRIPTIONS,
+    condition_display,
     load_custom_circuits,
     save_custom_circuits,
     suggest_conditions,
@@ -325,23 +326,39 @@ class PatternWizard(ctk.CTkToplevel):
     # ── Étape 3 : Conditions topologiques ────────────────────────────────────
 
     def _build_step3(self):
-        """@brief Construit le contenu de l'étape 3 (conditions avec suggestion auto)."""
+        """@brief Étape 3 : résumé en clair des conditions détectées + repli avancé.
+
+        L'utilisateur n'a normalement rien à faire ici : on affiche en clair ce qui
+        distingue son circuit. Les cases techniques sont sous « Options avancées »,
+        masquées par défaut.
+        """
         frame = ctk.CTkFrame(self._left, fg_color="transparent")
         frame.grid(row=0, column=0, sticky="nsew")
         frame.grid_remove()
-        frame.grid_rowconfigure(1, weight=1)
+        frame.grid_rowconfigure(2, weight=1)
         frame.grid_columnconfigure(0, weight=1)
         self._step_frames[3] = frame
 
-        ctk.CTkLabel(
-            frame,
-            text="Les conditions cochées en vert ont été détectées automatiquement dans votre circuit.",
-            font=ctk.CTkFont("Segoe UI", 10),
-            text_color=MUTED, justify="left", anchor="w",
-        ).grid(row=0, column=0, sticky="ew", padx=4, pady=(0, 8))
+        # Résumé en clair (rempli par _apply_suggestions)
+        self._summary3 = ctk.CTkLabel(
+            frame, text="",
+            font=ctk.CTkFont("Segoe UI", 12),
+            text_color=TEXT, justify="left", anchor="nw")
+        self._summary3.grid(row=0, column=0, sticky="ew", padx=6, pady=(2, 10))
+
+        # Bouton de repli des options avancées
+        self._advanced_shown = False
+        self._btn_advanced = ctk.CTkButton(
+            frame, text="▸  Options avancées (ajuster les conditions)",
+            anchor="w", height=30, corner_radius=8,
+            font=ctk.CTkFont("Segoe UI", 11),
+            fg_color=CARD2, hover_color=BORDER, text_color=MUTED,
+            command=self._toggle_advanced3)
+        self._btn_advanced.grid(row=1, column=0, sticky="ew", padx=4, pady=(0, 6))
 
         scroll = ctk.CTkScrollableFrame(frame, fg_color="transparent")
-        scroll.grid(row=1, column=0, sticky="nsew")
+        scroll.grid(row=2, column=0, sticky="nsew")
+        scroll.grid_remove()                      # masqué par défaut
         self._cond_scroll3 = scroll
 
         for label in CONDITION_LABELS:
@@ -352,7 +369,7 @@ class PatternWizard(ctk.CTkToplevel):
             row.pack(fill="x", pady=(6, 0), padx=4)
 
             cb = ctk.CTkCheckBox(
-                row, text=label,
+                row, text=condition_display(label),
                 variable=var,
                 font=ctk.CTkFont("Segoe UI", 11),
                 text_color=TEXT,
@@ -369,7 +386,6 @@ class PatternWizard(ctk.CTkToplevel):
             detected_lbl.pack(side="left", padx=8)
             detected_lbl.pack_forget()
 
-            # Description sous le label
             desc = CONDITION_DESCRIPTIONS.get(label, "")
             if desc:
                 ctk.CTkLabel(scroll, text=desc,
@@ -377,12 +393,23 @@ class PatternWizard(ctk.CTkToplevel):
                              text_color=MUTED, anchor="w",
                              justify="left").pack(anchor="w", padx=28, pady=(0, 2))
 
-            # On stocke le label checkbox et le tag détecté pour mise à jour
-            var._cb_widget       = cb          # type: ignore[attr-defined]
+            var._cb_widget       = cb            # type: ignore[attr-defined]
             var._detected_label  = detected_lbl  # type: ignore[attr-defined]
 
+    def _toggle_advanced3(self):
+        """@brief Affiche/masque les cases de conditions (options avancées)."""
+        self._advanced_shown = not self._advanced_shown
+        if self._advanced_shown:
+            self._cond_scroll3.grid()
+            self._btn_advanced.configure(
+                text="▾  Options avancées (ajuster les conditions)")
+        else:
+            self._cond_scroll3.grid_remove()
+            self._btn_advanced.configure(
+                text="▸  Options avancées (ajuster les conditions)")
+
     def _apply_suggestions(self):
-        """@brief Appelle suggest_conditions() et pré-coche + colore les conditions détectées."""
+        """@brief Détecte les conditions, pré-coche les cases et écrit le résumé clair."""
         refs = self._selected_refs()
         try:
             self._suggested = set(suggest_conditions(self._graph, refs))
@@ -392,7 +419,6 @@ class PatternWizard(ctk.CTkToplevel):
         for label, var in self._cond_vars.items():
             detected = label in self._suggested
             var.set(detected)
-            # Met à jour la couleur du texte et la visibilité du tag
             cb    = getattr(var, "_cb_widget", None)
             d_lbl = getattr(var, "_detected_label", None)
             if cb is not None:
@@ -402,6 +428,18 @@ class PatternWizard(ctk.CTkToplevel):
                     d_lbl.pack(side="left", padx=8)
                 else:
                     d_lbl.pack_forget()
+
+        # Résumé en clair des conditions détectées.
+        detectees = [condition_display(l) for l in CONDITION_LABELS
+                     if l in self._suggested]
+        if detectees:
+            self._summary3.configure(
+                text="Ce qui distingue ce circuit (détecté automatiquement) :\n"
+                     + "\n".join(f"   •  {d}" for d in detectees))
+        else:
+            self._summary3.configure(
+                text="Aucune condition particulière détectée.\n"
+                     "Le pattern reconnaîtra tout circuit contenant ces composants.")
 
     # ── Étape 4 : Prévisualisation ────────────────────────────────────────────
 

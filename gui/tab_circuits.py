@@ -10,6 +10,7 @@ from circuit_analyzer.detecteur import NOMS_CIRCUITS
 from custom_circuits.loader import (
     load_custom_circuits, save_custom_circuits,
     CONDITION_LABELS, CONDITION_DESCRIPTIONS,
+    CONDITION_GROUPS, condition_display,
 )
 
 from gui.theme import BG, CARD, CARD2, BORDER, TEXT, MUTED, BLUE, BLUE_D
@@ -154,22 +155,31 @@ class TabCircuits:
         self._btn_save.grid(row=0, column=0, sticky="ew")
 
     def _build_conditions(self):
-        """@brief Crée une case à cocher par condition, avec sa description courte en dessous."""
-        for label in CONDITION_LABELS:
-            var = tk.BooleanVar()
-            self._cond_vars[label] = var
-            box = ctk.CTkCheckBox(
-                self._cond_scroll, text=label, variable=var,
-                font=ctk.CTkFont("Segoe UI", 11), text_color=TEXT,
-                fg_color=BLUE_D, hover_color=BLUE, checkmark_color=TEXT)
-            box.pack(anchor="w", padx=6, pady=(8, 0))
-            self._cond_boxes.append(box)
-            desc = CONDITION_DESCRIPTIONS.get(label, "")
-            if desc:
-                ctk.CTkLabel(self._cond_scroll, text=desc,
-                             font=ctk.CTkFont("Segoe UI", 10),
-                             text_color=MUTED, justify="left",
-                             anchor="w").pack(anchor="w", padx=30, pady=(0, 4))
+        """@brief Cases à cocher des conditions, regroupées par famille, libellés clairs.
+
+        Les variables restent indexées par la clé stable (pas le libellé affiché),
+        pour que la sauvegarde du pattern soit inchangée.
+        """
+        for titre, cles in CONDITION_GROUPS:
+            ctk.CTkLabel(self._cond_scroll, text=titre.upper(),
+                         font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                         text_color=BLUE, anchor="w").pack(
+                             anchor="w", padx=4, pady=(12, 2))
+            for cle in cles:
+                var = tk.BooleanVar()
+                self._cond_vars[cle] = var
+                box = ctk.CTkCheckBox(
+                    self._cond_scroll, text=condition_display(cle), variable=var,
+                    font=ctk.CTkFont("Segoe UI", 11), text_color=TEXT,
+                    fg_color=BLUE_D, hover_color=BLUE, checkmark_color=TEXT)
+                box.pack(anchor="w", padx=10, pady=(6, 0))
+                self._cond_boxes.append(box)
+                desc = CONDITION_DESCRIPTIONS.get(cle, "")
+                if desc:
+                    ctk.CTkLabel(self._cond_scroll, text=desc,
+                                 font=ctk.CTkFont("Segoe UI", 10),
+                                 text_color=MUTED, justify="left",
+                                 anchor="w").pack(anchor="w", padx=34, pady=(0, 4))
         lier_molette(self._cond_scroll)
 
     def _build_comp_checkboxes(self):

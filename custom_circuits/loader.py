@@ -19,6 +19,12 @@ def chemin_custom_circuits() -> Path:
     """
     return racine_application() / CUSTOM_CIRCUITS_FILE
 
+# Clés stables des conditions : servent à la fois d'identifiant dans
+# _check_condition ET de valeur stockée dans custom_circuits.json. NE PAS
+# renommer (casserait les patterns sauvegardés) — l'affichage clair passe par
+# CONDITION_DISPLAY. Le doublon « Transistor émetteur à GND » (sous-cas exact de
+# « Émetteur/Source à GND ») n'est plus proposé, mais reste géré en alias dans
+# _check_condition pour les patterns déjà enregistrés.
 CONDITION_LABELS = [
     "C connecté à GND",
     "R en série",
@@ -28,16 +34,57 @@ CONDITION_LABELS = [
     "Au moins 2 résistances",
     "Au moins 2 condensateurs",
     "R et C connectés au même nœud signal",
-    "Transistor émetteur à GND",
     "Diode cathode sur alimentation",
     "Pas de transistor dans le circuit",
     "Self (inductance) présente",
     "Relais présent",
 ]
 
-# Explication courte affichée sous chaque case dans l'onglet Circuits : les
-# libellés ci-dessus sont trop laconiques pour un non-initié. Toute entrée de
-# CONDITION_LABELS doit avoir sa description ici (garanti par un test).
+# Libellé clair affiché à l'utilisateur (clé stable → français lisible).
+CONDITION_DISPLAY = {
+    "C connecté à GND":                     "Un condensateur relié à la masse",
+    "R en série":                           "Une résistance en série avec un autre composant",
+    "R vers alimentation":                  "Une résistance reliée à l'alimentation (VCC)",
+    "Émetteur/Source à GND":                "Émetteur (transistor) ou source (MOSFET) à la masse",
+    "Feedback OUT→IN-":                     "Contre-réaction : la sortie de l'AOP revient sur l'entrée −",
+    "Au moins 2 résistances":               "Au moins 2 résistances",
+    "Au moins 2 condensateurs":             "Au moins 2 condensateurs",
+    "R et C connectés au même nœud signal": "Une résistance et un condensateur sur le même fil",
+    "Diode cathode sur alimentation":       "Cathode de la diode reliée à l'alimentation",
+    "Pas de transistor dans le circuit":    "Aucun transistor dans le circuit",
+    "Self (inductance) présente":           "Une bobine (inductance) est présente",
+    "Relais présent":                       "Un relais est présent",
+}
+
+# Regroupement en familles pour l'affichage (couvre exactement CONDITION_LABELS).
+CONDITION_GROUPS = [
+    ("Présence de composants", [
+        "Au moins 2 résistances",
+        "Au moins 2 condensateurs",
+        "Self (inductance) présente",
+        "Relais présent",
+        "Pas de transistor dans le circuit",
+    ]),
+    ("Masse & alimentation", [
+        "C connecté à GND",
+        "R vers alimentation",
+        "Émetteur/Source à GND",
+        "Diode cathode sur alimentation",
+    ]),
+    ("Câblage", [
+        "R en série",
+        "R et C connectés au même nœud signal",
+        "Feedback OUT→IN-",
+    ]),
+]
+
+
+def condition_display(cle: str) -> str:
+    """@brief Libellé clair d'une condition, ou la clé brute si absente."""
+    return CONDITION_DISPLAY.get(cle, cle)
+
+# Explication courte affichée sous chaque case dans l'onglet Circuits. Toute
+# entrée de CONDITION_LABELS doit avoir sa description ici (garanti par un test).
 CONDITION_DESCRIPTIONS = {
     "C connecté à GND":                   "un condensateur du circuit touche la masse",
     "R en série":                         "une résistance partage un nœud avec un autre composant",
@@ -47,7 +94,6 @@ CONDITION_DESCRIPTIONS = {
     "Au moins 2 résistances":             "le circuit contient au minimum deux résistances",
     "Au moins 2 condensateurs":           "le circuit contient au minimum deux condensateurs",
     "R et C connectés au même nœud signal": "une résistance et un condensateur partagent un nœud non-rail",
-    "Transistor émetteur à GND":          "le BJT a son émetteur directement à la masse",
     "Diode cathode sur alimentation":     "la cathode de la diode est reliée à un rail positif (VCC)",
     "Pas de transistor dans le circuit":  "aucun BJT ni MOSFET n'est présent dans les composants requis",
     "Self (inductance) présente":         "une self (type L) fait partie du circuit",
