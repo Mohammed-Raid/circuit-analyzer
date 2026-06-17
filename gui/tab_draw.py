@@ -10,6 +10,7 @@ from tkinter import messagebox
 
 from gui.theme import BG, CARD, CARD2, BORDER, TEXT, MUTED
 from gui.schematic_editor import SchematicEditor
+from circuit_analyzer.composant import lire_netlist, construire_graphe
 
 
 class TabDraw:
@@ -69,7 +70,47 @@ class TabDraw:
             command=self._launch_analyze,
         ).pack(side="right", pady=8)
 
+        ctk.CTkButton(
+            bar_inner,
+            text="💾  Enregistrer comme pattern",
+            width=210, height=34, corner_radius=8,
+            font=ctk.CTkFont("Segoe UI", 12, "bold"),
+            fg_color="#2563eb", hover_color="#1d4ed8",
+            command=self._save_as_pattern,
+        ).pack(side="right", padx=(0, 10), pady=8)
+
     # ── Actions ───────────────────────────────────────────────────────────────
+
+    def _export_netlist_file(self, prefix: str = "schema_editeur_"):
+        """@brief Exporte la netlist de l'éditeur dans un fichier temporaire .sp.
+
+        Contrôles « circuit vide » partagés par l'analyse et l'enregistrement de
+        pattern. N'affiche PAS l'avertissement de broches non câblées (spécifique
+        à l'analyse, géré par l'appelant).
+
+        @param prefix Préfixe du fichier temporaire.
+        @return str | None Chemin du fichier écrit, ou None si le circuit est vide.
+        """
+        if self._editor.comp_count() == 0:
+            messagebox.showwarning("Circuit vide",
+                                   "Ajoutez au moins un composant.",
+                                   parent=self.frame)
+            return None
+
+        netlist = self._editor.to_netlist()
+        if not netlist.strip():
+            messagebox.showwarning("Circuit vide",
+                                   "Aucun composant réel trouvé dans le schéma.",
+                                   parent=self.frame)
+            return None
+
+        tmp = tempfile.NamedTemporaryFile(
+            suffix=".sp", mode="w", encoding="utf-8",
+            delete=False, prefix=prefix,
+        )
+        tmp.write(netlist)
+        tmp.close()
+        return tmp.name
 
     def _launch_analyze(self):
         """@brief Exporte la netlist et transfère le chemin vers le pipeline d'analyse."""
@@ -93,23 +134,55 @@ class TabDraw:
                 parent=self.frame):
                 return
 
-        netlist = self._editor.to_netlist()
-        if not netlist.strip():
+        path = self._export_netlist_file()
+        if path is None:
+            return
+
+        if self._on_analyze:
+            self._on_analyze(path)
+        else:
+            # Fallback : afficher la netlist brute
+            messagebox.showinfo("Netlist générée",
+                                self._editor.to_netlist(), parent=self.frame)
+
+    def _save_as_pattern(self):
+        """@brief Ouvre le wizard pour enregistrer le circuit dessiné comme pattern.
+
+        Le geste naturel : « voici mon circuit, enregistre-le comme pattern ».
+        L'éditeur exporte sa netlist, on reconstruit le graphe, puis le
+        PatternWizard pré-coche tous les composants et détecte automatiquement
+        les conditions topologiques vraies (via suggest_conditions).
+        """
+        path = self._export_netlist_file(prefix="pattern_editeur_")
+        if path is None:
+            return
+
+        try:
+            composants = lire_netlist(path)
+            graph = construire_graphe(composants)
+        except Exception as exc:
+            messagebox.showerror(
+                "Erreur", f"Impossible de reconstruire le circuit :\n{exc}",
+                parent=self.frame)
+            return
+
+        comp_info = {
+            c.ref: {"type": c.type, "value": c.value, "pins": c.pins}
+            for c in composants
+        }
+        refs = list(comp_info.keys())
+        if not refs:
             messagebox.showwarning("Circuit vide",
-                                   "Aucun composant réel trouvé dans le schéma.",
+                                   "Aucun composant à enregistrer.",
                                    parent=self.frame)
             return
 
-        # Écriture dans un fichier temporaire .sp conservé jusqu'à la prochaine analyse
-        tmp = tempfile.NamedTemporaryFile(
-            suffix=".sp", mode="w", encoding="utf-8",
-            delete=False, prefix="schema_editeur_",
+        from gui.pattern_wizard import PatternWizard
+        PatternWizard(
+            self.frame, graph, refs, comp_info,
+            on_created=lambda: messagebox.showinfo(
+                "Pattern créé",
+                "Le pattern a été enregistré.\n"
+                "Il sera reconnu à la prochaine analyse.",
+                parent=self.frame),
         )
-        tmp.write(netlist)
-        tmp.close()
-
-        if self._on_analyze:
-            self._on_analyze(tmp.name)
-        else:
-            # Fallback : afficher la netlist brute
-            messagebox.showinfo("Netlist générée", netlist, parent=self.frame)
