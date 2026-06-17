@@ -15,6 +15,11 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import schemdraw
 import schemdraw.elements as elm
+from circuit_analyzer.patterns.base import (
+    is_ground_net,
+    is_power_net,
+    is_protective_earth_net,
+)
 
 UI_BG   = "#0f172a"
 UI_CARD = "#1e293b"
@@ -25,6 +30,60 @@ _COMP_COLORS = {
     "D": "#dc2626", "Q": "#7c3aed", "M": "#6d28d9",
     "U": "#b45309", "F": "#374151",
 }
+
+
+def _is_rail_net(net: str) -> bool:
+    return bool(net) and (
+        is_ground_net(net) or is_power_net(net) or is_protective_earth_net(net)
+    )
+
+
+def _info_for_ref(ref: str, graph, comp_info: dict) -> dict:
+    info = dict(comp_info.get(ref, {}) or {})
+    if info.get("pins"):
+        return info
+    comp = getattr(graph, "graph", {}).get("components", {}).get(ref)
+    if comp is None:
+        return info
+    info.setdefault("type", getattr(comp, "type", "?"))
+    info.setdefault("value", getattr(comp, "value", ""))
+    info.setdefault("pins", getattr(comp, "pins", {}))
+    return info
+
+
+def _build_island_model(ilot: dict, graph, comp_info: dict) -> dict:
+    """Construit le modele pur du schema reel d'un ilot."""
+    refs = sorted(ilot.get("composants", []))
+    components = []
+    internal_nets = set()
+    rail_nets = set()
+    links = []
+
+    for ref in refs:
+        info = _info_for_ref(ref, graph, comp_info)
+        pins = dict(info.get("pins", {}) or {})
+        components.append({
+            "ref": ref,
+            "type": info.get("type", "?"),
+            "value": info.get("value", ""),
+            "pins": pins,
+        })
+        for net in pins.values():
+            if not net:
+                continue
+            links.append((ref, net))
+            if _is_rail_net(net):
+                rail_nets.add(net)
+            else:
+                internal_nets.add(net)
+
+    return {
+        "label": ilot.get("label", "Ilot"),
+        "components": components,
+        "internal_nets": sorted(internal_nets),
+        "rail_nets": sorted(rail_nets),
+        "links": sorted(links),
+    }
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -100,6 +159,62 @@ def show_circuit(result: dict, comp_info: dict, parent=None):
 
 # ── Figure builder ────────────────────────────────────────────────────────────
 
+def show_island(ilot: dict, graph, comp_info: dict, parent=None):
+    """Ouvre une fenetre affichant le schema reel d'un ilot."""
+    model = _build_island_model(ilot, graph, comp_info)
+    name = model["label"]
+
+    popup = ctk.CTkToplevel(parent)
+    popup.title(f"Schema ilot - {name}")
+    popup.geometry("820x580")
+    popup.configure(fg_color=UI_BG)
+    popup.grab_set()
+
+    hdr = ctk.CTkFrame(popup, fg_color=UI_CARD, corner_radius=0, height=54)
+    hdr.pack(fill="x")
+    hdr.pack_propagate(False)
+    ctk.CTkLabel(hdr, text=f"Schema ilot - {name}",
+                 font=ctk.CTkFont("Segoe UI", 14, "bold"),
+                 text_color="#f1f5f9").pack(side="left", padx=18, pady=14)
+
+    chips = ctk.CTkFrame(popup, fg_color=UI_BG)
+    chips.pack(fill="x", padx=14, pady=(8, 2))
+    ctk.CTkLabel(chips, text="Composants :",
+                 font=ctk.CTkFont("Segoe UI", 10),
+                 text_color="#64748b").pack(side="left")
+    for comp in model["components"]:
+        txt = f" {comp['ref']} {comp.get('value', '')} ".strip()
+        color = _COMP_COLORS.get(comp.get("type"), "#374151")
+        ctk.CTkLabel(chips, text=txt,
+                     font=ctk.CTkFont("Consolas", 10, "bold"),
+                     fg_color=color, text_color="#ffffff",
+                     corner_radius=4).pack(side="left", padx=3)
+
+    fig = _make_island_fig(model)
+    canvas_frame = ctk.CTkFrame(popup, fg_color=SCH_BG, corner_radius=10)
+    canvas_frame.pack(fill="both", expand=True, padx=14, pady=(4, 0))
+
+    canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
+    canvas.draw()
+    canvas.get_tk_widget().configure(bg=SCH_BG, highlightthickness=0)
+    canvas.get_tk_widget().pack(fill="both", expand=True, padx=4, pady=4)
+
+    bar = ctk.CTkFrame(popup, fg_color=UI_CARD, corner_radius=0, height=44)
+    bar.pack(fill="x", side="bottom")
+    bar.pack_propagate(False)
+    ctk.CTkButton(bar, text="Exporter PNG",
+                  width=140, height=30, corner_radius=6,
+                  font=ctk.CTkFont("Segoe UI", 11),
+                  fg_color="#1d4ed8", hover_color="#2563eb",
+                  command=lambda: _export(fig, name, popup)).pack(
+                      side="left", padx=12, pady=7)
+    ctk.CTkButton(bar, text="Fermer",
+                  width=90, height=30, corner_radius=6,
+                  font=ctk.CTkFont("Segoe UI", 11),
+                  fg_color="#374151", hover_color="#4b5563",
+                  command=popup.destroy).pack(side="right", padx=12, pady=7)
+
+
 def _make_fig(result, comp_info, drawer_fn):
     """@brief Construit la figure matplotlib du schéma (ou un texte de repli).
 
@@ -135,6 +250,80 @@ def _make_fig(result, comp_info, drawer_fn):
 
     fig.tight_layout(pad=0.2)
     return fig
+
+
+def _make_island_fig(model):
+    """Construit une figure de schema reel generique pour un ilot."""
+    plt.close("all")
+    height = max(4.5, 0.75 * max(1, len(model["components"])) + 1.2)
+    fig, ax = plt.subplots(figsize=(9, height))
+    fig.patch.set_facecolor(SCH_BG)
+    ax.set_facecolor(SCH_BG)
+    ax.axis("off")
+
+    try:
+        with schemdraw.Drawing(canvas=ax, show=False) as d:
+            d.config(fontsize=10, inches_per_unit=0.45)
+            _draw_island_model(d, model)
+    except Exception as exc:
+        ax.text(0.5, 0.62, model["label"],
+                ha="center", va="center", transform=ax.transAxes,
+                fontsize=14, fontweight="bold", color="#1e293b")
+        refs = "  -  ".join(c["ref"] for c in model["components"])
+        ax.text(0.5, 0.48, refs,
+                ha="center", va="center", transform=ax.transAxes,
+                fontsize=11, color="#64748b", fontfamily="monospace")
+        ax.text(0.5, 0.35, f"Schema simplifie indisponible: {exc}",
+                ha="center", va="center", transform=ax.transAxes,
+                fontsize=10, color="#94a3b8")
+
+    fig.subplots_adjust(left=0.04, right=0.96, top=0.96, bottom=0.04)
+    return fig
+
+
+def _element_for_component(comp):
+    typ = comp.get("type")
+    if typ == "R":
+        return elm.Resistor()
+    if typ == "C":
+        return elm.Capacitor()
+    if typ == "L":
+        return elm.Inductor2()
+    if typ == "D":
+        return elm.Diode()
+    if typ == "F":
+        return elm.Fuse()
+    return elm.Rect(w=1.4, h=0.5)
+
+
+def _draw_island_model(d, model):
+    """Dessine le modele d'ilot sous forme de lignes composant-net."""
+    components = model["components"]
+    if not components:
+        d += elm.Line().right(1).label("Ilot vide")
+        return
+
+    for idx, comp in enumerate(components):
+        y = -idx * 1.35
+        pins = list(dict.fromkeys(n for n in comp.get("pins", {}).values() if n))
+        left_net = pins[0] if pins else ""
+        right_net = pins[1] if len(pins) > 1 else ""
+        extras = pins[2:]
+        label = _component_label(comp)
+
+        d.add(elm.Dot().at((0, y)).label(left_net, loc="left"))
+        d.add(elm.Line().at((0, y)).right(0.55))
+        d.add(_element_for_component(comp).right().label(label, loc="top"))
+        d.add(elm.Line().right(0.55))
+        d.add(elm.Dot().label(right_net, loc="right"))
+        if extras:
+            d.add(elm.Line().at((2.7, y)).down(0.45)
+                  .label(" / ".join(extras), loc="bottom"))
+
+
+def _component_label(comp):
+    value = comp.get("value") or ""
+    return f"{comp['ref']}\n{value}" if value else comp["ref"]
 
 
 def _export(fig, name, parent):

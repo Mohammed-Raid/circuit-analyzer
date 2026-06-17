@@ -11,7 +11,7 @@ from circuit_analyzer.xml import lire_xml as parse_xml, generer_xml as component
 from circuit_analyzer.detecteur import analyser as match_patterns
 from circuit_analyzer.rapport import generate
 from circuit_analyzer.drc import verifier_drc
-from gui.circuit_viewer import show_circuit
+from gui.circuit_viewer import show_circuit, show_island
 
 from gui.theme import BG, CARD, CARD2, BORDER, TEXT, MUTED, BLUE
 
@@ -568,7 +568,14 @@ class TabAnalyze:
             side="left", fill="x", expand=True, padx=10)
 
         for ilot in ilots:
-            _IslandSection(self._results_view, ilot, results).pack(
+            _IslandSection(
+                self._results_view,
+                ilot,
+                results,
+                self._graph,
+                self._comp_info,
+                self.frame,
+            ).pack(
                 fill="x", padx=16, pady=3)
 
     def _render_unclassified(self, unclassified: list):
@@ -754,7 +761,8 @@ class _EmptyState(ctk.CTkFrame):
 class _IslandSection(ctk.CTkFrame):
     """@brief Section repliable pour un îlot fonctionnel (structure en étages)."""
 
-    def __init__(self, parent, ilot: dict, results):
+    def __init__(self, parent, ilot: dict, results,
+                 graph=None, comp_info: dict = None, viewer_parent=None):
         """@brief Construit la section d'un îlot.
 
         @param parent Widget parent.
@@ -765,18 +773,37 @@ class _IslandSection(ctk.CTkFrame):
                          fg_color=CARD,
                          border_width=1, border_color=BORDER)
         self._ouvert = True
+        self._ilot = ilot
+        self._graph = graph
+        self._comp_info = comp_info or {}
+        self._viewer_parent = viewer_parent
 
         nb = len(ilot['composants'])
         titre = f"{ilot['label']}  ({nb} composant{'s' if nb > 1 else ''})"
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", padx=6, pady=(4, 0))
         self._btn = ctk.CTkButton(
-            self, text=f"▼  {titre}",
+            header, text=f"▼  {titre}",
             anchor="w", height=32, corner_radius=8,
             font=ctk.CTkFont("Segoe UI", 12, "bold"),
             fg_color="transparent", hover_color=CARD2,
             text_color=TEXT,
             command=self._toggle,
         )
-        self._btn.pack(fill="x", padx=6, pady=(4, 0))
+        self._btn.pack(side="left", fill="x", expand=True)
+        ctk.CTkButton(
+            header,
+            text="Schema ilot",
+            width=105,
+            height=28,
+            corner_radius=7,
+            font=ctk.CTkFont("Segoe UI", 10, "bold"),
+            fg_color="#1e293b",
+            hover_color="#263347",
+            border_width=1,
+            border_color=BORDER,
+            command=self._open_island_schema,
+        ).pack(side="right", padx=(8, 0))
         self._titre = titre
 
         self._contenu = ctk.CTkFrame(self, fg_color="transparent")
@@ -814,6 +841,12 @@ class _IslandSection(ctk.CTkFrame):
         else:
             self._contenu.pack_forget()
             self._btn.configure(text=f"▶  {self._titre}")
+
+    def _open_island_schema(self):
+        """@brief Ouvre le schema reel de l'ilot."""
+        if self._graph is None:
+            return
+        show_island(self._ilot, self._graph, self._comp_info, self._viewer_parent)
 
 
 class _CircuitCard(ctk.CTkFrame):
