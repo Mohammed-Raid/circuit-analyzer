@@ -895,3 +895,16 @@ class SchematicEditor(tk.Frame):
 
     def comp_count(self) -> int:
         return len([c for c in self._comps.values() if c.comp_type not in ("GND", "VCC")])
+
+    def unconnected_pins(self) -> list:
+        """@brief Liste des broches non câblées : [(ref, nom_broche), …].
+
+        Une broche non câblée fait souvent échouer la reconnaissance du circuit
+        (un inverseur sans feedback bouclé sur OUT devient un comparateur).
+        """
+        loose = []
+        for comp in self._comps.values():
+            for pn in COMP_DEFS[comp.comp_type]["pins"]:
+                if not self._pin_connected(comp.id, pn):
+                    loose.append((comp.ref, pn))
+        return loose

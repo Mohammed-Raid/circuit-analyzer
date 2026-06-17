@@ -79,6 +79,20 @@ class TabDraw:
                                    parent=self.frame)
             return
 
+        # Avertissement : broches non câblées (cause n°1 de mauvaise reconnaissance)
+        loose = self._editor.unconnected_pins()
+        if loose:
+            detail = ", ".join(f"{ref}.{pn}" for ref, pn in loose[:8])
+            more = "" if len(loose) <= 8 else f"  (+{len(loose) - 8})"
+            if not messagebox.askyesno(
+                "Broches non câblées",
+                f"{len(loose)} broche(s) ne sont pas connectées :\n{detail}{more}\n\n"
+                "Une broche non câblée empêche souvent la reconnaissance du circuit "
+                "(ex. un inverseur dont le feedback n'est pas bouclé sur OUT "
+                "devient un comparateur).\n\nAnalyser quand même ?",
+                parent=self.frame):
+                return
+
         netlist = self._editor.to_netlist()
         if not netlist.strip():
             messagebox.showwarning("Circuit vide",
