@@ -11,6 +11,8 @@ from circuit_analyzer.matcher import match_patterns
 def test_matcher_finds_rc_lowpass():
     """@brief Verifie matcher finds rc lowpass.
 
+    Les passifs isolés sont désormais classifiés comme « Impédance Z » par le
+    moteur Z — le nom « Filtre RC passe-bas » n'est plus émis par analyser().
     @return None
     """
     comps = [
@@ -19,7 +21,8 @@ def test_matcher_finds_rc_lowpass():
     ]
     results = match_patterns(build_graph(comps))
     types = [r['circuit_type'] for r in results]
-    assert 'Filtre RC passe-bas' in types
+    assert 'Impédance Z' in types
+    assert 'Filtre RC passe-bas' not in types
 
 
 def test_matcher_returns_circuit_type_field():

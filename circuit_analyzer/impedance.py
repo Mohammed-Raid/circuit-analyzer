@@ -276,7 +276,19 @@ def _replier_blocs_irreductibles(W: nx.MultiGraph, bornes: set) -> None:
         for u, v, d in list(sous.edges(data=True)):
             refs.extend(d['refs'])
         noyau_noeuds = set(sous.nodes())
-        # Retirer les arêtes et nœuds internes du noyau dans W.
+        # Identifier et sauvegarder les arêtes pendantes : leur AUTRE extrémité
+        # est hors du noyau, mais elles sont incidentes à un nœud interne du
+        # noyau. Ces arêtes doivent survivre à la suppression du noyau.
+        aretes_pendantes = []
+        for n in noyau_internes:
+            if n not in W:
+                continue
+            for u2, v2, k2, d2 in list(W.edges(n, keys=True, data=True)):
+                autre = v2 if u2 == n else u2
+                if autre not in noyau_noeuds:
+                    # Branche pendante : hors noyau, mais accrochée à un interne.
+                    aretes_pendantes.append((u2, v2, dict(d2)))
+        # Retirer les arêtes internes au noyau (SANS toucher les branches).
         for u, v, k in list(W.edges(noyau_noeuds, keys=True)):
             if u in noyau_noeuds and v in noyau_noeuds:
                 W.remove_edge(u, v, k)
@@ -288,6 +300,15 @@ def _replier_blocs_irreductibles(W: nx.MultiGraph, bornes: set) -> None:
         W.add_edge(a, b, type='Z',
                    refs=refs, expr="pont{" + ",".join(sorted(refs)) + "}",
                    value='')
+        # Réinsérer les branches pendantes : elles sont maintenant des singletons
+        # connectés à leur extrémité extérieure et… nulle part (le nœud interne
+        # a disparu). Pour les émettre en résultats, on les raccroche à la borne
+        # la plus proche du noyau (a ou b) — leur topologie importe peu car elles
+        # seront de toute façon émises comme singletons par reduire().
+        for u2, v2, d2 in aretes_pendantes:
+            # Choisir la borne du noyau (a ou b) comme nouvel ancrage interne
+            autre = v2 if u2 in noyau_noeuds else u2
+            W.add_edge(a, autre, **d2)
 
 
 def reduire(graphe) -> nx.MultiGraph:

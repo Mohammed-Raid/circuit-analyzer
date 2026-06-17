@@ -30,15 +30,18 @@ def test_pas_de_diviseur_avec_rail_en_noeud_milieu():
 def test_diviseur_legitime_toujours_detecte():
     """@brief Verifie diviseur legitime toujours detecte.
 
+    Depuis le modèle Impédance Z, le pont diviseur isolé est émis comme « Impédance Z ».
     @return None
     """
-    # VCC -> NET_DIV -> GND : nœud milieu signal, diviseur réel.
+    # VCC -> NET_DIV -> GND : réduit en une seule Impédance Z entre VCC et GND.
     comps = [
         Component('R1', 'R', {'1': 'VCC', '2': 'NET_DIV'}, '10k'),
         Component('R2', 'R', {'1': 'NET_DIV', '2': 'GND'}, '4.7k'),
     ]
     results = match_patterns(build_graph(comps))
-    assert any(m['circuit_type'] == 'Pont diviseur de tension' for m in results)
+    z = next((m for m in results if m['circuit_type'] == 'Impédance Z'), None)
+    assert z is not None
+    assert sorted(z['components']) == ['R1', 'R2']
 
 
 def test_pas_de_snubber_entre_rails():
@@ -61,6 +64,7 @@ def test_pas_de_snubber_entre_rails():
 def test_snubber_legitime_toujours_detecte():
     """@brief Verifie snubber legitime toujours detecte.
 
+    Depuis le modèle Impédance Z, l'absorbeur RC isolé est émis comme « Impédance Z ».
     @return None
     """
     comps = [
@@ -68,7 +72,9 @@ def test_snubber_legitime_toujours_detecte():
         Component('C1', 'C', {'1': 'NET_A', '2': 'NET_B'}, '10nF'),
     ]
     results = match_patterns(build_graph(comps))
-    assert any(m['circuit_type'] == 'Absorbeur RC' for m in results)
+    z = next((m for m in results if m['circuit_type'] == 'Impédance Z'), None)
+    assert z is not None
+    assert sorted(z['components']) == ['C1', 'R1']
 
 
 def test_miroir_apparie_uniquement_par_base_commune():
@@ -91,20 +97,22 @@ def test_miroir_apparie_uniquement_par_base_commune():
 def test_supprimes_non_enrichis():
     """@brief Verifie supprimes non enrichis.
 
+    Depuis le modèle Impédance Z, VCC→NET_MID→GND est réduit en une seule
+    Impédance Z (R1+R2//C1) — il n'y a plus de chevauchement. On vérifie que
+    les matches enrichis contiennent bien les clés de confiance.
     @return None
     """
-    # L'enrichissement (confiance) ne doit plus être calculé pour les
-    # matches supprimés — seuls circuit_type/components/nodes sont garantis.
     comps = [
         Component('R1', 'R', {'1': 'VCC', '2': 'NET_MID'}, '10k'),
         Component('R2', 'R', {'1': 'NET_MID', '2': 'GND'}, '10k'),
         Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
     ]
     results = match_patterns(build_graph(comps))
-    assert results.supprimes   # chevauchement filtre RC / pont diviseur
-    for s in results.supprimes:
-        assert 'circuit_type' in s and 'components' in s
-        assert 'confidence' not in s
+    # Tous les passifs sont désormais couverts par une seule Impédance Z.
+    assert any(m['circuit_type'] == 'Impédance Z' for m in results)
+    for m in results:
+        assert 'circuit_type' in m and 'components' in m
+        assert 'confidence' in m
 
 
 def test_pas_de_filtre_rc_avec_rail_en_jonction():
@@ -128,6 +136,7 @@ def test_pas_de_filtre_rc_avec_rail_en_jonction():
 def test_filtre_rc_legitime_toujours_detecte():
     """@brief Verifie filtre rc legitime toujours detecte.
 
+    Depuis le modèle Impédance Z, le filtre RC isolé est émis comme « Impédance Z ».
     @return None
     """
     comps = [
@@ -135,7 +144,9 @@ def test_filtre_rc_legitime_toujours_detecte():
         Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
     ]
     results = match_patterns(build_graph(comps))
-    assert any(m['circuit_type'] == 'Filtre RC passe-bas' for m in results)
+    z = next((m for m in results if m['circuit_type'] == 'Impédance Z'), None)
+    assert z is not None
+    assert sorted(z['components']) == ['C1', 'R1']
 
 
 def test_rapport_plafonne_les_supprimes_a_50():

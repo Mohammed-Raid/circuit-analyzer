@@ -517,22 +517,22 @@ def test_absorption_prefere_noeud_signal_au_rail():
 def test_e2e_pull_up_devient_satellite():
     """@brief Verifie e2e pull up devient satellite.
 
+    Depuis le modèle Impédance Z, C1 et R3 (GND–VCC) sont réduits en une seule
+    Impédance Z composite. R1 est une Impédance Z singleton. Plus de satellite
+    pull-up — tous les passifs sont couverts par « Impédance Z ».
     @return None
     """
-    # NB : un pull-down de base est déjà absorbé par le détecteur transistor
-    # lui-même ; le vrai cas leftover est un pull-up sur un nœud interne
-    # d'un circuit passif (ici le nœud milieu d'un filtre RC).
     comps = [
         Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
         Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
         Component('R3', 'R', {'1': 'NET_MID', '2': 'VCC'}, '47k'),
     ]
     results = match_patterns(build_graph(comps))
-    filtre = [m for m in results if m['circuit_type'] == 'Filtre RC passe-bas']
-    assert len(filtre) == 1
-    sats = filtre[0]['satellites']
-    assert any(s['ref'] == 'R3' and s['role'] == 'pull-up'
-               and s['status'] == 'sure' for s in sats)
+    types = [m['circuit_type'] for m in results]
+    assert 'Impédance Z' in types
+    # R1, C1 et R3 sont tous couverts par des Impédances Z
+    couverts = {c for m in results for c in m['components']}
+    assert {'R1', 'C1', 'R3'} <= couverts
 
 def test_e2e_tous_les_matches_ont_la_cle_satellites():
     """@brief Verifie e2e tous les matches ont la cle satellites.
@@ -589,12 +589,19 @@ from circuit_analyzer.rapport import generer_rapport
 
 
 def _resultats_filtre_avec_satellites():
-    """@brief Helper de test pour resultats filtre avec satellites."""
+    """@brief Helper de test pour resultats filtre avec satellites.
+
+    Depuis le modèle Impédance Z, un circuit purement passif ne produit plus de
+    satellites. On utilise un transistor en commutation (circuit actif) avec :
+    - Q1, R1 : transistor en commutation (R1 = résistance de base, consommée)
+    - D1 (roue libre NET_COLL→VCC) : satellite sûr (flyback)
+    - D2 (anode VCC, cathode NET_COLL) : satellite possible (unknown-neighbor)
+    """
     comps = [
-        Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
-        Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
-        Component('R3', 'R', {'1': 'NET_MID', '2': 'VCC'}, '47k'),
-        Component('C9', 'C', {'1': 'NET_MID', '2': 'NET_X'}, '10nF'),
+        Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
+        Component('R1', 'R', {'1': 'NET_CMD', '2': 'NET_BASE'}, '1k'),
+        Component('D1', 'D', {'A': 'NET_COLL', 'K': 'VCC'}),   # roue libre → sûr
+        Component('D2', 'D', {'A': 'VCC', 'K': 'NET_COLL'}),   # anode sur rail → possible
     ]
     refs = [c.ref for c in comps]
     return match_patterns(build_graph(comps)), refs
@@ -607,8 +614,8 @@ def test_rapport_affiche_satellites_surs():
     results, refs = _resultats_filtre_avec_satellites()
     rapport = generer_rapport(results, 'test.txt', len(refs), refs)
     assert 'Satellites sûrs' in rapport
-    assert 'R3' in rapport
-    assert 'pull-up' in rapport
+    assert 'D1' in rapport
+    assert 'flyback' in rapport
 
 def test_rapport_affiche_satellites_possibles_avec_marqueur():
     """@brief Verifie rapport affiche satellites possibles avec marqueur.
@@ -618,7 +625,7 @@ def test_rapport_affiche_satellites_possibles_avec_marqueur():
     results, refs = _resultats_filtre_avec_satellites()
     rapport = generer_rapport(results, 'test.txt', len(refs), refs)
     assert 'Satellites possibles' in rapport
-    assert 'C9 ?' in rapport
+    assert 'D2 ?' in rapport
 
 def test_rapport_sur_quitte_non_classifies_possible_va_dans_a_verifier():
     """@brief Verifie rapport sur quitte non classifies possible va dans a verifier.
@@ -631,10 +638,10 @@ def test_rapport_sur_quitte_non_classifies_possible_va_dans_a_verifier():
     rapport = generer_rapport(results, 'test.txt', len(refs), refs)
     assert 'À vérifier (rattachement possible)' in rapport
     section = rapport.split('À vérifier')[1]
-    assert 'C9' in section
+    assert 'D2' in section
     if 'non classifiés' in rapport:
         section_nc = rapport.split('non classifiés')[1].split('À vérifier')[0]
-        assert 'R3' not in section_nc
+        assert 'D1' not in section_nc
 
 def test_rapport_warning_validation_ingenieur():
     """@brief Verifie rapport warning validation ingenieur.
@@ -682,6 +689,8 @@ from circuit_analyzer.xml import generer_xml, _grouper_par_circuit
 def test_xml_satellite_sur_dans_le_bloc_du_circuit():
     """@brief Verifie xml satellite sur dans le bloc du circuit.
 
+    Depuis le modèle Impédance Z, R3 (VCC–GND via le nœud milieu) est réduit
+    en une Impédance Z composite avec C1. R3 n'est dans aucun bloc Divers.
     @return None
     """
     comps = [
@@ -691,9 +700,9 @@ def test_xml_satellite_sur_dans_le_bloc_du_circuit():
     ]
     results = match_patterns(build_graph(comps))
     blocs = _grouper_par_circuit(comps, results)
-    bloc_filtre = [b for b in blocs if 'passe-bas' in b.label]
-    assert bloc_filtre and any(c.ref == 'R3' for c in bloc_filtre[0].comps)
-    # R3 ne doit plus être en Divers
+    # R3 doit être dans un bloc Impédance Z (composite avec C1), pas en Divers.
+    bloc_z = [b for b in blocs if b.label == 'Impédance Z']
+    assert any(any(c.ref == 'R3' for c in b.comps) for b in bloc_z)
     for b in blocs:
         if b.label == 'Divers':
             assert all(c.ref != 'R3' for c in b.comps)
@@ -701,6 +710,8 @@ def test_xml_satellite_sur_dans_le_bloc_du_circuit():
 def test_xml_satellite_possible_reste_en_divers():
     """@brief Verifie xml satellite possible reste en divers.
 
+    Depuis le modèle Impédance Z, C9 n'est plus un satellite possible : il est
+    émis comme une Impédance Z autonome et groupé dans le bloc Impédance Z.
     @return None
     """
     comps = [
@@ -710,12 +721,11 @@ def test_xml_satellite_possible_reste_en_divers():
     ]
     results = match_patterns(build_graph(comps))
     blocs = _grouper_par_circuit(comps, results)
+    # C9 est maintenant une Impédance Z, pas en Divers
+    bloc_z = [b for b in blocs if b.label == 'Impédance Z']
+    assert any(any(c.ref == 'C9' for c in b.comps) for b in bloc_z)
     divers = [b for b in blocs if b.label == 'Divers']
-    assert divers and any(c.ref == 'C9' for c in divers[0].comps)
-    # et C9 n'est dans aucun bloc de circuit
-    for b in blocs:
-        if b.label != 'Divers':
-            assert all(c.ref != 'C9' for c in b.comps)
+    assert not divers or all(c.ref != 'C9' for c in divers[0].comps)
 
 def test_xml_generation_complete_avec_satellites():
     """@brief Verifie xml generation complete avec satellites.

@@ -83,7 +83,7 @@ class TabDraw:
         ).pack(side="left", padx=(0, 14), pady=8)
 
         ctk.CTkLabel(bar_inner,
-                     text="Ctrl+Z/Y annuler·rétablir  ·  Ctrl+C/V/D copier·coller·dupliquer  ·  F ajuster  ·  Clic droit = menu",
+                     text="Espace/R rotation  ·  Ctrl+Z/Y annuler·rétablir  ·  Ctrl+C/V/D copier·coller·dupliquer  ·  F ajuster  ·  Clic droit = menu",
                      font=ctk.CTkFont("Segoe UI", 10),
                      text_color=MUTED).pack(side="left", pady=10)
 

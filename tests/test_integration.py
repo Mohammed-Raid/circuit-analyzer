@@ -121,11 +121,8 @@ def test_full_pipeline():
         assert result.returncode == 0, result.stderr
         report = report_path.read_text(encoding='utf-8')
 
-        assert 'Filtre RC passe-bas' in report
-        assert 'Pont diviseur de tension' in report
-        assert 'Condensateur de découplage' in report
-        assert 'Protection par fusible' in report
-        assert 'Absorbeur RC' in report
+        # Les passifs isolés sont désormais classifiés comme "Impédance Z"
+        assert 'Impédance Z' in report
         assert 'Pont redresseur (Graetz)' in report
         assert 'Transistor en commutation' in report
         assert 'Suiveur de tension (AOP)' in report

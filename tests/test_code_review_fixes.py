@@ -38,7 +38,8 @@ def test_malformed_custom_circuits_json_does_not_crash(tmp_path, monkeypatch):
     ]
     results = match_patterns(build_graph(comps))
     types = [r['circuit_type'] for r in results]
-    assert 'Filtre RC passe-bas' in types
+    # Depuis le modèle Impédance Z, le passif isolé est émis comme « Impédance Z »
+    assert 'Impédance Z' in types
 
 
 # ── Fix 2: HalfWaveRectifier uses cathode only ────────────────────────────────

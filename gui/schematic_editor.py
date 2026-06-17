@@ -353,7 +353,7 @@ class SchematicEditor(tk.Frame):
 
         self._status_lbl = tk.Label(
             parent,
-            text="Clic = placer\nR = rotation\nCtrl+C/V = copier/coller\nCtrl+D = dupliquer\n"
+            text="Clic = placer\nEspace/R = rotation\nCtrl+C/V = copier/coller\nCtrl+D = dupliquer\n"
                  "Ctrl+Z/Y = annuler/rétablir\nF = ajuster · Ctrl+molette = zoom",
             fg="#475569", bg="#1e293b",
             font=("Segoe UI", 7), justify="center",
@@ -428,6 +428,7 @@ class SchematicEditor(tk.Frame):
         c.bind("<Escape>",           self._on_escape)
         c.bind("<r>",                self._on_rotate)
         c.bind("<R>",                self._on_rotate)
+        c.bind("<space>",            self._on_rotate)
         c.bind("<Control-z>",        self._undo)
         c.bind("<Control-Z>",        self._undo)
         c.bind("<Control-y>",        self._redo)

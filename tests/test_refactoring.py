@@ -64,7 +64,8 @@ def test_normalization_makes_nets_comparable():
     assert 'NET_A' in graph.nodes()
     results = match_patterns(graph)
     types = [r['circuit_type'] for r in results]
-    assert 'Filtre RC passe-bas' in types
+    # Depuis le modèle Impédance Z, le passif isolé est émis comme « Impédance Z »
+    assert 'Impédance Z' in types
 
 
 # ── Point 2: Dimensional validation ───────────────────────────────────────────
@@ -190,18 +191,19 @@ def test_summing_amp_takes_priority_over_inverting():
 def test_decoupling_cap_locks_before_rc_lowpass():
     """@brief Verifie decoupling cap locks before rc lowpass.
 
+    Depuis le modèle Impédance Z, R1 et C1 sont des passifs isolés → Impédance Z.
     @return None
     """
-    # C1 (VCC→GND) is a decoupling cap. Without locking it could also be claimed
-    # by RCLowPassFilter alongside R1. DecouplingCapacitor must win.
+    # C1 (VCC→GND) et R1 (VCC→NET_SIG) sont traités par le moteur Z.
     comps = [
         Component('R1', 'R', {'1': 'VCC', '2': 'NET_SIG'}, '100'),
         Component('C1', 'C', {'1': 'VCC', '2': 'GND'}, '100nF'),
     ]
     results = match_patterns(build_graph(comps))
     types = [r['circuit_type'] for r in results]
-    assert 'Condensateur de découplage' in types
+    assert 'Impédance Z' in types
     assert 'Filtre RC passe-bas' not in types
+    assert 'Condensateur de découplage' not in types
 
 
 def test_transistor_switch_locks_base_resistor():

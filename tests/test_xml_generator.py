@@ -77,6 +77,7 @@ def test_generator_unknown_pin_raises():
 def test_roundtrip_rc_lowpass():
     """@brief Verifie roundtrip rc lowpass.
 
+    Depuis le modèle Impédance Z, le passif isolé est émis comme « Impédance Z ».
     @return None
     """
     comps = [
@@ -86,7 +87,7 @@ def test_roundtrip_rc_lowpass():
     xml = components_to_xml(comps)
     back = _xml_to_components(xml)
     types = sorted(r["circuit_type"] for r in match_patterns(build_graph(back)))
-    assert "Filtre RC passe-bas" in types
+    assert "Impédance Z" in types
 
 
 def test_roundtrip_inverting_amp():
@@ -189,9 +190,9 @@ def test_distinct_power_rails_not_merged():
     # The two positive rails remain separate names
     assert "VMOT_48V" in rails
     assert "VCC_5V" in rails
-    # Both decoupling caps survive
+    # Les deux caps passent désormais comme « Impédance Z » (modèle Z)
     types = [r["circuit_type"] for r in match_patterns(build_graph(back))]
-    assert types.count("Condensateur de découplage") == 2
+    assert types.count("Impédance Z") == 2
 
 
 def test_relay_survives_roundtrip():
