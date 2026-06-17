@@ -6,6 +6,9 @@
 import subprocess, sys, os, tempfile
 from pathlib import Path
 
+from circuit_analyzer.composant import Composant, construire_graphe
+from circuit_analyzer.detecteur import detecter_impedances, analyser
+
 
 SAMPLE_NETLIST = """\
 # Filtre RC passe-bas
@@ -39,6 +42,23 @@ R5  NET_CMD   NET_BASE  1k
 # AOP suiveur
 U1  NET_SIG  NET_OUT  NET_OUT  VCC  GND
 """
+
+
+def test_detecter_impedances_emet_chaque_z():
+    # IN ─R1─ MID ─R2─ GND : un seul composite Z1 = R1+R2 entre IN et GND.
+    from circuit_analyzer import impedance
+    g = construire_graphe([
+        Composant('R1', 'R', {'1': 'IN', '2': 'MID'}, '1k'),
+        Composant('R2', 'R', {'1': 'MID', '2': 'GND'}, '2k'),
+    ])
+    reduit = impedance.reduire(g)
+    matches = list(detecter_impedances(reduit))
+    assert len(matches) == 1
+    m = matches[0]
+    assert m['circuit_type'] == 'Impédance Z'
+    assert m['components'] == ['Z1']           # ref synthétique, expansée par analyser()
+    assert set(m['nodes']) == {'IN', 'GND'}
+    assert m['composition'] == 'R1+R2'
 
 
 def test_full_pipeline():

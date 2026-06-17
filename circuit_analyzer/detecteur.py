@@ -1187,6 +1187,31 @@ def detecter_fusible(graphe):
     return resultats
 
 
+def detecter_impedances(graphe):
+    """
+    @brief Émet chaque arête Z (passive réduite) comme une « Impédance Z ».
+
+    @param graphe Graphe RÉDUIT (sortie de impedance.reduire()).
+    @return list[dict] Un match par arête passive, {'circuit_type', 'components',
+            'nodes', 'composition'}.
+
+    Placé en dernier dans la chaîne de détection : l'anti-vol d'analyser() saute
+    les Z dont les composants sont déjà pris par un montage actif. Ce qui reste
+    devient une impédance nommée — plus aucun passif « non classifié ».
+    """
+    resultats = []
+    for u, v, data in graphe.edges(data=True):
+        if data.get('type') not in ('R', 'C', 'L', 'Z'):
+            continue  # diodes, etc. : pas des impédances passives
+        resultats.append({
+            'circuit_type': 'Impédance Z',
+            'components': [data['ref']],
+            'nodes': [u, v],
+            'composition': data.get('composition', data['ref']),
+        })
+    return resultats
+
+
 # =============================================================================
 # FONCTION PRINCIPALE
 # =============================================================================
