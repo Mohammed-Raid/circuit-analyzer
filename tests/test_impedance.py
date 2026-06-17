@@ -93,6 +93,22 @@ def test_parallele_r_et_c_meme_paire():
     assert z['composition'] == '(R1//C1)'
 
 
+def test_fusible_transparent():
+    # VIN ─F1─ N ─R1─ OUT : le fusible est transparent (ses deux nœuds
+    # fusionnent). Il ne reste QUE R1, entre VIN et OUT. Aucune arête 'F'.
+    g = _graphe(
+        Composant('F1', 'F', {'1': 'VIN', '2': 'N'}),
+        Composant('R1', 'R', {'1': 'N', '2': 'OUT'}, '1k'),
+    )
+    reduit = impedance.reduire(g)
+    types = sorted(d['type'] for _, _, d in reduit.edges(data=True))
+    assert types == ['R']  # plus aucune arête 'F'
+    r1 = next(d for _, _, d in reduit.edges(data=True) if d['ref'] == 'R1')
+    bornes = {u for u, _, d in reduit.edges(data=True) if d['ref'] == 'R1'}
+    bornes |= {v for _, v, d in reduit.edges(data=True) if d['ref'] == 'R1'}
+    assert bornes == {'VIN', 'OUT'}  # N a été absorbé dans VIN
+
+
 def test_milieu_relie_a_aop_non_fusionne():
     # Pont diviseur VCC ─R1─ MID ─R2─ GND, mais MID alimente IN- d'un AOP.
     # MID est une broche active → borne → NON éliminé : R1 et R2 restent

@@ -54,6 +54,54 @@ def _graphe_de_travail(graphe) -> nx.MultiGraph:
     return W
 
 
+def _rendre_fusibles_transparents(graphe) -> nx.MultiGraph:
+    """@brief Fusionne les deux nœuds de chaque fusible (≈ fil ~0 Ω) et retire
+    l'arête F. Le fusible disparaît du graphe.
+
+    @param graphe Graphe d'origine.
+    @return nx.MultiGraph Copie sans fusible, nets fusionnés.
+    """
+    # Union-Find des nets reliés par un fusible.
+    parent: dict = {}
+
+    def trouver(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def unir(a, b):
+        ra, rb = trouver(a), trouver(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    for _u, _v, data in graphe.edges(data=True):
+        if data.get('type') == 'F':
+            unir(_u, _v)
+
+    if not parent:  # aucun fusible
+        return graphe
+
+    g2 = nx.MultiGraph()
+    # Recopier les composants en renommant leurs broches.
+    comps = {}
+    for ref, comp in graphe.graph.get('components', {}).items():
+        comps[ref] = comp
+    g2.graph['components'] = comps
+
+    for u, v, data in graphe.edges(data=True):
+        if data.get('type') == 'F':
+            continue  # le fusible disparaît
+        g2.add_edge(trouver(u), trouver(v), **data)
+    for n in graphe.nodes():
+        g2.add_node(trouver(n))
+    # Renommer aussi les broches des composants multi-broches (cohérence des nets).
+    for comp in comps.values():
+        comp.pins = {p: trouver(net) for p, net in comp.pins.items()}
+    return g2
+
+
 def _bornes(graphe, W) -> set:
     """@brief Nœuds jamais éliminés : rails, broches actives, jonctions
     touchées par une arête non réductible.
@@ -175,6 +223,7 @@ def reduire(graphe) -> nx.MultiGraph:
             (ref, type, refs, composition, value). Les arêtes non réductibles et
             le dict 'components' sont conservés tels quels.
     """
+    graphe = _rendre_fusibles_transparents(graphe)
     W = _graphe_de_travail(graphe)
     bornes = _bornes(graphe, W)
 
