@@ -24,3 +24,19 @@ def test_combiner_type_homogene_et_mixte():
     assert impedance._combiner_type('C', 'C') == 'C'
     assert impedance._combiner_type('R', 'C') == 'Z'
     assert impedance._combiner_type('Z', 'R') == 'Z'
+
+
+def test_aucune_reduction_graphe_inchange():
+    # Deux R indépendantes (aucun nœud interne fusionnable) → graphe identique.
+    g = _graphe(
+        Composant('R1', 'R', {'1': 'IN', '2': 'OUT'}, '10k'),
+        Composant('R2', 'R', {'1': 'VCC', '2': 'GND'}, '1k'),
+    )
+    reduit = impedance.reduire(g)
+    assert _aretes(reduit) == _aretes(g)
+    # Les valeurs réelles sont préservées sur les singletons.
+    vals = {d['ref']: d['value'] for _, _, d in reduit.edges(data=True)}
+    assert vals == {'R1': '10k', 'R2': '1k'}
+    # Chaque singleton porte refs/composition cohérents.
+    r1 = next(d for _, _, d in reduit.edges(data=True) if d['ref'] == 'R1')
+    assert r1['refs'] == ['R1'] and r1['composition'] == 'R1'
