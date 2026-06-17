@@ -60,6 +60,24 @@ def test_serie_deux_resistances_entre_bornes():
     assert 'MID' not in reduit.nodes()
 
 
+def test_filtre_rc_isole_devient_z_vers_gnd():
+    # IN ─R1─ MID ─C1─ GND : MID interne degré 2 (non-borne), GND est un rail
+    # mais on AUTORISE la fusion vers le rail → Z1 = R1+C1 entre IN et GND.
+    g = _graphe(
+        Composant('R1', 'R', {'1': 'IN', '2': 'MID'}, '10k'),
+        Composant('C1', 'C', {'1': 'MID', '2': 'GND'}, '100n'),
+    )
+    reduit = impedance.reduire(g)
+    aretes = [d for _, _, d in reduit.edges(data=True)]
+    assert len(aretes) == 1
+    z = aretes[0]
+    assert z['type'] == 'Z'
+    assert sorted(z['refs']) == ['C1', 'R1']
+    assert z['composition'] == 'R1+C1'
+    assert 'MID' not in reduit.nodes()
+    assert set(reduit.nodes()) == {'IN', 'GND'}
+
+
 def test_parallele_r_et_c_meme_paire():
     # R1 // C1 entre A et B (deux feuilles) → Z mixte, composition (R1//C1).
     g = _graphe(
