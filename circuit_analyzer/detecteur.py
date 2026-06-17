@@ -46,7 +46,15 @@ def _est_rail(noeud) -> bool:
     )
 
 
-def _voisins_de_type(graphe, noeud, type_composant):
+def _type_correspond(data, type_composant, inclure_z=False):
+    """Retourne True si l'arete correspond au type attendu."""
+    type_arete = data.get('type')
+    if type_arete == type_composant:
+        return True
+    return inclure_z and type_composant == 'R' and type_arete == 'Z'
+
+
+def _voisins_de_type(graphe, noeud, type_composant, inclure_z=False):
     """
     @brief Composants d'un type donné connectés à un nœud, avec leur autre extrémité.
 
@@ -60,7 +68,7 @@ def _voisins_de_type(graphe, noeud, type_composant):
     """
     resultats = []
     for u, v, data in graphe.edges(noeud, data=True):
-        if data['type'] == type_composant:
+        if _type_correspond(data, type_composant, inclure_z=inclure_z):
             autre = v if u == noeud else u
             resultats.append((data['ref'], autre))
     return resultats
@@ -96,7 +104,7 @@ def detecter_amplificateur_inverseur(graphe):
         if not entree_neg or not sortie:
             continue
 
-        resistances_sur_inm = _voisins_de_type(graphe, entree_neg, 'R')
+        resistances_sur_inm = _voisins_de_type(graphe, entree_neg, 'R', inclure_z=True)
 
         # La R de feedback relie la sortie à IN- (contre-réaction négative)
         r_feedback = [ref for ref, autre in resistances_sur_inm if autre == sortie]
@@ -138,7 +146,7 @@ def detecter_amplificateur_non_inverseur(graphe):
         if not entree_neg or not sortie:
             continue
 
-        resistances_sur_inm = _voisins_de_type(graphe, entree_neg, 'R')
+        resistances_sur_inm = _voisins_de_type(graphe, entree_neg, 'R', inclure_z=True)
 
         r_feedback = [ref for ref, autre in resistances_sur_inm if autre == sortie]
         r_vers_gnd = [ref for ref, autre in resistances_sur_inm if est_masse(autre)]
@@ -214,7 +222,7 @@ def detecter_integrateur(graphe):
         c_feedback = []
         for u, v, data in graphe.edges(entree_neg, data=True):
             autre = v if u == entree_neg else u
-            if data['type'] == 'R' and autre != sortie:
+            if _type_correspond(data, 'R', inclure_z=True) and autre != sortie:
                 r_entree.append(data['ref'])
             elif data['type'] == 'C' and autre == sortie:
                 c_feedback.append(data['ref'])
@@ -259,7 +267,7 @@ def detecter_derivateur(graphe):
             autre = v if u == entree_neg else u
             if data['type'] == 'C' and autre != sortie:
                 c_entree.append(data['ref'])
-            elif data['type'] == 'R' and autre == sortie:
+            elif _type_correspond(data, 'R', inclure_z=True) and autre == sortie:
                 r_feedback.append(data['ref'])
 
         if c_entree and r_feedback:
@@ -301,7 +309,7 @@ def detecter_bascule_schmitt(graphe):
             continue  # C'est un suiveur, pas une bascule
 
         # Chercher une R qui relie la sortie à IN+ (contre-réaction positive)
-        r_positive = [ref for ref, autre in _voisins_de_type(graphe, entree_pos, 'R')
+        r_positive = [ref for ref, autre in _voisins_de_type(graphe, entree_pos, 'R', inclure_z=True)
                       if autre == sortie]
 
         if r_positive:
@@ -341,11 +349,11 @@ def detecter_comparateur(graphe):
         # Vérifier qu'il n'y a AUCUN composant entre la sortie et les entrées
         feedback_negatif = [
             d for u, v, d in graphe.edges(entree_neg, data=True)
-            if d['type'] in ('R', 'C') and (v if u == entree_neg else u) == sortie
+            if d['type'] in ('R', 'C', 'Z') and (v if u == entree_neg else u) == sortie
         ]
         feedback_positif = [
             d for u, v, d in graphe.edges(entree_pos, data=True)
-            if d['type'] == 'R' and (v if u == entree_pos else u) == sortie
+            if d['type'] in ('R', 'Z') and (v if u == entree_pos else u) == sortie
         ]
 
         if not feedback_negatif and not feedback_positif:
@@ -386,11 +394,11 @@ def detecter_amplificateur_differentiel(graphe):
             continue
 
         # Résistances sur IN+
-        r_inp_vers_gnd   = [ref for ref, autre in _voisins_de_type(graphe, entree_pos, 'R') if est_masse(autre)]
-        r_inp_depuis_src = [ref for ref, autre in _voisins_de_type(graphe, entree_pos, 'R') if not est_masse(autre)]
+        r_inp_vers_gnd   = [ref for ref, autre in _voisins_de_type(graphe, entree_pos, 'R', inclure_z=True) if est_masse(autre)]
+        r_inp_depuis_src = [ref for ref, autre in _voisins_de_type(graphe, entree_pos, 'R', inclure_z=True) if not est_masse(autre)]
         # Résistances sur IN-
-        r_inm_feedback   = [ref for ref, autre in _voisins_de_type(graphe, entree_neg, 'R') if autre == sortie]
-        r_inm_depuis_src = [ref for ref, autre in _voisins_de_type(graphe, entree_neg, 'R') if autre != sortie]
+        r_inm_feedback   = [ref for ref, autre in _voisins_de_type(graphe, entree_neg, 'R', inclure_z=True) if autre == sortie]
+        r_inm_depuis_src = [ref for ref, autre in _voisins_de_type(graphe, entree_neg, 'R', inclure_z=True) if autre != sortie]
 
         if r_inp_vers_gnd and r_inp_depuis_src and r_inm_feedback and r_inm_depuis_src:
             resultats.append({
@@ -427,7 +435,7 @@ def detecter_amplificateur_sommateur(graphe):
         if not entree_neg or not sortie:
             continue
 
-        resistances_sur_inm = _voisins_de_type(graphe, entree_neg, 'R')
+        resistances_sur_inm = _voisins_de_type(graphe, entree_neg, 'R', inclure_z=True)
         r_feedback = [ref for ref, autre in resistances_sur_inm if autre == sortie]
         r_entrees  = [ref for ref, autre in resistances_sur_inm if autre != sortie]
 

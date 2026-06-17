@@ -1,12 +1,6 @@
 """
-@file test_reduction_integration.py
-@brief Tests automatises pour test_reduction_integration.
-"""
-
-"""
-Tests d'intégration : la réduction en dipôles équivalents permet de détecter
-des montages dont la contre-réaction / l'entrée est un réseau composite.
-Couvre la directive rouge du document : « créer le dipôle Rf complexe ».
+Tests d'integration : la reduction en dipoles equivalents permet de detecter
+des montages dont la contre-reaction / l'entree est un reseau composite.
 """
 from circuit_analyzer.composant import Composant, construire_graphe
 from circuit_analyzer.detecteur import analyser
@@ -18,12 +12,9 @@ def _types(resultats):
 
 
 def test_inverseur_avec_feedback_compose_serie():
-    """@brief Verifie inverseur avec feedback compose serie.
-
-    @return None
-    """
-    # Feedback Rf = R1 + R2 (série) entre OUT et IN- ; sans réduction, le nœud
-    # MID intermédiaire empêche la détection.
+    """@brief Verifie inverseur avec feedback compose serie."""
+    # Feedback Rf = R1 + R2 en serie entre OUT et IN-. Sans reduction, le noeud
+    # MID intermediaire empeche la detection.
     composants = [
         Composant('U1', 'U', {'IN+': 'GND', 'IN-': 'INM', 'OUT': 'OUT'}),
         Composant('Rin', 'R', {'1': 'IN', '2': 'INM'}, '1k'),
@@ -32,18 +23,13 @@ def test_inverseur_avec_feedback_compose_serie():
     ]
     res = analyser(construire_graphe(composants))
     assert 'Amplificateur inverseur (AOP)' in _types(res)
-    # Le circuit détecté doit contenir les VRAIES résistances du feedback composite
     inv = next(c for c in res if c['circuit_type'] == 'Amplificateur inverseur (AOP)')
     assert 'R1' in inv['components'] and 'R2' in inv['components']
     assert 'Rin' in inv['components']
 
 
 def test_inverseur_simple_toujours_detecte():
-    """@brief Verifie inverseur simple toujours detecte.
-
-    @return None
-    """
-    # Non-régression : un feedback mono-résistance reste détecté à l'identique.
+    """@brief Verifie inverseur simple toujours detecte."""
     composants = [
         Composant('U1', 'U', {'IN+': 'GND', 'IN-': 'INM', 'OUT': 'OUT'}),
         Composant('Rin', 'R', {'1': 'IN', '2': 'INM'}, '1k'),
@@ -54,14 +40,11 @@ def test_inverseur_simple_toujours_detecte():
     assert sorted(inv['components']) == ['Rf', 'Rin', 'U1']
 
 
-def test_feedback_mixte_R_serie_C_non_classifie():
-    """@brief Verifie feedback mixte R serie C non classifie.
-
-    @return None
-    """
-    # Limitation connue : un feedback R série C devient un dipôle de type 'Z'
-    # qu'aucun détecteur ne reconnaît. On épingle ce comportement (non-détection
-    # volontaire plutôt que faux positif) pour qu'il ne soit pas pris pour un bug.
+def test_inverseur_avec_feedback_mixte_R_serie_C_detecte():
+    """@brief Verifie inverseur avec feedback mixte R serie C."""
+    # Un feedback mixte R+C devient un dipole de type 'Z'. Les detecteurs AOP
+    # doivent pouvoir l'utiliser comme impedance de contre-reaction, puis
+    # l'expansion doit restituer les vraies refs Rf et Cf.
     composants = [
         Composant('U1', 'U', {'IN+': 'GND', 'IN-': 'INM', 'OUT': 'OUT'}),
         Composant('Rin', 'R', {'1': 'IN', '2': 'INM'}, '1k'),
@@ -69,5 +52,11 @@ def test_feedback_mixte_R_serie_C_non_classifie():
         Composant('Cf', 'C', {'1': 'MID', '2': 'OUT'}, '100n'),
     ]
     res = analyser(construire_graphe(composants))
-    assert 'Amplificateur inverseur (AOP)' not in _types(res)
-    assert 'Intégrateur (AOP)' not in _types(res)
+    inv = next((c for c in res if c['circuit_type'] == 'Amplificateur inverseur (AOP)'), None)
+    assert inv is not None
+    assert {'U1', 'Rin', 'Rf', 'Cf'} <= set(inv['components'])
+    assert 'Int\u00e9grateur (AOP)' not in _types(res)
+    assert not any(
+        c['circuit_type'] == 'Imp\u00e9dance Z' and {'Rf', 'Cf'} <= set(c['components'])
+        for c in res
+    )
