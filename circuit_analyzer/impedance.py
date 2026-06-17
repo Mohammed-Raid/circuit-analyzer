@@ -8,6 +8,8 @@ impédance Z — un dipôle qui est aussi un sous-circuit consommé par les gran
 montages (inverseur, intégrateur…). But premier : qu'aucun composant passif ne
 reste « non classifié » — tout R/L/C devient au minimum une Z singleton.
 """
+import copy
+
 import networkx as nx
 
 from circuit_analyzer.patterns.base import (
@@ -84,10 +86,11 @@ def _rendre_fusibles_transparents(graphe) -> nx.MultiGraph:
         return graphe
 
     g2 = nx.MultiGraph()
-    # Recopier les composants en renommant leurs broches.
-    comps = {}
-    for ref, comp in graphe.graph.get('components', {}).items():
-        comps[ref] = comp
+    # Recopier les composants en renommant leurs broches. On COPIE chaque
+    # Composant : ils sont partagés par référence avec l'appelant, et réécrire
+    # comp.pins ci-dessous corromprait les composants d'origine.
+    comps = {ref: copy.copy(comp)
+             for ref, comp in graphe.graph.get('components', {}).items()}
     g2.graph['components'] = comps
 
     for u, v, data in graphe.edges(data=True):
@@ -102,7 +105,7 @@ def _rendre_fusibles_transparents(graphe) -> nx.MultiGraph:
     return g2
 
 
-def _bornes(graphe, W) -> set:
+def _bornes(graphe) -> set:
     """@brief Nœuds jamais éliminés : rails, broches actives, jonctions
     touchées par une arête non réductible.
 
@@ -110,7 +113,6 @@ def _bornes(graphe, W) -> set:
     par la passe série (qui exige un degré 2), inutile de les lister ici.
 
     @param graphe Graphe d'origine.
-    @param W Graphe de travail des arêtes passives.
     @return set Ensemble des nœuds-bornes.
     """
     bornes = set()
@@ -162,6 +164,9 @@ def _passe_serie(W: nx.MultiGraph, bornes: set) -> bool:
             continue  # banc parallèle : laisser la passe parallèle agir
         type_eq = _combiner_type(d1['type'], d2['type'])
         refs = d1['refs'] + d2['refs']
+        # L'ordre de composition d'une chaîne de 3+ éléments suit l'ordre
+        # d'insertion des arêtes (limitation cosmétique connue, sans impact
+        # électrique : a+b == b+a).
         expr = f"{d1['expr']}+{d2['expr']}"
         W.remove_node(n)
         W.add_edge(a, b, type=type_eq, refs=refs, expr=expr, value='')
@@ -228,12 +233,17 @@ def _replier_blocs_irreductibles(W: nx.MultiGraph, bornes: set) -> None:
         if not internes:
             continue  # déjà réduit (au plus des arêtes borne-à-borne)
         contacts = sorted(n for n in composante if n in bornes)
-        if len(contacts) < 2:
-            continue  # pas assez de bornes pour replier : laisser le bloc intact
-        refs, types = [], set()
+        if len(contacts) != 2:
+            # 0 ou 1 borne : pas assez pour replier. Plus de 2 bornes (étoile /
+            # multi-port) : on ne replie PAS, sinon on ne garderait que 2 des
+            # bornes et on perdrait silencieusement la connectivité vers les
+            # autres. On laisse les arêtes du bloc intactes dans W : elles seront
+            # réémises en singletons, préservant toute la connectivité. Une vraie
+            # réduction multi-port est hors périmètre ici.
+            continue
+        refs = []
         for u, v, d in list(W.edges(composante, data=True)):
             refs.extend(d['refs'])
-            types.add(d['type'])
         # Retirer toutes les arêtes et les nœuds internes de la composante.
         for u, v, k in list(W.edges(composante, keys=True)):
             W.remove_edge(u, v, k)
@@ -258,7 +268,7 @@ def reduire(graphe) -> nx.MultiGraph:
     """
     graphe = _rendre_fusibles_transparents(graphe)
     W = _graphe_de_travail(graphe)
-    bornes = _bornes(graphe, W)
+    bornes = _bornes(graphe)
 
     while True:
         if _passe_serie(W, bornes):
@@ -281,6 +291,9 @@ def reduire(graphe) -> nx.MultiGraph:
         refs = data['refs']
         if len(refs) > 1:
             compteur += 1
+            # Le numéro Zn est un label interne, NON garanti stable d'un run à
+            # l'autre (il dépend de l'ordre d'itération) : les consommateurs ne
+            # doivent pas dépendre d'un numéro Z précis.
             reduit.add_edge(u, v, ref=f"Z{compteur}", type=data['type'],
                             refs=list(refs), composition=data['expr'],
                             value=data['expr'])

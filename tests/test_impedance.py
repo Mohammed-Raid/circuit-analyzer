@@ -114,6 +114,10 @@ def test_pont_wheatstone_irreductible_en_bloc():
     assert z['composition'].startswith('pont{')
     # Les nœuds internes C et D du pont ont disparu (absorbés dans le bloc).
     assert 'C' not in reduit.nodes() and 'D' not in reduit.nodes()
+    # L'arête Z du bloc relie bien les deux bornes A et B.
+    u, v = next((u, v) for u, v, d in reduit.edges(data=True)
+                if str(d['ref']).startswith('Z'))
+    assert {u, v} == {'A', 'B'}
 
 
 def test_fusible_transparent():
@@ -163,3 +167,33 @@ def test_serie_puis_parallele_imbrique():
     assert sorted(z['refs']) == ['C1', 'R1', 'R2']
     assert z['composition'] == '((R1+R2)//C1)'
     assert 'MID' not in reduit.nodes()
+
+
+def test_fusible_ne_mute_pas_les_composants_origine():
+    # Le passage des fusibles en transparent ne doit PAS muter les Composant
+    # d'origine (partagés par référence avec l'appelant).
+    r1 = Composant('R1', 'R', {'1': 'N', '2': 'OUT'}, '1k')
+    g = _graphe(
+        Composant('F1', 'F', {'1': 'VIN', '2': 'N'}),
+        r1,
+    )
+    impedance.reduire(g)
+    # Les broches du R1 d'origine restent inchangées (N non fusionné en VIN).
+    assert r1.pins == {'1': 'N', '2': 'OUT'}
+
+
+def test_pont_trois_bornes_non_replie():
+    # Étoile R1(A-X), R2(B-X), R3(C-X) où A, B, C sont des broches d'un composant
+    # actif (donc des bornes) et X est interne. Le bloc touche 3 bornes : il ne
+    # doit PAS être replié (sinon perte de connectivité). Les trois R restent
+    # des singletons, aucune arête Z n'est créée.
+    g = _graphe(
+        Composant('U1', 'U', {'IN+': 'A', 'IN-': 'B', 'OUT': 'C'}),
+        Composant('R1', 'R', {'1': 'A', '2': 'X'}, '1k'),
+        Composant('R2', 'R', {'1': 'B', '2': 'X'}, '1k'),
+        Composant('R3', 'R', {'1': 'C', '2': 'X'}, '1k'),
+    )
+    reduit = impedance.reduire(g)
+    refs = sorted(d['ref'] for _, _, d in reduit.edges(data=True))
+    assert refs == ['R1', 'R2', 'R3']
+    assert not any(str(d['ref']).startswith('Z') for _, _, d in reduit.edges(data=True))
