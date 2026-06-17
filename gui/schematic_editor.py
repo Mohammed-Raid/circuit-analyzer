@@ -171,9 +171,15 @@ class SchematicEditor(tk.Frame):
         self._drag_comp_id: Optional[int] = None
         self._drag_moved:   bool          = False
 
-        # pile d'annulation (Ctrl+Z) : instantanés de l'état avant mutation
+        # piles d'annulation/rétablissement (Ctrl+Z / Ctrl+Y)
         self._undo_stack: list = []
+        self._redo_stack: list = []
         self._UNDO_MAX = 50
+
+        # presse-papier (Ctrl+C/V/D) : {type, value, rotation}
+        self._clipboard: Optional[dict] = None
+        # dernière position monde du curseur (cible du coller)
+        self._cursor_w: tuple = (200, 200)
 
         # boutons palette (pour feedback visuel actif/inactif)
         self._palette_btns: dict[str, tk.Button] = {}
@@ -184,39 +190,56 @@ class SchematicEditor(tk.Frame):
 
         self._build()
 
-    # ── Annulation (Ctrl+Z) ───────────────────────────────────────────────────
+    # ── Annulation / rétablissement (Ctrl+Z / Ctrl+Y) ──────────────────────────
 
-    def _push_undo(self):
-        """@brief Empile un instantané de l'état courant avant une mutation."""
-        snap = (
+    def _snapshot(self) -> tuple:
+        """@brief Instantané profond de l'état mutable (comps, fils, compteurs, id)."""
+        return (
             copy.deepcopy(self._comps),
             copy.deepcopy(self._wires),
             dict(self._counters),
             self._next_id,
         )
-        self._undo_stack.append(snap)
+
+    def _push_undo(self):
+        """@brief Empile l'état courant avant une mutation et invalide le redo."""
+        self._undo_stack.append(self._snapshot())
         if len(self._undo_stack) > self._UNDO_MAX:
             self._undo_stack.pop(0)
+        # Une nouvelle action rend le « rétablir » caduc.
+        self._redo_stack.clear()
 
-    def _undo(self, _=None):
-        """@brief Restaure le dernier instantané empilé (Ctrl+Z)."""
-        if not self._undo_stack:
-            self._set_status("Rien à\nannuler")
-            return
-        comps, wires, counters, next_id = self._undo_stack.pop()
+    def _restore(self, snap: tuple):
+        """@brief Restaure un instantané et réinitialise les états transitoires."""
+        comps, wires, counters, next_id = snap
         self._comps    = comps
         self._wires    = wires
         self._counters = counters
         self._next_id  = next_id
-        # Réinitialise les états transitoires qui pourraient pointer vers des
-        # éléments disparus.
         self._selected_id  = None
         self._drag_comp_id = None
         self._drag_moved   = False
         if self._state == "wiring":
             self._cancel_wiring()
         self._redraw_all()
+
+    def _undo(self, _=None):
+        """@brief Annule la dernière mutation (Ctrl+Z)."""
+        if not self._undo_stack:
+            self._set_status("Rien à\nannuler")
+            return
+        self._redo_stack.append(self._snapshot())
+        self._restore(self._undo_stack.pop())
         self._set_status("Annulé ↶")
+
+    def _redo(self, _=None):
+        """@brief Rétablit la dernière annulation (Ctrl+Y)."""
+        if not self._redo_stack:
+            self._set_status("Rien à\nrétablir")
+            return
+        self._undo_stack.append(self._snapshot())
+        self._restore(self._redo_stack.pop())
+        self._set_status("Rétabli ↷")
 
     # ── Système de coordonnées ────────────────────────────────────────────────
 
@@ -320,12 +343,18 @@ class SchematicEditor(tk.Frame):
                   activeforeground="#94a3b8", relief="flat", anchor="w",
                   font=("Segoe UI", 9), cursor="hand2", padx=10,
                   command=self.clear_all).pack(fill="x", padx=4, pady=2)
+        tk.Button(parent, text="⊡  Ajuster (F)",
+                  bg="#1e293b", fg="#60a5fa", activebackground="#263347",
+                  activeforeground="#60a5fa", relief="flat", anchor="w",
+                  font=("Segoe UI", 9), cursor="hand2", padx=10,
+                  command=self.fit_to_view).pack(fill="x", padx=4, pady=2)
 
         tk.Frame(parent, bg="#334155", height=1).pack(fill="x", padx=8, pady=8)
 
         self._status_lbl = tk.Label(
             parent,
-            text="Clic palette\npour placer\nR = rotation\nCtrl+Z = annuler\nCtrl+molette zoom",
+            text="Clic = placer\nR = rotation\nCtrl+C/V = copier/coller\nCtrl+D = dupliquer\n"
+                 "Ctrl+Z/Y = annuler/rétablir\nF = ajuster · Ctrl+molette = zoom",
             fg="#475569", bg="#1e293b",
             font=("Segoe UI", 7), justify="center",
         )
@@ -401,6 +430,16 @@ class SchematicEditor(tk.Frame):
         c.bind("<R>",                self._on_rotate)
         c.bind("<Control-z>",        self._undo)
         c.bind("<Control-Z>",        self._undo)
+        c.bind("<Control-y>",        self._redo)
+        c.bind("<Control-Y>",        self._redo)
+        c.bind("<Control-c>",        self._copy)
+        c.bind("<Control-C>",        self._copy)
+        c.bind("<Control-v>",        self._paste)
+        c.bind("<Control-V>",        self._paste)
+        c.bind("<Control-d>",        self._duplicate)
+        c.bind("<Control-D>",        self._duplicate)
+        c.bind("<f>",                self.fit_to_view)
+        c.bind("<F>",                self.fit_to_view)
         c.bind("<Control-MouseWheel>", self._on_zoom)
         c.bind("<MouseWheel>",       lambda e: c.yview_scroll(int(-e.delta / 120), "units"))
         c.bind("<Shift-MouseWheel>", lambda e: c.xview_scroll(int(-e.delta / 120), "units"))
@@ -706,6 +745,7 @@ class SchematicEditor(tk.Frame):
         self._drag_moved   = False
 
     def _on_motion(self, event):
+        self._cursor_w = self._cw(event)
         if self._state == "wiring" and self._wire_src:
             sx, sy = self._cc(event)
             comp = self._comps.get(self._wire_src[0])
@@ -770,6 +810,103 @@ class SchematicEditor(tk.Frame):
     def _on_rotate(self, _=None):
         if self._selected_id is not None:
             self._rotate_comp(self._selected_id)
+
+    # ── Copier / coller / dupliquer ───────────────────────────────────────────
+
+    def _add_comp(self, comp_type: str, value: str, rotation: int,
+                  wx: int, wy: int) -> Optional['CompInst']:
+        """@brief Crée, dessine et sélectionne un nouveau composant.
+
+        Numérote la référence via le compteur du type (ex. R3). N'empile PAS
+        l'annulation (l'appelant le fait), pour grouper coller/dupliquer en une
+        seule étape annulable.
+
+        @return CompInst créé, ou None si le type est inconnu.
+        """
+        if comp_type not in self._defs:
+            return None
+        n = self._counters.get(comp_type, 0) + 1
+        self._counters[comp_type] = n
+        ref = f"{comp_type}{n}" if comp_type not in ("GND", "VCC") else comp_type
+        comp = CompInst(self._next_id, ref, comp_type, value, wx, wy, rotation)
+        self._next_id += 1
+        self._comps[comp.id] = comp
+        self._draw_comp(comp)
+        self._deselect()
+        self._select(comp.id)
+        return comp
+
+    def _copy(self, _=None):
+        """@brief Copie le composant sélectionné dans le presse-papier (Ctrl+C)."""
+        comp = self._comps.get(self._selected_id) if self._selected_id else None
+        if not comp:
+            return
+        self._clipboard = {"type": comp.comp_type, "value": comp.value,
+                           "rotation": comp.rotation}
+        self._set_status(f"Copié\n{comp.ref}")
+
+    def _paste(self, _=None):
+        """@brief Colle le composant du presse-papier à la position du curseur (Ctrl+V)."""
+        if not self._clipboard:
+            return
+        wx, wy = self._snap(*self._cursor_w)
+        self._push_undo()
+        comp = self._add_comp(self._clipboard["type"], self._clipboard["value"],
+                              self._clipboard["rotation"], wx, wy)
+        if comp is None:
+            # Type devenu inconnu : annule l'instantané inutile.
+            self._undo_stack.pop()
+            return
+        self._set_status(f"Collé\n{comp.ref}")
+
+    def _duplicate(self, _=None):
+        """@brief Duplique le composant sélectionné en décalé (Ctrl+D)."""
+        src = self._comps.get(self._selected_id) if self._selected_id else None
+        if not src:
+            return
+        self._clipboard = {"type": src.comp_type, "value": src.value,
+                           "rotation": src.rotation}
+        self._push_undo()
+        comp = self._add_comp(src.comp_type, src.value, src.rotation,
+                              src.cx + GRID * 2, src.cy + GRID * 2)
+        if comp is None:
+            self._undo_stack.pop()
+            return
+        self._set_status(f"Dupliqué\n{comp.ref}")
+
+    # ── Recentrer / ajuster à l'écran ─────────────────────────────────────────
+
+    def fit_to_view(self, _=None):
+        """@brief Ajuste le zoom et le défilement pour montrer tout le schéma (F)."""
+        if not self._comps:
+            self._zoom = 1.0
+            self._redraw_all()
+            self._canvas.xview_moveto(0)
+            self._canvas.yview_moveto(0)
+            self._set_status("Vue\nréinitialisée")
+            return
+
+        xs, ys = [], []
+        for c in self._comps.values():
+            d = self._defs[c.comp_type]
+            w2, h2 = d["w"] // 2 + 30, d["h"] // 2 + 30
+            xs += [c.cx - w2, c.cx + w2]
+            ys += [c.cy - h2, c.cy + h2]
+        minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
+        bw, bh = max(1, maxx - minx), max(1, maxy - miny)
+
+        cw = self._canvas.winfo_width()  or 800
+        ch = self._canvas.winfo_height() or 600
+        self._zoom = max(0.2, min(3.0, min(cw / bw, ch / bh)))
+        self._redraw_all()
+
+        # Centre la bbox dans la zone visible.
+        total_w, total_h = 2400 * self._zoom, 1800 * self._zoom
+        cx_s = ((minx + maxx) / 2) * self._zoom
+        cy_s = ((miny + maxy) / 2) * self._zoom
+        self._canvas.xview_moveto(max(0.0, (cx_s - cw / 2) / total_w))
+        self._canvas.yview_moveto(max(0.0, (cy_s - ch / 2) / total_h))
+        self._set_status("Ajusté ⊡")
 
     # ── Câblage ──────────────────────────────────────────────────────────────
 
