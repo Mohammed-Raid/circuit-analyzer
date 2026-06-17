@@ -54,6 +54,61 @@ def _graphe_de_travail(graphe) -> nx.MultiGraph:
     return W
 
 
+def _bornes(graphe, W) -> set:
+    """@brief Nœuds jamais éliminés : rails, broches actives, jonctions
+    touchées par une arête non réductible.
+
+    Les feuilles (degré 1 dans W) ne peuvent de toute façon pas être éliminées
+    par la passe série (qui exige un degré 2), inutile de les lister ici.
+
+    @param graphe Graphe d'origine.
+    @param W Graphe de travail des arêtes passives.
+    @return set Ensemble des nœuds-bornes.
+    """
+    bornes = set()
+    for n in graphe.nodes():
+        if _est_rail(n):
+            bornes.add(n)
+    for comp in graphe.graph.get('components', {}).values():
+        if len(comp.pins) != 2:
+            bornes.update(v for v in comp.pins.values() if v)
+    for u, v, data in graphe.edges(data=True):
+        if data.get('type') not in TYPES_REDUCTIBLES:
+            bornes.add(u)
+            bornes.add(v)
+    return bornes
+
+
+def _passe_serie(W: nx.MultiGraph, bornes: set) -> bool:
+    """@brief Élimine en une passe les nœuds internes de degré 2 non-bornes.
+
+    Chaque tel nœud fusionne ses deux arêtes en un dipôle série a+b.
+
+    @param W Graphe de travail (muté en place).
+    @param bornes Nœuds à ne jamais éliminer.
+    @return bool True si au moins une fusion a eu lieu.
+    """
+    change = False
+    for n in list(W.nodes()):
+        if n in bornes or W.degree(n) != 2:
+            continue
+        aretes = list(W.edges(n, keys=True, data=True))
+        if len(aretes) != 2:  # garde-fou (multi-arête résiduelle = parallèle)
+            continue
+        (u1, v1, _k1, d1), (u2, v2, _k2, d2) = aretes
+        a = v1 if u1 == n else u1
+        b = v2 if u2 == n else u2
+        if a == b:
+            continue  # banc parallèle : laisser la passe parallèle agir
+        type_eq = _combiner_type(d1['type'], d2['type'])
+        refs = d1['refs'] + d2['refs']
+        expr = f"{d1['expr']}+{d2['expr']}"
+        W.remove_node(n)
+        W.add_edge(a, b, type=type_eq, refs=refs, expr=expr, value='')
+        change = True
+    return change
+
+
 def reduire(graphe) -> nx.MultiGraph:
     """@brief Réduit les réseaux passifs R/L/C en impédances équivalentes Z.
 
@@ -63,6 +118,12 @@ def reduire(graphe) -> nx.MultiGraph:
             le dict 'components' sont conservés tels quels.
     """
     W = _graphe_de_travail(graphe)
+    bornes = _bornes(graphe, W)
+
+    while True:
+        if _passe_serie(W, bornes):
+            continue
+        break
 
     # Reconstruire le graphe réduit : on retire les arêtes passives d'origine et
     # on réémet celles de W (réduites ou non).
@@ -88,7 +149,8 @@ def reduire(graphe) -> nx.MultiGraph:
     # chaîne série) — sauf s'ils sont une broche d'un composant actif.
     actifs = set()
     for comp in reduit.graph.get('components', {}).values():
-        actifs.update(n for n in comp.pins.values() if n)
+        if len(comp.pins) != 2:
+            actifs.update(n for n in comp.pins.values() if n)
     for n in list(reduit.nodes()):
         if reduit.degree(n) == 0 and n not in actifs:
             reduit.remove_node(n)

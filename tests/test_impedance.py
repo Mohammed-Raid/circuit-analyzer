@@ -40,3 +40,21 @@ def test_aucune_reduction_graphe_inchange():
     # Chaque singleton porte refs/composition cohérents.
     r1 = next(d for _, _, d in reduit.edges(data=True) if d['ref'] == 'R1')
     assert r1['refs'] == ['R1'] and r1['composition'] == 'R1'
+
+
+def test_serie_deux_resistances_entre_bornes():
+    # IN ─R1─ MID ─R2─ OUT : MID interne degré 2 → fusion en Z1 = R1+R2.
+    # IN et OUT sont des feuilles (degré 1) → bornes, jamais éliminées.
+    g = _graphe(
+        Composant('R1', 'R', {'1': 'IN', '2': 'MID'}, '1k'),
+        Composant('R2', 'R', {'1': 'MID', '2': 'OUT'}, '2k'),
+    )
+    reduit = impedance.reduire(g)
+    aretes = [d for _, _, d in reduit.edges(data=True)]
+    assert len(aretes) == 1
+    z = aretes[0]
+    assert z['type'] == 'R'
+    assert sorted(z['refs']) == ['R1', 'R2']
+    assert z['composition'] == 'R1+R2'
+    assert z['ref'] == 'Z1'
+    assert 'MID' not in reduit.nodes()
