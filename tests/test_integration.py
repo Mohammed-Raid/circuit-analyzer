@@ -90,6 +90,19 @@ def test_analyser_inverseur_avec_feedback_composite():
     assert {'U1', 'Re', 'R1', 'R2'} <= set(inv['components'])
 
 
+def test_enrichissement_impedance_z():
+    g = construire_graphe([
+        Composant('R1', 'R', {'1': 'IN', '2': 'MID'}, '10k'),
+        Composant('C1', 'C', {'1': 'MID', '2': 'GND'}, '100n'),
+    ])
+    res = analyser(g)
+    z = next(m for m in res if m['circuit_type'] == 'Impédance Z')
+    assert z['functional_category'] == 'impedance'
+    assert z['confidence_level'] in ('high', 'medium', 'low')
+    # La composition est mentionnée dans les raisons.
+    assert any('R1+C1' in r for r in z['reasons'])
+
+
 def test_full_pipeline():
     """@brief Verifie full pipeline.
 

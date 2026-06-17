@@ -1269,6 +1269,7 @@ _CATEGORIES: dict[str, str] = {
     'Absorbeur RC':                        'protection',
     'Pont diviseur de tension':            'polarisation',
     'Protection par fusible':              'protection',
+    'Impédance Z':                         'impedance',
 }
 
 
@@ -1490,6 +1491,14 @@ def _enrichir(match: dict, graphe) -> dict:
     elif ct == 'Protection par fusible':
         confidence = 0.95
         reasons.append("Composant de type F (fusible) en série dans le circuit")
+
+    elif ct == 'Impédance Z':
+        confidence = 0.80
+        compo = match.get('composition', '')
+        if compo:
+            reasons.append(f"Impédance équivalente : {compo}")
+        else:
+            reasons.append("Impédance passive réduite")
 
     # ── Niveau de confiance ───────────────────────────────────────────────────
     if confidence >= 0.80:
