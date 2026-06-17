@@ -93,6 +93,21 @@ def test_parallele_r_et_c_meme_paire():
     assert z['composition'] == '(R1//C1)'
 
 
+def test_milieu_relie_a_aop_non_fusionne():
+    # Pont diviseur VCC ─R1─ MID ─R2─ GND, mais MID alimente IN- d'un AOP.
+    # MID est une broche active → borne → NON éliminé : R1 et R2 restent
+    # deux singletons distincts (l'AOP les verra séparément au sous-projet 2).
+    g = _graphe(
+        Composant('U1', 'U', {'IN+': 'P', 'IN-': 'MID', 'OUT': 'O'}),
+        Composant('R1', 'R', {'1': 'VCC', '2': 'MID'}, '10k'),
+        Composant('R2', 'R', {'1': 'MID', '2': 'GND'}, '10k'),
+    )
+    reduit = impedance.reduire(g)
+    refs = sorted(d['ref'] for _, _, d in reduit.edges(data=True))
+    assert refs == ['R1', 'R2']  # pas de Z1, MID préservé
+    assert 'MID' in reduit.nodes()
+
+
 def test_serie_puis_parallele_imbrique():
     # A ─R1─ MID ─R2─ B  avec  C1 directement entre A et B.
     # Série d'abord : R1+R2 entre A et B ; puis // C1.
