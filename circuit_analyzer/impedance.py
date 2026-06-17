@@ -224,6 +224,11 @@ def _replier_blocs_irreductibles(W: nx.MultiGraph, bornes: set) -> None:
     """@brief Replie chaque composante passive non réductible (pont) en une seule
     arête Z entre ses deux bornes de contact.
 
+    Seuls les vrais blocs irréductibles (pas de feuilles internes pendantes) sont
+    repliés. Les nœuds internes de degré 1 (branches pendantes) sont d'abord
+    détachés itérativement : leurs arêtes restent dans W comme singletons, et
+    seul le noyau résiduel — s'il persiste — est replié en Z.
+
     @param W Graphe de travail (muté en place).
     @param bornes Nœuds-bornes.
     @return None
@@ -241,16 +246,43 @@ def _replier_blocs_irreductibles(W: nx.MultiGraph, bornes: set) -> None:
             # réémises en singletons, préservant toute la connectivité. Une vraie
             # réduction multi-port est hors périmètre ici.
             continue
+        a, b = contacts[0], contacts[1]
+        # Construire le sous-graphe de la composante pour tester l'irréductibilité
+        # sans muter W pendant l'analyse.
+        sous = W.subgraph(composante).copy()
+        # Peler itérativement les feuilles internes (degré 1 dans le sous-graphe,
+        # mais ce ne sont pas des bornes). Ces branches pendantes sont des dipôles
+        # isolés (ex. Re vers un nœud feuille) : ils restent dans W comme
+        # singletons et ne font PAS partie du bloc à replier.
+        changed = True
+        while changed:
+            changed = False
+            for n in list(sous.nodes()):
+                if n in bornes:
+                    continue
+                if sous.degree(n) == 1:
+                    sous.remove_node(n)
+                    changed = True
+        # Vérifier s'il reste des nœuds internes dans le noyau après le pelage.
+        noyau_internes = [n for n in sous.nodes() if n not in bornes]
+        if not noyau_internes:
+            # Aucun nœud interne résiduel : le bloc n'est pas irréductible.
+            # Les arêtes restent dans W telles quelles (singletons ou composites
+            # déjà réduits).
+            continue
+        # Le noyau est vraiment irréductible (ex. pont de Wheatstone).
+        # Ne replier QUE les arêtes du noyau, pas les branches pendantes.
         refs = []
-        for u, v, d in list(W.edges(composante, data=True)):
+        for u, v, d in list(sous.edges(data=True)):
             refs.extend(d['refs'])
-        # Retirer toutes les arêtes et les nœuds internes de la composante.
-        for u, v, k in list(W.edges(composante, keys=True)):
-            W.remove_edge(u, v, k)
-        for n in internes:
+        noyau_noeuds = set(sous.nodes())
+        # Retirer les arêtes et nœuds internes du noyau dans W.
+        for u, v, k in list(W.edges(noyau_noeuds, keys=True)):
+            if u in noyau_noeuds and v in noyau_noeuds:
+                W.remove_edge(u, v, k)
+        for n in noyau_internes:
             if n in W:
                 W.remove_node(n)
-        a, b = contacts[0], contacts[1]
         # Un bloc irréductible est toujours de type 'Z' : il ne peut pas être
         # simplifié en un dipôle pur, même s'il est homogène (ex. pont tout-R).
         W.add_edge(a, b, type='Z',

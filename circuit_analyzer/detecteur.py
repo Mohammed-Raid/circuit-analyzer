@@ -24,7 +24,8 @@ from circuit_analyzer.patterns.base import (
 from circuit_analyzer.value_parser import parse_valeur
 from circuit_analyzer.satellites import rattacher_satellites
 from circuit_analyzer.ilots import detecter_ilots
-from circuit_analyzer.reduction import reduire_dipoles, expandre_composites
+from circuit_analyzer import impedance
+from circuit_analyzer.impedance import expandre_composites
 
 # Alias français (= les nouvelles fonctions enrichies par le fichier de config)
 est_masse        = is_ground_net
@@ -1536,14 +1537,12 @@ _DETECTEURS_COMPLEXES = [
 
 # Détecteurs simples (circuits passifs — appelés EN DERNIER)
 # Les patterns personnalisés (créés via l'interface) s'insèrent entre les deux.
+# Les 7 détecteurs passifs nommés (filtre RC, pont diviseur, etc.) sont retirés
+# de la chaîne d'analyse : tout passif résiduel est émis comme « Impédance Z »
+# par detecter_impedances. Les fonctions restent définies pour basic_circuits.py,
+# circuit_viewer.py et les tests unitaires directs (suppression en 2c).
 _DETECTEURS_SIMPLES = [
-    detecter_condensateur_decouplage,     # C direct alim/GND (avant filtres RC !)
-    detecter_filtre_rc_passe_bas,
-    detecter_filtre_rc_passe_haut,
-    detecter_filtre_lc,
-    detecter_absorbeur_rc,
-    detecter_pont_diviseur,
-    detecter_fusible,
+    detecter_impedances,
 ]
 
 # Noms de tous les circuits intégrés, dans l'ordre d'affichage de l'interface
@@ -1614,7 +1613,8 @@ def analyser(graphe, patterns_personnalises=None):
     # tourne sur le graphe réduit ; les refs synthétiques (Z#k) sont ré-expansées
     # juste après, pour que enrichissement, satellites et îlots travaillent sur
     # les vraies refs et le graphe original.
-    graphe_reduit, expansion = reduire_dipoles(graphe)
+    graphe_reduit = impedance.reduire(graphe)
+    expansion = impedance.expansion_depuis_graphe(graphe_reduit)
 
     composants_utilises: set = set()
     circuits_trouves: list  = []

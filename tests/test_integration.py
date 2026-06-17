@@ -61,6 +61,35 @@ def test_detecter_impedances_emet_chaque_z():
     assert m['composition'] == 'R1+R2'
 
 
+def test_analyser_filtre_rc_isole_devient_impedance():
+    # Filtre RC isolé : plus de "Filtre RC passe-bas", mais une Impédance Z.
+    g = construire_graphe([
+        Composant('R1', 'R', {'1': 'IN', '2': 'MID'}, '10k'),
+        Composant('C1', 'C', {'1': 'MID', '2': 'GND'}, '100n'),
+    ])
+    res = analyser(g)
+    types = [m['circuit_type'] for m in res]
+    assert 'Filtre RC passe-bas' not in types
+    assert 'Impédance Z' in types
+    z = next(m for m in res if m['circuit_type'] == 'Impédance Z')
+    assert sorted(z['components']) == ['C1', 'R1']   # vraies refs après expansion
+
+
+def test_analyser_inverseur_avec_feedback_composite():
+    # Rf = R1+R2 (composite homogène) : l'inverseur reste détecté, refs réelles.
+    g = construire_graphe([
+        Composant('U1', 'U', {'IN+': 'GND', 'IN-': 'INM', 'OUT': 'OUT'}),
+        Composant('Re', 'R', {'1': 'IN', '2': 'INM'}, '1k'),
+        Composant('R1', 'R', {'1': 'INM', '2': 'MID'}, '4k7'),
+        Composant('R2', 'R', {'1': 'MID', '2': 'OUT'}, '4k7'),
+    ])
+    res = analyser(g)
+    inv = next((m for m in res if m['circuit_type'] == 'Amplificateur inverseur (AOP)'), None)
+    assert inv is not None
+    # Le feedback composite R1+R2 est expansé en vraies refs dans le montage.
+    assert {'U1', 'Re', 'R1', 'R2'} <= set(inv['components'])
+
+
 def test_full_pipeline():
     """@brief Verifie full pipeline.
 
