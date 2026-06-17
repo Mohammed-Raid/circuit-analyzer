@@ -58,3 +58,18 @@ def test_serie_deux_resistances_entre_bornes():
     assert z['composition'] == 'R1+R2'
     assert z['ref'] == 'Z1'
     assert 'MID' not in reduit.nodes()
+
+
+def test_parallele_r_et_c_meme_paire():
+    # R1 // C1 entre A et B (deux feuilles) → Z mixte, composition (R1//C1).
+    g = _graphe(
+        Composant('R1', 'R', {'1': 'A', '2': 'B'}, '1k'),
+        Composant('C1', 'C', {'1': 'A', '2': 'B'}, '1u'),
+    )
+    reduit = impedance.reduire(g)
+    aretes = [d for _, _, d in reduit.edges(data=True)]
+    assert len(aretes) == 1
+    z = aretes[0]
+    assert z['type'] == 'Z'  # mixte R+C
+    assert sorted(z['refs']) == ['C1', 'R1']
+    assert z['composition'] == '(R1//C1)'

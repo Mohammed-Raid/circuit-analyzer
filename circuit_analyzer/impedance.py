@@ -109,6 +109,46 @@ def _passe_serie(W: nx.MultiGraph, bornes: set) -> bool:
     return change
 
 
+def _par_operande(expr: str) -> str:
+    """@brief Parenthèse une expression série avant de l'insérer dans un parallèle.
+
+    @param expr Expression de composition.
+    @return str expr entre parenthèses si elle contient un '+' de haut niveau.
+    """
+    return f"({expr})" if '+' in expr else expr
+
+
+def _passe_parallele(W: nx.MultiGraph, bornes: set) -> bool:
+    """@brief Fusionne en une passe tous les bancs d'arêtes parallèles.
+
+    (Arêtes multiples entre la même paire de nœuds.)
+
+    @param W Graphe de travail (muté en place).
+    @param bornes Inutilisé pour l'instant (le parallèle ne supprime pas de nœud) ;
+           présent pour symétrie de signature.
+    @return bool True si au moins une fusion a eu lieu.
+    """
+    paires = set()
+    for u, v in W.edges():
+        if u != v and W.number_of_edges(u, v) > 1:
+            paires.add(frozenset((u, v)))
+
+    for paire in paires:
+        u, v = tuple(paire)
+        paquet = list(W.get_edge_data(u, v).values())
+        type_eq = paquet[0]['type']
+        refs, exprs = [], []
+        for d in paquet:
+            type_eq = _combiner_type(type_eq, d['type'])
+            refs.extend(d['refs'])
+            exprs.append(_par_operande(d['expr']))
+        for _ in range(len(paquet)):
+            W.remove_edge(u, v)
+        W.add_edge(u, v, type=type_eq, refs=refs,
+                   expr="(" + "//".join(exprs) + ")", value='')
+    return bool(paires)
+
+
 def reduire(graphe) -> nx.MultiGraph:
     """@brief Réduit les réseaux passifs R/L/C en impédances équivalentes Z.
 
@@ -122,6 +162,8 @@ def reduire(graphe) -> nx.MultiGraph:
 
     while True:
         if _passe_serie(W, bornes):
+            continue
+        if _passe_parallele(W, bornes):
             continue
         break
 
