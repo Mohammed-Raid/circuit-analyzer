@@ -103,8 +103,14 @@ class AppWindow:
             self._switch(0),
         ))
         tab_c = TabCircuits(content)
-        tab_p = TabComponents(content,
-                              on_save=tab_c.refresh_component_list)
+
+        def _on_lib_change():
+            # La bibliothèque a changé : rafraîchir l'onglet Circuits ET la
+            # palette de l'éditeur de schéma (nouveaux types / types supprimés).
+            tab_c.refresh_component_list()
+            tab_d.refresh_palette()
+
+        tab_p = TabComponents(content, on_save=_on_lib_change)
 
         self._frames = [tab_a.frame, tab_d.frame, tab_c.frame, tab_p.frame]
         for f in self._frames:

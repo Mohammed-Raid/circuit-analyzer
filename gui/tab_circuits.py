@@ -368,6 +368,17 @@ class TabCircuits:
             messagebox.showerror("Erreur",
                                  "Sélectionnez au moins un composant.")
             return
+        # Doublon de nom : circuits intégrés + personnalisés (hors celui édité).
+        deja_pris = set(_BASE_NAMES) | {
+            c.get("name", "") for i, c in enumerate(self._custom)
+            if i != self._current_idx
+        }
+        if name in deja_pris:
+            messagebox.showinfo(
+                "Déjà existant",
+                f"Un circuit nommé « {name} » existe déjà.\n"
+                "Choisissez un autre nom.")
+            return
         conds = [l for l, v in self._cond_vars.items() if v.get()]
         c = {"name": name, "components": comps, "conditions": conds}
         if self._current_idx is not None:

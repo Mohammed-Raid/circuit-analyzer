@@ -8,8 +8,14 @@ import tkinter as tk
 from dataclasses import dataclass, field
 from typing import Optional
 
+from circuit_analyzer.composant import charger_bibliotheque
+
 GRID = 20  # pas de la grille en coordonnées monde
 
+# Géométrie de dessin des types intégrés (couleur, taille, positions de broches).
+# Les broches correspondent à TYPES_COMPOSANTS pour que la netlist exportée soit
+# reconnue par l'analyseur. Les types personnalisés (onglet Composants) sont
+# ajoutés dynamiquement via _auto_def().
 COMP_DEFS: dict = {
     "R":   {"label": "Résistance",   "color": "#f97316", "w": 80, "h": 40,
             "pins": {"1": (-40, 0),  "2": (40, 0)},           "default_value": "10k"},
@@ -19,21 +25,86 @@ COMP_DEFS: dict = {
             "pins": {"1": (-40, 0),  "2": (40, 0)},           "default_value": "10µH"},
     "D":   {"label": "Diode",        "color": "#22c55e", "w": 60, "h": 40,
             "pins": {"A": (-30, 0),  "K": (30, 0)},           "default_value": "1N4148"},
+    "F":   {"label": "Fusible",      "color": "#f59e0b", "w": 80, "h": 40,
+            "pins": {"1": (-40, 0),  "2": (40, 0)},           "default_value": "1A"},
     "Q":   {"label": "BJT",          "color": "#ec4899", "w": 60, "h": 80,
             "pins": {"B": (-30, 0),  "C": (30, -30), "E": (30, 30)},
             "default_value": "2N2222"},
+    "M":   {"label": "MOSFET",       "color": "#a855f7", "w": 60, "h": 80,
+            "pins": {"G": (-30, 0),  "D": (30, -30), "S": (30, 30)},
+            "default_value": "IRF540"},
     "U":   {"label": "AOP",          "color": "#06b6d4", "w": 80, "h": 80,
             "pins": {"IN+": (-40, -20), "IN-": (-40, 20), "OUT": (40, 0)},
             "default_value": "LM741"},
+    "T":   {"label": "Transfo",      "color": "#0ea5e9", "w": 80, "h": 60,
+            "pins": {"P1": (-40, -20), "P2": (-40, 20),
+                     "S1": (40, -20),  "S2": (40, 20)},
+            "default_value": ""},
     "K":   {"label": "Relais",       "color": "#eab308", "w": 80, "h": 60,
             "pins": {"A1": (-40, -20), "A2": (-40, 20),
                      "11": (40, -20),  "12": (40, 20)},
             "default_value": "RY1"},
+    "SW":  {"label": "Interrupteur", "color": "#10b981", "w": 80, "h": 40,
+            "pins": {"1": (-40, 0),  "2": (40, 0)},           "default_value": ""},
     "GND": {"label": "GND",          "color": "#94a3b8", "w": 40, "h": 40,
             "pins": {"1": (0, -20)},                           "default_value": "GND"},
     "VCC": {"label": "VCC",          "color": "#ef4444", "w": 40, "h": 40,
             "pins": {"1": (0, 20)},                            "default_value": "VCC"},
 }
+
+_AUTO_COLOR = "#94a3b8"   # couleur des composants personnalisés (boîte générique)
+
+
+def _auto_def(name: str, pins: list) -> dict:
+    """@brief Génère une géométrie générique pour un type personnalisé.
+
+    Broches réparties moitié à gauche / moitié à droite d'une boîte rectangulaire ;
+    aucun dessin sur-mesure n'est requis (le moteur de rendu gère ce cas).
+
+    @param name Nom lisible du type (affiché comme libellé).
+    @param pins Liste ordonnée des noms de broches.
+    @return dict Entrée compatible COMP_DEFS (label, color, w, h, pins, default_value).
+    """
+    pins = [str(p) for p in pins]
+    n = len(pins)
+    half = (n + 1) // 2
+    left, right = pins[:half], pins[half:]
+    rows = max(len(left), len(right), 1)
+    h = max(40, rows * 30 + 10)
+    w = 80
+    pinmap: dict = {}
+
+    def _place(items, x):
+        m = len(items)
+        for i, pn in enumerate(items):
+            y = int(round((i - (m - 1) / 2) * 30))
+            pinmap[pn] = (x, y)
+
+    _place(left, -w // 2)
+    _place(right, w // 2)
+    return {"label": name, "color": _AUTO_COLOR, "w": w, "h": h,
+            "pins": pinmap, "default_value": ""}
+
+
+def _compute_defs() -> dict:
+    """@brief Defs effectives de l'éditeur : intégrés + types personnalisés générés.
+
+    @return dict {type -> géométrie}. Les types intégrés (COMP_DEFS) priment ;
+            les types perso de la bibliothèque reçoivent une géométrie auto.
+    """
+    defs = dict(COMP_DEFS)
+    try:
+        lib = charger_bibliotheque()
+    except Exception:
+        lib = {}
+    for key, val in lib.items():
+        if key in defs:
+            continue          # géométrie intégrée prioritaire
+        broches = val.get("pins", [])
+        if not broches:
+            continue          # type sans broche : non plaçable
+        defs[key] = _auto_def(val.get("name", key), broches)
+    return defs
 
 _PIN_R = 5     # rayon visuel pin
 _HIT_R = 12   # rayon détection clic sur pin
@@ -105,6 +176,10 @@ class SchematicEditor(tk.Frame):
 
         # boutons palette (pour feedback visuel actif/inactif)
         self._palette_btns: dict[str, tk.Button] = {}
+        self._palette_parent: Optional[tk.Frame] = None
+
+        # géométrie effective : intégrés + types personnalisés (bibliothèque)
+        self._defs: dict = _compute_defs()
 
         self._build()
 
@@ -213,10 +288,12 @@ class SchematicEditor(tk.Frame):
         self._bind_events()
 
     def _build_palette(self, parent):
+        self._palette_parent = parent
+        self._palette_btns = {}
         tk.Label(parent, text="COMPOSANTS", fg="#64748b", bg="#1e293b",
                  font=("Segoe UI", 8, "bold")).pack(pady=(14, 4), padx=8, anchor="w")
 
-        for ct, defn in COMP_DEFS.items():
+        for ct, defn in self._defs.items():
             color = defn["color"]
             b = tk.Button(
                 parent,
@@ -252,6 +329,41 @@ class SchematicEditor(tk.Frame):
             font=("Segoe UI", 7), justify="center",
         )
         self._status_lbl.pack(padx=8, pady=4)
+
+    def refresh_palette(self):
+        """@brief Recharge la bibliothèque et reconstruit la palette.
+
+        Appelé quand l'onglet Composants modifie la bibliothèque : un nouveau type
+        apparaît dans la palette, un type supprimé en disparaît. Les composants
+        déjà posés d'un type devenu inconnu sont retirés du canvas (avec leurs
+        fils) pour éviter un plantage au redessin.
+        """
+        self._defs = _compute_defs()
+
+        # Purge des composants dont le type n'existe plus dans la bibliothèque.
+        obsoletes = {cid for cid, c in self._comps.items()
+                     if c.comp_type not in self._defs}
+        if obsoletes:
+            self._wires = [w for w in self._wires
+                           if w.from_comp_id not in obsoletes
+                           and w.to_comp_id not in obsoletes]
+            for cid in obsoletes:
+                self._comps.pop(cid, None)
+            if self._selected_id in obsoletes:
+                self._selected_id = None
+            # Un instantané d'annulation pourrait contenir un type disparu :
+            # on vide la pile plutôt que de risquer un redessin impossible.
+            self._undo_stack.clear()
+
+        if self._state == "wiring":
+            self._cancel_wiring()
+
+        if self._palette_parent is not None:
+            for w in self._palette_parent.winfo_children():
+                w.destroy()
+            self._build_palette(self._palette_parent)
+
+        self._redraw_all()
 
     def _draw_grid(self):
         """Grille légère (lignes) — 210 items au lieu de 10 800."""
@@ -331,7 +443,7 @@ class SchematicEditor(tk.Frame):
         """Place un composant en coordonnées monde — reste en mode placing."""
         self._push_undo()
         t    = self._place_type
-        defn = COMP_DEFS[t]
+        defn = self._defs[t]
         n    = self._counters.get(t, 0) + 1
         self._counters[t] = n
         # GND et VCC n'ont pas de numéro affiché
@@ -346,7 +458,7 @@ class SchematicEditor(tk.Frame):
     # ── Rendu ────────────────────────────────────────────────────────────────
 
     def _draw_comp(self, comp: CompInst):
-        defn  = COMP_DEFS[comp.comp_type]
+        defn  = self._defs[comp.comp_type]
         color = defn["color"]
         z     = self._zoom
         rot   = comp.rotation
@@ -459,9 +571,9 @@ class SchematicEditor(tk.Frame):
         cb = self._comps.get(wire.to_comp_id)
         if not ca or not cb:
             return
-        dx_a, dy_a = COMP_DEFS[ca.comp_type]["pins"][wire.from_pin]
+        dx_a, dy_a = self._defs[ca.comp_type]["pins"][wire.from_pin]
         rdx_a, rdy_a = _rotate_pin(dx_a, dy_a, ca.rotation)
-        dx_b, dy_b = COMP_DEFS[cb.comp_type]["pins"][wire.to_pin]
+        dx_b, dy_b = self._defs[cb.comp_type]["pins"][wire.to_pin]
         rdx_b, rdy_b = _rotate_pin(dx_b, dy_b, cb.rotation)
 
         wx1, wy1 = ca.cx + rdx_a, ca.cy + rdy_a
@@ -500,7 +612,7 @@ class SchematicEditor(tk.Frame):
     def _find_pin_at(self, wx, wy) -> Optional[tuple[int, str]]:
         tol = _HIT_R / self._zoom  # rayon de détection en coordonnées monde
         for comp in self._comps.values():
-            for pn, (dx, dy) in COMP_DEFS[comp.comp_type]["pins"].items():
+            for pn, (dx, dy) in self._defs[comp.comp_type]["pins"].items():
                 rdx, rdy = _rotate_pin(dx, dy, comp.rotation)
                 px, py = comp.cx + rdx, comp.cy + rdy
                 if (wx - px)**2 + (wy - py)**2 <= tol**2:
@@ -509,7 +621,7 @@ class SchematicEditor(tk.Frame):
 
     def _find_comp_at(self, wx, wy) -> Optional[int]:
         for comp in self._comps.values():
-            defn = COMP_DEFS[comp.comp_type]
+            defn = self._defs[comp.comp_type]
             rot  = comp.rotation
             w2 = (defn["w"] // 2 if rot % 180 == 0 else defn["h"] // 2) + 6
             h2 = (defn["h"] // 2 if rot % 180 == 0 else defn["w"] // 2) + 6
@@ -525,9 +637,9 @@ class SchematicEditor(tk.Frame):
             cb = self._comps.get(w.to_comp_id)
             if not ca or not cb:
                 continue
-            dx_a, dy_a = COMP_DEFS[ca.comp_type]["pins"][w.from_pin]
+            dx_a, dy_a = self._defs[ca.comp_type]["pins"][w.from_pin]
             rdx_a, rdy_a = _rotate_pin(dx_a, dy_a, ca.rotation)
-            dx_b, dy_b = COMP_DEFS[cb.comp_type]["pins"][w.to_pin]
+            dx_b, dy_b = self._defs[cb.comp_type]["pins"][w.to_pin]
             rdx_b, rdy_b = _rotate_pin(dx_b, dy_b, cb.rotation)
             x1, y1 = ca.cx + rdx_a, ca.cy + rdy_a
             x2, y2 = cb.cx + rdx_b, cb.cy + rdy_b
@@ -597,7 +709,7 @@ class SchematicEditor(tk.Frame):
             sx, sy = self._cc(event)
             comp = self._comps.get(self._wire_src[0])
             if comp:
-                dx, dy = COMP_DEFS[comp.comp_type]["pins"][self._wire_src[1]]
+                dx, dy = self._defs[comp.comp_type]["pins"][self._wire_src[1]]
                 rdx, rdy = _rotate_pin(dx, dy, comp.rotation)
                 x1, y1 = self._w2s(comp.cx + rdx, comp.cy + rdy)
                 if self._rubber_band:
@@ -706,7 +818,7 @@ class SchematicEditor(tk.Frame):
         self._selected_id = comp_id
         comp = self._comps.get(comp_id)
         if comp:
-            defn  = COMP_DEFS[comp.comp_type]
+            defn  = self._defs[comp.comp_type]
             rot   = comp.rotation
             z     = self._zoom
             rw2 = ((defn["w"] // 2 if rot % 180 == 0 else defn["h"] // 2) + 5) * z
@@ -882,7 +994,7 @@ class SchematicEditor(tk.Frame):
 
         lines = ["* Schéma généré par Circuit Analyzer — éditeur interactif", ""]
         for comp in real_comps.values():
-            pins = COMP_DEFS[comp.comp_type]["pins"]
+            pins = self._defs[comp.comp_type]["pins"]
             nets = " ".join(net_of(f"{comp.id}:{pn}") for pn in pins)
             lines.append(f"{comp.ref} {nets} {comp.value}")
 
@@ -904,7 +1016,7 @@ class SchematicEditor(tk.Frame):
         """
         loose = []
         for comp in self._comps.values():
-            for pn in COMP_DEFS[comp.comp_type]["pins"]:
+            for pn in self._defs[comp.comp_type]["pins"]:
                 if not self._pin_connected(comp.id, pn):
                     loose.append((comp.ref, pn))
         return loose

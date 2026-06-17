@@ -79,6 +79,12 @@ class TabDraw:
             command=self._save_as_pattern,
         ).pack(side="right", padx=(0, 10), pady=8)
 
+    # ── Synchronisation bibliothèque ──────────────────────────────────────────
+
+    def refresh_palette(self):
+        """@brief Reconstruit la palette de l'éditeur (bibliothèque modifiée)."""
+        self._editor.refresh_palette()
+
     # ── Actions ───────────────────────────────────────────────────────────────
 
     def _export_netlist_file(self, prefix: str = "schema_editeur_"):
