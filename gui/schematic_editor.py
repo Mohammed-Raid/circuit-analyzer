@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from circuit_analyzer.composant import charger_bibliotheque
+from gui.schematic_io import editor_to_dict
 
 GRID = 20  # pas de la grille en coordonnées monde
 
@@ -951,6 +952,77 @@ class SchematicEditor(tk.Frame):
             btn.configure(bg="#1e293b", relief="flat")
         self._draw_grid()
         self._set_status("Prêt")
+
+    # ── Sauvegarde / chargement (.circ) ───────────────────────────────────────
+
+    def to_dict(self) -> dict:
+        """@brief Sérialise le schéma courant au format .circ.
+
+        @return dict Document .circ (composants, fils, compteurs, next_id).
+        """
+        return editor_to_dict(self._comps, self._wires,
+                              self._counters, self._next_id)
+
+    def load_dict(self, d: dict):
+        """@brief Remplace le schéma courant par celui décrit par un dict .circ.
+
+        Valide format/version AVANT toute mutation (le dessin courant est préservé
+        en cas d'erreur). Ignore les composants de type inconnu et les fils dont
+        une broche n'existe pas dans la géométrie courante.
+
+        @param d Document .circ (natif ou produit par build_from_components).
+        @throws ValueError Si le format ou la version n'est pas reconnu.
+        """
+        if not isinstance(d, dict) or d.get("format") != "circ":
+            raise ValueError("Format de fichier non reconnu (.circ attendu).")
+        if d.get("version") != 1:
+            raise ValueError(
+                f"Version de schéma non supportée : {d.get('version')!r}.")
+
+        # Reconstruction dans des structures temporaires : on ne touche à l'état
+        # qu'une fois la validation passée.
+        new_comps: dict[int, CompInst] = {}
+        max_id = 0
+        for c in d.get("components", []):
+            t = c.get("type")
+            if t not in self._defs:
+                continue                      # type inconnu : ignoré
+            ci = CompInst(int(c["id"]), c["ref"], t, c.get("value", ""),
+                          int(c["cx"]), int(c["cy"]), int(c.get("rotation", 0)))
+            new_comps[ci.id] = ci
+            max_id = max(max_id, ci.id)
+
+        next_id = max(int(d.get("next_id", 1)), max_id + 1)
+
+        new_wires: list[WireInst] = []
+        for w in d.get("wires", []):
+            fa, ta = w.get("from_comp_id"), w.get("to_comp_id")
+            if fa not in new_comps or ta not in new_comps:
+                continue
+            fp, tp = w.get("from_pin"), w.get("to_pin")
+            if fp not in self._defs[new_comps[fa].comp_type]["pins"]:
+                continue
+            if tp not in self._defs[new_comps[ta].comp_type]["pins"]:
+                continue
+            new_wires.append(WireInst(next_id, fa, fp, ta, tp))
+            next_id += 1
+
+        # Ouverture annulable : on empile l'état courant s'il y a quelque chose.
+        if self._comps or self._wires:
+            self._push_undo()
+
+        self._canvas.delete("all")
+        self._comps    = new_comps
+        self._wires    = new_wires
+        self._counters = {k: int(v) for k, v in d.get("counters", {}).items()}
+        self._next_id  = next_id
+        self._state        = "idle"
+        self._selected_id  = None
+        self._wire_src     = None
+        self._rubber_band  = None
+        self._drag_comp_id = None
+        self._redraw_all()
+        self._set_status("Schéma\nchargé")
 
     # ── Export netlist ────────────────────────────────────────────────────────
 

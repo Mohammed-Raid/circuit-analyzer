@@ -2,15 +2,19 @@
 @file tab_draw.py
 @brief Onglet « Schéma » : encapsule l'éditeur interactif et déclenche l'analyse.
 """
+import json
+import os
 import tempfile
 from typing import Callable, Optional
 
 import customtkinter as ctk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 
 from gui.theme import BG, CARD, CARD2, BORDER, TEXT, MUTED
 from gui.schematic_editor import SchematicEditor
+from gui.schematic_io import build_from_components
 from circuit_analyzer.composant import lire_netlist, construire_graphe
+from circuit_analyzer.xml import lire_xml
 
 
 class TabDraw:
@@ -56,8 +60,26 @@ class TabDraw:
         bar_inner = ctk.CTkFrame(bar, fg_color="transparent")
         bar_inner.pack(fill="both", padx=28)
 
+        ctk.CTkButton(
+            bar_inner, text="📂  Ouvrir",
+            width=96, height=34, corner_radius=8,
+            font=ctk.CTkFont("Segoe UI", 12, "bold"),
+            fg_color=CARD, hover_color="#263347",
+            border_width=1, border_color=BORDER,
+            command=self._open_circuit,
+        ).pack(side="left", padx=(0, 8), pady=8)
+
+        ctk.CTkButton(
+            bar_inner, text="💾  Enregistrer",
+            width=120, height=34, corner_radius=8,
+            font=ctk.CTkFont("Segoe UI", 12, "bold"),
+            fg_color=CARD, hover_color="#263347",
+            border_width=1, border_color=BORDER,
+            command=self._save_circuit,
+        ).pack(side="left", padx=(0, 14), pady=8)
+
         ctk.CTkLabel(bar_inner,
-                     text="Suppr = effacer  ·  Ctrl+Z = annuler  ·  Échap = sortir du mode  ·  Clic droit = menu",
+                     text="Suppr = effacer  ·  Ctrl+Z = annuler  ·  Clic droit = menu",
                      font=ctk.CTkFont("Segoe UI", 10),
                      text_color=MUTED).pack(side="left", pady=10)
 
@@ -84,6 +106,86 @@ class TabDraw:
     def refresh_palette(self):
         """@brief Reconstruit la palette de l'éditeur (bibliothèque modifiée)."""
         self._editor.refresh_palette()
+
+    # ── Sauvegarde / ouverture du schéma ──────────────────────────────────────
+
+    def _save_circuit(self):
+        """@brief Enregistre le schéma courant dans un fichier .circ (JSON)."""
+        if self._editor.comp_count() == 0:
+            messagebox.showwarning("Schéma vide",
+                                   "Rien à enregistrer.", parent=self.frame)
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self.frame, defaultextension=".circ",
+            filetypes=[("Schéma Circuit Analyzer", "*.circ"), ("Tous", "*.*")],
+            title="Enregistrer le schéma")
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self._editor.to_dict(), f, ensure_ascii=False, indent=2)
+        except OSError as exc:
+            messagebox.showerror("Erreur",
+                                 f"Impossible d'écrire le fichier :\n{exc}",
+                                 parent=self.frame)
+            return
+        messagebox.showinfo("Enregistré",
+                            f"Schéma enregistré :\n{path}", parent=self.frame)
+
+    def _open_circuit(self):
+        """@brief Ouvre un .circ, ou importe un .xml / netlist dans l'éditeur."""
+        path = filedialog.askopenfilename(
+            parent=self.frame,
+            filetypes=[
+                ("Schémas & netlists", "*.circ *.xml *.txt *.cir *.sp *.net"),
+                ("Schéma Circuit Analyzer", "*.circ"),
+                ("Schéma XML (BoardSCH)", "*.xml"),
+                ("Netlists", "*.txt *.cir *.sp *.net"),
+                ("Tous", "*.*"),
+            ],
+            title="Ouvrir un schéma ou une netlist")
+        if not path:
+            return
+
+        if self._editor.comp_count() > 0 and not messagebox.askyesno(
+                "Remplacer le schéma",
+                "Le canvas n'est pas vide. Remplacer le schéma courant ?",
+                parent=self.frame):
+            return
+
+        ext = os.path.splitext(path)[1].lower()
+        try:
+            if ext == ".circ":
+                with open(path, encoding="utf-8") as f:
+                    self._editor.load_dict(json.load(f))
+                report = None
+            else:
+                composants = (lire_xml(path) if ext == ".xml"
+                              else lire_netlist(path))
+                doc = build_from_components(composants, self._editor._defs)
+                report = doc.pop("_report", None)
+                self._editor.load_dict(doc)
+        except (ValueError, OSError, json.JSONDecodeError) as exc:
+            messagebox.showerror("Ouverture impossible",
+                                 f"Fichier illisible ou invalide :\n{exc}",
+                                 parent=self.frame)
+            return
+
+        if report and (report["ignored_components"] or report["dropped_pins"]):
+            ignored = report["ignored_components"]
+            details = []
+            if ignored:
+                apercu = ", ".join(ignored[:8])
+                suite = "" if len(ignored) <= 8 else f" (+{len(ignored) - 8})"
+                details.append(f"{len(ignored)} composant(s) ignoré(s) "
+                               f"(type inconnu) : {apercu}{suite}")
+            if report["dropped_pins"]:
+                details.append(f"{report['dropped_pins']} connexion(s) de broche "
+                               "ignorée(s) (broche absente de l'éditeur, ex. V+/V-).")
+            messagebox.showinfo("Import terminé",
+                                "Schéma importé (placement automatique à "
+                                "réorganiser).\n\n" + "\n".join(details),
+                                parent=self.frame)
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
