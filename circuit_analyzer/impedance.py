@@ -215,6 +215,39 @@ def _passe_parallele(W: nx.MultiGraph, bornes: set) -> bool:
     return bool(paires)
 
 
+def _replier_blocs_irreductibles(W: nx.MultiGraph, bornes: set) -> None:
+    """@brief Replie chaque composante passive non réductible (pont) en une seule
+    arête Z entre ses deux bornes de contact.
+
+    @param W Graphe de travail (muté en place).
+    @param bornes Nœuds-bornes.
+    @return None
+    """
+    for composante in list(nx.connected_components(W)):
+        internes = [n for n in composante if n not in bornes]
+        if not internes:
+            continue  # déjà réduit (au plus des arêtes borne-à-borne)
+        contacts = sorted(n for n in composante if n in bornes)
+        if len(contacts) < 2:
+            continue  # pas assez de bornes pour replier : laisser le bloc intact
+        refs, types = [], set()
+        for u, v, d in list(W.edges(composante, data=True)):
+            refs.extend(d['refs'])
+            types.add(d['type'])
+        # Retirer toutes les arêtes et les nœuds internes de la composante.
+        for u, v, k in list(W.edges(composante, keys=True)):
+            W.remove_edge(u, v, k)
+        for n in internes:
+            if n in W:
+                W.remove_node(n)
+        a, b = contacts[0], contacts[1]
+        # Un bloc irréductible est toujours de type 'Z' : il ne peut pas être
+        # simplifié en un dipôle pur, même s'il est homogène (ex. pont tout-R).
+        W.add_edge(a, b, type='Z',
+                   refs=refs, expr="pont{" + ",".join(sorted(refs)) + "}",
+                   value='')
+
+
 def reduire(graphe) -> nx.MultiGraph:
     """@brief Réduit les réseaux passifs R/L/C en impédances équivalentes Z.
 
@@ -233,6 +266,8 @@ def reduire(graphe) -> nx.MultiGraph:
         if _passe_parallele(W, bornes):
             continue
         break
+
+    _replier_blocs_irreductibles(W, bornes)
 
     # Reconstruire le graphe réduit : on retire les arêtes passives d'origine et
     # on réémet celles de W (réduites ou non).

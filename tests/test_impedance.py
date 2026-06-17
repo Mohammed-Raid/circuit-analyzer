@@ -93,6 +93,29 @@ def test_parallele_r_et_c_meme_paire():
     assert z['composition'] == '(R1//C1)'
 
 
+def test_pont_wheatstone_irreductible_en_bloc():
+    # Pont en H : A,B,C,D avec une diagonale R5 entre C et D. Aucun nœud
+    # interne de degré 2, aucun banc parallèle → série/parallèle impuissant.
+    # On signale le bloc passif comme une Z unique listant tous ses composants.
+    g = _graphe(
+        Composant('U1', 'U', {'IN+': 'A', 'IN-': 'X', 'OUT': 'B'}),  # ancre A,B
+        Composant('R1', 'R', {'1': 'A', '2': 'C'}, '1k'),
+        Composant('R2', 'R', {'1': 'A', '2': 'D'}, '1k'),
+        Composant('R3', 'R', {'1': 'C', '2': 'B'}, '1k'),
+        Composant('R4', 'R', {'1': 'D', '2': 'B'}, '1k'),
+        Composant('R5', 'R', {'1': 'C', '2': 'D'}, '1k'),
+    )
+    reduit = impedance.reduire(g)
+    zs = [d for _, _, d in reduit.edges(data=True) if str(d['ref']).startswith('Z')]
+    assert len(zs) == 1
+    z = zs[0]
+    assert sorted(z['refs']) == ['R1', 'R2', 'R3', 'R4', 'R5']
+    assert z['type'] == 'Z'
+    assert z['composition'].startswith('pont{')
+    # Les nœuds internes C et D du pont ont disparu (absorbés dans le bloc).
+    assert 'C' not in reduit.nodes() and 'D' not in reduit.nodes()
+
+
 def test_fusible_transparent():
     # VIN ─F1─ N ─R1─ OUT : le fusible est transparent (ses deux nœuds
     # fusionnent). Il ne reste QUE R1, entre VIN et OUT. Aucune arête 'F'.
