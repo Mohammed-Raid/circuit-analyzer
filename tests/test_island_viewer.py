@@ -178,6 +178,26 @@ def test_make_island_fig_keeps_diode_and_does_not_show_match_type():
     assert not any("Redresseur simple alternance" in t for t in texts)
 
 
+def test_make_island_fig_records_clickable_z_hitboxes():
+    composants = [
+        Composant("R1", "R", {"1": "IN", "2": "MID"}, "10k"),
+        Composant("C1", "C", {"1": "MID", "2": "GND"}, "100n"),
+    ]
+    graphe = construire_graphe(composants)
+    ilot = {"label": "I", "composants": ["R1", "C1"]}
+    model = _build_island_model(ilot, graphe, _comp_info(composants))
+
+    fig = _make_island_fig(model)
+
+    hits = getattr(fig, "_z_hitboxes", [])
+    assert hits                                          # au moins un Z cliquable
+    # chaque zone porte (x0,x1,y0,y1, refs, composition) et couvre R1 et C1
+    all_refs = {r for *_box, refs, _compo in hits for r in refs}
+    assert {"R1", "C1"} <= all_refs
+    for x0, x1, y0, y1, _refs, _compo in hits:
+        assert x0 < x1 and y0 < y1                       # zone non vide
+
+
 def test_make_island_fig_single_axis_with_devices_and_z():
     composants = [
         Composant("K1", "K", {"A1": "VCC", "A2": "NET1"}, "Relay"),

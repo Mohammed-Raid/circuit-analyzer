@@ -259,6 +259,17 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     canvas.get_tk_widget().configure(bg=SCH_BG, highlightthickness=0)
     canvas.get_tk_widget().pack(fill="both", expand=True, padx=4, pady=4)
 
+    def _on_click(event):
+        # Clic dans une zone de Z -> ouvre le sous-schema des R/L/C qui le composent.
+        if event.xdata is None or event.ydata is None:
+            return
+        for x0, x1, y0, y1, refs, composition in getattr(fig, "_z_hitboxes", []):
+            if x0 <= event.xdata <= x1 and y0 <= event.ydata <= y1:
+                show_dipole_detail(refs, composition, graph, comp_info, popup)
+                return
+
+    canvas.mpl_connect("button_press_event", _on_click)
+
     bar = ctk.CTkFrame(popup, fg_color=UI_CARD, corner_radius=0, height=44)
     bar.pack(fill="x", side="bottom")
     bar.pack_propagate(False)
@@ -267,6 +278,56 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                   font=ctk.CTkFont("Segoe UI", 11),
                   fg_color="#1d4ed8", hover_color="#2563eb",
                   command=lambda: _export(fig, name, popup)).pack(
+                      side="left", padx=12, pady=7)
+    ctk.CTkButton(bar, text="Fermer",
+                  width=90, height=30, corner_radius=6,
+                  font=ctk.CTkFont("Segoe UI", 11),
+                  fg_color="#374151", hover_color="#4b5563",
+                  command=popup.destroy).pack(side="right", padx=12, pady=7)
+
+
+def show_dipole_detail(refs, composition, graph, comp_info, parent=None):
+    """@brief Affiche le sous-schema reel (R/L/C) composant une Impedance Z.
+
+    @param refs Refs bruts du dipole (ex. ['C3', 'R8']).
+    @param composition Formule lisible (ex. '(C6 // C7)').
+    @param graph Graphe brut.
+    @param comp_info Dict {ref -> {...}}.
+    @param parent Fenetre parente.
+    @return None
+    """
+    titre = f"Z = {composition}" if composition else "Detail Z"
+    model = _build_dipole_model(refs, graph, comp_info, label=titre)
+    fig = _make_island_fig(model)
+
+    popup = ctk.CTkToplevel(parent)
+    popup.title(titre)
+    popup.geometry("560x460")
+    popup.configure(fg_color=UI_BG)
+    popup.grab_set()
+
+    hdr = ctk.CTkFrame(popup, fg_color=UI_CARD, corner_radius=0, height=48)
+    hdr.pack(fill="x")
+    hdr.pack_propagate(False)
+    ctk.CTkLabel(hdr, text=f"Composition de l'impedance : {composition}",
+                 font=ctk.CTkFont("Segoe UI", 13, "bold"),
+                 text_color="#f1f5f9").pack(side="left", padx=18, pady=12)
+
+    canvas_frame = ctk.CTkFrame(popup, fg_color=SCH_BG, corner_radius=10)
+    canvas_frame.pack(fill="both", expand=True, padx=14, pady=10)
+    canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
+    canvas.draw()
+    canvas.get_tk_widget().configure(bg=SCH_BG, highlightthickness=0)
+    canvas.get_tk_widget().pack(fill="both", expand=True, padx=4, pady=4)
+
+    bar = ctk.CTkFrame(popup, fg_color=UI_CARD, corner_radius=0, height=44)
+    bar.pack(fill="x", side="bottom")
+    bar.pack_propagate(False)
+    ctk.CTkButton(bar, text="Exporter PNG",
+                  width=140, height=30, corner_radius=6,
+                  font=ctk.CTkFont("Segoe UI", 11),
+                  fg_color="#1d4ed8", hover_color="#2563eb",
+                  command=lambda: _export(fig, titre, popup)).pack(
                       side="left", padx=12, pady=7)
     ctk.CTkButton(bar, text="Fermer",
                   width=90, height=30, corner_radius=6,
@@ -339,6 +400,9 @@ def _make_island_fig(model, matches=None):
     ax.axis("off")
     ax.set_aspect("equal")
 
+    hitboxes = []
+    fig._z_hitboxes = hitboxes   # zones cliquables des Z (renseignees par le drawer)
+
     if not components:
         ax.text(0.5, 0.5, "Ilot vide", ha="center", va="center",
                 transform=ax.transAxes, fontsize=13, color="#64748b")
@@ -347,7 +411,7 @@ def _make_island_fig(model, matches=None):
     try:
         with schemdraw.Drawing(canvas=ax, show=False) as d:
             d.config(fontsize=10, inches_per_unit=0.5)
-            _draw_island_schematic(d, plan)
+            _draw_island_schematic(d, plan, hitboxes)
     except Exception as exc:
         ax.text(0.5, 0.56, model.get("label", "Ilot"),
                 ha="center", va="center", transform=ax.transAxes,
@@ -356,7 +420,10 @@ def _make_island_fig(model, matches=None):
                 ha="center", va="center", transform=ax.transAxes,
                 fontsize=10, color="#64748b")
 
-    ax.text(0.01, 0.01, plan["caption"], transform=ax.transAxes,
+    caption = plan["caption"]
+    if hitboxes:
+        caption += "   ·   cliquez un Z pour voir sa composition (R/L/C)"
+    ax.text(0.01, 0.01, caption, transform=ax.transAxes,
             fontsize=8, color="#64748b", va="bottom", ha="left")
     ax.margins(0.16)
     fig.subplots_adjust(left=0.03, right=0.97, top=0.96, bottom=0.06)
@@ -523,8 +590,12 @@ _BUS = "#475569"
 _WIRE = "#1e293b"
 
 
-def _draw_island_schematic(d, plan):
-    """@brief Dessine le schema assaini a partir du plan (colonnes + lignes + stubs)."""
+def _draw_island_schematic(d, plan, hitboxes=None):
+    """@brief Dessine le schema assaini a partir du plan (colonnes + lignes + stubs).
+
+    @param hitboxes Liste (optionnelle) remplie de zones cliquables des Z :
+        (x0, x1, y0, y1, refs, composition) en coordonnees data.
+    """
     columns = plan["columns"]
     rows = plan["rows"]
     if not columns and not rows:
@@ -551,18 +622,24 @@ def _draw_island_schematic(d, plan):
             # etiquettes alternees haut/bas : evite les collisions sur lignes voisines.
             label_loc = "top" if passive_i % 2 == 0 else "bottom"
             passive_i += 1
-            _draw_two_pin_row(d, row, x_by_net, label_loc)
+            _draw_two_pin_row(d, row, x_by_net, label_loc, hitboxes)
         else:
             _draw_block_row(d, row, cols_pins, x_by_net, device_x)
 
 
-def _draw_two_pin_row(d, row, x_by_net, label_loc="top"):
+def _draw_two_pin_row(d, row, x_by_net, label_loc="top", hitboxes=None):
     """@brief Composant 2 broches : symbole entre deux colonnes, ou colonne->moignon E/S."""
     (p1, n1), (p2, n2) = row["pins"]
     x1, x2 = x_by_net.get(n1), x_by_net.get(n2)
     y = row["y"]
     element = _SYMBOL_ELM.get(row["symbol"], elm.Resistor)
     label = _component_label(row)
+
+    def _hit(xa, xb):
+        # zone cliquable d'un Z (un peu elargie) pour ouvrir sa composition.
+        if hitboxes is not None and row["symbol"] == "impedance":
+            hitboxes.append((min(xa, xb) - 0.3, max(xa, xb) + 0.3, y - 0.5, y + 0.5,
+                             row.get("refs", []), row.get("composition", "")))
 
     if x1 is not None and x2 is not None and x1 != x2:
         left, right = sorted((x1, x2))
@@ -573,6 +650,7 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top"):
         d += element().at((mid - slen / 2, y)).right(slen).label(label, loc=label_loc)
         d += elm.Line().tox(right).color(_WIRE)
         d += elm.Dot().at((right, y)).color(_WIRE)
+        _hit(mid - slen / 2, mid + slen / 2)
         return
 
     if x1 is not None or x2 is not None:
@@ -587,6 +665,7 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top"):
         d += elm.Line().right(0.35).color(_WIRE)
         if not _is_not_connected(stub_net):
             d += elm.Dot().label(stub_net, loc="right", color=_BUS)
+        _hit(col_x + 0.3, col_x + 1.7)
         return
 
     # composant isole (deux moignons) : symbole + deux etiquettes.
@@ -595,6 +674,7 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top"):
         d += elm.Dot().at((0.0, y)).label(n1, loc="left", color=_BUS)
     if not _is_not_connected(n2):
         d += elm.Dot().at((1.4, y)).label(n2, loc="right", color=_BUS)
+    _hit(0.0, 1.4)
 
 
 def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
