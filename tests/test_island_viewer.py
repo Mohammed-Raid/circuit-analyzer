@@ -106,6 +106,27 @@ def test_build_island_schematic_plan_keeps_exact_component_pin_nets():
     assert by_ref["D1"]["symbol"] == "diode"
 
 
+def test_opamp_symbol_and_rows_do_not_overlap():
+    composants = [
+        Composant("R1", "R", {"1": "IN", "2": "MID"}, "10k"),
+        Composant("C1", "C", {"1": "MID", "2": "GND"}, "100n"),
+        Composant("U1", "U", {"IN+": "MID", "IN-": "GND", "OUT": "MID"}),
+    ]
+    graphe = construire_graphe(composants)
+    ilot = {"label": "Ilot 1 - filtrage", "composants": ["R1", "C1", "U1"]}
+    model = _build_island_model(ilot, graphe, _comp_info(composants))
+
+    plan = _build_island_schematic_plan(model)
+
+    by_ref = {r["ref"]: r for r in plan["rows"]}
+    assert by_ref["U1"]["symbol"] == "opamp"
+    assert by_ref["R1"]["symbol"] == "resistor"
+    # lignes strictement decroissantes en y, espacees (pas de chevauchement)
+    ys = [r["y"] for r in plan["rows"]]
+    assert ys == sorted(ys, reverse=True)
+    assert all(abs(a - b) >= 1.5 for a, b in zip(ys, ys[1:]))
+
+
 def test_make_island_fig_draws_schematic_without_graph_bubbles():
     composants = [
         Composant("R1", "R", {"1": "IN", "2": "OUT"}, "10k"),

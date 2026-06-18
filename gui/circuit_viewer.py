@@ -271,13 +271,14 @@ def _make_island_fig(model, matches=None):
     """
     components = model["components"]
     plan = _build_island_schematic_plan(model)
-    width = max(8.0, 2.0 * max(2, len(plan["nets"])) + 2.0)
-    height = max(4.8, 1.0 * max(2, len(plan["components"])) + 2.0)
-    fig = Figure(figsize=(min(15.0, width), min(11.0, height)))
+    width = max(8.0, 1.4 * max(2, len(plan["columns"])) + 3.0)
+    height = max(4.8, 0.9 * max(2, len(plan["rows"])) + 2.0)
+    fig = Figure(figsize=(min(18.0, width), min(14.0, height)))
     ax = fig.add_subplot(111)
     fig.patch.set_facecolor(SCH_BG)
     ax.set_facecolor(SCH_BG)
     ax.axis("off")
+    ax.set_aspect("equal")
 
     if not components:
         ax.text(0.5, 0.5, "Ilot vide", ha="center", va="center",
@@ -286,7 +287,7 @@ def _make_island_fig(model, matches=None):
 
     try:
         with schemdraw.Drawing(canvas=ax, show=False) as d:
-            d.config(fontsize=10, inches_per_unit=0.55)
+            d.config(fontsize=10, inches_per_unit=0.5)
             _draw_island_schematic(d, plan)
     except Exception as exc:
         ax.text(0.5, 0.56, model.get("label", "Ilot"),
@@ -296,7 +297,9 @@ def _make_island_fig(model, matches=None):
                 ha="center", va="center", transform=ax.transAxes,
                 fontsize=10, color="#64748b")
 
-    ax.margins(0.18)
+    ax.text(0.01, 0.01, plan["caption"], transform=ax.transAxes,
+            fontsize=8, color="#64748b", va="bottom", ha="left")
+    ax.margins(0.16)
     fig.subplots_adjust(left=0.03, right=0.97, top=0.96, bottom=0.06)
     return fig
 
@@ -314,8 +317,15 @@ def _matches_for_island(ilot, results):
 
 
 _NC_NAMES = {"NC", "N/C", "NRELIEE", ""}
-ROW_PITCH = 1.6
+ROW_PITCH = 1.6        # pas vertical entre deux composants 2 broches
+MULTI_PITCH = 2.8      # pas elargi autour d'un composant multi-broches (AOP, bloc)
 COL_PITCH = 2.4
+
+
+def _is_multi_pin(comp) -> bool:
+    """@brief Vrai si le composant occupe une bande haute (AOP ou >2 broches)."""
+    pins = comp.get("pins", {}) or {}
+    return _schematic_symbol(comp.get("type", "?")) == "opamp" or len(pins) > 2
 
 
 def _is_not_connected(net) -> bool:
@@ -372,8 +382,13 @@ def _build_island_schematic_plan(model):
     col_nets = {net for net, pins in net_pins.items() if len(pins) >= 2}
 
     rows = []
+    y = 0.0
+    prev_multi = False
     for idx, comp in enumerate(components):
-        y = -idx * ROW_PITCH
+        is_multi = _is_multi_pin(comp)
+        if idx > 0:
+            y -= MULTI_PITCH if (is_multi or prev_multi) else ROW_PITCH
+        prev_multi = is_multi
         pins = list((comp.get("pins", {}) or {}).items())
         stubs = [
             (pin, net) for pin, net in pins
@@ -432,102 +447,106 @@ def _layout_columns(col_nets, net_pins, rows):
     return columns
 
 
+_SYMBOL_ELM = {
+    "resistor": elm.Resistor,
+    "capacitor": elm.Capacitor,
+    "inductor": elm.Inductor2,
+    "diode": elm.Diode,
+    "fuse": elm.Fuse,
+    "switch": elm.Switch,
+}
+
+_BUS = "#475569"
+_WIRE = "#1e293b"
+
+
 def _draw_island_schematic(d, plan):
-    nets = plan["nets"]
-    components = plan["components"]
-    if not nets:
+    """@brief Dessine le schema assaini a partir du plan (colonnes + lignes + stubs)."""
+    columns = plan["columns"]
+    rows = plan["rows"]
+    if not columns and not rows:
         return
+    x_by_net = {c["net"]: c["x"] for c in columns}
 
-    net_x = {net: idx * 2.2 for idx, net in enumerate(nets)}
-    top_y = 0.8
-    bottom_y = -max(2.0, len(components) * 0.9 + 0.8)
+    # Colonnes-bus rognees : ligne verticale + etiquette + masse eventuelle.
+    for c in columns:
+        top = c["y_top"] + 0.5
+        bottom = c["y_bottom"] - (0.9 if c["kind"] == "ground" else 0.5)
+        d += elm.Line().at((c["x"], top)).to((c["x"], bottom)).color(_BUS)
+        d += elm.Dot().at((c["x"], top)).label(c["net"], loc="top", color=_BUS)
+        if c["kind"] == "ground":
+            d += elm.Ground().at((c["x"], bottom))
 
-    for net, x in net_x.items():
-        d += elm.Line().at((x, top_y)).toy(bottom_y)
-        if is_ground_net(net) or is_protective_earth_net(net):
-            d += elm.Ground().at((x, bottom_y))
-            d += elm.Dot().at((x, top_y)).label(net, loc="top")
-        elif is_power_net(net):
-            d += elm.Dot().at((x, top_y)).label(net, loc="top")
+    for row in rows:
+        cols_pins = [(p, n) for p, n in row["pins"] if n in x_by_net]
+        if row["symbol"] != "opamp" and len(row["pins"]) == 2:
+            _draw_two_pin_row(d, row, x_by_net)
         else:
-            d += elm.Dot().at((x, top_y)).label(net, loc="top")
+            _draw_block_row(d, row, cols_pins, x_by_net)
 
-    for idx, item in enumerate(components):
-        y = -0.55 - idx * 0.9
-        pins = [(pin, net) for pin, net in item.get("pins", []) if net in net_x]
-        if len(pins) == 2:
-            _draw_two_pin_component(d, item, pins, net_x, y)
+
+def _draw_two_pin_row(d, row, x_by_net):
+    """@brief Composant 2 broches : symbole entre deux colonnes, ou colonne->moignon E/S."""
+    (p1, n1), (p2, n2) = row["pins"]
+    x1, x2 = x_by_net.get(n1), x_by_net.get(n2)
+    y = row["y"]
+    element = _SYMBOL_ELM.get(row["symbol"], elm.Resistor)
+    label = _component_label(row)
+
+    if x1 is not None and x2 is not None and x1 != x2:
+        left, right = sorted((x1, x2))
+        mid = (left + right) / 2
+        slen = min(1.6, max(0.8, right - left - 0.6))
+        d += elm.Dot().at((left, y)).color(_WIRE)
+        d += elm.Line().at((left, y)).tox(mid - slen / 2).color(_WIRE)
+        d += element().at((mid - slen / 2, y)).right(slen).label(label, loc="top")
+        d += elm.Line().tox(right).color(_WIRE)
+        d += elm.Dot().at((right, y)).color(_WIRE)
+        return
+
+    if x1 is not None or x2 is not None:
+        # un cote sur un bus, l'autre est une E/S (moignon etiquete).
+        if x1 is not None:
+            col_x, stub_net = x1, n2
         else:
-            _draw_multi_pin_component(d, item, pins, net_x, y)
-
-
-def _draw_two_pin_component(d, item, pins, net_x, y):
-    (_pin1, net1), (_pin2, net2) = pins
-    x1, x2 = net_x[net1], net_x[net2]
-    if x1 == x2:
-        _draw_multi_pin_component(d, item, pins, net_x, y)
+            col_x, stub_net = x2, n1
+        d += elm.Dot().at((col_x, y)).color(_WIRE)
+        d += elm.Line().at((col_x, y)).right(0.3).color(_WIRE)
+        d += element().right(1.4).label(label, loc="top")
+        d += elm.Line().right(0.35).color(_WIRE)
+        if not _is_not_connected(stub_net):
+            d += elm.Dot().label(stub_net, loc="right", color=_BUS)
         return
 
-    start_x, end_x = x1, x2
-    direction = "right" if end_x > start_x else "left"
-    pad = 0.25
-    symbol_len = max(0.8, abs(end_x - start_x) - 2 * pad)
-
-    d += elm.Dot().at((start_x, y))
-    d += elm.Line().at((start_x, y)).tox(
-        start_x + pad if direction == "right" else start_x - pad
-    )
-    _add_two_terminal_symbol_at(
-        d,
-        item,
-        (start_x + pad, y) if direction == "right" else (start_x - pad, y),
-        direction=direction,
-        length=symbol_len,
-    )
-    d += elm.Line().tox(end_x)
-    d += elm.Dot().at((end_x, y))
+    # composant isole (deux moignons) : symbole + deux etiquettes.
+    d += element().at((0.0, y)).right(1.4).label(label, loc="top")
+    if not _is_not_connected(n1):
+        d += elm.Dot().at((0.0, y)).label(n1, loc="left", color=_BUS)
+    if not _is_not_connected(n2):
+        d += elm.Dot().at((1.4, y)).label(n2, loc="right", color=_BUS)
 
 
-def _draw_multi_pin_component(d, item, pins, net_x, y):
-    if not pins:
-        return
-    xs = [net_x[net] for _pin, net in pins]
-    center_x = (min(xs) + max(xs)) / 2
-    label = _block_label(item)
-    d += elm.Ic(pins=[], w=1.8, h=0.65).at((center_x, y)).label(label, loc="center")
-    for pin, net in pins:
-        x = net_x[net]
-        d += elm.Dot().at((x, y))
-        d += elm.Line().at((x, y)).tox(center_x)
-        d += elm.Dot().at((x, y)).label(pin, loc="bottom")
+def _draw_block_row(d, row, cols_pins, x_by_net):
+    """@brief Composant multi-broches : AOP (triangle) ou bloc, broches cablees aux colonnes."""
+    y = row["y"]
+    xs = [x_by_net[n] for _p, n in cols_pins]
+    cx = (min(xs) + max(xs)) / 2 if xs else 0.0
 
-
-def _add_two_terminal_symbol_at(d, item, at, direction="right", length=1.2):
-    symbol = item.get("symbol")
-    label = _component_label(item)
-    element = {
-        "resistor": elm.Resistor,
-        "capacitor": elm.Capacitor,
-        "inductor": elm.Inductor2,
-        "diode": elm.Diode,
-        "fuse": elm.Fuse,
-        "switch": elm.Switch,
-    }.get(symbol, elm.Resistor)
-    try:
-        part = element().at(at)
-    except TypeError:
-        part = elm.Resistor().at(at)
-    if direction == "left":
-        d += part.left(length).label(label, loc="top")
+    if row["symbol"] == "opamp":
+        d += elm.Opamp().at((cx, y)).right().label(row["ref"], loc="center")
     else:
-        d += part.right(length).label(label, loc="top")
+        d += elm.Rect(w=1.8, h=0.8).at((cx, y)).label(row["ref"])
 
+    for pin, net in cols_pins:
+        x = x_by_net[net]
+        d += elm.Line().at((x, y)).to((cx, y)).color(_WIRE)
+        d += elm.Dot().at((x, y)).label(pin, loc="bottom", color=_BUS)
 
-def _block_label(item):
-    pins = item.get("pins") or []
-    pin_txt = "\n".join(f"{pin}:{net}" for pin, net in pins)
-    label = _component_label(item)
-    return f"{label}\n{pin_txt}" if pin_txt else label
+    for pin, net in row["stubs"]:
+        if _is_not_connected(net):
+            continue
+        d += elm.Line().at((cx, y)).right(0.6).color(_WIRE)
+        d += elm.Dot().label(net, loc="right", color=_BUS)
 
 
 def _component_label(comp):
