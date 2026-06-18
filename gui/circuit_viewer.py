@@ -253,72 +253,79 @@ def _make_fig(result, comp_info, drawer_fn):
 
 
 def _make_island_fig(model):
-    """Construit une figure de schema reel generique pour un ilot."""
+    """@brief Construit le schema connecte d'un ilot.
+
+    Modele en graphe biparti composant <-> net : un net partage est UN seul
+    noeud, donc les composants qui le partagent sont visiblement relies (plus
+    de moignons dupliques), et les composants multi-broches (AOP, connecteurs)
+    se relient a tous leurs nets sans chevauchement.
+
+    @param model Modele d'ilot (cf. _build_island_model).
+    @return matplotlib.figure.Figure Figure prete a afficher/exporter.
+    """
+    import networkx as nx
+
     plt.close("all")
-    height = max(4.5, 0.75 * max(1, len(model["components"])) + 1.2)
-    fig, ax = plt.subplots(figsize=(9, height))
+    components = model["components"]
+    nb = max(1, len(components))
+    cote = max(6.0, 1.5 * (nb ** 0.5) + 3.0)
+    fig, ax = plt.subplots(figsize=(min(13.0, cote + 2.0), min(11.0, cote)))
     fig.patch.set_facecolor(SCH_BG)
     ax.set_facecolor(SCH_BG)
     ax.axis("off")
 
-    try:
-        with schemdraw.Drawing(canvas=ax, show=False) as d:
-            d.config(fontsize=10, inches_per_unit=0.45)
-            _draw_island_model(d, model)
-    except Exception as exc:
-        ax.text(0.5, 0.62, model["label"],
-                ha="center", va="center", transform=ax.transAxes,
-                fontsize=14, fontweight="bold", color="#1e293b")
-        refs = "  -  ".join(c["ref"] for c in model["components"])
-        ax.text(0.5, 0.48, refs,
-                ha="center", va="center", transform=ax.transAxes,
-                fontsize=11, color="#64748b", fontfamily="monospace")
-        ax.text(0.5, 0.35, f"Schema simplifie indisponible: {exc}",
-                ha="center", va="center", transform=ax.transAxes,
-                fontsize=10, color="#94a3b8")
-
-    fig.subplots_adjust(left=0.04, right=0.96, top=0.96, bottom=0.04)
-    return fig
-
-
-def _element_for_component(comp):
-    typ = comp.get("type")
-    if typ == "R":
-        return elm.Resistor()
-    if typ == "C":
-        return elm.Capacitor()
-    if typ == "L":
-        return elm.Inductor2()
-    if typ == "D":
-        return elm.Diode()
-    if typ == "F":
-        return elm.Fuse()
-    return elm.Rect(w=1.4, h=0.5)
-
-
-def _draw_island_model(d, model):
-    """Dessine le modele d'ilot sous forme de lignes composant-net."""
-    components = model["components"]
     if not components:
-        d += elm.Line().right(1).label("Ilot vide")
-        return
+        ax.text(0.5, 0.5, "Ilot vide", ha="center", va="center",
+                transform=ax.transAxes, fontsize=13, color="#64748b")
+        return fig
 
-    for idx, comp in enumerate(components):
-        y = -idx * 1.35
-        pins = list(dict.fromkeys(n for n in comp.get("pins", {}).values() if n))
-        left_net = pins[0] if pins else ""
-        right_net = pins[1] if len(pins) > 1 else ""
-        extras = pins[2:]
-        label = _component_label(comp)
+    nets = set(model["internal_nets"]) | set(model["rail_nets"])
+    G = nx.Graph()
+    for comp in components:
+        G.add_node(("C", comp["ref"]))
+    for net in nets:
+        G.add_node(("N", net))
+    for ref, net in model["links"]:
+        if ("N", net) in G:
+            G.add_edge(("C", ref), ("N", net))
 
-        d.add(elm.Dot().at((0, y)).label(left_net, loc="left"))
-        d.add(elm.Line().at((0, y)).right(0.55))
-        d.add(_element_for_component(comp).right().label(label, loc="top"))
-        d.add(elm.Line().right(0.55))
-        d.add(elm.Dot().label(right_net, loc="right"))
-        if extras:
-            d.add(elm.Line().at((2.7, y)).down(0.45)
-                  .label(" / ".join(extras), loc="bottom"))
+    pos = nx.spring_layout(G, seed=42,
+                           k=1.8 / (len(G) ** 0.5 or 1), iterations=250)
+
+    # Aretes (broche -> net)
+    for a, b in G.edges():
+        (x1, y1), (x2, y2) = pos[a], pos[b]
+        ax.plot([x1, x2], [y1, y2], color="#9aa7b8", lw=1.0, zorder=1)
+
+    # Noeuds net : carre pour un rail (alim/masse), petit point sinon
+    for net in nets:
+        x, y = pos[("N", net)]
+        if is_power_net(net):
+            couleur, marqueur, taille = "#dc2626", "s", 80
+        elif is_ground_net(net) or is_protective_earth_net(net):
+            couleur, marqueur, taille = "#374151", "s", 80
+        else:
+            couleur, marqueur, taille = "#cbd5e1", "o", 40
+        ax.scatter([x], [y], s=taille, c=couleur, marker=marqueur,
+                   zorder=2, edgecolors="#475569", linewidths=0.8)
+        ax.annotate(net, (x, y), textcoords="offset points", xytext=(0, 8),
+                    ha="center", fontsize=7, color="#475569", zorder=5)
+
+    # Noeuds composant : pastille coloree par type + ref/valeur
+    for comp in components:
+        x, y = pos[("C", comp["ref"])]
+        couleur = _COMP_COLORS.get(comp.get("type"), "#64748b")
+        ax.scatter([x], [y], s=540, c=couleur, zorder=3,
+                   edgecolors="white", linewidths=1.5)
+        ax.annotate(comp.get("type", "?"), (x, y), ha="center", va="center",
+                    fontsize=9, fontweight="bold", color="white", zorder=4)
+        ax.annotate(_component_label(comp), (x, y), textcoords="offset points",
+                    xytext=(0, -18), ha="center", va="top", fontsize=8,
+                    color="#1e293b", zorder=4)
+
+    ax.margins(0.14)
+    fig.tight_layout(pad=0.4)
+    return fig
 
 
 def _component_label(comp):
