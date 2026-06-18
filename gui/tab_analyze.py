@@ -774,6 +774,7 @@ class _IslandSection(ctk.CTkFrame):
                          border_width=1, border_color=BORDER)
         self._ouvert = True
         self._ilot = ilot
+        self._results = results
         self._graph = graph
         self._comp_info = comp_info or {}
         self._viewer_parent = viewer_parent
@@ -846,7 +847,13 @@ class _IslandSection(ctk.CTkFrame):
         """@brief Ouvre le schema reel de l'ilot."""
         if self._graph is None:
             return
-        show_island(self._ilot, self._graph, self._comp_info, self._viewer_parent)
+        show_island(
+            self._ilot,
+            self._graph,
+            self._comp_info,
+            self._viewer_parent,
+            results=self._results,
+        )
 
 
 class _CircuitCard(ctk.CTkFrame):
