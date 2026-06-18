@@ -11,7 +11,7 @@ dans _DRAWERS. Les fonctions _draw_* reçoivent toutes (d, result, ci) :
 import customtkinter as ctk
 import matplotlib
 matplotlib.use("TkAgg")
-import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import schemdraw
 import schemdraw.elements as elm
@@ -159,7 +159,7 @@ def show_circuit(result: dict, comp_info: dict, parent=None):
 
 # ── Figure builder ────────────────────────────────────────────────────────────
 
-def show_island(ilot: dict, graph, comp_info: dict, parent=None):
+def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     """Ouvre une fenetre affichant le schema reel d'un ilot."""
     model = _build_island_model(ilot, graph, comp_info)
     name = model["label"]
@@ -190,7 +190,8 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None):
                      fg_color=color, text_color="#ffffff",
                      corner_radius=4).pack(side="left", padx=3)
 
-    fig = _make_island_fig(model)
+    matches = _matches_for_island(ilot, results)
+    fig = _make_island_fig(model, matches=matches)
     canvas_frame = ctk.CTkFrame(popup, fg_color=SCH_BG, corner_radius=10)
     canvas_frame.pack(fill="both", expand=True, padx=14, pady=(4, 0))
 
@@ -223,8 +224,8 @@ def _make_fig(result, comp_info, drawer_fn):
     @param drawer_fn Fonction de dessin dédiée, ou None.
     @return matplotlib.figure.Figure La figure prête à afficher.
     """
-    plt.close("all")
-    fig, ax = plt.subplots(figsize=(8, 4.5))
+    fig = Figure(figsize=(8, 4.5))
+    ax = fig.add_subplot(111)
     fig.patch.set_facecolor(SCH_BG)
     ax.set_facecolor(SCH_BG)
     ax.axis("off")
@@ -258,24 +259,22 @@ def _make_fig(result, comp_info, drawer_fn):
     return fig
 
 
-def _make_island_fig(model):
-    """@brief Construit le schema connecte d'un ilot.
+def _make_island_fig(model, matches=None):
+    """@brief Construit un vrai rendu schematique d'un ilot.
 
-    Modele en graphe biparti composant <-> net : un net partage est UN seul
-    noeud, donc les composants qui le partagent sont visiblement relies (plus
-    de moignons dupliques), et les composants multi-broches (AOP, connecteurs)
-    se relient a tous leurs nets sans chevauchement.
+    Le rendu n'utilise plus des bulles composant/net. Il fabrique un petit
+    plan electrique : chemin principal gauche-droite, derives vers rails, puis
+    symboles generiques pour les composants multi-broches.
 
     @param model Modele d'ilot (cf. _build_island_model).
     @return matplotlib.figure.Figure Figure prete a afficher/exporter.
     """
-    import networkx as nx
-
-    plt.close("all")
     components = model["components"]
-    nb = max(1, len(components))
-    cote = max(6.0, 1.5 * (nb ** 0.5) + 3.0)
-    fig, ax = plt.subplots(figsize=(min(13.0, cote + 2.0), min(11.0, cote)))
+    plan = _build_island_schematic_plan(model)
+    width = max(8.0, 2.0 * max(2, len(plan["nets"])) + 2.0)
+    height = max(4.8, 1.0 * max(2, len(plan["components"])) + 2.0)
+    fig = Figure(figsize=(min(15.0, width), min(11.0, height)))
+    ax = fig.add_subplot(111)
     fig.patch.set_facecolor(SCH_BG)
     ax.set_facecolor(SCH_BG)
     ax.axis("off")
@@ -285,53 +284,250 @@ def _make_island_fig(model):
                 transform=ax.transAxes, fontsize=13, color="#64748b")
         return fig
 
-    nets = set(model["internal_nets"]) | set(model["rail_nets"])
-    G = nx.Graph()
-    for comp in components:
-        G.add_node(("C", comp["ref"]))
-    for net in nets:
-        G.add_node(("N", net))
-    for ref, net in model["links"]:
-        if ("N", net) in G:
-            G.add_edge(("C", ref), ("N", net))
+    try:
+        with schemdraw.Drawing(canvas=ax, show=False) as d:
+            d.config(fontsize=10, inches_per_unit=0.55)
+            _draw_island_schematic(d, plan)
+    except Exception as exc:
+        ax.text(0.5, 0.56, model.get("label", "Ilot"),
+                ha="center", va="center", transform=ax.transAxes,
+                fontsize=14, fontweight="bold", color="#1e293b")
+        ax.text(0.5, 0.44, f"Schema automatique indisponible\n{exc}",
+                ha="center", va="center", transform=ax.transAxes,
+                fontsize=10, color="#64748b")
 
-    pos = nx.spring_layout(G, seed=42,
-                           k=1.8 / (len(G) ** 0.5 or 1), iterations=250)
-
-    # Aretes (broche -> net)
-    for a, b in G.edges():
-        (x1, y1), (x2, y2) = pos[a], pos[b]
-        ax.plot([x1, x2], [y1, y2], color="#9aa7b8", lw=1.0, zorder=1)
-
-    # Noeuds net : carre pour un rail (alim/masse), petit point sinon
-    for net in nets:
-        x, y = pos[("N", net)]
-        if is_power_net(net):
-            couleur, marqueur, taille = "#dc2626", "s", 80
-        elif is_ground_net(net) or is_protective_earth_net(net):
-            couleur, marqueur, taille = "#374151", "s", 80
-        else:
-            couleur, marqueur, taille = "#cbd5e1", "o", 40
-        ax.scatter([x], [y], s=taille, c=couleur, marker=marqueur,
-                   zorder=2, edgecolors="#475569", linewidths=0.8)
-        ax.annotate(net, (x, y), textcoords="offset points", xytext=(0, 8),
-                    ha="center", fontsize=7, color="#475569", zorder=5)
-
-    # Noeuds composant : pastille coloree par type + ref/valeur
-    for comp in components:
-        x, y = pos[("C", comp["ref"])]
-        couleur = _COMP_COLORS.get(comp.get("type"), "#64748b")
-        ax.scatter([x], [y], s=540, c=couleur, zorder=3,
-                   edgecolors="white", linewidths=1.5)
-        ax.annotate(comp.get("type", "?"), (x, y), ha="center", va="center",
-                    fontsize=9, fontweight="bold", color="white", zorder=4)
-        ax.annotate(_component_label(comp), (x, y), textcoords="offset points",
-                    xytext=(0, -18), ha="center", va="top", fontsize=8,
-                    color="#1e293b", zorder=4)
-
-    ax.margins(0.14)
-    fig.tight_layout(pad=0.4)
+    ax.margins(0.18)
+    fig.subplots_adjust(left=0.03, right=0.97, top=0.96, bottom=0.06)
     return fig
+
+
+def _matches_for_island(ilot, results):
+    if not results:
+        return []
+    matches = []
+    for idx in ilot.get("circuits", []):
+        try:
+            matches.append(results[idx])
+        except (TypeError, IndexError):
+            continue
+    return matches
+
+
+_NC_NAMES = {"NC", "N/C", "NRELIEE", ""}
+ROW_PITCH = 1.6
+COL_PITCH = 2.4
+
+
+def _is_not_connected(net) -> bool:
+    """@brief Vrai si le net est « non connecte » (NC, vide) — pas de colonne ni stub."""
+    return (not net) or net.upper() in _NC_NAMES
+
+
+def _net_kind(net: str) -> str:
+    """@brief Classe un net : 'ground', 'power' ou 'signal'."""
+    if is_ground_net(net) or is_protective_earth_net(net):
+        return "ground"
+    if is_power_net(net):
+        return "power"
+    return "signal"
+
+
+def _schematic_symbol(ctype):
+    """@brief Symbole schematique associe a un type de composant."""
+    return {
+        "R": "resistor",
+        "C": "capacitor",
+        "L": "inductor",
+        "D": "diode",
+        "F": "fuse",
+        "SW": "switch",
+        "U": "opamp",
+        "Q": "bjt",
+        "M": "mosfet",
+        "K": "relay",
+        "X": "connector",
+    }.get(ctype, "block")
+
+
+def _build_island_schematic_plan(model):
+    """@brief Plan netlist-fidele assaini d'un ilot (fonction pure, testable).
+
+    Filtre les nets (NC supprimes ; E/S a 1 connexion -> moignon ; >=2 -> colonne),
+    assigne une ligne par composant, et delegue l'ordre/extent des colonnes a
+    _layout_columns.
+
+    @param model Modele d'ilot (cf. _build_island_model).
+    @return dict {label, columns, rows, caption}.
+    """
+    components = list(model.get("components", []))
+
+    # Connexions par net (dans l'ilot), en ignorant NC / vides.
+    net_pins = {}
+    for comp in components:
+        for pin, net in (comp.get("pins", {}) or {}).items():
+            if _is_not_connected(net):
+                continue
+            net_pins.setdefault(net, []).append((comp["ref"], pin))
+
+    col_nets = {net for net, pins in net_pins.items() if len(pins) >= 2}
+
+    rows = []
+    for idx, comp in enumerate(components):
+        y = -idx * ROW_PITCH
+        pins = list((comp.get("pins", {}) or {}).items())
+        stubs = [
+            (pin, net) for pin, net in pins
+            if net in net_pins and net not in col_nets
+        ]
+        rows.append({
+            "ref": comp.get("ref", "?"),
+            "type": comp.get("type", "?"),
+            "value": comp.get("value", ""),
+            "symbol": _schematic_symbol(comp.get("type", "?")),
+            "y": y,
+            "pins": pins,
+            "stubs": stubs,
+        })
+
+    columns = _layout_columns(col_nets, net_pins, rows)
+
+    return {
+        "label": model.get("label", "Ilot"),
+        "columns": columns,
+        "rows": rows,
+        "caption": "● connexion — un croisement sans point n'est pas une liaison",
+    }
+
+
+def _layout_columns(col_nets, net_pins, rows):
+    """@brief Ordonne les colonnes-bus (masse gauche / signal milieu / alim droite)
+    et rogne leur extent vertical aux lignes reellement connectees.
+
+    @param col_nets Ensemble des nets a >=2 connexions.
+    @param net_pins dict net -> [(ref, pin)].
+    @param rows Lignes du plan (avec leur y).
+    @return list[dict] {net, x, kind, y_top, y_bottom}.
+    """
+    y_by_ref = {r["ref"]: r["y"] for r in rows}
+    order = {"ground": 0, "signal": 1, "power": 2}
+
+    def avg_y(net):
+        ys = [y_by_ref[ref] for ref, _pin in net_pins[net]]
+        return sum(ys) / len(ys)
+
+    ordered = sorted(
+        col_nets,
+        key=lambda net: (order[_net_kind(net)], -avg_y(net), net),
+    )
+    columns = []
+    for i, net in enumerate(ordered):
+        ys = [y_by_ref[ref] for ref, _pin in net_pins[net]]
+        columns.append({
+            "net": net,
+            "x": float(i * COL_PITCH),
+            "kind": _net_kind(net),
+            "y_top": max(ys),
+            "y_bottom": min(ys),
+        })
+    return columns
+
+
+def _draw_island_schematic(d, plan):
+    nets = plan["nets"]
+    components = plan["components"]
+    if not nets:
+        return
+
+    net_x = {net: idx * 2.2 for idx, net in enumerate(nets)}
+    top_y = 0.8
+    bottom_y = -max(2.0, len(components) * 0.9 + 0.8)
+
+    for net, x in net_x.items():
+        d += elm.Line().at((x, top_y)).toy(bottom_y)
+        if is_ground_net(net) or is_protective_earth_net(net):
+            d += elm.Ground().at((x, bottom_y))
+            d += elm.Dot().at((x, top_y)).label(net, loc="top")
+        elif is_power_net(net):
+            d += elm.Dot().at((x, top_y)).label(net, loc="top")
+        else:
+            d += elm.Dot().at((x, top_y)).label(net, loc="top")
+
+    for idx, item in enumerate(components):
+        y = -0.55 - idx * 0.9
+        pins = [(pin, net) for pin, net in item.get("pins", []) if net in net_x]
+        if len(pins) == 2:
+            _draw_two_pin_component(d, item, pins, net_x, y)
+        else:
+            _draw_multi_pin_component(d, item, pins, net_x, y)
+
+
+def _draw_two_pin_component(d, item, pins, net_x, y):
+    (_pin1, net1), (_pin2, net2) = pins
+    x1, x2 = net_x[net1], net_x[net2]
+    if x1 == x2:
+        _draw_multi_pin_component(d, item, pins, net_x, y)
+        return
+
+    start_x, end_x = x1, x2
+    direction = "right" if end_x > start_x else "left"
+    pad = 0.25
+    symbol_len = max(0.8, abs(end_x - start_x) - 2 * pad)
+
+    d += elm.Dot().at((start_x, y))
+    d += elm.Line().at((start_x, y)).tox(
+        start_x + pad if direction == "right" else start_x - pad
+    )
+    _add_two_terminal_symbol_at(
+        d,
+        item,
+        (start_x + pad, y) if direction == "right" else (start_x - pad, y),
+        direction=direction,
+        length=symbol_len,
+    )
+    d += elm.Line().tox(end_x)
+    d += elm.Dot().at((end_x, y))
+
+
+def _draw_multi_pin_component(d, item, pins, net_x, y):
+    if not pins:
+        return
+    xs = [net_x[net] for _pin, net in pins]
+    center_x = (min(xs) + max(xs)) / 2
+    label = _block_label(item)
+    d += elm.Ic(pins=[], w=1.8, h=0.65).at((center_x, y)).label(label, loc="center")
+    for pin, net in pins:
+        x = net_x[net]
+        d += elm.Dot().at((x, y))
+        d += elm.Line().at((x, y)).tox(center_x)
+        d += elm.Dot().at((x, y)).label(pin, loc="bottom")
+
+
+def _add_two_terminal_symbol_at(d, item, at, direction="right", length=1.2):
+    symbol = item.get("symbol")
+    label = _component_label(item)
+    element = {
+        "resistor": elm.Resistor,
+        "capacitor": elm.Capacitor,
+        "inductor": elm.Inductor2,
+        "diode": elm.Diode,
+        "fuse": elm.Fuse,
+        "switch": elm.Switch,
+    }.get(symbol, elm.Resistor)
+    try:
+        part = element().at(at)
+    except TypeError:
+        part = elm.Resistor().at(at)
+    if direction == "left":
+        d += part.left(length).label(label, loc="top")
+    else:
+        d += part.right(length).label(label, loc="top")
+
+
+def _block_label(item):
+    pins = item.get("pins") or []
+    pin_txt = "\n".join(f"{pin}:{net}" for pin, net in pins)
+    label = _component_label(item)
+    return f"{label}\n{pin_txt}" if pin_txt else label
 
 
 def _component_label(comp):
