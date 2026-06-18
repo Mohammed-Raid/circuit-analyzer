@@ -271,9 +271,9 @@ def _make_island_fig(model, matches=None):
     """
     components = model["components"]
     plan = _build_island_schematic_plan(model)
-    width = max(8.0, 1.4 * max(2, len(plan["columns"])) + 3.0)
+    width = max(8.0, 1.4 * max(2, len(plan["columns"])) + 6.0)
     height = max(4.8, 0.9 * max(2, len(plan["rows"])) + 2.0)
-    fig = Figure(figsize=(min(18.0, width), min(14.0, height)))
+    fig = Figure(figsize=(min(20.0, width), min(15.0, height)))
     ax = fig.add_subplot(111)
     fig.patch.set_facecolor(SCH_BG)
     ax.set_facecolor(SCH_BG)
@@ -318,7 +318,7 @@ def _matches_for_island(ilot, results):
 
 _NC_NAMES = {"NC", "N/C", "NRELIEE", ""}
 ROW_PITCH = 1.6        # pas vertical entre deux composants 2 broches
-MULTI_PITCH = 2.8      # pas elargi autour d'un composant multi-broches (AOP, bloc)
+MULTI_PITCH = 3.4      # pas elargi autour d'un composant multi-broches (AOP, bloc)
 COL_PITCH = 2.4
 
 
@@ -467,6 +467,10 @@ def _draw_island_schematic(d, plan):
     if not columns and not rows:
         return
     x_by_net = {c["net"]: c["x"] for c in columns}
+    # Voie dediee a droite pour les composants multi-broches (AOP, blocs) :
+    # ils y sont empiles par ligne, donc deux composants actifs ne se chevauchent
+    # jamais (chacun a son y) et ne se regroupent plus au barycentre.
+    device_x = max((c["x"] for c in columns), default=0.0) + COL_PITCH
 
     # Colonnes-bus rognees : ligne verticale + etiquette + masse eventuelle.
     for c in columns:
@@ -477,15 +481,19 @@ def _draw_island_schematic(d, plan):
         if c["kind"] == "ground":
             d += elm.Ground().at((c["x"], bottom))
 
+    passive_i = 0
     for row in rows:
         cols_pins = [(p, n) for p, n in row["pins"] if n in x_by_net]
         if row["symbol"] != "opamp" and len(row["pins"]) == 2:
-            _draw_two_pin_row(d, row, x_by_net)
+            # etiquettes alternees haut/bas : evite les collisions sur lignes voisines.
+            label_loc = "top" if passive_i % 2 == 0 else "bottom"
+            passive_i += 1
+            _draw_two_pin_row(d, row, x_by_net, label_loc)
         else:
-            _draw_block_row(d, row, cols_pins, x_by_net)
+            _draw_block_row(d, row, cols_pins, x_by_net, device_x)
 
 
-def _draw_two_pin_row(d, row, x_by_net):
+def _draw_two_pin_row(d, row, x_by_net, label_loc="top"):
     """@brief Composant 2 broches : symbole entre deux colonnes, ou colonne->moignon E/S."""
     (p1, n1), (p2, n2) = row["pins"]
     x1, x2 = x_by_net.get(n1), x_by_net.get(n2)
@@ -499,7 +507,7 @@ def _draw_two_pin_row(d, row, x_by_net):
         slen = min(1.6, max(0.8, right - left - 0.6))
         d += elm.Dot().at((left, y)).color(_WIRE)
         d += elm.Line().at((left, y)).tox(mid - slen / 2).color(_WIRE)
-        d += element().at((mid - slen / 2, y)).right(slen).label(label, loc="top")
+        d += element().at((mid - slen / 2, y)).right(slen).label(label, loc=label_loc)
         d += elm.Line().tox(right).color(_WIRE)
         d += elm.Dot().at((right, y)).color(_WIRE)
         return
@@ -512,40 +520,38 @@ def _draw_two_pin_row(d, row, x_by_net):
             col_x, stub_net = x2, n1
         d += elm.Dot().at((col_x, y)).color(_WIRE)
         d += elm.Line().at((col_x, y)).right(0.3).color(_WIRE)
-        d += element().right(1.4).label(label, loc="top")
+        d += element().right(1.4).label(label, loc=label_loc)
         d += elm.Line().right(0.35).color(_WIRE)
         if not _is_not_connected(stub_net):
             d += elm.Dot().label(stub_net, loc="right", color=_BUS)
         return
 
     # composant isole (deux moignons) : symbole + deux etiquettes.
-    d += element().at((0.0, y)).right(1.4).label(label, loc="top")
+    d += element().at((0.0, y)).right(1.4).label(label, loc=label_loc)
     if not _is_not_connected(n1):
         d += elm.Dot().at((0.0, y)).label(n1, loc="left", color=_BUS)
     if not _is_not_connected(n2):
         d += elm.Dot().at((1.4, y)).label(n2, loc="right", color=_BUS)
 
 
-def _draw_block_row(d, row, cols_pins, x_by_net):
-    """@brief Composant multi-broches : AOP (triangle) ou bloc, broches cablees aux colonnes."""
+def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
+    """@brief Composant multi-broches : AOP (triangle) ou bloc, place dans la voie
+    dediee a droite (device_x), broches cablees vers les colonnes."""
     y = row["y"]
-    xs = [x_by_net[n] for _p, n in cols_pins]
-    cx = (min(xs) + max(xs)) / 2 if xs else 0.0
-
     if row["symbol"] == "opamp":
-        d += elm.Opamp().at((cx, y)).right().label(row["ref"], loc="center")
+        d += elm.Opamp().at((device_x, y)).right().label(row["ref"], loc="center")
     else:
-        d += elm.Rect(w=1.8, h=0.8).at((cx, y)).label(row["ref"])
+        d += elm.Rect(w=1.8, h=0.8).at((device_x, y)).label(row["ref"])
 
     for pin, net in cols_pins:
         x = x_by_net[net]
-        d += elm.Line().at((x, y)).to((cx, y)).color(_WIRE)
+        d += elm.Line().at((x, y)).to((device_x, y)).color(_WIRE)
         d += elm.Dot().at((x, y)).label(pin, loc="bottom", color=_BUS)
 
     for pin, net in row["stubs"]:
         if _is_not_connected(net):
             continue
-        d += elm.Line().at((cx, y)).right(0.6).color(_WIRE)
+        d += elm.Line().at((device_x, y)).right(0.6).color(_WIRE)
         d += elm.Dot().label(net, loc="right", color=_BUS)
 
 
