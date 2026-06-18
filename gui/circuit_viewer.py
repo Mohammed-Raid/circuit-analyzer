@@ -52,38 +52,97 @@ def _info_for_ref(ref: str, graph, comp_info: dict) -> dict:
 
 
 def _build_island_model(ilot: dict, graph, comp_info: dict) -> dict:
-    """Construit le modele pur du schema reel d'un ilot."""
-    refs = sorted(ilot.get("composants", []))
-    components = []
-    internal_nets = set()
-    rail_nets = set()
-    links = []
+    """@brief Modele d'ilot au niveau « Impedance Z ».
 
-    for ref in refs:
+    Construit depuis le graphe reduit (impedance.reduire) : chaque dipole passif
+    (R/L/C combine ou seul) devient une unite « Z » horizontale portant ses
+    composants bruts (refs) pour le drill-down ; les diodes restent des diodes ;
+    les composants multi-broches (AOP, transistors) restent dessines tels quels.
+
+    @param ilot Ilot detecte (cle 'composants' = refs bruts).
+    @param graph Graphe brut (porte graph['components']).
+    @param comp_info Dict {ref -> {type, value, pins}}.
+    @return dict {label, components} ou chaque unite porte refs + composition.
+    """
+    from circuit_analyzer import impedance
+
+    island_refs = set(ilot.get("composants", []))
+    reduit = impedance.reduire(graph)
+    raw_comps = getattr(graph, "graph", {}).get("components", {}) or {}
+
+    units = []
+    consumed = set()
+    z_index = 0
+    for u, v, data in reduit.edges(data=True):
+        ref = data.get("ref")
+        refs = list(data.get("refs") or ([ref] if ref else []))
+        if not (set(refs) & island_refs):
+            continue
+        consumed.update(refs)
+        composition = data.get("composition") or " + ".join(refs)
+        typ = data.get("type")
+        if typ == "D":
+            comp = raw_comps.get(ref)
+            pins = dict(getattr(comp, "pins", {}) or {})
+            units.append({
+                "ref": ref, "type": "D",
+                "value": getattr(comp, "value", "") if comp else "",
+                "pins": {"A": pins.get("A", u), "K": pins.get("K", v)},
+                "symbol": "diode", "refs": refs, "composition": composition,
+            })
+        elif typ in {"R", "L", "C", "Z"}:
+            z_index += 1
+            units.append({
+                "ref": f"Z{z_index}", "type": "Z", "value": "",
+                "pins": {"1": u, "2": v},
+                "symbol": "impedance", "refs": refs, "composition": composition,
+            })
+        else:
+            # autre dipole 2 bornes (ex. relais) : on garde son symbole/ref.
+            comp = raw_comps.get(ref)
+            units.append({
+                "ref": ref, "type": typ,
+                "value": getattr(comp, "value", "") if comp else "",
+                "pins": {"1": u, "2": v},
+                "symbol": _schematic_symbol(typ), "refs": refs, "composition": composition,
+            })
+
+    # Composants multi-broches (AOP, transistors) : pas des aretes 2 bornes.
+    for ref in sorted(island_refs - consumed):
         info = _info_for_ref(ref, graph, comp_info)
         pins = dict(info.get("pins", {}) or {})
-        components.append({
-            "ref": ref,
-            "type": info.get("type", "?"),
-            "value": info.get("value", ""),
-            "pins": pins,
+        if len(pins) <= 2:
+            continue
+        units.append({
+            "ref": ref, "type": info.get("type", "?"),
+            "value": info.get("value", ""), "pins": pins,
+            "symbol": _schematic_symbol(info.get("type", "?")),
+            "refs": [ref], "composition": ref,
         })
-        for net in pins.values():
-            if not net:
-                continue
-            links.append((ref, net))
-            if _is_rail_net(net):
-                rail_nets.add(net)
-            else:
-                internal_nets.add(net)
 
-    return {
-        "label": ilot.get("label", "Ilot"),
-        "components": components,
-        "internal_nets": sorted(internal_nets),
-        "rail_nets": sorted(rail_nets),
-        "links": sorted(links),
-    }
+    return {"label": ilot.get("label", "Ilot"), "components": units}
+
+
+def _build_dipole_model(refs, graph, comp_info, label="Detail Z") -> dict:
+    """@brief Modele brut (R/L/C reels) des composants d'un dipole Z, pour le drill-down.
+
+    @param refs Refs bruts composant le Z.
+    @param graph Graphe brut.
+    @param comp_info Dict {ref -> {...}}.
+    @param label Titre du sous-schema.
+    @return dict {label, components} avec symboles reels (resistor/capacitor/...).
+    """
+    units = []
+    for ref in refs:
+        info = _info_for_ref(ref, graph, comp_info)
+        units.append({
+            "ref": ref, "type": info.get("type", "?"),
+            "value": info.get("value", ""),
+            "pins": dict(info.get("pins", {}) or {}),
+            "symbol": _schematic_symbol(info.get("type", "?")),
+            "refs": [ref], "composition": ref,
+        })
+    return {"label": label, "components": units}
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -345,6 +404,7 @@ def _net_kind(net: str) -> str:
 def _schematic_symbol(ctype):
     """@brief Symbole schematique associe a un type de composant."""
     return {
+        "Z": "impedance",
         "R": "resistor",
         "C": "capacitor",
         "L": "inductor",
@@ -398,10 +458,12 @@ def _build_island_schematic_plan(model):
             "ref": comp.get("ref", "?"),
             "type": comp.get("type", "?"),
             "value": comp.get("value", ""),
-            "symbol": _schematic_symbol(comp.get("type", "?")),
+            "symbol": comp.get("symbol") or _schematic_symbol(comp.get("type", "?")),
             "y": y,
             "pins": pins,
             "stubs": stubs,
+            "refs": comp.get("refs", [comp.get("ref")]),
+            "composition": comp.get("composition", comp.get("ref", "")),
         })
 
     columns = _layout_columns(col_nets, net_pins, rows)
@@ -448,6 +510,7 @@ def _layout_columns(col_nets, net_pins, rows):
 
 
 _SYMBOL_ELM = {
+    "impedance": elm.ResistorIEC,   # boite rectangulaire = impedance generique Z
     "resistor": elm.Resistor,
     "capacitor": elm.Capacitor,
     "inductor": elm.Inductor2,
