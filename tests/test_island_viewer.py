@@ -59,6 +59,29 @@ def test_plan_drops_nc_and_classifies_stub_vs_column():
     assert all(net != "NC" for _pin, net in u1["stubs"])
 
 
+def test_columns_ordered_ground_left_power_right_and_trimmed():
+    composants = [
+        Composant("R1", "R", {"1": "VCC", "2": "AAA"}, "10k"),
+        Composant("R2", "R", {"1": "AAA", "2": "OUT"}, "10k"),
+        Composant("R3", "R", {"1": "OUT", "2": "GND"}, "10k"),
+        Composant("R4", "R", {"1": "GND", "2": "VCC"}, "10k"),
+    ]
+    graphe = construire_graphe(composants)
+    ilot = {"label": "Ilot", "composants": ["R1", "R2", "R3", "R4"]}
+    model = _build_island_model(ilot, graphe, _comp_info(composants))
+
+    plan = _build_island_schematic_plan(model)
+    by_net = {c["net"]: c for c in plan["columns"]}
+    xs = {c["net"]: c["x"] for c in plan["columns"]}
+
+    # masse a gauche, alim a droite, malgre l'ordre alphabetique 'AAA' < 'GND'
+    assert xs["GND"] == min(xs.values())
+    assert xs["VCC"] == max(xs.values())
+    # AAA connecte R1 (y=0) et R2 (y=-1.6) -> extent rogne sur ces deux lignes
+    assert by_net["AAA"]["y_top"] == 0.0
+    assert by_net["AAA"]["y_bottom"] == -1.6
+
+
 def test_build_island_schematic_plan_keeps_exact_component_pin_nets():
     composants = [
         Composant("R1", "R", {"1": "IN", "2": "MID"}, "10k"),
