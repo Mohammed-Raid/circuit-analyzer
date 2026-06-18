@@ -248,7 +248,13 @@ def _make_fig(result, comp_info, drawer_fn):
                 ha="center", va="center", transform=ax.transAxes,
                 fontsize=11, color="#64748b", fontfamily="monospace")
 
-    fig.tight_layout(pad=0.2)
+    # Marge autour du tracé : évite que les étiquettes (labels de bornes,
+    # composition d'une Impédance Z) soient rognées par le bord de la figure.
+    ax.margins(0.15)
+    try:
+        fig.tight_layout(pad=0.4)
+    except Exception:
+        pass
     return fig
 
 
@@ -407,6 +413,23 @@ def _ref_on_net(refs, comp_info, net, fallback=None):
 
 
 # ── Drawing functions ─────────────────────────────────────────────────────────
+
+def _draw_impedance(d, result, ci):
+    """@brief Dessine une « Impédance Z » : boîte Z entre ses deux bornes.
+
+    Le libellé est la composition (ex. « (R1+R2)//C1 »), sinon la liste des
+    composants. Les nets sont annotés à gauche et à droite.
+    """
+    nets = [n for n in result.get("nodes", []) if n]
+    gauche = nets[0] if nets else ""
+    droite = nets[1] if len(nets) > 1 else ""
+    compo = result.get("composition") or " // ".join(result.get("components", []))
+    d += elm.Dot().label(gauche, loc="left")
+    d += elm.Line().right(0.6)
+    d += elm.ResistorIEC().right().label("Z", loc="top").label(compo, loc="bottom")
+    d += elm.Line().right(0.6)
+    d += elm.Dot().label(droite, loc="right")
+
 
 def _draw_half_wave(d, result, ci):
     """@brief Dessine le schéma « Redresseur simple alternance »."""
@@ -846,6 +869,7 @@ def _draw_current_mirror(d, result, ci):
 
 ## @brief Registre {nom de circuit -> fonction de dessin schemdraw}.
 _DRAWERS = {
+    "Impédance Z":                       _draw_impedance,
     "Redresseur simple alternance":      _draw_half_wave,
     "Détecteur de crête":                _draw_peak_detector,
     "Pont redresseur (Graetz)":          _draw_bridge_rectifier,
