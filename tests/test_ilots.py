@@ -154,6 +154,51 @@ def test_categorie_majoritaire():
     assert 'commutation' in ilots[0]['label']
     assert ilots[0]['circuits'] == [0, 1, 2]
 
+def test_impedance_ne_noie_pas_la_fonction_active():
+    """@brief Les « Impédance Z » (passifs réduits) ne doivent pas dominer le
+    libellé d'un îlot dont la fonction réelle est active.
+
+    Régression de la refonte Z : chaque passif devient une Impédance Z, donc
+    les Z sont nombreux et noyaient les montages actifs dans le vote.
+
+    @return None
+    """
+    comps = [
+        Component('R1', 'R', {'1': 'N1', '2': 'N2'}, '10k'),
+        Component('R2', 'R', {'1': 'N2', '2': 'N3'}, '10k'),
+        Component('R3', 'R', {'1': 'N3', '2': 'N4'}, '10k'),
+        Component('U1', 'U', {'IN+': 'N4', 'IN-': 'N5', 'OUT': 'N5'}, ''),
+    ]
+    g = build_graph(comps)
+    circuits = [
+        _match('Impédance Z', ['R1'], ['N1', 'N2'], categorie='impedance'),
+        _match('Impédance Z', ['R2'], ['N2', 'N3'], categorie='impedance'),
+        _match('Impédance Z', ['R3'], ['N3', 'N4'], categorie='impedance'),
+        _match('Comparateur (AOP)', ['U1'], ['N4', 'N5'], categorie='comparaison'),
+    ]
+    ilots = detecter_ilots(g, circuits)
+    assert len(ilots) == 1
+    assert ilots[0]['categorie'] == 'comparaison'
+
+
+def test_ilot_tout_impedance_reste_impedance():
+    """@brief Un îlot composé uniquement d'impédances garde la catégorie « impedance ».
+
+    @return None
+    """
+    comps = [
+        Component('R1', 'R', {'1': 'N1', '2': 'N2'}, '10k'),
+        Component('R2', 'R', {'1': 'N2', '2': 'N3'}, '10k'),
+    ]
+    g = build_graph(comps)
+    circuits = [
+        _match('Impédance Z', ['R1'], ['N1', 'N2'], categorie='impedance'),
+        _match('Impédance Z', ['R2'], ['N2', 'N3'], categorie='impedance'),
+    ]
+    ilots = detecter_ilots(g, circuits)
+    assert ilots[0]['categorie'] == 'impedance'
+
+
 def test_egalite_liste_les_categories():
     """@brief Verifie egalite liste les categories.
 

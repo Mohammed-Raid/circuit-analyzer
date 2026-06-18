@@ -61,6 +61,11 @@ def _categorie_dominante(circuits: list, indices: list) -> str:
     )
     if not compteur:
         return 'non identifié'
+    # Les « Impédance Z » sont des briques passives, pas la fonction d'un étage :
+    # depuis la refonte Z elles sont nombreuses et noieraient les montages actifs
+    # dans le vote. On ne les retient que si l'îlot est purement passif.
+    if len(compteur) > 1:
+        compteur.pop('impedance', None)
     maxi = max(compteur.values())
     gagnantes = sorted(cat for cat, nb in compteur.items() if nb == maxi)
     return ' + '.join(gagnantes)
