@@ -3,6 +3,7 @@
 @brief Fenêtre principale CustomTkinter : barre latérale de navigation et onglets.
 """
 import customtkinter as ctk
+from circuit_analyzer import __version__
 from gui.tab_analyze import TabAnalyze
 from gui.tab_circuits import TabCircuits
 from gui.tab_components import TabComponents
@@ -85,7 +86,7 @@ class AppWindow:
         # Footer
         ctk.CTkFrame(sidebar, height=1, fg_color=BORDER).grid(
             row=4, column=0, sticky="ew", padx=18, pady=10)
-        ctk.CTkLabel(sidebar, text="v1.3  ·  335 tests ✓",
+        ctk.CTkLabel(sidebar, text=f"v{__version__}",
                      font=ctk.CTkFont("Segoe UI", 10),
                      text_color=MUTED).grid(
                          row=5, column=0, pady=(0, 18))

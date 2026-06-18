@@ -18,11 +18,27 @@ import sys
 import tempfile
 from pathlib import Path
 
-VERSION = '1.3.0'
-
 RACINE = Path(__file__).resolve().parent.parent
 DIST = RACINE / 'dist'
 DOSSIER_APP = DIST / 'AnalyseurCircuits'
+
+
+def _lire_version() -> str:
+    """@brief Lit la version depuis circuit_analyzer/__init__.py (source unique).
+
+    Parse le fichier sans importer le package (évite de charger ses dépendances
+    juste pour un numéro de version).
+
+    @return str Version (ex. '1.5.0'), ou '0.0.0' si introuvable.
+    """
+    init = RACINE / 'circuit_analyzer' / '__init__.py'
+    for ligne in init.read_text(encoding='utf-8').splitlines():
+        if ligne.strip().startswith('__version__'):
+            return ligne.split('=', 1)[1].strip().strip('"').strip("'")
+    return '0.0.0'
+
+
+VERSION = _lire_version()
 
 
 def etape(titre: str) -> None:
@@ -43,11 +59,59 @@ def verifier_pyinstaller() -> None:
         sys.exit('PyInstaller manquant. Installer avec : pip install pyinstaller')
 
 
+def _processus_verrouillant() -> list:
+    """@brief Best-effort : processus dont l'exe est sous DOSSIER_APP (via psutil).
+
+    @return list[tuple] Liste de (pid, nom) ; vide si psutil absent ou rien trouvé.
+    """
+    try:
+        import psutil
+    except ImportError:
+        return []
+    cible = str(DOSSIER_APP).lower()
+    trouves = []
+    for p in psutil.process_iter(['pid', 'name', 'exe']):
+        try:
+            exe = (p.info.get('exe') or '').lower()
+            if exe and cible in exe:
+                trouves.append((p.info['pid'], p.info['name']))
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return trouves
+
+
+def liberer_dossier_app() -> None:
+    """@brief Supprime l'ancienne distribution ; message clair si elle est verrouillée.
+
+    Remplace l'ancien rmtree(ignore_errors=True) qui masquait un verrou : ici on
+    échoue tôt avec un message actionnable plutôt que de laisser PyInstaller
+    planter avec une stack trace cryptique à l'étape COLLECT.
+    """
+    if not DOSSIER_APP.exists():
+        return
+    try:
+        shutil.rmtree(DOSSIER_APP)
+    except PermissionError as e:
+        verrou = getattr(e, 'filename', '') or str(e)
+        procs = _processus_verrouillant()
+        details = ''
+        if procs:
+            details = '\n  Processus à fermer : ' + ', '.join(
+                f'{nom} (PID {pid})' for pid, nom in procs)
+        sys.exit(
+            "Impossible de supprimer l'ancienne distribution (fichier verrouillé) :\n"
+            f"  {verrou}\n"
+            "Une instance d'AnalyseurCircuits.exe est probablement encore ouverte, "
+            "ou le dossier dist/ est ouvert dans l'Explorateur."
+            f"{details}\n"
+            "Fermez-la puis relancez : python tools/build_exe.py"
+        )
+
+
 def build() -> None:
     """@brief Lance PyInstaller depuis le .spec et vérifie la présence des exes produits."""
     etape('2/5 Build PyInstaller (plusieurs minutes)')
-    if DOSSIER_APP.exists():
-        shutil.rmtree(DOSSIER_APP, ignore_errors=True)
+    liberer_dossier_app()
     resultat = subprocess.run(
         [sys.executable, '-m', 'PyInstaller',
          str(RACINE / 'packaging' / 'analyseur.spec'),
