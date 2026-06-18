@@ -5,7 +5,7 @@
 Chaque fonction de ce fichier détecte un type de circuit précis.
 Elles prennent toutes le graphe NetworkX en entrée et retournent
 une liste de dictionnaires avec les clés :
-  - 'circuit_type' : nom du circuit trouvé (ex: "Filtre RC passe-bas")
+  - 'circuit_type' : nom du circuit trouvé (ex: "Amplificateur inverseur (AOP)")
   - 'components'   : liste des références des composants (ex: ['R1', 'C2'])
   - 'nodes'        : liste des nœuds électriques impliqués (ex: ['VCC', 'NET1', 'GND'])
 
@@ -937,265 +937,6 @@ def detecter_detecteur_crete(graphe):
     return resultats
 
 
-def detecter_condensateur_decouplage(graphe):
-    """
-    @brief Condensateur de découplage : C directement entre une alimentation et la masse.
-
-    @param graphe Graphe NetworkX du circuit.
-    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
-    Filtre les parasites haute fréquence sur les rails d'alimentation.
-    Placé juste à côté des circuits intégrés.
-
-    Schéma :
-        VCC ──[C]── GND
-    """
-    resultats = []
-
-    for u, v, data in graphe.edges(data=True):
-        if data['type'] != 'C':
-            continue
-
-        # Le C doit être directement entre alim et masse (pas de R en parallèle)
-        if not ((est_alimentation(u) and est_masse(v)) or (est_masse(u) and est_alimentation(v))):
-            continue
-
-        # Vérifier qu'il n'y a pas une R en parallèle (sinon c'est un absorbeur RC)
-        edges_paralleles = graphe[u][v]
-        a_r_en_parallele = any(
-            d['type'] == 'R'
-            for k, d in edges_paralleles.items()
-            if d['ref'] != data['ref']
-        )
-        if not a_r_en_parallele:
-            resultats.append({
-                'circuit_type': 'Condensateur de découplage',
-                'components': [data['ref']],
-                'nodes': [u, v],
-            })
-
-    return resultats
-
-
-def detecter_filtre_rc_passe_bas(graphe):
-    """
-    @brief Filtre RC passe-bas : R en série + C vers GND.
-
-    @param graphe Graphe NetworkX du circuit.
-    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
-    Laisse passer les basses fréquences, atténue les hautes.
-
-    Schéma :
-        IN ──[R]── MID ──[C]── GND
-    """
-    resultats = []
-    deja_vus = set()
-
-    for noeud in graphe.nodes():
-        # La jonction R-C d'un filtre est un nœud signal, jamais un rail
-        # (R série depuis VCC + C de découplage ne forment pas un filtre).
-        if _est_rail(noeud):
-            continue
-        resistances   = _voisins_de_type(graphe, noeud, 'R')
-        condensateurs = _voisins_de_type(graphe, noeud, 'C')
-
-        for ref_r, autre_r in resistances:
-            if est_masse(autre_r):
-                continue  # La R va à la masse → pas une R série
-
-            for ref_c, autre_c in condensateurs:
-                if est_masse(autre_c):
-                    cle = frozenset([ref_r, ref_c])
-                    if cle not in deja_vus:
-                        deja_vus.add(cle)
-                        resultats.append({
-                            'circuit_type': 'Filtre RC passe-bas',
-                            'components': [ref_r, ref_c],
-                            'nodes': [autre_r, noeud, autre_c],
-                        })
-
-    return resultats
-
-
-def detecter_filtre_rc_passe_haut(graphe):
-    """
-    @brief Filtre RC passe-haut : C en série + R vers GND.
-
-    @param graphe Graphe NetworkX du circuit.
-    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
-    Laisse passer les hautes fréquences, atténue les basses.
-
-    Schéma :
-        IN ──[C]── MID ──[R]── GND
-    """
-    resultats = []
-    deja_vus = set()
-
-    for noeud in graphe.nodes():
-        # Même règle que le passe-bas : la jonction C-R est un nœud signal.
-        if _est_rail(noeud):
-            continue
-        resistances   = _voisins_de_type(graphe, noeud, 'R')
-        condensateurs = _voisins_de_type(graphe, noeud, 'C')
-
-        for ref_r, autre_r in resistances:
-            if not est_masse(autre_r):
-                continue  # La R doit aller à la masse pour le passe-haut
-
-            for ref_c, autre_c in condensateurs:
-                if est_masse(autre_c):
-                    continue  # Le C ne doit pas aller à la masse (ce serait un passe-bas)
-
-                cle = frozenset([ref_r, ref_c])
-                if cle not in deja_vus:
-                    deja_vus.add(cle)
-                    resultats.append({
-                        'circuit_type': 'Filtre RC passe-haut',
-                        'components': [ref_r, ref_c],
-                        'nodes': [autre_c, noeud, autre_r],
-                    })
-
-    return resultats
-
-
-def detecter_filtre_lc(graphe):
-    """
-    @brief Filtre LC : inductance en série + condensateur vers GND.
-
-    @param graphe Graphe NetworkX du circuit.
-    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
-    Utilisé dans les alimentations à découpage pour filtrer le courant.
-
-    Schéma :
-        IN ──[L]── MID ──[C]── GND
-    """
-    resultats = []
-    deja_vus = set()
-
-    for noeud in graphe.nodes():
-        # La jonction L-C d'un filtre est un nœud signal, jamais un rail.
-        if _est_rail(noeud):
-            continue
-        inductances    = _voisins_de_type(graphe, noeud, 'L')
-        condensateurs  = _voisins_de_type(graphe, noeud, 'C')
-
-        for ref_l, autre_l in inductances:
-            for ref_c, autre_c in condensateurs:
-                if est_masse(autre_c):
-                    cle = frozenset([ref_l, ref_c])
-                    if cle not in deja_vus:
-                        deja_vus.add(cle)
-                        resultats.append({
-                            'circuit_type': 'Filtre LC',
-                            'components': [ref_l, ref_c],
-                            'nodes': [autre_l, noeud, autre_c],
-                        })
-
-    return resultats
-
-
-def detecter_pont_diviseur(graphe):
-    """
-    @brief Pont diviseur de tension : deux résistances en série entre deux points.
-
-    @param graphe Graphe NetworkX du circuit.
-    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
-    Crée une tension intermédiaire à partir d'une tension plus élevée.
-
-    Schéma :
-        VCC ──[R1]── MID ──[R2]── GND
-    """
-    resultats = []
-    deja_vus = set()
-
-    for noeud in graphe.nodes():
-        # Le nœud milieu d'un diviseur est toujours un nœud signal — énumérer
-        # les paires de R sur GND/VCC serait à la fois faux et quadratique.
-        if _est_rail(noeud):
-            continue
-        resistances = _voisins_de_type(graphe, noeud, 'R')
-
-        # Chercher deux R connectées au même nœud mais vers des points différents
-        for i in range(len(resistances)):
-            for j in range(i + 1, len(resistances)):
-                ref1, autre1 = resistances[i]
-                ref2, autre2 = resistances[j]
-
-                if autre1 == autre2:
-                    continue  # Les deux R vont au même endroit → pas un diviseur
-
-                cle = frozenset([ref1, ref2])
-                if cle not in deja_vus:
-                    deja_vus.add(cle)
-                    resultats.append({
-                        'circuit_type': 'Pont diviseur de tension',
-                        'components': [ref1, ref2],
-                        'nodes': [autre1, noeud, autre2],
-                    })
-
-    return resultats
-
-
-def detecter_absorbeur_rc(graphe):
-    """
-    @brief Absorbeur RC (snubber) : résistance et condensateur en PARALLÈLE.
-
-    @param graphe Graphe NetworkX du circuit.
-    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
-    Absorbe les surtensions transitoires, protège les interrupteurs.
-
-    Schéma :
-        A ──[R]── B    (R et C entre les mêmes nœuds A et B)
-        A ──[C]── B
-    """
-    resultats = []
-    deja_vus = set()
-
-    for noeud in graphe.nodes():
-        for voisin in graphe.neighbors(noeud):
-            # R parallèle C entre deux rails = bleeder + découplage, pas un snubber.
-            if _est_rail(noeud) and _est_rail(voisin):
-                continue
-            paire = tuple(sorted([noeud, voisin]))
-            if paire in deja_vus:
-                continue
-            deja_vus.add(paire)
-
-            # Récupérer tous les composants entre ces deux nœuds
-            composants_entre = list(graphe[noeud][voisin].values())
-            refs_r = [d['ref'] for d in composants_entre if d['type'] == 'R']
-            refs_c = [d['ref'] for d in composants_entre if d['type'] == 'C']
-
-            if refs_r and refs_c:
-                resultats.append({
-                    'circuit_type': 'Absorbeur RC',
-                    'components': refs_r + refs_c,
-                    'nodes': list(paire),
-                })
-
-    return resultats
-
-
-def detecter_fusible(graphe):
-    """
-    @brief Protection par fusible : composant F seul dans le circuit.
-
-    @param graphe Graphe NetworkX du circuit.
-    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
-    Se coupe en cas de surintensité pour protéger le reste du circuit.
-    """
-    resultats = []
-
-    for u, v, data in graphe.edges(data=True):
-        if data['type'] == 'F':
-            resultats.append({
-                'circuit_type': 'Protection par fusible',
-                'components': [data['ref']],
-                'nodes': [u, v],
-            })
-
-    return resultats
-
-
 def detecter_impedances(graphe):
     """
     @brief Émet chaque arête Z (passive réduite) comme une « Impédance Z ».
@@ -1234,8 +975,9 @@ class ResultatsAnalyse(list):
     @brief Liste de circuits détectés, compatible avec list, enrichie de métadonnées.
 
     Attributs supplémentaires :
-        .supprimes : matches ignorés car leurs composants étaient déjà pris
-        .ilots     : îlots fonctionnels (structure en étages du schéma)
+        .supprimes    : matches ignorés car leurs composants étaient déjà pris
+        .ilots        : îlots fonctionnels (structure en étages du schéma)
+        .transparents : refs des fusibles neutralisés (retirés du graphe réduit)
     """
     def __init__(self, matches=None):
         """@brief Initialise la liste de résultats et ses métadonnées.
@@ -1246,6 +988,7 @@ class ResultatsAnalyse(list):
         super().__init__(matches or [])
         self.supprimes: list[dict] = []
         self.ilots: list[dict] = []
+        self.transparents: list[str] = []
 
 
 # Catégorie fonctionnelle par type de circuit
@@ -1270,13 +1013,6 @@ _CATEGORIES: dict[str, str] = {
     'Diode de protection ESD':             'protection',
     'Redresseur simple alternance':        'alimentation',
     'Détecteur de crête':                  'traitement_signal',
-    'Condensateur de découplage':          'alimentation',
-    'Filtre RC passe-bas':                 'filtrage',
-    'Filtre RC passe-haut':                'filtrage',
-    'Filtre LC':                           'filtrage',
-    'Absorbeur RC':                        'protection',
-    'Pont diviseur de tension':            'polarisation',
-    'Protection par fusible':              'protection',
     'Impédance Z':                         'impedance',
 }
 
@@ -1398,108 +1134,6 @@ def _enrichir(match: dict, graphe) -> dict:
         confidence = 0.75
         reasons.append("Diode en série + condensateur vers GND")
 
-    elif ct == 'Condensateur de découplage':
-        n0 = nodes[0] if len(nodes) > 0 else ''
-        n1 = nodes[1] if len(nodes) > 1 else ''
-        val = _valeur(graphe, comps[0]) if comps else ''
-        vraiment_entre_rails = (
-            (is_ground_net(n0) or is_power_net(n0)) and
-            (is_ground_net(n1) or is_power_net(n1))
-        )
-        if vraiment_entre_rails:
-            confidence = 0.90
-            reasons.append("Condensateur directement entre alimentation et GND")
-        else:
-            confidence = 0.50
-            warnings.append(
-                "Condensateur entre nœuds non identifiés comme alimentation/GND — "
-                "vérifier les alias de nets"
-            )
-        if val:
-            v = parse_valeur(val)
-            if v is not None and v > 1e-6:
-                reasons.append(f"Valeur {val} — filtrage bulk (> 1µF), pas du découplage HF")
-            elif v is not None:
-                reasons.append(f"Valeur {val} — découplage HF typique")
-        else:
-            warnings.append("Valeur absente — type de découplage (HF vs bulk) non confirmé")
-
-    elif ct in ('Filtre RC passe-bas', 'Filtre RC passe-haut'):
-        r_ref = next((c for c in comps if c.upper().startswith('R')), None)
-        c_ref = next((c for c in comps if c.upper().startswith('C')), None)
-        r_val = _valeur(graphe, r_ref) if r_ref else ''
-        c_val = _valeur(graphe, c_ref) if c_ref else ''
-        direction = "série + condensateur vers GND" if 'bas' in ct else "en série + résistance vers GND"
-        reasons.append(f"Résistance {direction}")
-        if r_val and c_val:
-            rv, cv = parse_valeur(r_val), parse_valeur(c_val)
-            if rv is not None and cv is not None and rv > 0 and cv > 0:
-                import math
-                fc = 1.0 / (2.0 * math.pi * rv * cv)
-                reasons.append(f"Fréquence de coupure ~ {fc:.1f} Hz (R={r_val}, C={c_val})")
-                confidence = 0.90
-                if rv == 0.0:
-                    warnings.append(f"{r_ref} = 0Ω (jumper) — pas vraiment un filtre RC")
-                    confidence = 0.30
-            else:
-                confidence = 0.70
-                warnings.append("Valeurs invalides — fréquence de coupure non calculable")
-        else:
-            confidence = 0.65
-            warnings.append("Valeurs absentes — fréquence de coupure non vérifiable")
-
-    elif ct == 'Filtre LC':
-        l_ref = next((c for c in comps if c.upper().startswith('L')), None)
-        c_ref = next((c for c in comps if c.upper().startswith('C')), None)
-        reasons.append("Inductance en série + condensateur vers GND")
-        l_val = _valeur(graphe, l_ref) if l_ref else ''
-        c_val = _valeur(graphe, c_ref) if c_ref else ''
-        if l_val and c_val:
-            lv, cv = parse_valeur(l_val), parse_valeur(c_val)
-            if lv is not None and cv is not None and lv > 0 and cv > 0:
-                import math
-                f0 = 1.0 / (2.0 * math.pi * math.sqrt(lv * cv))
-                reasons.append(f"Fréquence de résonance ~ {f0:.1f} Hz")
-                confidence = 0.90
-            else:
-                confidence = 0.70
-        else:
-            confidence = 0.65
-            warnings.append("Valeurs absentes — fréquence de résonance non vérifiable")
-
-    elif ct == 'Absorbeur RC':
-        reasons.append("Résistance et condensateur en parallèle entre les mêmes nœuds")
-        warnings.append(
-            "Topologie compatible avec un filtre ou une compensation de stabilité selon le contexte"
-        )
-        confidence = 0.70
-
-    elif ct == 'Pont diviseur de tension':
-        has_power = any(is_power_net(n) for n in nodes if n)
-        has_gnd   = any(is_ground_net(n) for n in nodes if n)
-        reasons.append("Deux résistances sur un nœud commun, chacune vers un point différent")
-        if has_power and has_gnd:
-            confidence = 0.90
-            reasons.append("Entre alimentation et GND — pont de polarisation confirmé")
-        else:
-            confidence = 0.60
-            warnings.append(
-                "Nœuds d'alimentation et masse non clairement identifiés — "
-                "peut être un pont résistif quelconque"
-            )
-        # Vérifier si une R est un jumper (0Ω)
-        for ref in comps:
-            val = _valeur(graphe, ref)
-            if val and parse_valeur(val) == 0.0:
-                warnings.append(
-                    f"{ref} = 0Ω (jumper) — le rapport de division peut être court-circuité"
-                )
-                confidence = min(confidence, 0.50)
-
-    elif ct == 'Protection par fusible':
-        confidence = 0.95
-        reasons.append("Composant de type F (fusible) en série dans le circuit")
-
     elif ct == 'Impédance Z':
         confidence = 0.80
         compo = match.get('composition', '')
@@ -1552,12 +1186,10 @@ _DETECTEURS_COMPLEXES = [
     detecter_detecteur_crete,
 ]
 
-# Détecteurs simples (circuits passifs — appelés EN DERNIER)
+# Détecteurs simples (passifs réduits — appelés EN DERNIER)
 # Les patterns personnalisés (créés via l'interface) s'insèrent entre les deux.
-# Les 7 détecteurs passifs nommés (filtre RC, pont diviseur, etc.) sont retirés
-# de la chaîne d'analyse : tout passif résiduel est émis comme « Impédance Z »
-# par detecter_impedances. Les fonctions restent définies pour basic_circuits.py,
-# circuit_viewer.py et les tests unitaires directs (suppression en 2c).
+# Tout passif R/L/C résiduel est émis comme « Impédance Z » par detecter_impedances :
+# il n'existe plus de détecteur passif nommé (filtre RC, pont diviseur, etc.).
 _DETECTEURS_SIMPLES = [
     detecter_impedances,
 ]
@@ -1573,8 +1205,7 @@ NOMS_CIRCUITS = [
     "MOSFET en commutation", "MOSFET haute-tension (côté haut)",
     "Pont redresseur (Graetz)", "Diode de roue libre",
     "Diode de protection ESD", "Redresseur simple alternance", "Détecteur de crête",
-    "Condensateur de découplage", "Filtre RC passe-bas", "Filtre RC passe-haut",
-    "Filtre LC", "Absorbeur RC", "Pont diviseur de tension", "Protection par fusible",
+    "Impédance Z",
 ]
 
 # Alias pour compatibilité
@@ -1654,6 +1285,9 @@ def analyser(graphe, patterns_personnalises=None):
 
     resultats = ResultatsAnalyse(circuits_trouves)
     resultats.supprimes = supprimes
+    # Fusibles neutralisés par la réduction : remontés pour que le rapport ne les
+    # liste pas comme « non classifiés ».
+    resultats.transparents = list(graphe_reduit.graph.get('fusibles_transparents', []))
     # Structure en étages : îlots de connexité hors rails
     resultats.ilots = detecter_ilots(graphe, circuits_trouves)
     return resultats

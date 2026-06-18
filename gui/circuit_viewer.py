@@ -401,81 +401,6 @@ def _ref_on_net(refs, comp_info, net, fallback=None):
 
 # ── Drawing functions ─────────────────────────────────────────────────────────
 
-def _draw_rc_lowpass(d, result, ci):
-    """@brief Dessine le schéma « Filtre RC passe-bas »."""
-    r = _ref(result, ci, "R"); c = _ref(result, ci, "C")
-    d += elm.Resistor().right().label(_lbl(r, ci), loc="top")
-    d.push()
-    d += elm.Capacitor().down().label(_lbl(c, ci), loc="right")
-    d += elm.Ground()
-    d.pop()
-    d += elm.Line().right(1.5)
-
-
-def _draw_rc_highpass(d, result, ci):
-    """@brief Dessine le schéma « Filtre RC passe-haut »."""
-    c = _ref(result, ci, "C"); r = _ref(result, ci, "R")
-    d += elm.Capacitor().right().label(_lbl(c, ci), loc="top")
-    d.push()
-    d += elm.Resistor().down().label(_lbl(r, ci), loc="right")
-    d += elm.Ground()
-    d.pop()
-    d += elm.Line().right(1.5)
-
-
-def _draw_lc_filter(d, result, ci):
-    """@brief Dessine le schéma « Filtre LC »."""
-    l = _ref(result, ci, "L"); c = _ref(result, ci, "C")
-    d += elm.Inductor().right().label(_lbl(l, ci), loc="top")
-    d.push()
-    d += elm.Capacitor().down().label(_lbl(c, ci), loc="right")
-    d += elm.Ground()
-    d.pop()
-    d += elm.Line().right(1.5)
-
-
-def _draw_voltage_divider(d, result, ci):
-    """@brief Dessine le schéma « Pont diviseur de tension »."""
-    rs = _refs(result, ci, "R")
-    r1 = rs[0] if rs else result["components"][0]
-    r2 = rs[1] if len(rs) > 1 else result["components"][1]
-    d += elm.Line().right(1).label("V+", loc="left")
-    d += elm.Resistor().down().label(_lbl(r1, ci), loc="right")
-    d.push()
-    d += elm.Line().right(1.5).label("Vout", loc="right")
-    d.pop()
-    d += elm.Resistor().down().label(_lbl(r2, ci), loc="right")
-    d += elm.Ground()
-
-
-def _draw_decoupling(d, result, ci):
-    """@brief Dessine le schéma « Condensateur de découplage »."""
-    c = _ref(result, ci, "C")
-    d += elm.Line().right(1).label("VCC", loc="left")
-    d += elm.Capacitor().down().label(_lbl(c, ci), loc="right")
-    d += elm.Ground()
-
-
-def _draw_snubber(d, result, ci):
-    """@brief Dessine le schéma « Absorbeur RC » (snubber, R // C)."""
-    r = _ref(result, ci, "R"); c = _ref(result, ci, "C")
-    # Parallel: top branch = R, bottom branch = C
-    d += elm.Line().right(0.5)
-    d.push()                                              # save left junction
-    d += elm.Resistor().right().label(_lbl(r, ci), loc="top")  # top path
-    d.pop()                                               # back to left junction
-    d += elm.Line().down(1.5)
-    d += elm.Capacitor().right().label(_lbl(c, ci), loc="bottom")
-    d += elm.Line().up(1.5)                               # meet right junction
-    d += elm.Line().right(0.5)
-
-
-def _draw_fuse(d, result, ci):
-    """@brief Dessine le schéma « Protection par fusible »."""
-    f = result["components"][0]
-    d += elm.Fuse().right().label(_lbl(f, ci), loc="top")
-
-
 def _draw_half_wave(d, result, ci):
     """@brief Dessine le schéma « Redresseur simple alternance »."""
     diode = _ref(result, ci, "D"); r = _ref(result, ci, "R")
@@ -914,13 +839,6 @@ def _draw_current_mirror(d, result, ci):
 
 ## @brief Registre {nom de circuit -> fonction de dessin schemdraw}.
 _DRAWERS = {
-    "Filtre RC passe-bas":               _draw_rc_lowpass,
-    "Filtre RC passe-haut":              _draw_rc_highpass,
-    "Filtre LC":                         _draw_lc_filter,
-    "Pont diviseur de tension":          _draw_voltage_divider,
-    "Condensateur de découplage":        _draw_decoupling,
-    "Absorbeur RC":                      _draw_snubber,
-    "Protection par fusible":            _draw_fuse,
     "Redresseur simple alternance":      _draw_half_wave,
     "Détecteur de crête":                _draw_peak_detector,
     "Pont redresseur (Graetz)":          _draw_bridge_rectifier,

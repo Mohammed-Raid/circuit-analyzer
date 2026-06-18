@@ -68,25 +68,7 @@ DESCRIPTIONS_CIRCUITS = {
     "Détecteur de crête":
         "Mémorise la tension maximale du signal. Diode en série + "
         "condensateur vers GND.",
-    "Condensateur de découplage":
-        "Stabilise l'alimentation près d'un composant. Condensateur "
-        "directement entre alimentation et GND.",
-    "Filtre RC passe-bas":
-        "Atténue les hautes fréquences. Résistance en série + condensateur "
-        "vers GND.",
-    "Filtre RC passe-haut":
-        "Atténue les basses fréquences. Condensateur en série + résistance "
-        "vers GND.",
-    "Filtre LC":
-        "Filtre de puissance (alimentations à découpage). Inductance en "
-        "série + condensateur vers GND.",
-    "Absorbeur RC":
-        "Snubber : absorbe les surtensions transitoires. Résistance et "
-        "condensateur en parallèle.",
-    "Pont diviseur de tension":
-        "Crée une tension intermédiaire. Deux résistances en série, point "
-        "milieu sur un nœud signal.",
-    "Protection par fusible":
-        "Coupe le circuit en cas de surintensité. Composant de type F en "
-        "série.",
+    "Impédance Z":
+        "Dipôle passif équivalent : R/L/C combinés en série puis en "
+        "parallèle (la composition détaille les éléments d'origine).",
 }

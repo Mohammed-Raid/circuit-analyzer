@@ -112,16 +112,28 @@ def generer_rapport(resultats, fichier: str,
                 lignes.append('    ' + ', '.join(ilot['composants']))
         lignes += ['', _SEP]
 
+    # Fusibles neutralisés par la réduction (le chef les considère inutiles) :
+    # listés à part, exclus des « non classifiés ».
+    transparents = list(getattr(resultats, 'transparents', []))
+
     # Composants non classifiés
     refs_a_verifier = {ref for ref, _, _ in a_verifier}
     if tous_refs:
+        ignores = set(transparents)
         non_classifies = [r for r in tous_refs
-                          if r not in classifies and r not in refs_a_verifier]
+                          if r not in classifies and r not in refs_a_verifier
+                          and r not in ignores]
         if non_classifies:
             lignes.append(
                 f'\nComposants non classifiés ({len(non_classifies)}) :'
             )
             lignes.append('    ' + ', '.join(non_classifies))
+
+    if transparents:
+        lignes.append(
+            f'\nFusibles ignorés (transparents) ({len(transparents)}) :'
+        )
+        lignes.append('    ' + ', '.join(transparents))
 
     # Satellites possibles — rattachement à confirmer par un ingénieur
     if a_verifier:

@@ -138,9 +138,10 @@ def _ajouter_satellite(match: dict, ref: str, role: str, score: float, reason: s
 
 
 # Circuits annexes mono-composant absorbables par un circuit multi-composants.
+# Les condensateurs de découplage ne sont plus un circuit nommé (ils deviennent
+# des « Impédance Z ») : seules les annexes à diode restent absorbables ici.
 _ANNEXES: dict[str, str] = {
     'Diode de roue libre':        'flyback',
-    'Condensateur de découplage': 'decoupling',
     'Diode de protection ESD':    'esd',
 }
 

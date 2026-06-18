@@ -70,30 +70,6 @@ def verifier_drc(resultats, graphe) -> list[dict]:
                             'refs': [ref],
                         })
 
-        # ── Règle 4 : Pont diviseur déséquilibré (ratio > 10) ────────────────
-        if ct == 'Pont diviseur de tension':
-            valeurs = []
-            for ref in refs:
-                comp = composants.get(ref)
-                if comp and comp.type == 'R':
-                    v = parse_valeur(comp.value or '')
-                    if v is not None and v > 0:
-                        valeurs.append((ref, v))
-            if len(valeurs) >= 2:
-                vals_sorted = sorted(valeurs, key=lambda x: x[1])
-                ratio = vals_sorted[-1][1] / vals_sorted[0][1]
-                if ratio > 10:
-                    violations.append({
-                        'rule': 'Pont diviseur déséquilibré',
-                        'severity': 'info',
-                        'message': (
-                            f"Pont diviseur ({', '.join(refs)}) : rapport de résistances = {ratio:.0f}×"
-                            f" ({vals_sorted[0][0]}={vals_sorted[0][1]/1000:.1f} kΩ"
-                            f" / {vals_sorted[-1][0]}={vals_sorted[-1][1]/1000:.1f} kΩ)."
-                        ),
-                        'refs': refs,
-                    })
-
     # ── Règle 6 : Aucun fusible sur le rail VCC (règle globale) ──────────────
     nb_comps_reels = sum(
         1 for comp in composants.values()

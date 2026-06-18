@@ -158,7 +158,7 @@ def test_value_shifted_left_raises():
     os.unlink(path)
 
 
-# ── Fix 7+8: OPAMP_PATTERNS complete, ALL_PATTERNS correct order ─────────────
+# ── Fix 7: OPAMP_PATTERNS complete ───────────────────────────────────────────
 
 def test_opamp_patterns_includes_all_new_patterns():
     """@brief Verifie opamp patterns includes all new patterns.
@@ -171,13 +171,3 @@ def test_opamp_patterns_includes_all_new_patterns():
     assert 'Bascule de Schmitt (AOP)' in names
     assert 'Amplificateur différentiel (AOP)' in names
     assert 'Amplificateur sommateur (AOP)' in names
-
-
-def test_all_patterns_decoupling_before_rc_lowpass():
-    """@brief Verifie all patterns decoupling before rc lowpass.
-
-    @return None
-    """
-    from circuit_analyzer.patterns.basic_circuits import ALL_PATTERNS
-    names = [p.name for p in ALL_PATTERNS]
-    assert names.index('Condensateur de découplage') < names.index('Filtre RC passe-bas')

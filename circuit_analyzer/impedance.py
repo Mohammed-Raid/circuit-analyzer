@@ -78,9 +78,11 @@ def _rendre_fusibles_transparents(graphe) -> nx.MultiGraph:
         if ra != rb:
             parent[rb] = ra
 
+    transparents: list = []   # refs des fusibles effacés (pour le rapport)
     for _u, _v, data in graphe.edges(data=True):
         if data.get('type') == 'F':
             unir(_u, _v)
+            transparents.append(data.get('ref'))
 
     if not parent:  # aucun fusible
         return graphe
@@ -92,6 +94,9 @@ def _rendre_fusibles_transparents(graphe) -> nx.MultiGraph:
     comps = {ref: copy.copy(comp)
              for ref, comp in graphe.graph.get('components', {}).items()}
     g2.graph['components'] = comps
+    # Refs des fusibles effacés : remontées au rapport pour qu'ils ne soient pas
+    # comptés comme « non classifiés » (le fusible est neutralisé, pas perdu).
+    g2.graph['fusibles_transparents'] = [r for r in transparents if r]
 
     for u, v, data in graphe.edges(data=True):
         if data.get('type') == 'F':
@@ -335,6 +340,7 @@ def reduire(graphe) -> nx.MultiGraph:
     # Reconstruire le graphe réduit : on retire les arêtes passives d'origine et
     # on réémet celles de W (réduites ou non).
     reduit = graphe.copy()
+    reduit.graph.setdefault('fusibles_transparents', [])
     for u, v, k, data in list(reduit.edges(keys=True, data=True)):
         if data.get('type') in TYPES_REDUCTIBLES:
             reduit.remove_edge(u, v, k)

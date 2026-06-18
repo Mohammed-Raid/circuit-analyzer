@@ -422,47 +422,6 @@ def test_roue_libre_absorbee_via_noeud_signal():
     assert sats[0]['score'] == 0.75
     assert sats[0]['reason'] == 'Diode de roue libre'
 
-def test_decouplage_rail_seul_hote_devient_possible():
-    """@brief Verifie decouplage rail seul hote devient possible.
-
-    @return None
-    """
-    # Correction 3 : absorption par rails uniquement -> jamais « sure »
-    circuits = [
-        _match('Amplificateur inverseur (AOP)', ['U1', 'R1', 'R2'],
-               ['NET_IN', 'NET_INM', 'NET_OUT', 'VCC', 'GND'], confidence=0.9),
-        _match('Condensateur de découplage', ['C3'],
-               ['VCC', 'GND'], confidence=0.85),
-    ]
-    g = build_graph([])
-    rattacher_satellites(circuits, g, {'U1', 'R1', 'R2', 'C3'})
-    assert len(circuits) == 1
-    sat = circuits[0]['satellites'][0]
-    assert sat['role'] == 'decoupling'
-    assert sat['status'] == 'possible'
-    assert sat['score'] <= 0.55
-    assert any('C3' in w for w in circuits[0]['warnings'])
-
-def test_decouplage_rails_plusieurs_hotes_pas_absorbe():
-    """@brief Verifie decouplage rails plusieurs hotes pas absorbe.
-
-    @return None
-    """
-    # Correction 3 : plusieurs circuits partagent le rail -> ambigu, pas d'absorption
-    circuits = [
-        _match('Amplificateur inverseur (AOP)', ['U1', 'R1'],
-               ['NET_A', 'NET_B', 'VCC', 'GND'], confidence=0.9),
-        _match('Transistor en commutation', ['Q1', 'R3'],
-               ['NET_C', 'NET_D', 'VCC', 'GND'], confidence=0.85),
-        _match('Condensateur de découplage', ['C3'],
-               ['VCC', 'GND'], confidence=0.85),
-    ]
-    g = build_graph([])
-    rattacher_satellites(circuits, g, {'U1', 'R1', 'Q1', 'R3', 'C3'})
-    assert len(circuits) == 3
-    types = [m['circuit_type'] for m in circuits]
-    assert 'Condensateur de découplage' in types
-
 def test_annexe_sans_circuit_hote_reste_un_circuit():
     """@brief Verifie annexe sans circuit hote reste un circuit.
 
