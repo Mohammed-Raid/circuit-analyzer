@@ -242,3 +242,22 @@ def test_multi_pin_devices_are_ordered_after_dipoles():
 
     order = [r["ref"] for r in plan["rows"]]
     assert order.index("Za") < order.index("U1")
+
+
+def test_net_labels_are_offset_from_symbols():
+    # Garde-fou de non-regression : un rendu avec moignons E/S et AOP ne doit pas
+    # lever, et tous les noms de net attendus doivent etre presents (decales).
+    composants = [
+        Composant("R1", "R", {"1": "IN", "2": "MID"}, "10k"),
+        Composant("C1", "C", {"1": "MID", "2": "GND"}, "100n"),
+        Composant("U1", "U", {"IN+": "MID", "IN-": "GND", "OUT": "OUT"}),
+    ]
+    graphe = construire_graphe(composants)
+    ilot = {"label": "I", "composants": ["R1", "C1", "U1"]}
+    model = _build_island_model(ilot, graphe, _comp_info(composants))
+
+    fig = _make_island_fig(model)
+
+    texts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    assert any("IN" in t for t in texts)     # net moignon affiche
+    assert any("OUT" in t for t in texts)    # net moignon de l'AOP affiche

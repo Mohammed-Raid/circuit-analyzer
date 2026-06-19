@@ -617,6 +617,7 @@ _SYMBOL_ELM = {
 
 _BUS = "#475569"
 _WIRE = "#1e293b"
+_LBL_OFST = 0.18   # decalage des labels de net pour les decoller des symboles
 
 
 def _draw_island_schematic(d, plan, hitboxes=None):
@@ -640,7 +641,8 @@ def _draw_island_schematic(d, plan, hitboxes=None):
         top = c["y_top"] + 0.5
         bottom = c["y_bottom"] - (0.9 if c["kind"] == "ground" else 0.5)
         d += elm.Line().at((c["x"], top)).to((c["x"], bottom)).color(_BUS)
-        d += elm.Dot().at((c["x"], top)).label(c["net"], loc="top", color=_BUS)
+        d += elm.Dot().at((c["x"], top)).label(
+            c["net"], loc="top", color=_BUS, ofst=_LBL_OFST)
         if c["kind"] == "ground":
             d += elm.Ground().at((c["x"], bottom))
 
@@ -690,16 +692,16 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top", hitboxes=None):
         d += element().right(1.4).label(label, loc=label_loc)
         d += elm.Line().right(0.35).color(_WIRE)
         if not _is_not_connected(stub_net):
-            d += elm.Dot().label(stub_net, loc="right", color=_BUS)
+            d += elm.Dot().label(stub_net, loc="right", color=_BUS, ofst=_LBL_OFST)
         _hit(col_x + 0.3, col_x + 1.7)
         return
 
     # composant isole (deux moignons) : symbole + deux etiquettes.
     d += element().at((0.0, y)).right(1.4).label(label, loc=label_loc)
     if not _is_not_connected(n1):
-        d += elm.Dot().at((0.0, y)).label(n1, loc="left", color=_BUS)
+        d += elm.Dot().at((0.0, y)).label(n1, loc="left", color=_BUS, ofst=_LBL_OFST)
     if not _is_not_connected(n2):
-        d += elm.Dot().at((1.4, y)).label(n2, loc="right", color=_BUS)
+        d += elm.Dot().at((1.4, y)).label(n2, loc="right", color=_BUS, ofst=_LBL_OFST)
     _hit(0.0, 1.4)
 
 
@@ -715,13 +717,13 @@ def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
     for pin, net in cols_pins:
         x = x_by_net[net]
         d += elm.Line().at((x, y)).to((device_x, y)).color(_WIRE)
-        d += elm.Dot().at((x, y)).label(pin, loc="bottom", color=_BUS)
+        d += elm.Dot().at((x, y)).label(pin, loc="bottom", color=_BUS, ofst=_LBL_OFST)
 
     for pin, net in row["stubs"]:
         if _is_not_connected(net):
             continue
         d += elm.Line().at((device_x, y)).right(0.6).color(_WIRE)
-        d += elm.Dot().label(net, loc="right", color=_BUS)
+        d += elm.Dot().label(net, loc="right", color=_BUS, ofst=_LBL_OFST)
 
 
 def _component_label(comp):
