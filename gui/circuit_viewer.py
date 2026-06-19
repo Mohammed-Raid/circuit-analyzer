@@ -710,9 +710,12 @@ def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
     dediee a droite (device_x), broches cablees vers les colonnes."""
     y = row["y"]
     if row["symbol"] == "opamp":
-        d += elm.Opamp().at((device_x, y)).right().label(row["ref"], loc="center")
+        op = elm.Opamp().at((device_x, y)).right().label(row["ref"], loc="center")
+        d += op
+        block_right = tuple(op.out)          # pointe droite du triangle
     else:
         d += elm.Rect(w=1.8, h=0.8).at((device_x, y)).label(row["ref"])
+        block_right = (device_x + 0.9, y)    # bord droit du bloc
 
     for pin, net in cols_pins:
         x = x_by_net[net]
@@ -722,7 +725,9 @@ def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
     for pin, net in row["stubs"]:
         if _is_not_connected(net):
             continue
-        d += elm.Line().at((device_x, y)).right(0.6).color(_WIRE)
+        # le moignon de sortie quitte le bord droit du symbole, jamais son centre
+        # (sinon le label de net chevauche l'etiquette ref de l'AOP).
+        d += elm.Line().at(block_right).right(0.6).color(_WIRE)
         d += elm.Dot().label(net, loc="right", color=_BUS, ofst=_LBL_OFST)
 
 

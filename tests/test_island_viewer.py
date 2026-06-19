@@ -174,6 +174,26 @@ def test_make_island_fig_draws_z_dipoles_and_caption():
     assert any("connexion" in t for t in texts)         # legende
 
 
+def test_opamp_output_label_clear_of_ref_label():
+    # Le label du net de sortie de l'AOP doit quitter la pointe droite du triangle,
+    # pas son centre : sinon il chevauche l'etiquette "U1" (collision NET8/U2 observee).
+    composants = [
+        Composant("R1", "R", {"1": "IN", "2": "FB"}, "10k"),
+        Composant("R2", "R", {"1": "FB", "2": "GND"}, "10k"),
+        Composant("U1", "U", {"IN+": "IN", "IN-": "FB", "OUT": "AOUT"}),
+    ]
+    graphe = construire_graphe(composants)
+    ilot = {"label": "I", "composants": ["R1", "R2", "U1"]}
+    model = _build_island_model(ilot, graphe, _comp_info(composants))
+
+    fig = _make_island_fig(model)
+    ax = fig.axes[0]
+    pos = {t.get_text(): t.get_position() for t in ax.texts}
+
+    assert "U1" in pos and "AOUT" in pos
+    assert abs(pos["U1"][0] - pos["AOUT"][0]) >= 1.0     # sortie decollee du centre
+
+
 def test_make_island_fig_keeps_diode_and_does_not_show_match_type():
     composants = [
         Composant("D1", "D", {"A": "AC", "K": "DC"}, "1N4148"),
