@@ -204,6 +204,23 @@ def test_make_island_fig_draws_z_dipoles_and_caption():
     assert any("connexion" in t for t in texts)         # legende
 
 
+def test_block_with_two_stubs_stacks_labels_at_distinct_y():
+    # Un composant multi-broches avec deux moignons E/S doit etiqueter chaque net
+    # a une ordonnee distincte (sinon les labels se superposent au meme point).
+    model = {"label": "I", "components": [
+        _unit("X1", "X", {"1": "BUS", "2": "SA", "3": "SB"}),  # device, 2 moignons
+        _unit("Z1", "Z", {"1": "BUS", "2": "GND"}),
+        _unit("Z2", "Z", {"1": "BUS", "2": "GND"}),            # BUS/GND -> colonnes
+    ]}
+
+    fig = _make_island_fig(model)
+    ax = fig.axes[0]
+    pos = {t.get_text(): t.get_position() for t in ax.texts}
+
+    assert "SA" in pos and "SB" in pos
+    assert pos["SA"][1] != pos["SB"][1]
+
+
 def test_opamp_output_label_clear_of_ref_label():
     # Le label du net de sortie de l'AOP doit quitter la pointe droite du triangle,
     # pas son centre : sinon il chevauche l'etiquette "U1" (collision NET8/U2 observee).

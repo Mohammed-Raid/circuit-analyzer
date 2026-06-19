@@ -475,6 +475,8 @@ def _pack_bands(spans):
     intervalles, glouton par bord gauche). @return liste d'index de bande par span."""
     band_of = [0] * len(spans)
     bands = []   # par bande : liste d'intervalles (lo, hi) deja occupes
+    # tri par bord gauche, puis largeur decroissante (les intervalles larges, plus
+    # durs a caser, sont places en premier -> moins de bandes au total).
     for i in sorted(range(len(spans)),
                     key=lambda k: (spans[k][0], -(spans[k][1] - spans[k][0]))):
         lo, hi = spans[i]
@@ -764,13 +766,16 @@ def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
         d += elm.Line().at((x, y)).to((device_x, y)).color(_WIRE)
         d += elm.Dot().at((x, y)).label(pin, loc="bottom", color=_BUS, ofst=_LBL_OFST)
 
+    # le moignon de sortie quitte le bord droit du symbole, jamais son centre
+    # (sinon le label de net chevauche l'etiquette ref de l'AOP) ; plusieurs
+    # moignons sont decales verticalement pour ne pas se superposer.
+    stub_dy = 0.0
     for pin, net in row["stubs"]:
         if _is_not_connected(net):
             continue
-        # le moignon de sortie quitte le bord droit du symbole, jamais son centre
-        # (sinon le label de net chevauche l'etiquette ref de l'AOP).
-        d += elm.Line().at(block_right).right(0.6).color(_WIRE)
+        d += elm.Line().at((block_right[0], block_right[1] + stub_dy)).right(0.6).color(_WIRE)
         d += elm.Dot().label(net, loc="right", color=_BUS, ofst=_LBL_OFST)
+        stub_dy += 0.7
 
 
 def _component_label(comp):
