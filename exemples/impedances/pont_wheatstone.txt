@@ -1,0 +1,8 @@
+# Pont de Wheatstone — bornes A et B
+# Serie/parallele seuls ECHOUENT : il faut une transformation etoile-triangle (Y-D)
+# pour reduire ce pont a une seule impedance equivalente.
+R1 A C 1k
+R2 A D 1k
+R3 C B 1k
+R4 D B 1k
+R5 C D 1k

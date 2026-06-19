@@ -280,6 +280,20 @@ def _passe_delta_y(W: nx.MultiGraph, bornes: set) -> bool:
     return True
 
 
+def bornes_possibles(graphe) -> list:
+    """@brief Nets touchés par au moins une impédance (R/L/C) — bornes candidates.
+
+    @param graphe Graphe d'origine.
+    @return list[str] Nets triés, sur lesquels on peut calculer un équivalent.
+    """
+    nets = set()
+    for u, v, data in graphe.edges(data=True):
+        if data.get('type') in TYPES_REDUCTIBLES:
+            nets.add(u)
+            nets.add(v)
+    return sorted(nets, key=str)
+
+
 def impedance_equivalente(graphe, a, b):
     """@brief Impédance équivalente symbolique d'un réseau passif entre deux bornes.
 

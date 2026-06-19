@@ -216,6 +216,15 @@ class TabAnalyze:
             state="disabled",
             command=self._open_network_viewer)
         self._btn_reseau.pack(side="left", padx=8, pady=8)
+        self._btn_imped = ctk.CTkButton(
+            bar_inner, text="Ω  Impédance équiv.",
+            width=170, height=34, corner_radius=8,
+            font=ctk.CTkFont("Segoe UI", 11),
+            fg_color="#1e293b", hover_color="#263347",
+            border_width=1, border_color=BORDER,
+            state="disabled",
+            command=self._open_impedance)
+        self._btn_imped.pack(side="left", padx=8, pady=8)
 
     # ── Actions ──────────────────────────────────────────────────────────────
 
@@ -296,6 +305,7 @@ class TabAnalyze:
             self._stats_row.pack(fill="x", padx=20, before=self._body)
             self._scroll_outer.grid()
             self._btn_reseau.configure(state="normal")
+            self._btn_imped.configure(state="normal")
             # Build comp_info dict for the schematic viewer
             self._comp_info = {
                 c.ref: {"type": c.type, "value": c.value, "pins": c.pins}
@@ -676,6 +686,13 @@ class TabAnalyze:
             return
         from gui.network_viewer import NetworkGraphViewer
         NetworkGraphViewer(self._graph, self._results)
+
+    def _open_impedance(self):
+        """@brief Ouvre le calcul d'impédance équivalente (réseau d'impédances pures)."""
+        if self._graph is None:
+            return
+        from gui.impedance_view import show_impedance_equivalent
+        show_impedance_equivalent(self._graph, self.frame)
 
     def _on_pattern_created(self):
         """@brief Callback appelé après création d'un pattern depuis le wizard."""

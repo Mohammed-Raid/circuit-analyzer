@@ -230,6 +230,15 @@ def test_impedance_equivalente_pont_wheatstone_via_etoile_triangle():
         assert r in expr                          # les 5 impedances sont presentes
 
 
+def test_bornes_possibles_ignore_les_non_impedances():
+    g = _graphe(
+        Composant('U1', 'U', {'IN+': 'A', 'IN-': 'X', 'OUT': 'B'}),  # actif : ignore
+        Composant('R1', 'R', {'1': 'A', '2': 'M'}, '1k'),
+        Composant('R2', 'R', {'1': 'M', '2': 'B'}, '1k'),
+    )
+    assert impedance.bornes_possibles(g) == ['A', 'B', 'M']  # X (broche AOP) exclu
+
+
 def test_expansion_depuis_graphe_et_expandre():
     # Chaîne série R1+R2 → Z1 ; l'expansion mappe Z1 -> [R1, R2].
     g = _graphe(
