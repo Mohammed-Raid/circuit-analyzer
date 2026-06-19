@@ -620,15 +620,25 @@ def _build_island_schematic_plan(model):
                     key=lambda k: (band_of[k], spans[k][0], dipoles[k].get("ref", ""))):
         rows.append(_make_row(dipoles[i], band_y[band_of[i]], net_pins, col_nets))
 
-    # Composants multi-broches : une bande chacun, sous les dipoles.
-    y = band_y[-1] if band_y else 0.0
-    first = not band_y
-    for dev in devices:
-        if first:
-            first = False
-        else:
-            y -= MULTI_PITCH
+    # Composants multi-broches : places pres du barycentre vertical de leurs
+    # colonnes (fils courts), en evitant le recouvrement (>= MULTI_PITCH entre eux).
+    col_y = {}
+    for net in col_nets:
+        ys = [r["y"] for r in rows if net in (n for _p, n in r["pins"])]
+        if ys:
+            col_y[net] = sum(ys) / len(ys)
+    floor = band_y[-1] if band_y else 0.0
+
+    def _target_y(dev):
+        ys = [col_y[n] for n in (dev.get("pins", {}) or {}).values() if n in col_y]
+        return sum(ys) / len(ys) if ys else floor
+
+    last = None
+    for dev in sorted(devices, key=lambda d: -_target_y(d)):
+        ty = _target_y(dev)
+        y = ty if last is None else min(ty, last - MULTI_PITCH)
         rows.append(_make_row(dev, y, net_pins, col_nets))
+        last = y
 
     _fill_column_extents(columns, net_pins, rows)
 
@@ -791,7 +801,9 @@ def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
     for pin, net in cols_pins:
         x = x_by_net[net]
         d += elm.Line().at((x, y)).to((device_x, y)).color(_WIRE)
-        d += elm.Dot().at((x, y)).label(pin, loc="bottom", color=_BUS, ofst=_LBL_OFST)
+        # pas de label de broche : le nom de pin (IN+/IN-/OUT) est redondant avec
+        # les marques +/- du triangle et encombre le milieu du schema.
+        d += elm.Dot().at((x, y)).color(_WIRE)
 
     # le moignon de sortie quitte le bord droit du symbole, jamais son centre
     # (sinon le label de net chevauche l'etiquette ref de l'AOP) ; plusieurs

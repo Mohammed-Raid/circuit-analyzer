@@ -4,6 +4,7 @@ from gui.circuit_viewer import (
     _build_dipole_model,
     _build_island_schematic_plan,
     _make_island_fig,
+    MULTI_PITCH,
 )
 
 
@@ -146,11 +147,30 @@ def test_dominant_power_rail_stays_a_column():
     assert "AVCC" in cols
 
 
-def test_opamp_symbol_and_rows_do_not_overlap():
+def test_device_placed_near_its_signal_columns():
+    # U1 relie aux colonnes IN/MID/OUT -> place dans leur plage verticale, pas
+    # relegue tout en bas (sinon les colonnes descendent en longs fils).
+    comps = [
+        _unit("Z1", "Z", {"1": "IN", "2": "MID"}),
+        _unit("Z2", "Z", {"1": "MID", "2": "OUT"}),
+        _unit("Z3", "Z", {"1": "IN", "2": "OUT"}),   # IN/MID/OUT deviennent colonnes
+        _unit("U1", "U", {"IN+": "IN", "IN-": "MID", "OUT": "OUT"}),
+    ]
+
+    rows = _build_island_schematic_plan({"label": "I", "components": comps})["rows"]
+    ys = {r["ref"]: r["y"] for r in rows}
+    dip_ys = [ys["Z1"], ys["Z2"], ys["Z3"]]
+
+    assert min(dip_ys) <= ys["U1"] <= max(dip_ys)
+
+
+def test_opamp_symbol_and_devices_do_not_overlap():
     model = {"label": "I", "components": [
         _unit("Z1", "Z", {"1": "IN", "2": "MID"}),
-        _unit("Z2", "Z", {"1": "MID", "2": "GND"}),
-        _unit("U1", "U", {"IN+": "MID", "IN-": "GND", "OUT": "MID"}),
+        _unit("Z2", "Z", {"1": "MID", "2": "OUT"}),
+        _unit("Z3", "Z", {"1": "IN", "2": "OUT"}),
+        _unit("U1", "U", {"IN+": "IN", "IN-": "MID", "OUT": "OUT"}),
+        _unit("U2", "U", {"IN+": "OUT", "IN-": "MID", "OUT": "IN"}),
     ]}
 
     plan = _build_island_schematic_plan(model)
@@ -158,9 +178,8 @@ def test_opamp_symbol_and_rows_do_not_overlap():
     by_ref = {r["ref"]: r for r in plan["rows"]}
     assert by_ref["U1"]["symbol"] == "opamp"
     assert by_ref["Z1"]["symbol"] == "impedance"
-    ys = [r["y"] for r in plan["rows"]]
-    assert ys == sorted(ys, reverse=True)
-    assert all(abs(a - b) >= 2.0 for a, b in zip(ys, ys[1:]))   # pas mini = ROW_PITCH
+    # deux AOP dans la voie dediee (meme x) -> espaces d'au moins MULTI_PITCH en y.
+    assert abs(by_ref["U1"]["y"] - by_ref["U2"]["y"]) >= MULTI_PITCH
 
 
 def test_row_gap_widens_for_rows_carrying_a_value():
