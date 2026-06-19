@@ -113,8 +113,10 @@ def test_columns_ordered_ground_left_power_right_and_trimmed():
 
     assert xs["GND"] == min(xs.values())     # masse a gauche
     assert xs["VCC"] == max(xs.values())     # alim a droite
-    assert by_net["AAA"]["y_top"] == 0.0     # extent rogne sur Z1 (y=0) et Z2 (y=-2.0)
-    assert by_net["AAA"]["y_bottom"] == -2.0
+    # extent rogne aux lignes connectees a AAA (Z1 et Z2), quel que soit le packing
+    ys = {r["ref"]: r["y"] for r in plan["rows"]}
+    assert by_net["AAA"]["y_top"] == max(ys["Z1"], ys["Z2"])
+    assert by_net["AAA"]["y_bottom"] == min(ys["Z1"], ys["Z2"])
 
 
 def test_opamp_symbol_and_rows_do_not_overlap():
@@ -151,6 +153,34 @@ def test_row_gap_widens_for_rows_carrying_a_value():
 
     assert abs(ys_sans[0] - ys_sans[1]) == 2.0   # ROW_PITCH
     assert abs(ys_avec[0] - ys_avec[1]) == 2.5   # ROW_PITCH + LABEL_LINE
+
+
+def test_packing_puts_non_overlapping_dipoles_on_same_band():
+    # Z1 entre {A,B}, Z2 entre {C,D} : spans x disjoints -> meme bande (meme y).
+    # Z3/Z4 servent juste a rendre A,B,C,D des colonnes (degre >= 2).
+    model = {"label": "I", "components": [
+        _unit("Z1", "Z", {"1": "A", "2": "B"}),
+        _unit("Z2", "Z", {"1": "C", "2": "D"}),
+        _unit("Z3", "Z", {"1": "A", "2": "B"}),
+        _unit("Z4", "Z", {"1": "C", "2": "D"}),
+    ]}
+
+    ys = {r["ref"]: r["y"] for r in _build_island_schematic_plan(model)["rows"]}
+
+    assert ys["Z1"] == ys["Z2"]      # spans disjoints -> compactes sur une bande
+    assert ys["Z1"] != ys["Z3"]      # meme span que Z1 -> bande differente
+
+
+def test_packing_separates_overlapping_dipoles():
+    # Deux dipoles sur la meme paire de colonnes se chevauchent -> bandes distinctes.
+    model = {"label": "I", "components": [
+        _unit("Z1", "Z", {"1": "A", "2": "B"}),
+        _unit("Z2", "Z", {"1": "A", "2": "B"}),
+    ]}
+
+    ys = [r["y"] for r in _build_island_schematic_plan(model)["rows"]]
+
+    assert ys[0] != ys[1]
 
 
 # ── Rendu figure ──────────────────────────────────────────────────────────────

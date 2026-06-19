@@ -392,7 +392,10 @@ def _make_island_fig(model, matches=None):
     components = model["components"]
     plan = _build_island_schematic_plan(model)
     width = max(8.0, 1.4 * max(2, len(plan["columns"])) + 6.0)
-    height = max(4.8, 1.15 * max(2, len(plan["rows"])) + 2.0)
+    # hauteur proportionnelle a l'extent vertical reel (bandes), pas au nombre de
+    # lignes : le compactage reduit le nombre de bandes, donc la figure raccourcit.
+    yvals = [r["y"] for r in plan["rows"]] or [0.0]
+    height = max(4.8, 0.7 * (max(yvals) - min(yvals)) + 3.0)
     fig = Figure(figsize=(min(20.0, width), min(15.0, height)))
     ax = fig.add_subplot(111)
     fig.patch.set_facecolor(SCH_BG)
@@ -443,32 +446,67 @@ def _matches_for_island(ilot, results):
 
 
 _NC_NAMES = {"NC", "N/C", "NRELIEE", ""}
-ROW_PITCH = 2.0        # pas vertical entre deux composants 2 broches (symbole + label + marge)
+ROW_PITCH = 2.0        # pas vertical entre deux bandes de dipoles (symbole + label + marge)
 MULTI_PITCH = 3.4      # pas elargi autour d'un composant multi-broches (AOP, bloc)
 COL_PITCH = 2.4
-LABEL_LINE = 0.5       # rallonge le pas quand une etiquette porte une valeur (2 lignes)
+LABEL_LINE = 0.5       # rallonge le pas quand une bande porte une valeur (2 lignes)
+BAND_GAP = 0.6         # marge horizontale entre deux dipoles d'une meme bande
+STUB_REACH = 3.0       # extent x d'un moignon (symbole + fil + label de net)
+ISO_REACH = 2.0        # extent x d'un dipole isole
 
 
-def _row_gap(prev, cur):
-    """@brief Pas vertical adaptatif entre deux lignes voisines (anti-collision texte)."""
-    if _is_multi_pin(prev) or _is_multi_pin(cur):
-        return MULTI_PITCH
-    gap = ROW_PITCH
-    if (prev.get("value") or "") or (cur.get("value") or ""):
-        gap += LABEL_LINE
-    return gap
+def _dipole_span(pins, x_by_net):
+    """@brief Extent horizontal [lo, hi] occupe par le dessin d'un dipole.
 
-
-def _pair_key(comp, col_nets):
-    """@brief Cle de regroupement d'un dipole : ses nets qui sont des colonnes, tries.
-
-    Deux dipoles reliant la meme paire de colonnes partagent la meme cle, donc
-    seront contigus apres tri -> ils s'empilent verticalement au lieu de deriver.
+    Sert au compactage : deux dipoles dont les extents ne se chevauchent pas
+    peuvent partager la meme bande (meme y). Entre deux colonnes -> [xa, xb] ;
+    moignon E/S -> [x_colonne, +STUB_REACH] ; isole -> [0, ISO_REACH].
     """
-    cols = sorted(
-        net for net in (comp.get("pins", {}) or {}).values() if net in col_nets
-    )
-    return tuple(cols)
+    cols = sorted(x_by_net[n] for _p, n in pins if n in x_by_net)
+    if len(cols) >= 2:
+        return (cols[0], cols[-1])
+    if len(cols) == 1:
+        return (cols[0], cols[0] + STUB_REACH)
+    return (0.0, ISO_REACH)
+
+
+def _pack_bands(spans):
+    """@brief Range des intervalles en bandes sans chevauchement (partition par
+    intervalles, glouton par bord gauche). @return liste d'index de bande par span."""
+    band_of = [0] * len(spans)
+    bands = []   # par bande : liste d'intervalles (lo, hi) deja occupes
+    for i in sorted(range(len(spans)),
+                    key=lambda k: (spans[k][0], -(spans[k][1] - spans[k][0]))):
+        lo, hi = spans[i]
+        placed = next(
+            (bi for bi, occ in enumerate(bands)
+             if all(hi + BAND_GAP <= o_lo or o_hi + BAND_GAP <= lo
+                    for o_lo, o_hi in occ)),
+            None,
+        )
+        if placed is None:
+            placed = len(bands)
+            bands.append([])
+        bands[placed].append((lo, hi))
+        band_of[i] = placed
+    return band_of
+
+
+def _make_row(comp, y, net_pins, col_nets):
+    """@brief Construit une ligne de plan (dipole ou device) a l'ordonnee y."""
+    pins = list((comp.get("pins", {}) or {}).items())
+    stubs = [(p, n) for p, n in pins if n in net_pins and n not in col_nets]
+    return {
+        "ref": comp.get("ref", "?"),
+        "type": comp.get("type", "?"),
+        "value": comp.get("value", ""),
+        "symbol": comp.get("symbol") or _schematic_symbol(comp.get("type", "?")),
+        "y": y,
+        "pins": pins,
+        "stubs": stubs,
+        "refs": comp.get("refs", [comp.get("ref")]),
+        "composition": comp.get("composition", comp.get("ref", "")),
+    }
 
 
 def _is_multi_pin(comp) -> bool:
@@ -513,8 +551,10 @@ def _build_island_schematic_plan(model):
     """@brief Plan netlist-fidele assaini d'un ilot (fonction pure, testable).
 
     Filtre les nets (NC supprimes ; E/S a 1 connexion -> moignon ; >=2 -> colonne),
-    assigne une ligne par composant, et delegue l'ordre/extent des colonnes a
-    _layout_columns.
+    ordonne les colonnes-bus, puis COMPACTE les dipoles en bandes horizontales :
+    ceux dont les extents x ne se chevauchent pas partagent une bande (meme y),
+    ce qui reduit la hauteur et casse l'escalier diagonal. Les composants
+    multi-broches (AOP/blocs) occupent une bande chacun, sous les dipoles.
 
     @param model Modele d'ilot (cf. _build_island_model).
     @return dict {label, columns, rows, caption}.
@@ -531,38 +571,49 @@ def _build_island_schematic_plan(model):
 
     col_nets = {net for net, pins in net_pins.items() if len(pins) >= 2}
 
-    # Anti-escalier : grouper les dipoles par paire de colonnes ; les composants
-    # multi-broches (AOP/blocs) partent en fin (voie dediee a droite).
     dipoles = [c for c in components if not _is_multi_pin(c)]
     devices = [c for c in components if _is_multi_pin(c)]
-    dipoles.sort(key=lambda c: (_pair_key(c, col_nets), c.get("ref", "")))
-    components = dipoles + devices
+
+    columns = _order_columns(col_nets)
+    x_by_net = {c["net"]: c["x"] for c in columns}
+
+    # Compactage des dipoles en bandes (anti-escalier).
+    dip_pins = [list((c.get("pins", {}) or {}).items()) for c in dipoles]
+    spans = [_dipole_span(p, x_by_net) for p in dip_pins]
+    band_of = _pack_bands(spans)
+    n_bands = max(band_of) + 1 if band_of else 0
+
+    # Une bande dont un dipole porte une valeur est espacee davantage (label 2 lignes).
+    band_value = [False] * n_bands
+    for c, bi in zip(dipoles, band_of):
+        if c.get("value"):
+            band_value[bi] = True
+
+    band_y = []
+    y = 0.0
+    for bi in range(n_bands):
+        if bi > 0:
+            y -= ROW_PITCH + (LABEL_LINE if (band_value[bi] or band_value[bi - 1]) else 0.0)
+        band_y.append(y)
 
     rows = []
-    y = 0.0
-    prev = None
-    for comp in components:
-        if prev is not None:
-            y -= _row_gap(prev, comp)
-        prev = comp
-        pins = list((comp.get("pins", {}) or {}).items())
-        stubs = [
-            (pin, net) for pin, net in pins
-            if net in net_pins and net not in col_nets
-        ]
-        rows.append({
-            "ref": comp.get("ref", "?"),
-            "type": comp.get("type", "?"),
-            "value": comp.get("value", ""),
-            "symbol": comp.get("symbol") or _schematic_symbol(comp.get("type", "?")),
-            "y": y,
-            "pins": pins,
-            "stubs": stubs,
-            "refs": comp.get("refs", [comp.get("ref")]),
-            "composition": comp.get("composition", comp.get("ref", "")),
-        })
+    # Dipoles ordonnes par (bande, bord gauche, ref) -> rendu deterministe, et les
+    # dipoles d'une meme paire (meme span) restent contigus.
+    for i in sorted(range(len(dipoles)),
+                    key=lambda k: (band_of[k], spans[k][0], dipoles[k].get("ref", ""))):
+        rows.append(_make_row(dipoles[i], band_y[band_of[i]], net_pins, col_nets))
 
-    columns = _layout_columns(col_nets, net_pins, rows)
+    # Composants multi-broches : une bande chacun, sous les dipoles.
+    y = band_y[-1] if band_y else 0.0
+    first = not band_y
+    for dev in devices:
+        if first:
+            first = False
+        else:
+            y -= MULTI_PITCH
+        rows.append(_make_row(dev, y, net_pins, col_nets))
+
+    _fill_column_extents(columns, net_pins, rows)
 
     return {
         "label": model.get("label", "Ilot"),
@@ -572,37 +623,28 @@ def _build_island_schematic_plan(model):
     }
 
 
-def _layout_columns(col_nets, net_pins, rows):
-    """@brief Ordonne les colonnes-bus (masse gauche / signal milieu / alim droite)
-    et rogne leur extent vertical aux lignes reellement connectees.
+def _order_columns(col_nets):
+    """@brief Ordonne les colonnes-bus (masse gauche / signal / alim droite) et leur
+    assigne une abscisse fixe, independante du placement vertical.
 
-    @param col_nets Ensemble des nets a >=2 connexions.
-    @param net_pins dict net -> [(ref, pin)].
-    @param rows Lignes du plan (avec leur y).
-    @return list[dict] {net, x, kind, y_top, y_bottom}.
+    @return list[dict] {net, x, kind, y_top, y_bottom} (extents remplis ensuite).
     """
-    y_by_ref = {r["ref"]: r["y"] for r in rows}
     order = {"ground": 0, "signal": 1, "power": 2}
+    ordered = sorted(col_nets, key=lambda net: (order[_net_kind(net)], net))
+    return [
+        {"net": net, "x": float(i * COL_PITCH), "kind": _net_kind(net),
+         "y_top": 0.0, "y_bottom": 0.0}
+        for i, net in enumerate(ordered)
+    ]
 
-    def avg_y(net):
-        ys = [y_by_ref[ref] for ref, _pin in net_pins[net]]
-        return sum(ys) / len(ys)
 
-    ordered = sorted(
-        col_nets,
-        key=lambda net: (order[_net_kind(net)], -avg_y(net), net),
-    )
-    columns = []
-    for i, net in enumerate(ordered):
-        ys = [y_by_ref[ref] for ref, _pin in net_pins[net]]
-        columns.append({
-            "net": net,
-            "x": float(i * COL_PITCH),
-            "kind": _net_kind(net),
-            "y_top": max(ys),
-            "y_bottom": min(ys),
-        })
-    return columns
+def _fill_column_extents(columns, net_pins, rows):
+    """@brief Rogne l'extent vertical de chaque colonne aux lignes qui la touchent."""
+    y_by_ref = {r["ref"]: r["y"] for r in rows}
+    for c in columns:
+        ys = [y_by_ref[ref] for ref, _pin in net_pins.get(c["net"], []) if ref in y_by_ref]
+        if ys:
+            c["y_top"], c["y_bottom"] = max(ys), min(ys)
 
 
 _SYMBOL_ELM = {
