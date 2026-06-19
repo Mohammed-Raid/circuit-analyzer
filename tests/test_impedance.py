@@ -199,6 +199,37 @@ def test_pont_trois_bornes_non_replie():
     assert not any(str(d['ref']).startswith('Z') for _, _, d in reduit.edges(data=True))
 
 
+# ── impedance_equivalente : reduction complete d'un reseau 2-bornes ───────────
+
+def test_impedance_equivalente_serie_parallele():
+    # A ─R1─ M ─R2─ B  avec C1 entre A et B : (R1+R2)//C1.
+    g = _graphe(
+        Composant('R1', 'R', {'1': 'A', '2': 'M'}, '1k'),
+        Composant('R2', 'R', {'1': 'M', '2': 'B'}, '2k'),
+        Composant('C1', 'C', {'1': 'A', '2': 'B'}, '1u'),
+    )
+    assert impedance.impedance_equivalente(g, 'A', 'B') == '((R1+R2)//C1)'
+
+
+def test_impedance_equivalente_pont_wheatstone_via_etoile_triangle():
+    # Pont de Wheatstone pur : serie/parallele seuls echouent -> Y-D le casse
+    # et le reduit a UNE impedance equivalente entre A et B.
+    g = _graphe(
+        Composant('R1', 'R', {'1': 'A', '2': 'C'}, '1k'),
+        Composant('R2', 'R', {'1': 'A', '2': 'D'}, '1k'),
+        Composant('R3', 'R', {'1': 'C', '2': 'B'}, '1k'),
+        Composant('R4', 'R', {'1': 'D', '2': 'B'}, '1k'),
+        Composant('R5', 'R', {'1': 'C', '2': 'D'}, '1k'),
+    )
+
+    expr = impedance.impedance_equivalente(g, 'A', 'B')
+
+    assert expr is not None                       # entierement reductible
+    assert '*' in expr and '/' in expr            # une transformation Y-D a eu lieu
+    for r in ['R1', 'R2', 'R3', 'R4', 'R5']:
+        assert r in expr                          # les 5 impedances sont presentes
+
+
 def test_expansion_depuis_graphe_et_expandre():
     # Chaîne série R1+R2 → Z1 ; l'expansion mappe Z1 -> [R1, R2].
     g = _graphe(

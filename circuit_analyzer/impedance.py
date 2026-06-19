@@ -225,6 +225,86 @@ def _passe_parallele(W: nx.MultiGraph, bornes: set) -> bool:
     return bool(paires)
 
 
+def _trouver_triangle(W: nx.MultiGraph):
+    """@brief Cherche un triangle (3 nœuds reliés deux à deux par une arête simple).
+
+    @return tuple|None (p, q, r) ou None s'il n'y en a aucun.
+    """
+    for p in W.nodes():
+        nbrs = [q for q in W.neighbors(p) if q != p and W.number_of_edges(p, q) == 1]
+        for i, q in enumerate(nbrs):
+            for r in nbrs[i + 1:]:
+                if W.number_of_edges(q, r) == 1:
+                    return (p, q, r)
+    return None
+
+
+def _passe_delta_y(W: nx.MultiGraph, bornes: set) -> bool:
+    """@brief Transforme UN triangle (Δ) en étoile (Y), symboliquement.
+
+    Casse les ponts que série/parallèle ne peuvent réduire. Pour un triangle de
+    sommets p,q,r d'impédances Z_pq, Z_qr, Z_rp, l'étoile vers un nœud central N a
+    pour bras (somme S = Z_pq+Z_qr+Z_rp) : Z_p = Z_pq·Z_rp/S, etc. (produit des
+    deux arêtes touchant le sommet / S).
+
+    @param W Graphe de travail (muté en place).
+    @param bornes Inutilisé (un triangle a toujours un sommet non-borne ici).
+    @return bool True si une transformation a eu lieu.
+    """
+    tri = _trouver_triangle(W)
+    if tri is None:
+        return False
+    p, q, r = tri
+    d_pq = next(iter(W.get_edge_data(p, q).values()))
+    d_qr = next(iter(W.get_edge_data(q, r).values()))
+    d_rp = next(iter(W.get_edge_data(r, p).values()))
+    e_pq, e_qr, e_rp = d_pq['expr'], d_qr['expr'], d_rp['expr']
+    somme = f"({e_pq})+({e_qr})+({e_rp})"
+
+    def _bras(e1, e2):  # produit des deux arêtes touchant le sommet, sur la somme
+        return f"({e1})*({e2})/({somme})"
+
+    n = W.graph.get('_yc', 0)
+    W.graph['_yc'] = n + 1
+    centre = f"_Y{n}"
+    W.remove_edge(p, q)
+    W.remove_edge(q, r)
+    W.remove_edge(r, p)
+    # sommet p touche pq+rp ; q touche pq+qr ; r touche qr+rp
+    W.add_edge(p, centre, type='Z', refs=d_pq['refs'] + d_rp['refs'],
+               expr=_bras(e_pq, e_rp), value='')
+    W.add_edge(q, centre, type='Z', refs=d_pq['refs'] + d_qr['refs'],
+               expr=_bras(e_pq, e_qr), value='')
+    W.add_edge(r, centre, type='Z', refs=d_qr['refs'] + d_rp['refs'],
+               expr=_bras(e_qr, e_rp), value='')
+    return True
+
+
+def impedance_equivalente(graphe, a, b):
+    """@brief Impédance équivalente symbolique d'un réseau passif entre deux bornes.
+
+    Réduit le réseau R/L/C par série, parallèle puis étoile↔triangle (Y-Δ) jusqu'à
+    une seule arête a-b. Symbolique : pas de valeurs numériques ni de fréquence.
+
+    @param graphe Graphe d'origine (arêtes R/L/C ; les autres sont ignorées).
+    @param a, b Les deux bornes entre lesquelles calculer l'équivalent.
+    @return str|None L'expression de composition (ex. "(R1+R2)//C1"), ou None si le
+            réseau n'est pas entièrement réductible par ces trois transformations.
+    """
+    W = _graphe_de_travail(graphe)
+    bornes = {a, b}
+    # ponytail: serie/parallele/Y-D suffisent pour tout reseau planaire 2-bornes ;
+    # un reseau non planaire (rare) ressort None. Garde-fou d'iterations par securite.
+    for _ in range(10 * (W.number_of_edges() + 1)):
+        if _passe_serie(W, bornes) or _passe_parallele(W, bornes) or _passe_delta_y(W, bornes):
+            continue
+        break
+    aretes = list(W.edges(data=True))
+    if len(aretes) == 1 and {aretes[0][0], aretes[0][1]} == {a, b}:
+        return aretes[0][2]['expr']
+    return None
+
+
 def _replier_blocs_irreductibles(W: nx.MultiGraph, bornes: set) -> None:
     """@brief Replie chaque composante passive non réductible (pont) en une seule
     arête Z entre ses deux bornes de contact.
