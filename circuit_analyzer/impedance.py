@@ -9,6 +9,7 @@ montages (inverseur, intégrateur…). But premier : qu'aucun composant passif n
 reste « non classifié » — tout R/L/C devient au minimum une Z singleton.
 """
 import copy
+import re
 
 import networkx as nx
 
@@ -278,6 +279,25 @@ def _passe_delta_y(W: nx.MultiGraph, bornes: set) -> bool:
     W.add_edge(r, centre, type='Z', refs=d_qr['refs'] + d_rp['refs'],
                expr=_bras(e_qr, e_rp), value='')
     return True
+
+
+def formater_expr(expr: str) -> str:
+    """@brief Version lisible d'une expression de composition (affichage seulement).
+
+    Retire les parenthèses superflues autour d'un terme simple (« (R1) » → « R1 »)
+    et utilise « · » pour le produit. Ne change pas le sens, seulement la lisibilité.
+
+    @param expr Expression interne (ex. « (R1)*(R2)/((R1)+(R2)+(R5)) »).
+    @return str Expression lisible (ex. « R1·R2/(R1+R2+R5) »).
+    """
+    if not expr:
+        return expr
+    prev = None
+    out = expr
+    while out != prev:                       # « (X) » → « X » tant qu'il en reste
+        prev = out
+        out = re.sub(r'\(([A-Za-z]\w*)\)', r'\1', out)
+    return out.replace('*', '·')
 
 
 def bornes_possibles(graphe) -> list:

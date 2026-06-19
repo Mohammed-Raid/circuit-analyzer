@@ -230,6 +230,13 @@ def test_impedance_equivalente_pont_wheatstone_via_etoile_triangle():
         assert r in expr                          # les 5 impedances sont presentes
 
 
+def test_formater_expr_nettoie_parentheses_et_produit():
+    assert impedance.formater_expr("(R1)*(R2)/((R1)+(R2)+(R5))") == "R1·R2/(R1+R2+R5)"
+    assert impedance.formater_expr("R1+R2") == "R1+R2"
+    assert impedance.formater_expr("(R1//C1)") == "(R1//C1)"   # parentheses utiles gardees
+    assert impedance.formater_expr("") == ""
+
+
 def test_bornes_possibles_ignore_les_non_impedances():
     g = _graphe(
         Composant('U1', 'U', {'IN+': 'A', 'IN-': 'X', 'OUT': 'B'}),  # actif : ignore

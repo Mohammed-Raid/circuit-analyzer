@@ -41,8 +41,12 @@ def show_impedance_equivalent(graph, parent=None):
 
     sel = ctk.CTkFrame(win, fg_color=CARD2, corner_radius=10)
     sel.pack(fill="x", padx=24, pady=18)
-    var_a = ctk.StringVar(value=bornes[0])
-    var_b = ctk.StringVar(value=bornes[1])
+    # Pré-sélection des bornes d'entrée/sortie si présentes (fluidité démo).
+    defaut_a = "VIN" if "VIN" in bornes else bornes[0]
+    defaut_b = "VOUT" if "VOUT" in bornes else next(
+        (n for n in bornes if n != defaut_a), bornes[0])
+    var_a = ctk.StringVar(value=defaut_a)
+    var_b = ctk.StringVar(value=defaut_b)
     for label, var in (("Borne A", var_a), ("Borne B", var_b)):
         row = ctk.CTkFrame(sel, fg_color="transparent")
         row.pack(side="left", expand=True, fill="x", padx=14, pady=14)
@@ -70,7 +74,9 @@ def show_impedance_equivalent(graph, parent=None):
                      "(bornes non reliées par des impédances, ou réseau non planaire).",
                 text_color="#f59e0b")
         else:
-            resultat.configure(text=f"Z({a},{b}) = {expr}", text_color="#34d399")
+            resultat.configure(
+                text=f"Z({a},{b}) = {impedance.formater_expr(expr)}",
+                text_color="#34d399")
 
     ctk.CTkButton(win, text="Calculer", height=38, corner_radius=8,
                   font=ctk.CTkFont("Segoe UI", 12, "bold"),
