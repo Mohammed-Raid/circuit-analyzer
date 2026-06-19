@@ -450,8 +450,8 @@ ROW_PITCH = 2.0        # pas vertical entre deux bandes de dipoles (symbole + la
 MULTI_PITCH = 3.4      # pas elargi autour d'un composant multi-broches (AOP, bloc)
 COL_PITCH = 2.4
 LABEL_LINE = 0.5       # rallonge le pas quand une bande porte une valeur (2 lignes)
-BAND_GAP = 0.6         # marge horizontale entre deux dipoles d'une meme bande
-STUB_REACH = 3.0       # extent x d'un moignon (symbole + fil + label de net)
+BAND_GAP = 1.0         # marge horizontale entre deux dipoles d'une meme bande
+STUB_REACH = 3.4       # extent x d'un moignon (symbole + fil + label/drapeau de net)
 ISO_REACH = 2.0        # extent x d'un dipole isole
 
 
@@ -686,7 +686,7 @@ _SYMBOL_ELM = {
 
 _BUS = "#475569"
 _WIRE = "#1e293b"
-_LBL_OFST = 0.18   # decalage des labels de net pour les decoller des symboles
+_LBL_OFST = 0.25   # decalage des labels de net pour les decoller des symboles
 
 
 def _draw_island_schematic(d, plan, hitboxes=None):
