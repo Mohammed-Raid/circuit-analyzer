@@ -777,12 +777,14 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top", hitboxes=None):
         _hit(col_x + 0.3, col_x + 1.7)
         return
 
-    # composant isole (deux moignons) : symbole + deux extremites.
+    # composant isole (deux moignons) : symbole HORIZONTAL + deux bornes etiquetees.
+    # On ne met PAS de drapeau masse/alim ici : les deux bouts sont les bornes du
+    # dipole (ses ports), pas des rails distribues -> bornes nommees, dipole droit.
     d += element().at((0.0, y)).right(1.4).label(label, loc=label_loc)
     if not _is_not_connected(n1):
-        _draw_net_end(d, n1, at=(0.0, y), loc="left")
+        d += elm.Dot().at((0.0, y)).label(n1, loc="left", color=_BUS, ofst=_LBL_OFST)
     if not _is_not_connected(n2):
-        _draw_net_end(d, n2, at=(1.4, y), loc="right")
+        d += elm.Dot().at((1.4, y)).label(n2, loc="right", color=_BUS, ofst=_LBL_OFST)
     _hit(0.0, 1.4)
 
 
