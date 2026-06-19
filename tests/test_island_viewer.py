@@ -113,8 +113,8 @@ def test_columns_ordered_ground_left_power_right_and_trimmed():
 
     assert xs["GND"] == min(xs.values())     # masse a gauche
     assert xs["VCC"] == max(xs.values())     # alim a droite
-    assert by_net["AAA"]["y_top"] == 0.0     # extent rogne sur Z1 (y=0) et Z2 (y=-1.6)
-    assert by_net["AAA"]["y_bottom"] == -1.6
+    assert by_net["AAA"]["y_top"] == 0.0     # extent rogne sur Z1 (y=0) et Z2 (y=-2.0)
+    assert by_net["AAA"]["y_bottom"] == -2.0
 
 
 def test_opamp_symbol_and_rows_do_not_overlap():
@@ -131,7 +131,7 @@ def test_opamp_symbol_and_rows_do_not_overlap():
     assert by_ref["Z1"]["symbol"] == "impedance"
     ys = [r["y"] for r in plan["rows"]]
     assert ys == sorted(ys, reverse=True)
-    assert all(abs(a - b) >= 1.5 for a, b in zip(ys, ys[1:]))
+    assert all(abs(a - b) >= 2.0 for a, b in zip(ys, ys[1:]))   # pas mini = ROW_PITCH
 
 
 # ── Rendu figure ──────────────────────────────────────────────────────────────

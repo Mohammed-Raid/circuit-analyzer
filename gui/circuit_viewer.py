@@ -392,7 +392,7 @@ def _make_island_fig(model, matches=None):
     components = model["components"]
     plan = _build_island_schematic_plan(model)
     width = max(8.0, 1.4 * max(2, len(plan["columns"])) + 6.0)
-    height = max(4.8, 0.9 * max(2, len(plan["rows"])) + 2.0)
+    height = max(4.8, 1.15 * max(2, len(plan["rows"])) + 2.0)
     fig = Figure(figsize=(min(20.0, width), min(15.0, height)))
     ax = fig.add_subplot(111)
     fig.patch.set_facecolor(SCH_BG)
@@ -443,9 +443,20 @@ def _matches_for_island(ilot, results):
 
 
 _NC_NAMES = {"NC", "N/C", "NRELIEE", ""}
-ROW_PITCH = 1.6        # pas vertical entre deux composants 2 broches
+ROW_PITCH = 2.0        # pas vertical entre deux composants 2 broches (symbole + label + marge)
 MULTI_PITCH = 3.4      # pas elargi autour d'un composant multi-broches (AOP, bloc)
 COL_PITCH = 2.4
+LABEL_LINE = 0.5       # rallonge le pas quand une etiquette porte une valeur (2 lignes)
+
+
+def _row_gap(prev, cur):
+    """@brief Pas vertical adaptatif entre deux lignes voisines (anti-collision texte)."""
+    if _is_multi_pin(prev) or _is_multi_pin(cur):
+        return MULTI_PITCH
+    gap = ROW_PITCH
+    if (prev.get("value") or "") or (cur.get("value") or ""):
+        gap += LABEL_LINE
+    return gap
 
 
 def _pair_key(comp, col_nets):
@@ -529,12 +540,11 @@ def _build_island_schematic_plan(model):
 
     rows = []
     y = 0.0
-    prev_multi = False
-    for idx, comp in enumerate(components):
-        is_multi = _is_multi_pin(comp)
-        if idx > 0:
-            y -= MULTI_PITCH if (is_multi or prev_multi) else ROW_PITCH
-        prev_multi = is_multi
+    prev = None
+    for comp in components:
+        if prev is not None:
+            y -= _row_gap(prev, comp)
+        prev = comp
         pins = list((comp.get("pins", {}) or {}).items())
         stubs = [
             (pin, net) for pin, net in pins
@@ -634,14 +644,11 @@ def _draw_island_schematic(d, plan, hitboxes=None):
         if c["kind"] == "ground":
             d += elm.Ground().at((c["x"], bottom))
 
-    passive_i = 0
     for row in rows:
         cols_pins = [(p, n) for p, n in row["pins"] if n in x_by_net]
         if row["symbol"] != "opamp" and len(row["pins"]) == 2:
-            # etiquettes alternees haut/bas : evite les collisions sur lignes voisines.
-            label_loc = "top" if passive_i % 2 == 0 else "bottom"
-            passive_i += 1
-            _draw_two_pin_row(d, row, x_by_net, label_loc, hitboxes)
+            # label toujours en haut : le pas adaptatif garantit l'air necessaire.
+            _draw_two_pin_row(d, row, x_by_net, "top", hitboxes)
         else:
             _draw_block_row(d, row, cols_pins, x_by_net, device_x)
 
