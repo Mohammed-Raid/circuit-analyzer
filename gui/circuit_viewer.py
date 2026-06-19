@@ -349,6 +349,9 @@ def _make_fig(result, comp_info, drawer_fn):
     fig.patch.set_facecolor(SCH_BG)
     ax.set_facecolor(SCH_BG)
     ax.axis("off")
+    # aspect egal : sinon l'etirement vertical de la figure deforme les symboles
+    # (la boite d'impedance, horizontale, paraissait verticale).
+    ax.set_aspect("equal")
 
     if drawer_fn:
         try:
