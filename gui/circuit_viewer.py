@@ -448,6 +448,18 @@ MULTI_PITCH = 3.4      # pas elargi autour d'un composant multi-broches (AOP, bl
 COL_PITCH = 2.4
 
 
+def _pair_key(comp, col_nets):
+    """@brief Cle de regroupement d'un dipole : ses nets qui sont des colonnes, tries.
+
+    Deux dipoles reliant la meme paire de colonnes partagent la meme cle, donc
+    seront contigus apres tri -> ils s'empilent verticalement au lieu de deriver.
+    """
+    cols = sorted(
+        net for net in (comp.get("pins", {}) or {}).values() if net in col_nets
+    )
+    return tuple(cols)
+
+
 def _is_multi_pin(comp) -> bool:
     """@brief Vrai si le composant occupe une bande haute (AOP ou >2 broches)."""
     pins = comp.get("pins", {}) or {}
@@ -507,6 +519,13 @@ def _build_island_schematic_plan(model):
             net_pins.setdefault(net, []).append((comp["ref"], pin))
 
     col_nets = {net for net, pins in net_pins.items() if len(pins) >= 2}
+
+    # Anti-escalier : grouper les dipoles par paire de colonnes ; les composants
+    # multi-broches (AOP/blocs) partent en fin (voie dediee a droite).
+    dipoles = [c for c in components if not _is_multi_pin(c)]
+    devices = [c for c in components if _is_multi_pin(c)]
+    dipoles.sort(key=lambda c: (_pair_key(c, col_nets), c.get("ref", "")))
+    components = dipoles + devices
 
     rows = []
     y = 0.0

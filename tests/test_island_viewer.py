@@ -214,3 +214,31 @@ def test_make_island_fig_single_axis_with_devices_and_z():
     texts = [t.get_text() for ax in fig.axes for t in ax.texts]
     assert any("Q1" in t for t in texts)                # transistor
     assert any(t.startswith("Z") for t in texts)        # R1 -> Z
+
+
+def test_dipoles_sharing_a_column_pair_are_contiguous():
+    # Za et Zc relient la meme paire {A,B} ; Zb relie {B,C2}. Entrelaces dans
+    # l'ordre du modele -> doivent etre regroupes (anti-escalier).
+    model = {"label": "I", "components": [
+        _unit("Za", "Z", {"1": "A", "2": "B"}),
+        _unit("Zb", "Z", {"1": "B", "2": "C2"}),
+        _unit("Zc", "Z", {"1": "A", "2": "B"}),
+        _unit("Zd", "Z", {"1": "C2", "2": "A"}),  # rend C2 colonne (2 connexions)
+    ]}
+
+    plan = _build_island_schematic_plan(model)
+
+    order = [r["ref"] for r in plan["rows"]]
+    assert abs(order.index("Za") - order.index("Zc")) == 1   # meme paire -> adjacents
+
+
+def test_multi_pin_devices_are_ordered_after_dipoles():
+    model = {"label": "I", "components": [
+        _unit("U1", "U", {"IN+": "A", "IN-": "B", "OUT": "C2"}),
+        _unit("Za", "Z", {"1": "A", "2": "B"}),
+    ]}
+
+    plan = _build_island_schematic_plan(model)
+
+    order = [r["ref"] for r in plan["rows"]]
+    assert order.index("Za") < order.index("U1")
