@@ -571,7 +571,22 @@ def _build_island_schematic_plan(model):
                 continue
             net_pins.setdefault(net, []).append((comp["ref"], pin))
 
-    col_nets = {net for net, pins in net_pins.items() if len(pins) >= 2}
+    # Nets-hubs rendus en drapeaux locaux (pas en colonnes-bus) : la masse toujours
+    # (convention CAO), l'alimentation seulement si elle est peripherique. Un rail
+    # d'alim dominant (relie a >= la moitie des unites) reste une colonne.
+    # ponytail: fraction 0.5, a ajuster si un rail legitime passe en drapeaux.
+    n_comps = len(components)
+
+    def _is_hub(net):
+        kind = _net_kind(net)
+        if kind == "ground":
+            return True
+        if kind == "power":
+            return len(net_pins.get(net, [])) < max(2, n_comps / 2)
+        return False
+
+    col_nets = {net for net, pins in net_pins.items()
+                if len(pins) >= 2 and not _is_hub(net)}
 
     dipoles = [c for c in components if not _is_multi_pin(c)]
     devices = [c for c in components if _is_multi_pin(c)]
@@ -682,13 +697,12 @@ def _draw_island_schematic(d, plan, hitboxes=None):
 
     # Colonnes-bus rognees : ligne verticale + etiquette + masse eventuelle.
     for c in columns:
+        # les colonnes ne sont jamais des nets de masse (rendus en drapeaux locaux).
         top = c["y_top"] + 0.5
-        bottom = c["y_bottom"] - (0.9 if c["kind"] == "ground" else 0.5)
+        bottom = c["y_bottom"] - 0.5
         d += elm.Line().at((c["x"], top)).to((c["x"], bottom)).color(_BUS)
         d += elm.Dot().at((c["x"], top)).label(
             c["net"], loc="top", color=_BUS, ofst=_LBL_OFST)
-        if c["kind"] == "ground":
-            d += elm.Ground().at((c["x"], bottom))
 
     for row in rows:
         cols_pins = [(p, n) for p, n in row["pins"] if n in x_by_net]
@@ -697,6 +711,19 @@ def _draw_island_schematic(d, plan, hitboxes=None):
             _draw_two_pin_row(d, row, x_by_net, "top", hitboxes)
         else:
             _draw_block_row(d, row, cols_pins, x_by_net, device_x)
+
+
+def _draw_net_end(d, net, at=None, loc="right"):
+    """@brief Termine un fil sur un net : drapeau de masse/alim si net-hub, sinon
+    point + nom de net (convention CAO ; @at None = position courante du dessin)."""
+    kind = _net_kind(net)
+    if kind == "ground":
+        el = elm.Ground()
+    elif kind == "power":
+        el = elm.Vdd().label(net, loc="top", color=_BUS, ofst=_LBL_OFST)
+    else:
+        el = elm.Dot().label(net, loc=loc, color=_BUS, ofst=_LBL_OFST)
+    d += el.at(at) if at is not None else el
 
 
 def _draw_two_pin_row(d, row, x_by_net, label_loc="top", hitboxes=None):
@@ -736,16 +763,16 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top", hitboxes=None):
         d += element().right(1.4).label(label, loc=label_loc)
         d += elm.Line().right(0.35).color(_WIRE)
         if not _is_not_connected(stub_net):
-            d += elm.Dot().label(stub_net, loc="right", color=_BUS, ofst=_LBL_OFST)
+            _draw_net_end(d, stub_net)
         _hit(col_x + 0.3, col_x + 1.7)
         return
 
-    # composant isole (deux moignons) : symbole + deux etiquettes.
+    # composant isole (deux moignons) : symbole + deux extremites.
     d += element().at((0.0, y)).right(1.4).label(label, loc=label_loc)
     if not _is_not_connected(n1):
-        d += elm.Dot().at((0.0, y)).label(n1, loc="left", color=_BUS, ofst=_LBL_OFST)
+        _draw_net_end(d, n1, at=(0.0, y), loc="left")
     if not _is_not_connected(n2):
-        d += elm.Dot().at((1.4, y)).label(n2, loc="right", color=_BUS, ofst=_LBL_OFST)
+        _draw_net_end(d, n2, at=(1.4, y), loc="right")
     _hit(0.0, 1.4)
 
 
@@ -774,7 +801,7 @@ def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
         if _is_not_connected(net):
             continue
         d += elm.Line().at((block_right[0], block_right[1] + stub_dy)).right(0.6).color(_WIRE)
-        d += elm.Dot().label(net, loc="right", color=_BUS, ofst=_LBL_OFST)
+        _draw_net_end(d, net)
         stub_dy += 0.7
 
 

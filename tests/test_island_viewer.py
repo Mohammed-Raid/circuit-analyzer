@@ -99,7 +99,7 @@ def test_plan_drops_nc_and_classifies_stub_vs_column():
     assert all(net != "NC" for _pin, net in u1["stubs"])
 
 
-def test_columns_ordered_ground_left_power_right_and_trimmed():
+def test_columns_signal_then_power_right_and_trimmed():
     model = {"label": "I", "components": [
         _unit("Z1", "Z", {"1": "VCC", "2": "AAA"}),
         _unit("Z2", "Z", {"1": "AAA", "2": "OUT"}),
@@ -111,12 +111,39 @@ def test_columns_ordered_ground_left_power_right_and_trimmed():
     xs = {c["net"]: c["x"] for c in plan["columns"]}
     by_net = {c["net"]: c for c in plan["columns"]}
 
-    assert xs["GND"] == min(xs.values())     # masse a gauche
-    assert xs["VCC"] == max(xs.values())     # alim a droite
+    assert "GND" not in xs                   # masse -> drapeau local, jamais colonne
+    assert xs["VCC"] == max(xs.values())     # alim (rail dominant ici) a droite
     # extent rogne aux lignes connectees a AAA (Z1 et Z2), quel que soit le packing
     ys = {r["ref"]: r["y"] for r in plan["rows"]}
     assert by_net["AAA"]["y_top"] == max(ys["Z1"], ys["Z2"])
     assert by_net["AAA"]["y_bottom"] == min(ys["Z1"], ys["Z2"])
+
+
+def test_ground_and_peripheral_power_become_flags_not_columns():
+    comps = [_unit(f"Z{i}", "Z", {"1": "IN", "2": "SIG"}) for i in range(6)]
+    comps += [_unit("Zg", "Z", {"1": "IN", "2": "GND"}),
+              _unit("Zg2", "Z", {"1": "SIG", "2": "GND"}),
+              _unit("Zv", "Z", {"1": "IN", "2": "VCC"}),
+              _unit("Zv2", "Z", {"1": "SIG", "2": "VCC"})]
+
+    cols = {c["net"] for c in _build_island_schematic_plan(
+        {"label": "I", "components": comps})["columns"]}
+
+    assert "GND" not in cols              # masse : toujours un drapeau local
+    assert "VCC" not in cols              # alim peripherique : drapeau local
+    assert {"IN", "SIG"} <= cols          # signaux partages : colonnes
+
+
+def test_dominant_power_rail_stays_a_column():
+    # AVCC relie a toutes les unites -> rail dominant -> reste une colonne-bus.
+    comps = [_unit("Z1", "Z", {"1": "AVCC", "2": "GND"}),
+             _unit("Z2", "Z", {"1": "AVCC", "2": "VOUT"}),
+             _unit("Z3", "Z", {"1": "AVCC", "2": "VREF"})]
+
+    cols = {c["net"] for c in _build_island_schematic_plan(
+        {"label": "I", "components": comps})["columns"]}
+
+    assert "AVCC" in cols
 
 
 def test_opamp_symbol_and_rows_do_not_overlap():
