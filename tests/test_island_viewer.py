@@ -134,6 +134,25 @@ def test_opamp_symbol_and_rows_do_not_overlap():
     assert all(abs(a - b) >= 2.0 for a, b in zip(ys, ys[1:]))   # pas mini = ROW_PITCH
 
 
+def test_row_gap_widens_for_rows_carrying_a_value():
+    # Deux dipoles SANS valeur -> pas = ROW_PITCH (2.0).
+    # Deux dipoles AVEC valeur -> pas = ROW_PITCH + LABEL_LINE (2.5).
+    sans = {"label": "I", "components": [
+        _unit("Z1", "Z", {"1": "A", "2": "B"}),
+        _unit("Z2", "Z", {"1": "A", "2": "B"}),
+    ]}
+    avec = {"label": "I", "components": [
+        _unit("Z1", "Z", {"1": "A", "2": "B"}, value="10k"),
+        _unit("Z2", "Z", {"1": "A", "2": "B"}, value="1k"),
+    ]}
+
+    ys_sans = [r["y"] for r in _build_island_schematic_plan(sans)["rows"]]
+    ys_avec = [r["y"] for r in _build_island_schematic_plan(avec)["rows"]]
+
+    assert abs(ys_sans[0] - ys_sans[1]) == 2.0   # ROW_PITCH
+    assert abs(ys_avec[0] - ys_avec[1]) == 2.5   # ROW_PITCH + LABEL_LINE
+
+
 # ── Rendu figure ──────────────────────────────────────────────────────────────
 
 def test_make_island_fig_draws_z_dipoles_and_caption():
