@@ -1,5 +1,0 @@
-# Reseau d'impedances mixtes R/L/C — bornes IN et OUT
-# Zeq(IN,OUT) attendu : (R1//C1)+L1  (type Z, melange)
-R1 IN M 10k
-C1 IN M 100n
-L1 M OUT 1m

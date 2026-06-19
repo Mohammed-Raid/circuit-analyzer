@@ -1,6 +1,0 @@
-# Reseau serie-parallele — bornes A et B
-# Zeq(A,B) attendu : ((R1+R2)//R3)+R4
-R1 A M1 1k
-R2 M1 M2 2k
-R3 A M2 3k
-R4 M2 B 470
