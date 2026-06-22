@@ -83,3 +83,26 @@ def test_dessiner_pont_composite_a_un_hitbox():
     assert len(boites) == 1
     x0, x1, y0, y1, refs, composition = boites[0]
     assert set(refs) == {"R1", "R6"}
+
+
+def test_dessiner_pont_deux_bras_composites_hitboxes_disjoints():
+    from circuit_analyzer.composant import Composant
+    comps = {r: Composant(r, "R", {"1": "x", "2": "y"}, "1k")
+             for r in ("R1", "R6", "R2", "R7", "R3", "R4", "R5")}
+    pont = {
+        "haut": "VIN", "bas": "VOUT", "gauche": "N1", "droite": "N2",
+        "bras": {
+            "haut_gauche": {"refs": ["R1", "R6"], "composition": "R1+R6"},
+            "haut_droite": {"refs": ["R2", "R7"], "composition": "R2+R7"},
+            "bas_gauche": {"refs": ["R3"], "composition": "R3"},
+            "bas_droite": {"refs": ["R4"], "composition": "R4"},
+            "pont": {"refs": ["R5"], "composition": "R5"},
+        },
+    }
+    fig = sch.dessiner_pont(pont, comps)
+    boites = fig._z_hitboxes
+    assert len(boites) == 2
+    (ax0, ax1, ay0, ay1, _, _), (bx0, bx1, by0, by1, _, _) = boites
+    # Les deux boites ne se chevauchent pas (clic non ambigu).
+    disjoints = ax1 <= bx0 or bx1 <= ax0 or ay1 <= by0 or by1 <= ay0
+    assert disjoints

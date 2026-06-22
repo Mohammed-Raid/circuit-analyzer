@@ -169,10 +169,12 @@ def _elem_bras(bras, comps, p1, p2):
         return cls().at(p1).to(p2).label(label, loc="bottom", fontsize=9), None
     label = impedance.formater_expr(bras["composition"])
     el = elm.ResistorIEC().at(p1).to(p2).label(label, loc="bottom", fontsize=9)
-    pad = 0.5
-    hit = (min(p1[0], p2[0]) - pad, max(p1[0], p2[0]) + pad,
-           min(p1[1], p2[1]) - pad, max(p1[1], p2[1]) + pad,
-           list(refs), bras["composition"])
+    # Hitbox centrée sur le SYMBOLE (milieu du bras), pas sur tout le segment :
+    # deux bras adjacents partagent un sommet, donc des bbox pleine-longueur se
+    # chevaucheraient près des sommets et rendraient le clic ambigu.
+    mx, my = (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2
+    half = 0.9
+    hit = (mx - half, mx + half, my - half, my + half, list(refs), bras["composition"])
     return el, hit
 
 
