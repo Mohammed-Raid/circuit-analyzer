@@ -47,3 +47,17 @@ def test_dessiner_produit_une_figure_sans_exception():
     fig = sch.dessiner(arbre, "VIN", "VOUT", comps)
     assert fig is not None
     assert len(fig.axes) == 1
+
+
+def test_dessiner_pont_produit_une_figure():
+    from circuit_analyzer.composant import Composant
+    comps = {r: Composant(r, "R", {"1": "x", "2": "y"}, "1k")
+             for r in ("R1", "R2", "R3", "R4", "R5")}
+    pont = {
+        "haut": "VIN", "bas": "VOUT", "gauche": "N1", "droite": "N2",
+        "bras": {"haut_gauche": "R1", "haut_droite": "R2",
+                 "bas_gauche": "R3", "bas_droite": "R4", "pont": "R5"},
+    }
+    fig = sch.dessiner_pont(pont, comps)
+    assert fig is not None
+    assert len(fig.axes) == 1

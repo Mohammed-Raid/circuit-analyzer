@@ -147,3 +147,46 @@ def dessiner(arbre, a, b, comps):
     except Exception:
         pass
     return fig
+
+
+def _elem_arete(ref, comps, p1, p2):
+    """@brief Élément schemdraw d'une arête (symbole selon type) entre deux points."""
+    comp = comps.get(ref)
+    cls = _SYMB.get(getattr(comp, "type", ""), elm.ResistorIEC)
+    valeur = getattr(comp, "value", "")
+    etiquette = f"{ref}\n{valeur}" if valeur else ref
+    return cls().at(p1).to(p2).label(etiquette, loc="bottom", fontsize=9)
+
+
+def dessiner_pont(pont, comps):
+    """@brief Figure matplotlib d'un pont (type Wheatstone) en losange.
+
+    @param pont Structure renvoyée par impedance.detecter_pont.
+    @param comps Dict {ref → Composant} (type pour le symbole, value pour l'étiquette).
+    @return matplotlib.figure.Figure (losange).
+    """
+    haut, gauche, droite, bas = (0.0, 4.0), (-2.0, 2.0), (2.0, 2.0), (0.0, 0.0)
+    bras = pont["bras"]
+    fig = Figure(figsize=(5.0, 5.5))
+    ax = fig.add_subplot(111)
+    fig.patch.set_facecolor(SCH_BG)
+    ax.set_facecolor(SCH_BG)
+    ax.axis("off")
+    ax.set_aspect("equal")
+
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d.config(fontsize=10, inches_per_unit=0.5)
+        d += _elem_arete(bras["haut_gauche"], comps, haut, gauche)
+        d += _elem_arete(bras["haut_droite"], comps, haut, droite)
+        d += _elem_arete(bras["bas_gauche"], comps, gauche, bas)
+        d += _elem_arete(bras["bas_droite"], comps, droite, bas)
+        d += _elem_arete(bras["pont"], comps, gauche, droite)
+        d += elm.Dot().at(haut).label(pont["haut"], loc="top", color=_BUS)
+        d += elm.Dot().at(bas).label(pont["bas"], loc="bottom", color=_BUS)
+
+    ax.margins(0.2)
+    try:
+        fig.tight_layout(pad=0.4)
+    except Exception:
+        pass
+    return fig
