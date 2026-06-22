@@ -394,3 +394,12 @@ def test_detecter_pont_triangle_renvoie_none():
         Composant("R3", "R", {"1": "N", "2": "VIN"}, "1k"),
     )
     assert impedance.detecter_pont(g, "VIN", "VOUT") is None
+
+
+def test_formater_valeur_avec_unite():
+    assert impedance.formater_valeur("10k", "R") == "10 kΩ"
+    assert impedance.formater_valeur("100n", "C") == "100 nF"
+    assert impedance.formater_valeur("1m", "L") == "1 mH"
+    assert impedance.formater_valeur("470", "R") == "470 Ω"
+    assert impedance.formater_valeur("", "R") == ""
+    assert impedance.formater_valeur("abc", "R") == "abc"  # non interpretable -> tel quel

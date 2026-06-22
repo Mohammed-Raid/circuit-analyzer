@@ -324,6 +324,24 @@ def _parse_valeur(s: str) -> float:
     return float(m.group(1)) * _PREFIXES.get(m.group(2), 1.0)
 
 
+_UNITES = {"R": "Ω", "L": "H", "C": "F"}
+
+
+def formater_valeur(value: str, typ: str) -> str:
+    """@brief Valeur ingénieur + unité pour étiquette (« 10k »,R → « 10 kΩ »).
+
+    @param value Chaîne valeur ; vide → "".
+    @param typ Type composant (R→Ω, L→H, C→F ; autre → sans unité).
+    @return str Étiquette formatée, ou la valeur brute si non interprétable.
+    """
+    if not value:
+        return ""
+    m = re.match(r'\s*([0-9]*\.?[0-9]+)\s*([pnuµmkKMG]?)', value)
+    if not m:
+        return value
+    return f"{m.group(1)} {m.group(2)}{_UNITES.get(typ, '')}".strip()
+
+
 def _impedance_complexe(typ: str, valeur: float, omega: float) -> complex:
     """@brief Impédance complexe d'un composant à la pulsation ω.
 
