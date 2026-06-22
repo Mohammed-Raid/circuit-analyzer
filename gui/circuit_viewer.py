@@ -218,6 +218,38 @@ def show_circuit(result: dict, comp_info: dict, parent=None):
 
 # ── Figure builder ────────────────────────────────────────────────────────────
 
+def _arbre_serie_parallele_ilot(ilot, graph):
+    """@brief Arbre série/parallèle d'un îlot réductible entre VIN et VOUT.
+
+    Reconstruit le sous-graphe de l'îlot depuis les composants ORIGINAUX, puis le
+    réduit symboliquement entre VIN et VOUT.
+
+    @param ilot Îlot détecté (clé "composants" = refs brutes).
+    @param graph Graphe original (porte graph["components"] : {ref → Composant}).
+    @return (arbre, comps) | None : arbre série/parallèle (cf. impedance.arbre_expr)
+            et dict {ref → Composant} du sous-graphe, ou None si non dessinable
+            (pas de composant, VIN/VOUT absents, pont Y-Δ, ou non série/parallèle).
+    """
+    from circuit_analyzer import impedance
+    from circuit_analyzer.composant import construire_graphe
+
+    raw = getattr(graph, "graph", {}).get("components", {}) or {}
+    refs = [r for r in ilot.get("composants", []) if r in raw]
+    if not refs:
+        return None
+    sous = construire_graphe([raw[r] for r in refs])
+    bornes = impedance.bornes_possibles(sous)
+    if "VIN" not in bornes or "VOUT" not in bornes:
+        return None
+    expr = impedance.impedance_equivalente(sous, "VIN", "VOUT")
+    if expr is None:
+        return None
+    arbre = impedance.arbre_expr(expr)
+    if arbre is None:
+        return None
+    return arbre, sous.graph["components"]
+
+
 def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     """Ouvre une fenetre affichant le schema reel d'un ilot."""
     model = _build_island_model(ilot, graph, comp_info)
@@ -249,8 +281,14 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                      fg_color=color, text_color="#ffffff",
                      corner_radius=4).pack(side="left", padx=3)
 
-    matches = _matches_for_island(ilot, results)
-    fig = _make_island_fig(model, matches=matches)
+    _sp = _arbre_serie_parallele_ilot(ilot, graph)
+    if _sp is not None:
+        from gui import impedance_schematic
+        _arbre, _comps = _sp
+        fig = impedance_schematic.dessiner(_arbre, "VIN", "VOUT", _comps)
+    else:
+        matches = _matches_for_island(ilot, results)
+        fig = _make_island_fig(model, matches=matches)
     canvas_frame = ctk.CTkFrame(popup, fg_color=SCH_BG, corner_radius=10)
     canvas_frame.pack(fill="both", expand=True, padx=14, pady=(4, 0))
 

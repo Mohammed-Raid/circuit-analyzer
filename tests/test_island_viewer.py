@@ -393,3 +393,30 @@ def test_net_labels_are_offset_from_symbols():
     texts = [t.get_text() for ax in fig.axes for t in ax.texts]
     assert any("IN" in t for t in texts)     # net moignon affiche
     assert any("OUT" in t for t in texts)    # net moignon de l'AOP affiche
+
+
+def test_arbre_serie_parallele_ilot_reductible_vin_vout():
+    from circuit_analyzer.composant import Composant, construire_graphe
+    from gui import circuit_viewer
+    g = construire_graphe([
+        Composant("R1", "R", {"1": "VIN", "2": "M"}, "1k"),
+        Composant("R2", "R", {"1": "M", "2": "VOUT"}, "2k"),
+        Composant("R3", "R", {"1": "VIN", "2": "VOUT"}, "3k"),
+    ])
+    ilot = {"label": "Ilot", "composants": ["R1", "R2", "R3"]}
+    res = circuit_viewer._arbre_serie_parallele_ilot(ilot, g)
+    assert res is not None
+    arbre, comps = res
+    # (R1+R2)//R3 -> racine parallele.
+    assert arbre[0] == "parallele"
+    assert set(comps) == {"R1", "R2", "R3"}
+
+
+def test_arbre_serie_parallele_ilot_sans_vin_vout_renvoie_none():
+    from circuit_analyzer.composant import Composant, construire_graphe
+    from gui import circuit_viewer
+    g = construire_graphe([
+        Composant("R1", "R", {"1": "A", "2": "B"}, "1k"),
+    ])
+    ilot = {"label": "Ilot", "composants": ["R1"]}
+    assert circuit_viewer._arbre_serie_parallele_ilot(ilot, g) is None
