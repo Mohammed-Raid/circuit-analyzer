@@ -8,7 +8,9 @@ impédance Z — un dipôle qui est aussi un sous-circuit consommé par les gran
 montages (inverseur, intégrateur…). But premier : qu'aucun composant passif ne
 reste « non classifié » — tout R/L/C devient au minimum une Z singleton.
 """
+import ast
 import copy
+import math
 import re
 
 import networkx as nx
@@ -298,6 +300,94 @@ def formater_expr(expr: str) -> str:
         prev = out
         out = re.sub(r'\(([A-Za-z]\w*)\)', r'\1', out)
     return out.replace('*', '·')
+
+
+# Préfixes SI usuels en électronique. 'm' = milli, 'M' = méga (casse stricte) ;
+# 'k'/'K' tolérés pour kilo, 'µ'/'u' pour micro.
+_PREFIXES = {'p': 1e-12, 'n': 1e-9, 'u': 1e-6, 'µ': 1e-6, 'm': 1e-3,
+             'k': 1e3, 'K': 1e3, 'M': 1e6, 'G': 1e9}
+
+
+def _parse_valeur(s: str) -> float:
+    """@brief Convertit une valeur ingénieur (« 10k », « 100n », « 470 ») en float SI.
+
+    Une éventuelle unité finale (« 100nF », « 1mH ») est ignorée : seuls le nombre
+    et l'éventuel préfixe sont lus.
+
+    @param s Chaîne valeur.
+    @return float Valeur en unité SI de base (Ω, F ou H).
+    @raises ValueError si s est vide ou non interprétable.
+    """
+    m = re.match(r'\s*([0-9]*\.?[0-9]+)\s*([pnuµmkKMG])?', s or '')
+    if not m:
+        raise ValueError(f"valeur non interprétable : {s!r}")
+    return float(m.group(1)) * _PREFIXES.get(m.group(2), 1.0)
+
+
+def _impedance_complexe(typ: str, valeur: float, omega: float) -> complex:
+    """@brief Impédance complexe d'un composant à la pulsation ω.
+
+    R → R ; L → jωL ; C → 1/(jωC) = -j/(ωC).
+
+    @param typ Type ('R', 'L' ou 'C').
+    @param valeur Valeur SI (Ω, H ou F).
+    @param omega Pulsation 2πf (rad/s).
+    @return complex Impédance (Ω).
+    @raises ValueError pour un type non évaluable.
+    """
+    if typ == 'R':
+        return complex(valeur, 0.0)
+    if typ == 'L':
+        return complex(0.0, omega * valeur)
+    if typ == 'C':
+        if omega == 0 or valeur == 0:
+            return complex(math.inf, 0.0)  # condensateur en continu = circuit ouvert
+        return complex(0.0, -1.0 / (omega * valeur))
+    raise ValueError(f"type non évaluable : {typ}")
+
+
+def evaluer_impedance(graphe, expr: str, f: float) -> complex:
+    """@brief Évalue numériquement une expression d'impédance à la fréquence f.
+
+    L'expression (produite par `impedance_equivalente`) est interprétée via l'AST :
+    « + » = série, « // » = parallèle (a·b/(a+b)), « * » et « / » = produit/quotient
+    (bras de transformation Y-Δ). Chaque symbole (R1, L1, C1…) est remplacé par son
+    impédance complexe à la pulsation 2πf.
+
+    @param graphe Graphe d'origine (dict 'components' : ref → Composant).
+    @param expr Expression de composition (ex. « (R1+R2)//C1 »).
+    @param f Fréquence en Hz.
+    @return complex Impédance équivalente Z (Ω).
+    @raises ValueError si une valeur est manquante/illisible ou l'expression invalide.
+    """
+    omega = 2 * math.pi * f
+    imp = {
+        ref: _impedance_complexe(c.type, _parse_valeur(c.value), omega)
+        for ref, c in graphe.graph.get('components', {}).items()
+        if c.type in TYPES_REDUCTIBLES
+    }
+
+    def _ev(node):
+        if isinstance(node, ast.Expression):
+            return _ev(node.body)
+        if isinstance(node, ast.BinOp):
+            a, b = _ev(node.left), _ev(node.right)
+            if isinstance(node.op, ast.Add):
+                return a + b
+            if isinstance(node.op, ast.Mult):
+                return a * b
+            if isinstance(node.op, ast.Div):
+                return a / b
+            if isinstance(node.op, ast.FloorDiv):  # // = parallèle
+                return a * b / (a + b)
+            raise ValueError("opérateur non supporté dans l'expression")
+        if isinstance(node, ast.Name):
+            if node.id not in imp:
+                raise ValueError(f"valeur manquante pour {node.id}")
+            return imp[node.id]
+        raise ValueError("expression d'impédance non évaluable")
+
+    return _ev(ast.parse(expr, mode='eval'))
 
 
 def bornes_possibles(graphe) -> list:

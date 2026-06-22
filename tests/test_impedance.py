@@ -263,3 +263,63 @@ def test_expansion_depuis_graphe_et_expandre():
     assert match['components'] == ['Z1']
     # sans expansion (singleton), la ref passe telle quelle
     assert impedance.expandre_composites({'components': ['R5']}, {})['components'] == ['R5']
+
+
+# ── evaluation numerique : valeur ingenieur + Z complexe a une frequence ──────
+
+def test_parse_valeur_prefixes_ingenieur():
+    assert impedance._parse_valeur('470') == 470.0
+    assert impedance._parse_valeur('10k') == 10_000.0
+    assert abs(impedance._parse_valeur('100n') - 100e-9) < 1e-18
+    assert abs(impedance._parse_valeur('1m') - 1e-3) < 1e-15
+    assert abs(impedance._parse_valeur('2.2u') - 2.2e-6) < 1e-15
+    assert impedance._parse_valeur('1M') == 1e6        # mega, pas milli
+    assert abs(impedance._parse_valeur('100nF') - 100e-9) < 1e-18  # unite finale ignoree
+
+
+def test_evaluer_impedance_resistances_serie_reelle():
+    # R1+R2 = 1k + 2k = 3000 ohm, purement reel (independant de f).
+    g = _graphe(
+        Composant('R1', 'R', {'1': 'A', '2': 'M'}, '1k'),
+        Composant('R2', 'R', {'1': 'M', '2': 'B'}, '2k'),
+    )
+    z = impedance.evaluer_impedance(g, 'R1+R2', 1000)
+    assert abs(z - complex(3000, 0)) < 1e-6
+
+
+def test_evaluer_impedance_parallele_resistances():
+    # R1//R2 = 1k // 1k = 500 ohm.
+    g = _graphe(
+        Composant('R1', 'R', {'1': 'A', '2': 'B'}, '1k'),
+        Composant('R2', 'R', {'1': 'A', '2': 'B'}, '1k'),
+    )
+    z = impedance.evaluer_impedance(g, '(R1//R2)', 1000)
+    assert abs(z - complex(500, 0)) < 1e-6
+
+
+def test_evaluer_impedance_condensateur_reactance_negative():
+    # C seul : Z = -j/(wC). C=1uF, f=1000Hz -> w=2pi*1000, |Z|~159.15 ohm, reel~0.
+    import math
+    g = _graphe(Composant('C1', 'C', {'1': 'A', '2': 'B'}, '1u'))
+    z = impedance.evaluer_impedance(g, 'C1', 1000)
+    attendu = -1.0 / (2 * math.pi * 1000 * 1e-6)
+    assert abs(z.real) < 1e-6
+    assert abs(z.imag - attendu) < 1e-3
+
+
+def test_evaluer_impedance_bobine_reactance_positive():
+    # L seule : Z = jwL. L=1mH, f=1000Hz -> +j*2pi*1000*1e-3 ~ +6.283j.
+    import math
+    g = _graphe(Composant('L1', 'L', {'1': 'A', '2': 'B'}, '1m'))
+    z = impedance.evaluer_impedance(g, 'L1', 1000)
+    assert abs(z.real) < 1e-6
+    assert abs(z.imag - 2 * math.pi * 1000 * 1e-3) < 1e-6
+
+
+def test_evaluer_impedance_valeur_manquante_leve():
+    g = _graphe(Composant('R1', 'R', {'1': 'A', '2': 'B'}, ''))
+    try:
+        impedance.evaluer_impedance(g, 'R1', 1000)
+        assert False, "devrait lever ValueError sur valeur vide"
+    except ValueError:
+        pass
