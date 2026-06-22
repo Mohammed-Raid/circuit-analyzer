@@ -351,3 +351,46 @@ def test_arbre_expr_feuille_seule():
 def test_arbre_expr_pont_non_serie_parallele():
     # Une expression Y-D contient * et / -> pas de forme serie/parallele.
     assert impedance.arbre_expr("(R1)*(R2)/((R1)+(R2)+(R5))") is None
+
+
+# ── detecter_pont : motif pont de Wheatstone (4 noeuds / 5 aretes) ────────────
+
+def test_detecter_pont_wheatstone():
+    # VIN/VOUT bornes ; NET1/NET2 internes ; R5 = diagonale.
+    g = _graphe(
+        Composant("R1", "R", {"1": "VIN", "2": "NET1"}, "1k"),
+        Composant("R2", "R", {"1": "VIN", "2": "NET2"}, "1k"),
+        Composant("R3", "R", {"1": "NET1", "2": "VOUT"}, "1k"),
+        Composant("R4", "R", {"1": "NET2", "2": "VOUT"}, "1k"),
+        Composant("R5", "R", {"1": "NET1", "2": "NET2"}, "1k"),
+    )
+    pont = impedance.detecter_pont(g, "VIN", "VOUT")
+    assert pont is not None
+    assert pont["haut"] == "VIN" and pont["bas"] == "VOUT"
+    assert {pont["gauche"], pont["droite"]} == {"NET1", "NET2"}
+    assert pont["gauche"] == "NET1"
+    bras = pont["bras"]
+    assert bras["haut_gauche"] == "R1"
+    assert bras["haut_droite"] == "R2"
+    assert bras["bas_gauche"] == "R3"
+    assert bras["bas_droite"] == "R4"
+    assert bras["pont"] == "R5"
+
+
+def test_detecter_pont_serie_parallele_renvoie_none():
+    g = _graphe(
+        Composant("R1", "R", {"1": "VIN", "2": "M"}, "1k"),
+        Composant("R2", "R", {"1": "M", "2": "VOUT"}, "1k"),
+        Composant("R3", "R", {"1": "VIN", "2": "VOUT"}, "1k"),
+    )
+    assert impedance.detecter_pont(g, "VIN", "VOUT") is None
+
+
+def test_detecter_pont_triangle_renvoie_none():
+    # 3 noeuds seulement -> pas un pont.
+    g = _graphe(
+        Composant("R1", "R", {"1": "VIN", "2": "VOUT"}, "1k"),
+        Composant("R2", "R", {"1": "VOUT", "2": "N"}, "1k"),
+        Composant("R3", "R", {"1": "N", "2": "VIN"}, "1k"),
+    )
+    assert impedance.detecter_pont(g, "VIN", "VOUT") is None

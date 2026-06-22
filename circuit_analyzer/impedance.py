@@ -429,6 +429,51 @@ def arbre_expr(expr: str):
         return None
 
 
+def detecter_pont(graphe, a, b):
+    """@brief Reconnaît un motif pont (type Wheatstone) entre les bornes a et b.
+
+    Motif : exactement 4 nœuds et 5 arêtes R/L/C simples ; a et b de degré 2, non
+    adjacents ; les 2 autres nœuds (n1, n2) de degré 3, adjacents entre eux ; arêtes
+    a-n1, a-n2, n1-b, n2-b, n1-n2.
+
+    @param graphe Graphe d'origine (arêtes R/L/C).
+    @param a, b Les deux bornes (sommet haut / bas du losange).
+    @return dict|None Structure du pont (nœuds + mapping rôle→ref), ou None.
+    """
+    W = _graphe_de_travail(graphe)
+    if a not in W or b not in W:
+        return None
+    if W.number_of_nodes() != 4 or W.number_of_edges() != 5:
+        return None
+    if any(W.number_of_edges(u, v) != 1 for u, v in set(W.edges())):
+        return None
+    if W.degree(a) != 2 or W.degree(b) != 2 or W.has_edge(a, b):
+        return None
+    internes = [n for n in W.nodes() if n not in (a, b)]
+    if len(internes) != 2:
+        return None
+    n1, n2 = sorted(internes, key=str)
+    if W.degree(n1) != 3 or W.degree(n2) != 3 or not W.has_edge(n1, n2):
+        return None
+    attendues = [(a, n1), (a, n2), (n1, b), (n2, b), (n1, n2)]
+    if not all(W.has_edge(u, v) for u, v in attendues):
+        return None
+
+    def _ref(u, v):
+        return next(iter(W.get_edge_data(u, v).values()))["refs"][0]
+
+    return {
+        "haut": a, "bas": b, "gauche": n1, "droite": n2,
+        "bras": {
+            "haut_gauche": _ref(a, n1),
+            "haut_droite": _ref(a, n2),
+            "bas_gauche": _ref(n1, b),
+            "bas_droite": _ref(n2, b),
+            "pont": _ref(n1, n2),
+        },
+    }
+
+
 def bornes_possibles(graphe) -> list:
     """@brief Nets touchés par au moins une impédance (R/L/C) — bornes candidates.
 
