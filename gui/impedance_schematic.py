@@ -9,6 +9,10 @@ ligne, parallèle = branches empilées entre deux rails. Module isolé : la vue
 """
 import collections
 
+import schemdraw
+import schemdraw.elements as elm
+from matplotlib.figure import Figure
+
 Dims = collections.namedtuple("Dims", "largeur hauteur y_borne")
 
 # Unités schemdraw (1 unité ≈ une longueur de symbole).
@@ -91,3 +95,55 @@ def agencer(arbre):
     symboles, fils = [], []
     dims = _emettre(arbre, 0.0, 0.0, symboles, fils)
     return symboles, fils, dims
+
+
+SCH_BG = "#fafafa"   # fond clair standard de schéma (idem circuit_viewer)
+_WIRE = "#1e293b"
+_BUS = "#475569"
+
+# Symbole schemdraw par type de composant ; défaut = boîte Z générique.
+_SYMB = {
+    "R": elm.Resistor,
+    "C": elm.Capacitor,
+    "L": elm.Inductor2,
+}
+
+
+def dessiner(arbre, a, b, comps):
+    """@brief Figure matplotlib du schéma série/parallèle de l'arbre.
+
+    @param arbre Arbre série/parallèle (cf. impedance.arbre_expr).
+    @param a, b Noms des bornes d'entrée/sortie (étiquettes A/B du dessin).
+    @param comps Dict {ref → Composant} pour le type (symbole) et la valeur.
+    @return matplotlib.figure.Figure prête à embarquer.
+    """
+    symboles, fils, dims = agencer(arbre)
+    fig = Figure(figsize=(max(4.0, dims.largeur * 0.6 + 1.5),
+                          max(3.0, dims.hauteur * 0.6 + 1.5)))
+    ax = fig.add_subplot(111)
+    fig.patch.set_facecolor(SCH_BG)
+    ax.set_facecolor(SCH_BG)
+    ax.axis("off")
+    ax.set_aspect("equal")
+
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d.config(fontsize=10, inches_per_unit=0.5)
+        for ref, x1, x2, y in symboles:
+            comp = comps.get(ref)
+            cls = _SYMB.get(getattr(comp, "type", ""), elm.ResistorIEC)
+            valeur = getattr(comp, "value", "")
+            etiquette = f"{ref}\n{valeur}" if valeur else ref
+            d += cls().at((x1, y)).to((x2, y)).label(etiquette, loc="bottom",
+                                                     fontsize=9)
+        for (xa, ya), (xb, yb) in fils:
+            d += elm.Line().at((xa, ya)).to((xb, yb)).color(_WIRE)
+        d += elm.Dot().at((0.0, dims.y_borne)).label(a, loc="left", color=_BUS)
+        d += elm.Dot().at((dims.largeur, dims.y_borne)).label(
+            b, loc="right", color=_BUS)
+
+    ax.margins(0.15)
+    try:
+        fig.tight_layout(pad=0.4)
+    except Exception:
+        pass
+    return fig

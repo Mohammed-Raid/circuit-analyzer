@@ -9,9 +9,13 @@ import cmath
 import math
 
 import customtkinter as ctk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from circuit_analyzer import impedance
+from gui import impedance_schematic
 from gui.theme import BG, CARD, CARD2, BORDER, TEXT, MUTED, BLUE
+
+SCH_BG = "#fafafa"   # fond clair standard de schema (idem circuit_viewer)
 
 
 def _fmt_ohms(x: float) -> str:
@@ -38,7 +42,7 @@ def show_impedance_equivalent(graph, parent=None):
     bornes = impedance.bornes_possibles(graph)
     win = ctk.CTkToplevel(parent)
     win.title("Impédance équivalente")
-    win.geometry("560x400")
+    win.geometry("720x640")
     win.configure(fg_color=BG)
     if parent is not None:
         win.transient(parent.winfo_toplevel())
@@ -87,6 +91,9 @@ def show_impedance_equivalent(graph, parent=None):
                             wraplength=500, justify="left")
     resultat.pack(fill="x", padx=24, pady=(4, 8))
 
+    schema_holder = ctk.CTkFrame(win, fg_color=SCH_BG, corner_radius=10)
+    schema_holder.pack(fill="both", expand=True, padx=24, pady=(4, 12))
+
     def _calculer():
         a, b = var_a.get(), var_b.get()
         if a == b:
@@ -94,6 +101,9 @@ def show_impedance_equivalent(graph, parent=None):
                                text_color="#f59e0b")
             return
         expr = impedance.impedance_equivalente(graph, a, b)
+        # Vider un eventuel schema precedent.
+        for w in schema_holder.winfo_children():
+            w.destroy()
         if expr is None:
             resultat.configure(
                 text=f"Réseau non réductible entre {a} et {b} par série/parallèle/Y-Δ\n"
@@ -101,8 +111,6 @@ def show_impedance_equivalent(graph, parent=None):
                 text_color="#f59e0b")
             return
         lignes = [f"Z({a},{b}) = {impedance.formater_expr(expr)}"]
-        couleur = "#34d399"
-        # Évaluation numérique optionnelle à la fréquence saisie.
         f_txt = var_f.get().strip()
         if f_txt:
             try:
@@ -113,7 +121,16 @@ def show_impedance_equivalent(graph, parent=None):
                               f"  ∠ {phase:+.1f}°")
             except (ValueError, ZeroDivisionError) as e:
                 lignes.append(f"(valeur numérique indisponible : {e})")
-        resultat.configure(text="\n".join(lignes), text_color=couleur)
+        arbre = impedance.arbre_expr(expr)
+        if arbre is None:
+            lignes.append("Réseau en pont (Y-Δ) — pas de forme série/parallèle à dessiner.")
+        else:
+            fig = impedance_schematic.dessiner(arbre, a, b, graph.graph["components"])
+            canvas = FigureCanvasTkAgg(fig, master=schema_holder)
+            canvas.draw()
+            canvas.get_tk_widget().configure(bg=SCH_BG, highlightthickness=0)
+            canvas.get_tk_widget().pack(fill="both", expand=True)
+        resultat.configure(text="\n".join(lignes), text_color="#34d399")
 
     ctk.CTkButton(win, text="Calculer", height=38, corner_radius=8,
                   font=ctk.CTkFont("Segoe UI", 12, "bold"),

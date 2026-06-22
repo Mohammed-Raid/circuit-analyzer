@@ -33,3 +33,17 @@ def test_agencer_feuille_seule():
     assert symboles[0][0] == "R1"
     assert fils == []
     assert abs(dims.largeur - sch.W_SYMB) < 1e-9
+
+
+def test_dessiner_produit_une_figure_sans_exception():
+    from circuit_analyzer.composant import Composant
+    comps = {
+        "R1": Composant("R1", "R", {"1": "A", "2": "M"}, "1k"),
+        "R2": Composant("R2", "R", {"1": "M", "2": "B"}, "2k"),
+        "R3": Composant("R3", "R", {"1": "A", "2": "B"}, "3k"),
+    }
+    arbre = ("parallele", [("serie", [("feuille", "R1"), ("feuille", "R2")]),
+                           ("feuille", "R3")])
+    fig = sch.dessiner(arbre, "VIN", "VOUT", comps)
+    assert fig is not None
+    assert len(fig.axes) == 1
