@@ -365,8 +365,17 @@ def show_dipole_detail(refs, composition, graph, comp_info, parent=None):
     @return None
     """
     titre = f"Z = {composition}" if composition else "Detail Z"
-    model = _build_dipole_model(refs, graph, comp_info, label=titre)
-    fig = _make_island_fig(model)
+    # Detail en forme serie/parallele si la composition est reductible (coherent
+    # avec la vue principale) ; sinon (ex. « pont{...} ») on garde l'ancien dessin.
+    from circuit_analyzer import impedance
+    from gui import impedance_schematic
+    arbre = impedance.arbre_expr(composition) if composition else None
+    if arbre is not None:
+        comps = getattr(graph, "graph", {}).get("components", {}) or {}
+        fig = impedance_schematic.dessiner(arbre, "A", "B", comps)
+    else:
+        model = _build_dipole_model(refs, graph, comp_info, label=titre)
+        fig = _make_island_fig(model)
 
     popup = ctk.CTkToplevel(parent)
     popup.title(titre)
