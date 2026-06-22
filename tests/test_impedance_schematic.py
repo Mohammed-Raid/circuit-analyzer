@@ -106,3 +106,36 @@ def test_dessiner_pont_deux_bras_composites_hitboxes_disjoints():
     # Les deux boites ne se chevauchent pas (clic non ambigu).
     disjoints = ax1 <= bx0 or bx1 <= ax0 or ay1 <= by0 or by1 <= ay0
     assert disjoints
+
+
+def _comps_rlc(*refs):
+    from circuit_analyzer.composant import Composant
+    t = {"C1": "C", "C2": "C", "L1": "L"}
+    return {r: Composant(r, t.get(r, "R"), {"1": "x", "2": "y"}, "1k") for r in refs}
+
+
+def test_dessiner_groupe_cree_boites_z_cliquables():
+    # R1 + ((R2+C1)//(L1+R3)) + (R4//C2) -> R1 (feuille) + Z1 + Z2
+    arbre = ("serie", [
+        ("feuille", "R1"),
+        ("parallele", [("serie", [("feuille", "R2"), ("feuille", "C1")]),
+                       ("serie", [("feuille", "L1"), ("feuille", "R3")])]),
+        ("parallele", [("feuille", "R4"), ("feuille", "C2")]),
+    ])
+    comps = _comps_rlc("R1", "R2", "C1", "L1", "R3", "R4", "C2")
+    fig = sch.dessiner_groupe(arbre, "VIN", "VOUT", comps)
+    hb = fig._z_hitboxes
+    assert len(hb) == 2                       # deux sous-blocs -> deux boites Z
+    refs_par_boite = sorted((sorted(b[4]) for b in hb), key=len)
+    assert refs_par_boite[0] == ["C2", "R4"]                       # Z2 = R4//C2
+    assert refs_par_boite[1] == ["C1", "L1", "R2", "R3"]           # Z1 = (R2+C1)//(L1+R3)
+    # la composition stockee doit etre reparsable (pour le drill-down)
+    from circuit_analyzer import impedance
+    for b in hb:
+        assert impedance.arbre_expr(b[5]) is not None
+
+
+def test_dessiner_groupe_tout_simple_aucune_boite():
+    arbre = ("serie", [("feuille", "R1"), ("feuille", "R2")])
+    fig = sch.dessiner_groupe(arbre, "A", "B", _comps_rlc("R1", "R2"))
+    assert fig._z_hitboxes == []

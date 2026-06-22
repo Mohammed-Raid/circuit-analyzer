@@ -125,7 +125,7 @@ def show_impedance_equivalent(graph, parent=None):
         pont = impedance.detecter_pont(graph, a, b) if arbre is None else None
         fig = None
         if arbre is not None:
-            fig = impedance_schematic.dessiner(arbre, a, b, graph.graph["components"])
+            fig = impedance_schematic.dessiner_groupe(arbre, a, b, graph.graph["components"])
         elif pont is not None:
             fig = impedance_schematic.dessiner_pont(pont, graph.graph["components"])
             lignes.append("Réseau en pont — cliquez une boîte Z pour le détail.")

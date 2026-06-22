@@ -109,15 +109,18 @@ _SYMB = {
 }
 
 
-def dessiner(arbre, a, b, comps):
-    """@brief Figure matplotlib du schéma série/parallèle de l'arbre.
+def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes):
+    """@brief Cœur de rendu série/parallèle.
 
-    @param arbre Arbre série/parallèle (cf. impedance.arbre_expr).
-    @param a, b Noms des bornes d'entrée/sortie (étiquettes A/B du dessin).
-    @param comps Dict {ref → Composant} pour le type (symbole) et la valeur.
-    @return matplotlib.figure.Figure prête à embarquer.
+    Trace `arbre_a_tracer` (déjà mis en page par agencer). Une feuille dont la clé
+    est dans `groupes` est rendue comme une BOÎTE Z numérotée (Zn) + composition,
+    et enregistrée comme zone cliquable ; sinon comme le composant réel.
+
+    @param groupes Dict {clé → (refs, composition)} ; vide = tout détaillé.
+    @return matplotlib.figure.Figure ; fig._z_hitboxes = zones cliquables des Z.
     """
-    symboles, fils, dims = agencer(arbre)
+    from circuit_analyzer import impedance
+    symboles, fils, dims = agencer(arbre_a_tracer)
     fig = Figure(figsize=(max(4.0, dims.largeur * 0.6 + 1.5),
                           max(3.0, dims.hauteur * 0.6 + 1.5)))
     ax = fig.add_subplot(111)
@@ -126,29 +129,103 @@ def dessiner(arbre, a, b, comps):
     ax.axis("off")
     ax.set_aspect("equal")
 
+    ordre_groupes = list(groupes)
+    hitboxes = []
     with schemdraw.Drawing(canvas=ax, show=False) as d:
         d.config(fontsize=10, inches_per_unit=0.5)
         for ref, x1, x2, y in symboles:
-            comp = comps.get(ref)
-            cls = _SYMB.get(getattr(comp, "type", ""), elm.ResistorIEC)
-            valeur = getattr(comp, "value", "")
-            from circuit_analyzer import impedance
-            vfmt = impedance.formater_valeur(valeur, getattr(comp, "type", ""))
-            etiquette = f"{ref}\n{vfmt}" if vfmt else ref
-            d += cls().at((x1, y)).to((x2, y)).label(etiquette, loc="bottom",
-                                                     fontsize=9)
+            if ref in groupes:
+                grefs, gcompo = groupes[ref]
+                n = ordre_groupes.index(ref) + 1
+                label = f"Z{n}\n{impedance.formater_expr(gcompo)}"
+                d += elm.ResistorIEC().at((x1, y)).to((x2, y)).label(
+                    label, loc="bottom", fontsize=9)
+                hitboxes.append((x1 - 0.1, x2 + 0.1, y - 0.6, y + 0.6,
+                                 list(grefs), gcompo))
+            else:
+                comp = comps.get(ref)
+                cls = _SYMB.get(getattr(comp, "type", ""), elm.ResistorIEC)
+                vfmt = impedance.formater_valeur(getattr(comp, "value", ""),
+                                                 getattr(comp, "type", ""))
+                etiquette = f"{ref}\n{vfmt}" if vfmt else ref
+                d += cls().at((x1, y)).to((x2, y)).label(etiquette, loc="bottom",
+                                                         fontsize=9)
         for (xa, ya), (xb, yb) in fils:
             d += elm.Line().at((xa, ya)).to((xb, yb)).color(_WIRE)
         d += elm.Dot().at((0.0, dims.y_borne)).label(a, loc="left", color=_BUS)
         d += elm.Dot().at((dims.largeur, dims.y_borne)).label(
             b, loc="right", color=_BUS)
 
+    fig._z_hitboxes = hitboxes
     ax.margins(0.15)
     try:
         fig.tight_layout(pad=0.4)
     except Exception:
         pass
     return fig
+
+
+def dessiner(arbre, a, b, comps):
+    """@brief Schéma série/parallèle DÉTAILLÉ (tous les R/L/C). Pas de boîte Z.
+
+    @param arbre Arbre série/parallèle (cf. impedance.arbre_expr).
+    @param a, b Noms des bornes d'entrée/sortie (étiquettes du dessin).
+    @param comps Dict {ref → Composant} pour le type (symbole) et la valeur.
+    @return matplotlib.figure.Figure prête à embarquer.
+    """
+    return _dessiner_impl(arbre, a, b, comps, {})
+
+
+def _refs_arbre(node):
+    """@brief Toutes les refs (feuilles) d'un sous-arbre."""
+    if node[0] == "feuille":
+        return [node[1]]
+    out = []
+    for c in node[1]:
+        out.extend(_refs_arbre(c))
+    return out
+
+
+def _compo_arbre(node):
+    """@brief Reconstruit l'expression de composition d'un sous-arbre.
+
+    Parenthèse les opérandes série au sein d'un parallèle pour rester reparsable
+    (« (R2+C1)//(L1+R3) »).
+    """
+    if node[0] == "feuille":
+        return node[1]
+    if node[0] == "serie":
+        return "+".join(_compo_arbre(c) for c in node[1])
+    parts = []
+    for c in node[1]:
+        s = _compo_arbre(c)
+        parts.append(f"({s})" if "+" in s else s)
+    return "//".join(parts)
+
+
+def dessiner_groupe(arbre, a, b, comps):
+    """@brief Schéma GROUPÉ : chaque sous-bloc devient une boîte Z cliquable.
+
+    Le niveau racine est dessiné ; un enfant composite (pas une feuille) devient
+    une boîte Zn (composition affichée dessous) + zone cliquable ; un enfant
+    composant reste détaillé. Le clic ouvre le détail (cf. show_dipole_detail).
+
+    @return matplotlib.figure.Figure ; fig._z_hitboxes = zones cliquables des Z.
+    """
+    groupes = {}
+    if arbre[0] == "feuille":
+        shallow = arbre
+    else:
+        enfants = []
+        for c in arbre[1]:
+            if c[0] == "feuille":
+                enfants.append(c)
+            else:
+                cle = f"__G{len(groupes) + 1}__"
+                groupes[cle] = (_refs_arbre(c), _compo_arbre(c))
+                enfants.append(("feuille", cle))
+        shallow = (arbre[0], enfants)
+    return _dessiner_impl(shallow, a, b, comps, groupes)
 
 
 def _elem_bras(bras, comps, p1, p2):
