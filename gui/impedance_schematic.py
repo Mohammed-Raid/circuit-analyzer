@@ -132,7 +132,9 @@ def dessiner(arbre, a, b, comps):
             comp = comps.get(ref)
             cls = _SYMB.get(getattr(comp, "type", ""), elm.ResistorIEC)
             valeur = getattr(comp, "value", "")
-            etiquette = f"{ref}\n{valeur}" if valeur else ref
+            from circuit_analyzer import impedance
+            vfmt = impedance.formater_valeur(valeur, getattr(comp, "type", ""))
+            etiquette = f"{ref}\n{vfmt}" if vfmt else ref
             d += cls().at((x1, y)).to((x2, y)).label(etiquette, loc="bottom",
                                                      fontsize=9)
         for (xa, ya), (xb, yb) in fils:
@@ -149,24 +151,47 @@ def dessiner(arbre, a, b, comps):
     return fig
 
 
-def _elem_arete(ref, comps, p1, p2):
-    """@brief Élément schemdraw d'une arête (symbole selon type) entre deux points."""
-    comp = comps.get(ref)
-    cls = _SYMB.get(getattr(comp, "type", ""), elm.ResistorIEC)
-    valeur = getattr(comp, "value", "")
-    etiquette = f"{ref}\n{valeur}" if valeur else ref
-    return cls().at(p1).to(p2).label(etiquette, loc="bottom", fontsize=9)
+def _elem_bras(bras, comps, p1, p2):
+    """@brief (élément schemdraw, hitbox|None) pour un bras du pont.
+
+    Bras simple (1 réf) : symbole du type + « ref\\nvaleur ». Bras composite : boîte Z
+    + composition lisible, et un hitbox (x0,x1,y0,y1,refs,composition).
+    """
+    from circuit_analyzer import impedance
+    refs = bras["refs"]
+    if len(refs) == 1:
+        ref = refs[0]
+        comp = comps.get(ref)
+        cls = _SYMB.get(getattr(comp, "type", ""), elm.ResistorIEC)
+        vfmt = impedance.formater_valeur(getattr(comp, "value", ""),
+                                         getattr(comp, "type", ""))
+        label = f"{ref}\n{vfmt}" if vfmt else ref
+        return cls().at(p1).to(p2).label(label, loc="bottom", fontsize=9), None
+    label = impedance.formater_expr(bras["composition"])
+    el = elm.ResistorIEC().at(p1).to(p2).label(label, loc="bottom", fontsize=9)
+    pad = 0.5
+    hit = (min(p1[0], p2[0]) - pad, max(p1[0], p2[0]) + pad,
+           min(p1[1], p2[1]) - pad, max(p1[1], p2[1]) + pad,
+           list(refs), bras["composition"])
+    return el, hit
 
 
 def dessiner_pont(pont, comps):
     """@brief Figure matplotlib d'un pont (type Wheatstone) en losange.
 
-    @param pont Structure renvoyée par impedance.detecter_pont.
-    @param comps Dict {ref → Composant} (type pour le symbole, value pour l'étiquette).
-    @return matplotlib.figure.Figure (losange).
+    @param pont Structure de impedance.detecter_pont (bras = {refs, composition}).
+    @param comps Dict {ref → Composant}.
+    @return matplotlib.figure.Figure ; fig._z_hitboxes liste les boîtes Z composites.
     """
     haut, gauche, droite, bas = (0.0, 4.0), (-2.0, 2.0), (2.0, 2.0), (0.0, 0.0)
     bras = pont["bras"]
+    segments = [
+        (bras["haut_gauche"], haut, gauche),
+        (bras["haut_droite"], haut, droite),
+        (bras["bas_gauche"], gauche, bas),
+        (bras["bas_droite"], droite, bas),
+        (bras["pont"], gauche, droite),
+    ]
     fig = Figure(figsize=(5.0, 5.5))
     ax = fig.add_subplot(111)
     fig.patch.set_facecolor(SCH_BG)
@@ -174,16 +199,18 @@ def dessiner_pont(pont, comps):
     ax.axis("off")
     ax.set_aspect("equal")
 
+    hitboxes = []
     with schemdraw.Drawing(canvas=ax, show=False) as d:
         d.config(fontsize=10, inches_per_unit=0.5)
-        d += _elem_arete(bras["haut_gauche"], comps, haut, gauche)
-        d += _elem_arete(bras["haut_droite"], comps, haut, droite)
-        d += _elem_arete(bras["bas_gauche"], comps, gauche, bas)
-        d += _elem_arete(bras["bas_droite"], comps, droite, bas)
-        d += _elem_arete(bras["pont"], comps, gauche, droite)
+        for b, p1, p2 in segments:
+            el, hit = _elem_bras(b, comps, p1, p2)
+            d += el
+            if hit is not None:
+                hitboxes.append(hit)
         d += elm.Dot().at(haut).label(pont["haut"], loc="top", color=_BUS)
         d += elm.Dot().at(bas).label(pont["bas"], loc="bottom", color=_BUS)
 
+    fig._z_hitboxes = hitboxes
     ax.margins(0.2)
     try:
         fig.tight_layout(pad=0.4)

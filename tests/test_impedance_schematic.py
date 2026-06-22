@@ -49,15 +49,37 @@ def test_dessiner_produit_une_figure_sans_exception():
     assert len(fig.axes) == 1
 
 
-def test_dessiner_pont_produit_une_figure():
+def test_dessiner_pont_simple_pas_de_hitbox():
     from circuit_analyzer.composant import Composant
     comps = {r: Composant(r, "R", {"1": "x", "2": "y"}, "1k")
              for r in ("R1", "R2", "R3", "R4", "R5")}
     pont = {
         "haut": "VIN", "bas": "VOUT", "gauche": "N1", "droite": "N2",
-        "bras": {"haut_gauche": "R1", "haut_droite": "R2",
-                 "bas_gauche": "R3", "bas_droite": "R4", "pont": "R5"},
+        "bras": {role: {"refs": [r], "composition": r} for role, r in (
+            ("haut_gauche", "R1"), ("haut_droite", "R2"), ("bas_gauche", "R3"),
+            ("bas_droite", "R4"), ("pont", "R5"))},
     }
     fig = sch.dessiner_pont(pont, comps)
-    assert fig is not None
-    assert len(fig.axes) == 1
+    assert fig is not None and len(fig.axes) == 1
+    assert getattr(fig, "_z_hitboxes", []) == []   # tous simples -> aucun hitbox
+
+
+def test_dessiner_pont_composite_a_un_hitbox():
+    from circuit_analyzer.composant import Composant
+    comps = {r: Composant(r, "R", {"1": "x", "2": "y"}, "1k")
+             for r in ("R1", "R6", "R2", "R3", "R4", "R5")}
+    pont = {
+        "haut": "VIN", "bas": "VOUT", "gauche": "N1", "droite": "N2",
+        "bras": {
+            "haut_gauche": {"refs": ["R1", "R6"], "composition": "R1+R6"},
+            "haut_droite": {"refs": ["R2"], "composition": "R2"},
+            "bas_gauche": {"refs": ["R3"], "composition": "R3"},
+            "bas_droite": {"refs": ["R4"], "composition": "R4"},
+            "pont": {"refs": ["R5"], "composition": "R5"},
+        },
+    }
+    fig = sch.dessiner_pont(pont, comps)
+    boites = getattr(fig, "_z_hitboxes", [])
+    assert len(boites) == 1
+    x0, x1, y0, y1, refs, composition = boites[0]
+    assert set(refs) == {"R1", "R6"}
