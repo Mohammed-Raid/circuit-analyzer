@@ -323,3 +323,31 @@ def test_evaluer_impedance_valeur_manquante_leve():
         assert False, "devrait lever ValueError sur valeur vide"
     except ValueError:
         pass
+
+
+# ── arbre_expr : expression de composition -> arbre serie/parallele ───────────
+
+def test_arbre_expr_serie_simple():
+    assert impedance.arbre_expr("R1+R2") == (
+        "serie", [("feuille", "R1"), ("feuille", "R2")])
+
+
+def test_arbre_expr_serie_aplatie():
+    # R1+R2+R3 (associatif) -> un seul noeud serie a 3 enfants.
+    assert impedance.arbre_expr("R1+R2+R3") == (
+        "serie", [("feuille", "R1"), ("feuille", "R2"), ("feuille", "R3")])
+
+
+def test_arbre_expr_parallele_de_serie():
+    assert impedance.arbre_expr("(R1+R2)//R3") == (
+        "parallele", [("serie", [("feuille", "R1"), ("feuille", "R2")]),
+                      ("feuille", "R3")])
+
+
+def test_arbre_expr_feuille_seule():
+    assert impedance.arbre_expr("R1") == ("feuille", "R1")
+
+
+def test_arbre_expr_pont_non_serie_parallele():
+    # Une expression Y-D contient * et / -> pas de forme serie/parallele.
+    assert impedance.arbre_expr("(R1)*(R2)/((R1)+(R2)+(R5))") is None

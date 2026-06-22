@@ -390,6 +390,45 @@ def evaluer_impedance(graphe, expr: str, f: float) -> complex:
     return _ev(ast.parse(expr, mode='eval'))
 
 
+def _convertir_noeud(node):
+    """@brief Convertit un nœud AST en arbre série/parallèle, ou None si * / /."""
+    if isinstance(node, ast.Name):
+        return ("feuille", node.id)
+    if isinstance(node, ast.BinOp):
+        if isinstance(node.op, ast.Add):
+            kind = "serie"
+        elif isinstance(node.op, ast.FloorDiv):  # // = parallèle
+            kind = "parallele"
+        else:
+            return None  # * ou / => pont (Y-Δ), pas de forme série/parallèle
+        gauche = _convertir_noeud(node.left)
+        droite = _convertir_noeud(node.right)
+        if gauche is None or droite is None:
+            return None
+        enfants = []
+        for sous in (gauche, droite):
+            if sous[0] == kind:          # aplatissement associatif (a+b+c)
+                enfants.extend(sous[1])
+            else:
+                enfants.append(sous)
+        return (kind, enfants)
+    return None
+
+
+def arbre_expr(expr: str):
+    """@brief Parse une expression de composition en arbre série/parallèle.
+
+    @param expr Expression (ex. « (R1+R2)//R3 »).
+    @return tuple|None Arbre (« serie »/« parallele »/« feuille »), ou None si
+            l'expression n'est pas purement série/parallèle (pont Y-Δ : * ou /)
+            ou est invalide.
+    """
+    try:
+        return _convertir_noeud(ast.parse(expr, mode='eval').body)
+    except (SyntaxError, ValueError):
+        return None
+
+
 def bornes_possibles(graphe) -> list:
     """@brief Nets touchés par au moins une impédance (R/L/C) — bornes candidates.
 
