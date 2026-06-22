@@ -356,7 +356,6 @@ def test_arbre_expr_pont_non_serie_parallele():
 # ── detecter_pont : motif pont de Wheatstone (4 noeuds / 5 aretes) ────────────
 
 def test_detecter_pont_wheatstone():
-    # VIN/VOUT bornes ; NET1/NET2 internes ; R5 = diagonale.
     g = _graphe(
         Composant("R1", "R", {"1": "VIN", "2": "NET1"}, "1k"),
         Composant("R2", "R", {"1": "VIN", "2": "NET2"}, "1k"),
@@ -367,14 +366,30 @@ def test_detecter_pont_wheatstone():
     pont = impedance.detecter_pont(g, "VIN", "VOUT")
     assert pont is not None
     assert pont["haut"] == "VIN" and pont["bas"] == "VOUT"
-    assert {pont["gauche"], pont["droite"]} == {"NET1", "NET2"}
     assert pont["gauche"] == "NET1"
     bras = pont["bras"]
-    assert bras["haut_gauche"] == "R1"
-    assert bras["haut_droite"] == "R2"
-    assert bras["bas_gauche"] == "R3"
-    assert bras["bas_droite"] == "R4"
-    assert bras["pont"] == "R5"
+    assert bras["haut_gauche"] == {"refs": ["R1"], "composition": "R1"}
+    assert bras["haut_droite"] == {"refs": ["R2"], "composition": "R2"}
+    assert bras["bas_gauche"] == {"refs": ["R3"], "composition": "R3"}
+    assert bras["bas_droite"] == {"refs": ["R4"], "composition": "R4"}
+    assert bras["pont"] == {"refs": ["R5"], "composition": "R5"}
+
+
+def test_detecter_pont_bras_composite():
+    # Bras VIN-NET1 = R1+R6 (X interne degre 2 collapse en serie).
+    g = _graphe(
+        Composant("R1", "R", {"1": "VIN", "2": "X"}, "1k"),
+        Composant("R6", "R", {"1": "X", "2": "NET1"}, "1k"),
+        Composant("R2", "R", {"1": "VIN", "2": "NET2"}, "1k"),
+        Composant("R3", "R", {"1": "NET1", "2": "VOUT"}, "1k"),
+        Composant("R4", "R", {"1": "NET2", "2": "VOUT"}, "1k"),
+        Composant("R5", "R", {"1": "NET1", "2": "NET2"}, "1k"),
+    )
+    pont = impedance.detecter_pont(g, "VIN", "VOUT")
+    assert pont is not None
+    hg = pont["bras"]["haut_gauche"]      # VIN-NET1 = bras composite
+    assert set(hg["refs"]) == {"R1", "R6"}
+    assert "+" in hg["composition"]
 
 
 def test_detecter_pont_serie_parallele_renvoie_none():

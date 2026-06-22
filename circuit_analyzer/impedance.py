@@ -450,17 +450,24 @@ def arbre_expr(expr: str):
 def detecter_pont(graphe, a, b):
     """@brief Reconnaît un motif pont (type Wheatstone) entre les bornes a et b.
 
-    Motif : exactement 4 nœuds et 5 arêtes R/L/C simples ; a et b de degré 2, non
-    adjacents ; les 2 autres nœuds (n1, n2) de degré 3, adjacents entre eux ; arêtes
-    a-n1, a-n2, n1-b, n2-b, n1-n2.
+    Les bras sont d'abord réduits (série/parallèle) : un bras composite (plusieurs
+    R/L/C) devient une seule arête Z. Le motif retenu : 4 nœuds et 5 arêtes ; a et b
+    de degré 2, non adjacents ; n1, n2 de degré 3, adjacents.
 
     @param graphe Graphe d'origine (arêtes R/L/C).
     @param a, b Les deux bornes (sommet haut / bas du losange).
-    @return dict|None Structure du pont (nœuds + mapping rôle→ref), ou None.
+    @return dict|None Structure du pont ; bras[role] = {"refs": [...], "composition": str}.
     """
     W = _graphe_de_travail(graphe)
     if a not in W or b not in W:
         return None
+    bornes = {a, b}
+    while True:
+        if _passe_serie(W, bornes):
+            continue
+        if _passe_parallele(W, bornes):
+            continue
+        break
     if W.number_of_nodes() != 4 or W.number_of_edges() != 5:
         return None
     if any(W.number_of_edges(u, v) != 1 for u, v in set(W.edges())):
@@ -477,17 +484,18 @@ def detecter_pont(graphe, a, b):
     if not all(W.has_edge(u, v) for u, v in attendues):
         return None
 
-    def _ref(u, v):
-        return next(iter(W.get_edge_data(u, v).values()))["refs"][0]
+    def _bras(u, v):
+        d = next(iter(W.get_edge_data(u, v).values()))
+        return {"refs": list(d["refs"]), "composition": d["expr"]}
 
     return {
         "haut": a, "bas": b, "gauche": n1, "droite": n2,
         "bras": {
-            "haut_gauche": _ref(a, n1),
-            "haut_droite": _ref(a, n2),
-            "bas_gauche": _ref(n1, b),
-            "bas_droite": _ref(n2, b),
-            "pont": _ref(n1, n2),
+            "haut_gauche": _bras(a, n1),
+            "haut_droite": _bras(a, n2),
+            "bas_gauche": _bras(n1, b),
+            "bas_droite": _bras(n2, b),
+            "pont": _bras(n1, n2),
         },
     }
 
