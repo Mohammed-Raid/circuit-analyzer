@@ -250,6 +250,31 @@ def _arbre_serie_parallele_ilot(ilot, graph):
     return arbre, sous.graph["components"]
 
 
+def _pont_ilot(ilot, graph):
+    """@brief Structure pont (Wheatstone) d'un îlot entre VIN et VOUT, ou None.
+
+    @param ilot Îlot détecté (clé "composants" = refs brutes).
+    @param graph Graphe original (porte graph["components"]).
+    @return (pont, comps) | None : structure de impedance.detecter_pont et dict
+            {ref → Composant} du sous-graphe, ou None si ce n'est pas un pont.
+    """
+    from circuit_analyzer import impedance
+    from circuit_analyzer.composant import construire_graphe
+
+    raw = getattr(graph, "graph", {}).get("components", {}) or {}
+    refs = [r for r in ilot.get("composants", []) if r in raw]
+    if not refs:
+        return None
+    sous = construire_graphe([raw[r] for r in refs])
+    bornes = impedance.bornes_possibles(sous)
+    if "VIN" not in bornes or "VOUT" not in bornes:
+        return None
+    pont = impedance.detecter_pont(sous, "VIN", "VOUT")
+    if pont is None:
+        return None
+    return pont, sous.graph["components"]
+
+
 def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     """Ouvre une fenetre affichant le schema reel d'un ilot."""
     model = _build_island_model(ilot, graph, comp_info)
@@ -282,10 +307,15 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                      corner_radius=4).pack(side="left", padx=3)
 
     _sp = _arbre_serie_parallele_ilot(ilot, graph)
+    _pont = _pont_ilot(ilot, graph) if _sp is None else None
     if _sp is not None:
         from gui import impedance_schematic
         _arbre, _comps = _sp
         fig = impedance_schematic.dessiner(_arbre, "VIN", "VOUT", _comps)
+    elif _pont is not None:
+        from gui import impedance_schematic
+        _pont_struct, _comps = _pont
+        fig = impedance_schematic.dessiner_pont(_pont_struct, _comps)
     else:
         matches = _matches_for_island(ilot, results)
         fig = _make_island_fig(model, matches=matches)

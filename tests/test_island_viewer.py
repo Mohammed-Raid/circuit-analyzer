@@ -420,3 +420,32 @@ def test_arbre_serie_parallele_ilot_sans_vin_vout_renvoie_none():
     ])
     ilot = {"label": "Ilot", "composants": ["R1"]}
     assert circuit_viewer._arbre_serie_parallele_ilot(ilot, g) is None
+
+
+def test_pont_ilot_detecte_le_pont():
+    from circuit_analyzer.composant import Composant, construire_graphe
+    from gui import circuit_viewer
+    g = construire_graphe([
+        Composant("R1", "R", {"1": "VIN", "2": "NET1"}, "1k"),
+        Composant("R2", "R", {"1": "VIN", "2": "NET2"}, "1k"),
+        Composant("R3", "R", {"1": "NET1", "2": "VOUT"}, "1k"),
+        Composant("R4", "R", {"1": "NET2", "2": "VOUT"}, "1k"),
+        Composant("R5", "R", {"1": "NET1", "2": "NET2"}, "1k"),
+    ])
+    ilot = {"label": "Ilot", "composants": ["R1", "R2", "R3", "R4", "R5"]}
+    res = circuit_viewer._pont_ilot(ilot, g)
+    assert res is not None
+    pont, comps = res
+    assert pont["bras"]["pont"] == "R5"
+    assert set(comps) == {"R1", "R2", "R3", "R4", "R5"}
+
+
+def test_pont_ilot_serie_parallele_renvoie_none():
+    from circuit_analyzer.composant import Composant, construire_graphe
+    from gui import circuit_viewer
+    g = construire_graphe([
+        Composant("R1", "R", {"1": "VIN", "2": "M"}, "1k"),
+        Composant("R2", "R", {"1": "M", "2": "VOUT"}, "1k"),
+    ])
+    ilot = {"label": "Ilot", "composants": ["R1", "R2"]}
+    assert circuit_viewer._pont_ilot(ilot, g) is None
