@@ -122,14 +122,31 @@ def show_impedance_equivalent(graph, parent=None):
             except (ValueError, ZeroDivisionError) as e:
                 lignes.append(f"(valeur numérique indisponible : {e})")
         arbre = impedance.arbre_expr(expr)
-        if arbre is None:
-            lignes.append("Réseau en pont (Y-Δ) — pas de forme série/parallèle à dessiner.")
-        else:
+        pont = impedance.detecter_pont(graph, a, b) if arbre is None else None
+        fig = None
+        if arbre is not None:
             fig = impedance_schematic.dessiner(arbre, a, b, graph.graph["components"])
+        elif pont is not None:
+            fig = impedance_schematic.dessiner_pont(pont, graph.graph["components"])
+            lignes.append("Réseau en pont — cliquez une boîte Z pour le détail.")
+        else:
+            lignes.append("Réseau en pont (Y-Δ) — pas de forme série/parallèle à dessiner.")
+        if fig is not None:
             canvas = FigureCanvasTkAgg(fig, master=schema_holder)
             canvas.draw()
             canvas.get_tk_widget().configure(bg=SCH_BG, highlightthickness=0)
             canvas.get_tk_widget().pack(fill="both", expand=True)
+
+            def _on_click(event, _fig=fig):
+                if event.xdata is None or event.ydata is None:
+                    return
+                from gui import circuit_viewer
+                for x0, x1, y0, y1, refs, composition in getattr(_fig, "_z_hitboxes", []):
+                    if x0 <= event.xdata <= x1 and y0 <= event.ydata <= y1:
+                        circuit_viewer.show_dipole_detail(refs, composition, graph, {}, win)
+                        return
+
+            canvas.mpl_connect("button_press_event", _on_click)
         resultat.configure(text="\n".join(lignes), text_color="#34d399")
 
     ctk.CTkButton(win, text="Calculer", height=38, corner_radius=8,

@@ -436,7 +436,7 @@ def test_pont_ilot_detecte_le_pont():
     res = circuit_viewer._pont_ilot(ilot, g)
     assert res is not None
     pont, comps = res
-    assert pont["bras"]["pont"] == "R5"
+    assert pont["bras"]["pont"]["refs"] == ["R5"]
     assert set(comps) == {"R1", "R2", "R3", "R4", "R5"}
 
 
