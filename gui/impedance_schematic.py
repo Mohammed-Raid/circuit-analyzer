@@ -137,7 +137,8 @@ def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes):
             if ref in groupes:
                 grefs, gcompo = groupes[ref]
                 n = ordre_groupes.index(ref) + 1
-                label = f"Z{n}\n{impedance.formater_expr(gcompo)}"
+                prefixe = "Z" if len(ordre_groupes) == 1 else f"Z{n}"
+                label = f"{prefixe}\n{impedance.formater_expr(gcompo)}"
                 d += elm.ResistorIEC().at((x1, y)).to((x2, y)).label(
                     label, loc="bottom", fontsize=9)
                 hitboxes.append((x1 - 0.1, x2 + 0.1, y - 0.6, y + 0.6,
@@ -203,29 +204,22 @@ def _compo_arbre(node):
     return "//".join(parts)
 
 
-def dessiner_groupe(arbre, a, b, comps):
-    """@brief Schéma GROUPÉ : chaque sous-bloc devient une boîte Z cliquable.
+def dessiner_bloc(arbre, a, b, comps):
+    """@brief Schéma compact : tout le réseau réductible = UNE boîte Z cliquable.
 
-    Le niveau racine est dessiné ; un enfant composite (pas une feuille) devient
-    une boîte Zn (composition affichée dessous) + zone cliquable ; un enfant
-    composant reste détaillé. Le clic ouvre le détail (cf. show_dipole_detail).
+    Le réseau entier (composant seul inclus) est représenté par une seule boîte Z
+    entre a et b (composition affichée dessous) ; le clic ouvre le détail complet
+    R/L/C en série/parallèle (cf. show_dipole_detail). Un réseau d'un seul
+    composant est dessiné tel quel (rien à déplier).
 
-    @return matplotlib.figure.Figure ; fig._z_hitboxes = zones cliquables des Z.
+    @return matplotlib.figure.Figure ; fig._z_hitboxes = la zone cliquable du bloc.
     """
-    groupes = {}
-    if arbre[0] == "feuille":
-        shallow = arbre
-    else:
-        enfants = []
-        for c in arbre[1]:
-            if c[0] == "feuille":
-                enfants.append(c)
-            else:
-                cle = f"__G{len(groupes) + 1}__"
-                groupes[cle] = (_refs_arbre(c), _compo_arbre(c))
-                enfants.append(("feuille", cle))
-        shallow = (arbre[0], enfants)
-    return _dessiner_impl(shallow, a, b, comps, groupes)
+    refs = _refs_arbre(arbre)
+    if len(refs) <= 1:
+        return _dessiner_impl(arbre, a, b, comps, {})
+    cle = "__Z__"
+    return _dessiner_impl(("feuille", cle), a, b, comps,
+                          {cle: (refs, _compo_arbre(arbre))})
 
 
 def _elem_bras(bras, comps, p1, p2):

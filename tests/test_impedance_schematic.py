@@ -114,28 +114,23 @@ def _comps_rlc(*refs):
     return {r: Composant(r, t.get(r, "R"), {"1": "x", "2": "y"}, "1k") for r in refs}
 
 
-def test_dessiner_groupe_cree_boites_z_cliquables():
-    # R1 + ((R2+C1)//(L1+R3)) + (R4//C2) -> R1 (feuille) + Z1 + Z2
+def test_dessiner_bloc_reseau_entier_en_une_boite_z():
+    # L1 + (R1//C1) -> UNE seule boite Z contenant tout (L1 inclus), cliquable.
     arbre = ("serie", [
-        ("feuille", "R1"),
-        ("parallele", [("serie", [("feuille", "R2"), ("feuille", "C1")]),
-                       ("serie", [("feuille", "L1"), ("feuille", "R3")])]),
-        ("parallele", [("feuille", "R4"), ("feuille", "C2")]),
+        ("feuille", "L1"),
+        ("parallele", [("feuille", "R1"), ("feuille", "C1")]),
     ])
-    comps = _comps_rlc("R1", "R2", "C1", "L1", "R3", "R4", "C2")
-    fig = sch.dessiner_groupe(arbre, "VIN", "VOUT", comps)
+    comps = _comps_rlc("L1", "R1", "C1")
+    fig = sch.dessiner_bloc(arbre, "VIN", "VOUT", comps)
     hb = fig._z_hitboxes
-    assert len(hb) == 2                       # deux sous-blocs -> deux boites Z
-    refs_par_boite = sorted((sorted(b[4]) for b in hb), key=len)
-    assert refs_par_boite[0] == ["C2", "R4"]                       # Z2 = R4//C2
-    assert refs_par_boite[1] == ["C1", "L1", "R2", "R3"]           # Z1 = (R2+C1)//(L1+R3)
-    # la composition stockee doit etre reparsable (pour le drill-down)
+    assert len(hb) == 1                       # tout le reseau = une boite Z
+    x0, x1, y0, y1, refs, composition = hb[0]
+    assert set(refs) == {"L1", "R1", "C1"}    # L1 est dedans, pas laisse nu
+    # la composition stockee est reparsable (pour le drill-down vers le detail)
     from circuit_analyzer import impedance
-    for b in hb:
-        assert impedance.arbre_expr(b[5]) is not None
+    assert impedance.arbre_expr(composition) is not None
 
 
-def test_dessiner_groupe_tout_simple_aucune_boite():
-    arbre = ("serie", [("feuille", "R1"), ("feuille", "R2")])
-    fig = sch.dessiner_groupe(arbre, "A", "B", _comps_rlc("R1", "R2"))
-    assert fig._z_hitboxes == []
+def test_dessiner_bloc_un_seul_composant_pas_de_boite():
+    fig = sch.dessiner_bloc(("feuille", "R1"), "A", "B", _comps_rlc("R1"))
+    assert fig._z_hitboxes == []              # rien a deplier sur un composant seul

@@ -311,7 +311,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     if _sp is not None:
         from gui import impedance_schematic
         _arbre, _comps = _sp
-        fig = impedance_schematic.dessiner_groupe(_arbre, "VIN", "VOUT", _comps)
+        fig = impedance_schematic.dessiner_bloc(_arbre, "VIN", "VOUT", _comps)
     elif _pont is not None:
         from gui import impedance_schematic
         _pont_struct, _comps = _pont
