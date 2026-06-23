@@ -960,7 +960,7 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top", hitboxes=None):
         slen = min(1.6, max(0.8, right - left - 0.6))
         d += elm.Dot().at((left, y)).color(_WIRE)
         d += elm.Line().at((left, y)).tox(mid - slen / 2).color(_WIRE)
-        d += element().at((mid - slen / 2, y)).right(slen).label(label, loc=label_loc)
+        _ajouter_symbole(d, element().at((mid - slen / 2, y)).right(slen), row, label, label_loc)
         d += elm.Line().tox(right).color(_WIRE)
         d += elm.Dot().at((right, y)).color(_WIRE)
         _hit(mid - slen / 2, mid + slen / 2)
@@ -974,7 +974,7 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top", hitboxes=None):
             col_x, stub_net = x2, n1
         d += elm.Dot().at((col_x, y)).color(_WIRE)
         d += elm.Line().at((col_x, y)).right(0.3).color(_WIRE)
-        d += element().right(1.4).label(label, loc=label_loc)
+        _ajouter_symbole(d, element().right(1.4), row, label, label_loc)
         d += elm.Line().right(0.35).color(_WIRE)
         if not _is_not_connected(stub_net):
             _draw_net_end(d, stub_net)
@@ -984,7 +984,7 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top", hitboxes=None):
     # composant isole (deux moignons) : symbole HORIZONTAL + deux bornes etiquetees.
     # On ne met PAS de drapeau masse/alim ici : les deux bouts sont les bornes du
     # dipole (ses ports), pas des rails distribues -> bornes nommees, dipole droit.
-    d += element().at((0.0, y)).right(1.4).label(label, loc=label_loc)
+    _ajouter_symbole(d, element().at((0.0, y)).right(1.4), row, label, label_loc)
     if not _is_not_connected(n1):
         d += elm.Dot().at((0.0, y)).label(n1, loc="left", color=_BUS, ofst=_LBL_OFST)
     if not _is_not_connected(n2):
@@ -997,7 +997,8 @@ def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
     dediee a droite (device_x), broches cablees vers les colonnes."""
     y = row["y"]
     if row["symbol"] == "opamp":
-        op = elm.Opamp().at((device_x, y)).right().label(row["ref"], loc="center")
+        op = elm.Opamp().at((device_x, y)).right().color(_WIRE).fill(_OPAMP_FILL).label(
+            row["ref"], loc="center")
         d += op
         block_right = tuple(op.out)          # pointe droite du triangle
     else:
@@ -1026,6 +1027,26 @@ def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
 def _component_label(comp):
     value = comp.get("value") or ""
     return f"{comp['ref']}\n{value}" if value else comp["ref"]
+
+
+def _couleur_symbole(row):
+    """@brief (couleur de trait, remplissage|None) d'un symbole d'îlot selon son type.
+
+    Boîte Z → bleu rempli (cohérent avec la vue AOP) ; R/C/L → couleur par type ;
+    autre → fil slate. Unifie le langage visuel des trois vues.
+    """
+    if row.get("symbol") == "impedance":
+        return _Z_EDGE, _Z_FILL
+    return _COMP_COLORS.get(row.get("type", ""), _WIRE), None
+
+
+def _ajouter_symbole(d, element, row, label, label_loc):
+    """@brief Ajoute un symbole 2 bornes coloré (déjà positionné via .at/.right)."""
+    coul, rempl = _couleur_symbole(row)
+    el = element.color(coul)
+    if rempl:
+        el = el.fill(rempl)
+    d += el.label(label, loc=label_loc, color=coul)
 
 
 def _export(fig, name, parent):
