@@ -233,6 +233,24 @@ def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
 
 # ── Figure builder ────────────────────────────────────────────────────────────
 
+def _ilot_a_composant_actif(refs, raw_comps) -> bool:
+    """@brief Vrai si l'îlot contient un composant actif multi-broches (AOP, transistor).
+
+    Un tel îlot ne doit pas être réduit en dipôle passif série/parallèle : le
+    chemin VIN→VOUT peut traverser le réseau de contre-réaction, mais l'actif
+    casse la mise en série/parallèle (ex. l'AOP met IN- à la masse virtuelle).
+
+    @param refs Refs des composants de l'îlot.
+    @param raw_comps Dict {ref → Composant} du graphe original.
+    @return bool True si au moins un composant a plus de 2 broches.
+    """
+    for r in refs:
+        comp = raw_comps.get(r)
+        if comp and len(getattr(comp, "pins", {}) or {}) > 2:
+            return True
+    return False
+
+
 def _arbre_serie_parallele_ilot(ilot, graph):
     """@brief Arbre série/parallèle d'un îlot réductible entre VIN et VOUT.
 
@@ -250,7 +268,7 @@ def _arbre_serie_parallele_ilot(ilot, graph):
 
     raw = getattr(graph, "graph", {}).get("components", {}) or {}
     refs = [r for r in ilot.get("composants", []) if r in raw]
-    if not refs:
+    if not refs or _ilot_a_composant_actif(refs, raw):
         return None
     sous = construire_graphe([raw[r] for r in refs])
     bornes = impedance.bornes_possibles(sous)
@@ -278,7 +296,7 @@ def _pont_ilot(ilot, graph):
 
     raw = getattr(graph, "graph", {}).get("components", {}) or {}
     refs = [r for r in ilot.get("composants", []) if r in raw]
-    if not refs:
+    if not refs or _ilot_a_composant_actif(refs, raw):
         return None
     sous = construire_graphe([raw[r] for r in refs])
     bornes = impedance.bornes_possibles(sous)

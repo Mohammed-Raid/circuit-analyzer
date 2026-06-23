@@ -412,6 +412,21 @@ def test_arbre_serie_parallele_ilot_reductible_vin_vout():
     assert set(comps) == {"R1", "R2", "R3"}
 
 
+def test_arbre_serie_parallele_ilot_ignore_ilot_avec_aop():
+    # Un ilot contenant un AOP ne doit PAS etre reduit en dipole passif :
+    # le chemin VIN-Rin-INM-Rf-VOUT existe topologiquement, mais l'AOP rend
+    # INM virtuellement a la masse -> Rin et Rf ne sont pas en serie.
+    from circuit_analyzer.composant import Composant, construire_graphe
+    from gui import circuit_viewer
+    g = construire_graphe([
+        Composant("U1", "U", {"IN+": "GND", "IN-": "INM", "OUT": "VOUT"}),
+        Composant("Rin", "R", {"1": "VIN", "2": "INM"}, "1k"),
+        Composant("Rf", "R", {"1": "INM", "2": "VOUT"}, "10k"),
+    ])
+    ilot = {"label": "Ilot", "composants": ["U1", "Rin", "Rf"]}
+    assert circuit_viewer._arbre_serie_parallele_ilot(ilot, g) is None
+
+
 def test_arbre_serie_parallele_ilot_sans_vin_vout_renvoie_none():
     from circuit_analyzer.composant import Composant, construire_graphe
     from gui import circuit_viewer
