@@ -266,7 +266,11 @@ def _circuit_principal_ilot(ilot, graph, results):
     """
     raw = getattr(graph, "graph", {}).get("components", {}) or {}
     refs = [r for r in ilot.get("composants", []) if r in raw]
-    if not _ilot_a_composant_actif(refs, raw):
+    # Le drawer dédié ne sait représenter qu'UN seul composant actif. Si l'îlot en
+    # contient plusieurs (cascade d'AOP, etc.), on laisse le layout générique les
+    # dessiner tous au lieu de n'en montrer qu'un.
+    actifs = [r for r in refs if len(getattr(raw.get(r), "pins", {}) or {}) > 2]
+    if len(actifs) != 1:
         return None
     for m in _matches_for_island(ilot, results):
         ct = m.get("circuit_type")

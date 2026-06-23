@@ -22,6 +22,16 @@ from collections import Counter
 from circuit_analyzer.patterns.base import is_power_net
 from circuit_analyzer.satellites import _est_rail
 
+# Nets « non connectés » : ne relient électriquement aucun composant. L'export
+# XML force les broches d'alim d'AOP à 'NC' ; les compter comme un net signal
+# fusionnerait à tort tous ces composants dans un même îlot.
+_NETS_NON_CONNECTES = {"NC", "N/C", "NRELIEE", ""}
+
+
+def _net_signal(net) -> bool:
+    """@brief Vrai si le net relie réellement des composants (ni rail, ni non-connecté)."""
+    return bool(net) and net.upper() not in _NETS_NON_CONNECTES and not _est_rail(net)
+
 
 def _find(parent: dict, x: str) -> str:
     """@brief Racine Union-Find avec compression de chemin.
@@ -88,7 +98,7 @@ def detecter_ilots(graphe, circuits: list) -> list[dict]:
     net_vers_refs: dict = {}
     for ref, comp in comps.items():
         for net in comp.pins.values():
-            if net and not _est_rail(net):
+            if _net_signal(net):
                 net_vers_refs.setdefault(net, []).append(ref)
     for refs in net_vers_refs.values():
         for autre in refs[1:]:

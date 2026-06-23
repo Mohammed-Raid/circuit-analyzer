@@ -58,6 +58,22 @@ def test_gnd_ne_fusionne_pas_les_ilots():
     ilots = detecter_ilots(g, [])
     assert len(ilots) == 2
 
+def test_nc_ne_fusionne_pas_les_ilots():
+    """@brief Un net « NC » (non connecté) ne doit pas relier deux îlots.
+
+    Cas réel : deux AOP dont les broches d'alim sont laissées à 'NC' par l'export
+    XML — ils ne partagent aucun net signal et doivent rester deux îlots.
+    """
+    comps = [
+        Component('U1', 'U', {'IN+': 'GND', 'IN-': 'NET_A', 'OUT': 'OUTA',
+                              'V+': 'NC', 'V-': 'NC'}),
+        Component('U2', 'U', {'IN+': 'GND', 'IN-': 'NET_B', 'OUT': 'OUTB',
+                              'V+': 'NC', 'V-': 'NC'}),
+    ]
+    g = build_graph(comps)
+    ilots = detecter_ilots(g, [])
+    assert len(ilots) == 2
+
 def test_net_signal_fusionne():
     """@brief Verifie net signal fusionne.
 

@@ -455,6 +455,25 @@ def test_circuit_principal_ilot_renvoie_ampli_pour_ilot_aop():
     assert m["circuit_type"] == "Amplificateur inverseur (AOP)"
 
 
+def test_circuit_principal_ilot_none_si_plusieurs_actifs():
+    # Deux AOP dans le meme ilot (cascade) : le drawer dedie ne sait dessiner qu'un
+    # seul actif -> on retombe sur le layout generique (qui les dessine tous).
+    from circuit_analyzer import detecteur
+    from gui import circuit_viewer
+    g = construire_graphe([
+        Composant("U1", "U", {"IN+": "GND", "IN-": "M1", "OUT": "V1"}),
+        Composant("Ra", "R", {"1": "VIN", "2": "M1"}, "1k"),
+        Composant("Rb", "R", {"1": "M1", "2": "V1"}, "10k"),
+        Composant("U2", "U", {"IN+": "GND", "IN-": "M2", "OUT": "VOUT"}),
+        Composant("Rc", "R", {"1": "V1", "2": "M2"}, "1k"),
+        Composant("Rd", "R", {"1": "M2", "2": "VOUT"}, "10k"),
+    ])
+    res = detecteur.analyser(g)
+    # cascade reliee par V1 -> un seul ilot contenant les 2 AOP
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    assert circuit_viewer._circuit_principal_ilot(ilot, g, res) is None
+
+
 def test_circuit_principal_ilot_none_pour_ilot_passif():
     # Un ilot purement passif n'a pas de composant principal a drawer dedie.
     from circuit_analyzer import detecteur
