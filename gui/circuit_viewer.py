@@ -1098,27 +1098,58 @@ def _draw_esd(d, result, ci):
 # ── AOP patterns ─────────────────────────────────────────────────────────────
 
 def _draw_inverting_amp(d, result, ci):
-    """@brief Dessine le schéma « Amplificateur inverseur (AOP) »."""
-    rs = _refs(result, ci, "R")
-    # Pattern returns [U, feedback_r, input_r] — rf is first, rin is second
-    rf  = rs[0] if rs else "Rf"
-    rin = rs[1] if len(rs) > 1 else "Rin"
+    """@brief Dessine « Amplificateur inverseur (AOP) » : AOP + Zin/Zf en blocs Z cliquables.
 
+    Repli : si le match ne porte pas d'impédances structurées, dessin résistances.
+    """
+    from circuit_analyzer.impedance import formater_expr
+    imp = result.get("impedances")
+    if not imp:
+        rs = _refs(result, ci, "R")
+        rf = rs[0] if rs else "Rf"
+        rin = rs[1] if len(rs) > 1 else "Rin"
+        op = d.add(elm.Opamp().anchor("in1").at((4.5, 0)))
+        d.add(elm.Resistor().at(op.in1).left().label(_lbl(rin, ci), loc="top"))
+        d.add(elm.Dot().label("IN", loc="left"))
+        d.add(elm.Line().at(op.in2).left(1))
+        d.add(elm.Ground())
+        above = (op.in1[0], op.in1[1] + 1.5)
+        d.add(elm.Line().at(op.in1).up(1.5))
+        d.add(elm.Resistor().at(above).right().tox(op.out[0]).label(_lbl(rf, ci), loc="top"))
+        d.add(elm.Line().toy(op.out[1]))
+        d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
+        return
+
+    zin, zf = imp["Zin"], imp["Zf"]
     op = d.add(elm.Opamp().anchor("in1").at((4.5, 0)))
+    in1, out = op.in1, op.out
 
-    d.add(elm.Resistor().at(op.in1).left().label(_lbl(rin, ci), loc="top"))
+    # Zin : entrée -> IN- (boîte Z horizontale)
+    zin_p1 = (in1[0] - 3.0, in1[1])
+    d.add(elm.ResistorIEC().at(zin_p1).to(in1).label(
+        "Zin\n" + formater_expr(zin["composition"]), loc="top"))
+    d.add(elm.Line().at(zin_p1).left(0.7))
     d.add(elm.Dot().label("IN", loc="left"))
-    mid_pt = op.in1
-    d.add(elm.Line().at(op.in2).left(1))
+    # IN+ à la masse
+    d.add(elm.Line().at(op.in2).left(1.0))
     d.add(elm.Ground())
+    # Zf : contre-réaction IN- -> OUT (boîte Z horizontale, par le haut)
+    above_y = in1[1] + 2.0
+    d.add(elm.Line().at(in1).up(2.0))
+    zf_p1, zf_p2 = (in1[0], above_y), (out[0], above_y)
+    d.add(elm.ResistorIEC().at(zf_p1).to(zf_p2).label(
+        "Zf\n" + formater_expr(zf["composition"]), loc="top"))
+    d.add(elm.Line().at(zf_p2).toy(out[1]))
+    d.add(elm.Line().at(out).right(1.0).label("OUT", loc="right"))
 
-    # Feedback: go up, then tox to align with op.out, then toy down to op.out
-    above = (mid_pt[0], mid_pt[1] + 1.5)
-    d.add(elm.Line().at(mid_pt).up(1.5))
-    d.add(elm.Resistor().at(above).right().tox(op.out[0])
-          .label(_lbl(rf, ci), loc="top"))
-    d.add(elm.Line().toy(op.out[1]))
-    d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
+    # Zones cliquables (centrées sur chaque boîte) -> drill-down R/L/C
+    hb = getattr(d, "_z_hitboxes", None)
+    if hb is not None:
+        pad = 0.5
+        hb.append((min(zin_p1[0], in1[0]) - pad, max(zin_p1[0], in1[0]) + pad,
+                   in1[1] - pad, in1[1] + pad, list(zin["refs"]), zin["composition"]))
+        hb.append((min(zf_p1[0], zf_p2[0]) - pad, max(zf_p1[0], zf_p2[0]) + pad,
+                   above_y - pad, above_y + pad, list(zf["refs"]), zf["composition"]))
 
 
 def _draw_non_inverting_amp(d, result, ci):
