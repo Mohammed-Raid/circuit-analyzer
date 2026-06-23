@@ -80,17 +80,19 @@ def _voisins_de_type(graphe, noeud, type_composant, inclure_z=False):
 
 def detecter_amplificateur_inverseur(graphe):
     """
-    @brief Amplificateur inverseur : AOP avec une R d'entrée sur IN- et une R de feedback (OUT → IN-).
+    @brief Amplificateur inverseur : AOP avec une Z d'entrée sur IN- et une Z de feedback (OUT → IN-).
 
-    @param graphe Graphe NetworkX du circuit.
-    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
+    @param graphe Graphe NetworkX (réduit) du circuit.
+    @return list[dict] Circuits détectés, enrichis de 'impedances' (Zin/Zf) et 'gain'.
 
     Schéma :
-        IN ──[R_entree]── IN- ──[R_feedback]── OUT
-                           └────── AOP ──────┘
+        IN ──[Zin]── IN- ──[Zf]── OUT
+                      └──── AOP ──┘
 
-    Comment le reconnaître : 2 résistances sur IN-, l'une vient de l'entrée,
-    l'autre relie la sortie à l'entrée négative (= contre-réaction).
+    Comment le reconnaître : 2 impédances sur IN-, l'une vient de l'entrée,
+    l'autre relie la sortie à l'entrée négative (= contre-réaction). Le détecteur
+    tourne sur le graphe réduit : chaque arête porte 'refs' + 'composition' (un
+    composite Zf = R1+R2 est déjà une seule arête Z).
     """
     resultats = []
     composants = graphe.graph.get('components', {})
@@ -104,18 +106,29 @@ def detecter_amplificateur_inverseur(graphe):
         if not entree_neg or not sortie:
             continue
 
-        resistances_sur_inm = _voisins_de_type(graphe, entree_neg, 'R', inclure_z=True)
+        feedback = None      # {'refs','composition','nodes'}
+        entree = None
+        for u, v, data in graphe.edges(entree_neg, data=True):
+            if not _type_correspond(data, 'R', inclure_z=True):
+                continue
+            autre = v if u == entree_neg else u
+            bloc = {
+                'refs': list(data.get('refs', [data['ref']])),
+                'composition': data.get('composition', data['ref']),
+                'nodes': (entree_neg, autre),
+            }
+            if autre == sortie:
+                feedback = bloc
+            elif entree is None:
+                entree = bloc
 
-        # La R de feedback relie la sortie à IN- (contre-réaction négative)
-        r_feedback = [ref for ref, autre in resistances_sur_inm if autre == sortie]
-        # Les autres R sur IN- sont les résistances d'entrée
-        r_entree   = [ref for ref, autre in resistances_sur_inm if autre != sortie]
-
-        if r_feedback and r_entree:
+        if feedback and entree:
             resultats.append({
                 'circuit_type': 'Amplificateur inverseur (AOP)',
-                'components': [ref_aop] + r_feedback + r_entree,
+                'components': [ref_aop] + feedback['refs'] + entree['refs'],
                 'nodes': [comp.pins.get('IN+', ''), entree_neg, sortie],
+                'impedances': {'Zin': entree, 'Zf': feedback},
+                'gain': '−Zf/Zin',
             })
 
     return resultats
