@@ -43,5 +43,12 @@ if __name__ == '__main__':
     app = AppWindow()
 
     if splash is not None:
+        # Le splash (tkinter.Tk) était le « default root » de Tk. Si on le détruit
+        # tel quel, tkinter remet _default_root à None, et tout CTkFont() créé
+        # ensuite (cartes de résultat à l'analyse) plante : « too early to use
+        # font: no default root window ». On rattache donc le default root à la
+        # fenêtre de l'app AVANT de détruire le splash.
+        import tkinter
+        tkinter._default_root = app.root
         splash.destroy()
     app.run()
