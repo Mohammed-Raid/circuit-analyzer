@@ -11,5 +11,5 @@ API principale :
 
 # Source unique de vérité pour la version de l'application : lue par le build
 # (tools/build_exe.py) et l'interface (gui/app_window.py) pour éviter la dérive.
-__version__ = "1.6.1"
+__version__ = "1.7.0"
 
