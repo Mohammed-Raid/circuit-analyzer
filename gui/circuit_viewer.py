@@ -886,6 +886,12 @@ _BUS = "#475569"
 _WIRE = "#1e293b"
 _LBL_OFST = 0.25   # decalage des labels de net pour les decoller des symboles
 
+# Accent des boîtes Z : remplissage bleu clair + contour bleu. Double rôle —
+# rend le schéma plus lisible ET signale visuellement que la boîte est cliquable.
+_Z_FILL = "#dbeafe"
+_Z_EDGE = "#2563eb"
+_OPAMP_FILL = "#eef2ff"   # triangle AOP légèrement teinté
+
 
 def _draw_island_schematic(d, plan, hitboxes=None):
     """@brief Dessine le schema assaini a partir du plan (colonnes + lignes + stubs).
@@ -1244,26 +1250,26 @@ def _draw_inverting_amp(d, result, ci):
         return
 
     zin, zf = imp["Zin"], imp["Zf"]
-    op = d.add(elm.Opamp().anchor("in1").at((4.5, 0)))
+    op = d.add(elm.Opamp().anchor("in1").at((4.5, 0)).color(_WIRE).fill(_OPAMP_FILL))
     in1, out = op.in1, op.out
 
-    # Zin : entrée -> IN- (boîte Z horizontale)
+    # Zin : entrée -> IN- (boîte Z bleue, cliquable)
     zin_p1 = (in1[0] - 3.0, in1[1])
-    d.add(elm.ResistorIEC().at(zin_p1).to(in1).label(
-        _z_label("Zin", zin, ci), loc="top"))
-    d.add(elm.Line().at(zin_p1).left(0.7))
-    d.add(elm.Dot().label("IN", loc="left"))
+    d.add(elm.ResistorIEC().at(zin_p1).to(in1).color(_Z_EDGE).fill(_Z_FILL).label(
+        _z_label("Zin", zin, ci), loc="top", color=_Z_EDGE))
+    d.add(elm.Line().at(zin_p1).left(0.7).color(_WIRE))
+    d.add(elm.Dot().color(_WIRE).label("IN", loc="left", color=_WIRE))
     # IN+ à la masse
-    d.add(elm.Line().at(op.in2).left(1.0))
-    d.add(elm.Ground())
-    # Zf : contre-réaction IN- -> OUT (boîte Z horizontale, par le haut)
+    d.add(elm.Line().at(op.in2).left(1.0).color(_WIRE))
+    d.add(elm.Ground().color(_WIRE))
+    # Zf : contre-réaction IN- -> OUT (boîte Z bleue, par le haut)
     above_y = in1[1] + 2.0
-    d.add(elm.Line().at(in1).up(2.0))
+    d.add(elm.Line().at(in1).up(2.0).color(_WIRE))
     zf_p1, zf_p2 = (in1[0], above_y), (out[0], above_y)
-    d.add(elm.ResistorIEC().at(zf_p1).to(zf_p2).label(
-        _z_label("Zf", zf, ci), loc="top"))
-    d.add(elm.Line().at(zf_p2).toy(out[1]))
-    d.add(elm.Line().at(out).right(1.0).label("OUT", loc="right"))
+    d.add(elm.ResistorIEC().at(zf_p1).to(zf_p2).color(_Z_EDGE).fill(_Z_FILL).label(
+        _z_label("Zf", zf, ci), loc="top", color=_Z_EDGE))
+    d.add(elm.Line().at(zf_p2).toy(out[1]).color(_WIRE))
+    d.add(elm.Line().at(out).right(1.0).color(_WIRE).label("OUT", loc="right", color=_WIRE))
 
     # Zones cliquables (centrées sur chaque boîte) -> drill-down R/L/C
     hb = getattr(d, "_z_hitboxes", None)
