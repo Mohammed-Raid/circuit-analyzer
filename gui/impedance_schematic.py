@@ -127,8 +127,8 @@ def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes):
     """
     from circuit_analyzer import impedance
     symboles, fils, dims = agencer(arbre_a_tracer)
-    fig = Figure(figsize=(max(4.0, dims.largeur * 0.6 + 1.5),
-                          max(3.0, dims.hauteur * 0.6 + 1.5)))
+    fig = Figure(figsize=(max(5.0, dims.largeur * 0.8 + 1.8),
+                          max(3.5, dims.hauteur * 0.8 + 1.8)))
     ax = fig.add_subplot(111)
     fig.patch.set_facecolor(SCH_BG)
     ax.set_facecolor(SCH_BG)
@@ -138,7 +138,7 @@ def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes):
     ordre_groupes = list(groupes)
     hitboxes = []
     with schemdraw.Drawing(canvas=ax, show=False) as d:
-        d.config(fontsize=10, inches_per_unit=0.5)
+        d.config(fontsize=13, inches_per_unit=0.5)
         for ref, x1, x2, y in symboles:
             if ref in groupes:
                 grefs, gcompo = groupes[ref]
@@ -146,7 +146,7 @@ def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes):
                 prefixe = "Z" if len(ordre_groupes) == 1 else f"Z{n}"
                 label = f"{prefixe}\n{impedance.formater_expr(gcompo)}"
                 d += elm.ResistorIEC().at((x1, y)).to((x2, y)).color(_Z_EDGE).fill(
-                    _Z_FILL).label(label, loc="bottom", fontsize=9, color=_Z_EDGE)
+                    _Z_FILL).label(label, loc="bottom", fontsize=11, color=_Z_EDGE)
                 hitboxes.append((x1 - 0.1, x2 + 0.1, y - 0.6, y + 0.6,
                                  list(grefs), gcompo))
             else:
@@ -157,7 +157,7 @@ def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes):
                 vfmt = impedance.formater_valeur(getattr(comp, "value", ""), typ)
                 etiquette = f"{ref}\n{vfmt}" if vfmt else ref
                 d += cls().at((x1, y)).to((x2, y)).color(coul).label(
-                    etiquette, loc="bottom", fontsize=9, color=coul)
+                    etiquette, loc="bottom", fontsize=11, color=coul)
         for (xa, ya), (xb, yb) in fils:
             d += elm.Line().at((xa, ya)).to((xb, yb)).color(_WIRE)
         d += elm.Dot().at((0.0, dims.y_borne)).label(a, loc="left", color=_BUS)
@@ -246,10 +246,10 @@ def _elem_bras(bras, comps, p1, p2):
         vfmt = impedance.formater_valeur(getattr(comp, "value", ""), typ)
         label = f"{ref}\n{vfmt}" if vfmt else ref
         return cls().at(p1).to(p2).color(coul).label(
-            label, loc="bottom", fontsize=9, color=coul), None
+            label, loc="bottom", fontsize=11, color=coul), None
     label = impedance.formater_expr(bras["composition"])
     el = elm.ResistorIEC().at(p1).to(p2).color(_Z_EDGE).fill(_Z_FILL).label(
-        label, loc="bottom", fontsize=9, color=_Z_EDGE)
+        label, loc="bottom", fontsize=11, color=_Z_EDGE)
     # Hitbox centrée sur le SYMBOLE (milieu du bras), pas sur tout le segment :
     # deux bras adjacents partagent un sommet, donc des bbox pleine-longueur se
     # chevaucheraient près des sommets et rendraient le clic ambigu.
@@ -284,7 +284,7 @@ def dessiner_pont(pont, comps):
 
     hitboxes = []
     with schemdraw.Drawing(canvas=ax, show=False) as d:
-        d.config(fontsize=10, inches_per_unit=0.5)
+        d.config(fontsize=13, inches_per_unit=0.5)
         for b, p1, p2 in segments:
             el, hit = _elem_bras(b, comps, p1, p2)
             d += el

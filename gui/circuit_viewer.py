@@ -193,7 +193,7 @@ def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
 
     popup = ctk.CTkToplevel(parent)
     popup.title(f"Schéma — {name}")
-    popup.geometry("720x540")
+    popup.geometry("960x560")
     popup.configure(fg_color=UI_BG)
     popup.grab_set()
 
@@ -378,7 +378,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
 
     popup = ctk.CTkToplevel(parent)
     popup.title(f"Schema ilot - {name}")
-    popup.geometry("820x580")
+    popup.geometry("1000x600")
     popup.configure(fg_color=UI_BG)
     popup.grab_set()
 
@@ -487,7 +487,7 @@ def show_dipole_detail(refs, composition, graph, comp_info, parent=None):
 
     popup = ctk.CTkToplevel(parent)
     popup.title(titre)
-    popup.geometry("560x460")
+    popup.geometry("760x560")
     popup.configure(fg_color=UI_BG)
     popup.grab_set()
 
@@ -542,10 +542,23 @@ def _make_fig(result, comp_info, drawer_fn):
     if drawer_fn:
         try:
             with schemdraw.Drawing(canvas=ax, show=False) as d:
-                d.config(fontsize=11, inches_per_unit=0.5)
+                d.config(fontsize=14, inches_per_unit=0.62)
                 d._z_hitboxes = []
                 drawer_fn(d, result, comp_info)
                 fig._z_hitboxes = list(d._z_hitboxes)
+                # Ajuster la figure au format réel du dessin : sinon le schéma
+                # (large) est « letterboxé » dans une figure carrée -> petit, avec
+                # de grandes bandes vides. On colle le format de la figure à celui
+                # du tracé pour qu'il remplisse la fenêtre.
+                try:
+                    bb = d.get_bbox()
+                    w, h = (bb.xmax - bb.xmin), (bb.ymax - bb.ymin)
+                    if w > 0 and h > 0:
+                        asp = max(0.4, min(3.2, w / h))
+                        haut = 6.0
+                        fig.set_size_inches(haut * asp, haut)
+                except Exception:
+                    pass
         except Exception as e:
             ax.text(0.5, 0.5, f"Schéma non disponible\n{e}",
                     ha="center", va="center",
@@ -564,12 +577,11 @@ def _make_fig(result, comp_info, drawer_fn):
     # on l'indique (sinon l'utilisateur ne sait pas qu'il peut déplier les Z).
     if fig._z_hitboxes:
         ax.text(0.01, 0.01, "Astuce : cliquez une boîte Z pour voir le détail R/L/C",
-                transform=ax.transAxes, fontsize=8, color="#64748b",
+                transform=ax.transAxes, fontsize=9, color="#64748b",
                 va="bottom", ha="left")
 
-    # Marge autour du tracé : évite que les étiquettes (labels de bornes,
-    # composition d'une Impédance Z) soient rognées par le bord de la figure.
-    ax.margins(0.15)
+    # Marge réduite : le tracé occupe presque toute la figure (lisibilité).
+    ax.margins(0.06)
     try:
         fig.tight_layout(pad=0.4)
     except Exception:
