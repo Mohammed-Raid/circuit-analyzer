@@ -34,6 +34,35 @@ def test_integrateur_expose_impedances_et_gain():
     assert m["impedances"]["Zf"]["nodes"] == ("M", "O")
 
 
+def test_integrateur_reel_leaky_rf_parallele_cf():
+    # Intégrateur réel : Zf = Rf // Cf (résistance en parallèle du condensateur).
+    g = construire_graphe([
+        Composant("U1", "U", {"IN+": "GND", "IN-": "M", "OUT": "O"}),
+        Composant("Rin", "R", {"1": "VIN", "2": "M"}, "10k"),
+        Composant("Rf", "R", {"1": "M", "2": "O"}, "1M"),
+        Composant("Cf", "C", {"1": "M", "2": "O"}, "10n"),
+    ])
+    res = detecteur.analyser(g)
+    integ = [r for r in res if r["circuit_type"] == "Intégrateur (AOP)"]
+    assert len(integ) == 1, [r["circuit_type"] for r in res]
+    assert set(integ[0]["impedances"]["Zf"]["refs"]) == {"Rf", "Cf"}
+
+
+def test_feedback_resonant_lc_reste_inverseur():
+    # Zf = (L+C)//R : feedback résonant, PAS un intégrateur -> ampli inverseur.
+    g = construire_graphe([
+        Composant("U1", "U", {"IN+": "GND", "IN-": "M", "OUT": "O"}),
+        Composant("Rin", "R", {"1": "VIN", "2": "M"}, "10k"),
+        Composant("Lf", "L", {"1": "M", "2": "X"}, "1m"),
+        Composant("Cf", "C", {"1": "X", "2": "O"}, "10n"),
+        Composant("Rf", "R", {"1": "M", "2": "O"}, "100k"),
+    ])
+    res = detecteur.analyser(g)
+    types = [r["circuit_type"] for r in res]
+    assert "Intégrateur (AOP)" not in types
+    assert "Amplificateur inverseur (AOP)" in types
+
+
 def test_inverseur_expose_impedances_et_gain():
     res = detecteur.analyser(_ampli_inverseur_zf_composite())
     inv = [r for r in res if r["circuit_type"] == "Amplificateur inverseur (AOP)"]

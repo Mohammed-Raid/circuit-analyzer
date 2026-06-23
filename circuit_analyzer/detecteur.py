@@ -207,17 +207,45 @@ def detecter_suiveur_tension(graphe):
     return resultats
 
 
+def _feedback_capacitif(bloc, composants) -> bool:
+    """
+    @brief Vrai si le bloc de contre-réaction est capacitif (intégrateur idéal ou réel).
+
+    Deux formes acceptées :
+      - condensateur seul (intégrateur idéal) ;
+      - Rf // Cf (intégrateur réel « leaky » : une R en parallèle d'une C).
+    Un feedback résistif pur, ou résonant (L et C), n'est PAS capacitif → ce n'est
+    pas un intégrateur (reste un ampli inverseur / filtre).
+
+    @param bloc Bloc de contre-réaction ({'refs', 'composition'}).
+    @param composants Dict {ref → Composant} (pour les types).
+    @return bool
+    """
+    refs = bloc['refs']
+    types = [composants[r].type for r in refs if r in composants]
+    if not any(t == 'C' for t in types):
+        return False
+    if len(refs) == 1:
+        return types == ['C']                      # condensateur seul (idéal)
+    # leaky : la composition doit être un parallèle de feuilles {une R, une C}
+    arbre = impedance.arbre_expr(bloc['composition'])
+    if arbre and arbre[0] == 'parallele' and all(c[0] == 'feuille' for c in arbre[1]):
+        tset = sorted(composants[c[1]].type for c in arbre[1] if c[1] in composants)
+        return tset == ['C', 'R']
+    return False
+
+
 def detecter_integrateur(graphe):
     """
-    @brief Intégrateur : AOP avec R d'entrée sur IN- et condensateur de feedback (OUT → IN-).
+    @brief Intégrateur : AOP avec Z d'entrée sur IN- et feedback capacitif (OUT → IN-).
 
     @param graphe Graphe NetworkX du circuit.
     @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     La sortie est proportionnelle à l'intégrale du signal d'entrée.
 
-    Schéma :
-        IN ──[R]── IN- ──[C]── OUT
-                    └── AOP ───┘
+    Schéma (Zf = condensateur seul, ou Rf // Cf pour l'intégrateur réel) :
+        IN ──[Zin]── IN- ──[Zf]── OUT
+                      └── AOP ────┘
     """
     resultats = []
     composants = graphe.graph.get('components', {})
@@ -240,8 +268,8 @@ def detecter_integrateur(graphe):
                 'composition': data.get('composition', data['ref']),
                 'nodes': (entree_neg, autre),
             }
-            if data['type'] == 'C' and autre == sortie:
-                feedback = bloc                       # condensateur de contre-réaction
+            if autre == sortie and _feedback_capacitif(bloc, composants):
+                feedback = bloc                       # contre-réaction capacitive
             elif _type_correspond(data, 'R', inclure_z=True) and autre != sortie:
                 entree = bloc
 
