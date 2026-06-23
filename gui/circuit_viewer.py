@@ -1286,19 +1286,26 @@ def _draw_inverting_amp(d, result, ci):
     op = d.add(elm.Opamp().anchor("in1").at((4.5, 0)).color(_WIRE).fill(_OPAMP_FILL))
     in1, out = op.in1, op.out
 
-    # Zin : entrée -> IN- (boîte Z bleue, cliquable)
-    zin_p1 = (in1[0] - 3.0, in1[1])
-    d.add(elm.ResistorIEC().at(zin_p1).to(in1).color(_Z_EDGE).fill(_Z_FILL).label(
+    # Nœud de sommation, déporté à GAUCHE du triangle : Zin y arrive, un court fil
+    # le relie à IN-, et la contre-réaction en repart vers le haut. Ainsi le fil
+    # de feedback monte dans le vide à gauche de l'AOP, et ne longe plus son bord.
+    noeud = (in1[0] - 1.3, in1[1])
+    d.add(elm.Line().at(noeud).to(in1).color(_WIRE))
+    d.add(elm.Dot().at(noeud).color(_WIRE))
+
+    # Zin : entrée -> nœud de sommation (boîte Z bleue, cliquable)
+    zin_p1 = (noeud[0] - 3.0, noeud[1])
+    d.add(elm.ResistorIEC().at(zin_p1).to(noeud).color(_Z_EDGE).fill(_Z_FILL).label(
         _z_label("Zin", zin, ci), loc="top", color=_Z_EDGE))
     d.add(elm.Line().at(zin_p1).left(0.7).color(_WIRE))
     d.add(elm.Dot().color(_WIRE).label("IN", loc="left", color=_WIRE))
     # IN+ à la masse
     d.add(elm.Line().at(op.in2).left(1.0).color(_WIRE))
     d.add(elm.Ground().color(_WIRE))
-    # Zf : contre-réaction IN- -> OUT (boîte Z bleue, par le haut)
+    # Zf : contre-réaction nœud -> OUT (riser à gauche, dans le vide, puis par le haut)
     above_y = in1[1] + 2.0
-    d.add(elm.Line().at(in1).up(2.0).color(_WIRE))
-    zf_p1, zf_p2 = (in1[0], above_y), (out[0], above_y)
+    d.add(elm.Line().at(noeud).up(above_y - noeud[1]).color(_WIRE))
+    zf_p1, zf_p2 = (noeud[0], above_y), (out[0], above_y)
     d.add(elm.ResistorIEC().at(zf_p1).to(zf_p2).color(_Z_EDGE).fill(_Z_FILL).label(
         _z_label("Zf", zf, ci), loc="top", color=_Z_EDGE))
     d.add(elm.Line().at(zf_p2).toy(out[1]).color(_WIRE))
@@ -1308,8 +1315,8 @@ def _draw_inverting_amp(d, result, ci):
     hb = getattr(d, "_z_hitboxes", None)
     if hb is not None:
         pad = 0.5
-        hb.append((min(zin_p1[0], in1[0]) - pad, max(zin_p1[0], in1[0]) + pad,
-                   in1[1] - pad, in1[1] + pad, list(zin["refs"]), zin["composition"]))
+        hb.append((min(zin_p1[0], noeud[0]) - pad, max(zin_p1[0], noeud[0]) + pad,
+                   noeud[1] - pad, noeud[1] + pad, list(zin["refs"]), zin["composition"]))
         hb.append((min(zf_p1[0], zf_p2[0]) - pad, max(zf_p1[0], zf_p2[0]) + pad,
                    above_y - pad, above_y + pad, list(zf["refs"]), zf["composition"]))
 
