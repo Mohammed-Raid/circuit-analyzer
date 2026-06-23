@@ -251,6 +251,30 @@ def _ilot_a_composant_actif(refs, raw_comps) -> bool:
     return False
 
 
+def _circuit_principal_ilot(ilot, graph, results):
+    """@brief Match du circuit actif de l'îlot ayant un drawer dédié, ou None.
+
+    Un îlot qui EST un montage actif détecté (AOP, transistor) doit être dessiné
+    par son drawer dédié (schéma propre, ex. « AOP + Zin/Zf »), et non par le
+    layout générique d'îlot. On ne route ainsi que les îlots à composant actif :
+    les îlots passifs gardent la vue « boîte Z » / pont.
+
+    @param ilot Îlot détecté (clé 'composants').
+    @param graph Graphe original (porte graph['components']).
+    @param results Résultats d'analyse (pour résoudre ilot['circuits']).
+    @return dict|None Le match à dessiner, ou None.
+    """
+    raw = getattr(graph, "graph", {}).get("components", {}) or {}
+    refs = [r for r in ilot.get("composants", []) if r in raw]
+    if not _ilot_a_composant_actif(refs, raw):
+        return None
+    for m in _matches_for_island(ilot, results):
+        ct = m.get("circuit_type")
+        if ct in _DRAWERS and ct != "Impédance Z":
+            return m
+    return None
+
+
 def _arbre_serie_parallele_ilot(ilot, graph):
     """@brief Arbre série/parallèle d'un îlot réductible entre VIN et VOUT.
 
@@ -325,6 +349,11 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     ctk.CTkLabel(hdr, text=f"Schema ilot - {name}",
                  font=ctk.CTkFont("Segoe UI", 14, "bold"),
                  text_color="#f1f5f9").pack(side="left", padx=18, pady=14)
+    _principal_hdr = _circuit_principal_ilot(ilot, graph, results)
+    if _principal_hdr and _principal_hdr.get("gain"):
+        ctk.CTkLabel(hdr, text=f"Av = {_principal_hdr['gain']}",
+                     font=ctk.CTkFont("Consolas", 12, "bold"),
+                     text_color="#34d399").pack(side="right", padx=18)
 
     chips = ctk.CTkFrame(popup, fg_color=UI_BG)
     chips.pack(fill="x", padx=14, pady=(8, 2))
@@ -339,9 +368,14 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                      fg_color=color, text_color="#ffffff",
                      corner_radius=4).pack(side="left", padx=3)
 
-    _sp = _arbre_serie_parallele_ilot(ilot, graph)
-    _pont = _pont_ilot(ilot, graph) if _sp is None else None
-    if _sp is not None:
+    principal = _circuit_principal_ilot(ilot, graph, results)
+    _sp = _arbre_serie_parallele_ilot(ilot, graph) if principal is None else None
+    _pont = _pont_ilot(ilot, graph) if (principal is None and _sp is None) else None
+    if principal is not None:
+        # Îlot = montage actif détecté : on réutilise son drawer dédié (schéma
+        # propre « AOP + Zin/Zf », hitboxes Z cliquables), pas le layout générique.
+        fig = _make_fig(principal, comp_info, _DRAWERS[principal["circuit_type"]])
+    elif _sp is not None:
         from gui import impedance_schematic
         _arbre, _comps = _sp
         fig = impedance_schematic.dessiner_bloc(_arbre, "VIN", "VOUT", _comps)

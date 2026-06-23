@@ -437,6 +437,37 @@ def test_arbre_serie_parallele_ilot_sans_vin_vout_renvoie_none():
     assert circuit_viewer._arbre_serie_parallele_ilot(ilot, g) is None
 
 
+def test_circuit_principal_ilot_renvoie_ampli_pour_ilot_aop():
+    # Un ilot qui EST un ampli inverseur detecte doit etre dessine par le drawer
+    # dedie (AOP + Zin/Zf), pas par le layout generique.
+    from circuit_analyzer import detecteur
+    from gui import circuit_viewer
+    g = construire_graphe([
+        Composant("U1", "U", {"IN+": "GND", "IN-": "INM", "OUT": "VOUT"}),
+        Composant("Rin", "R", {"1": "VIN", "2": "INM"}, "1k"),
+        Composant("R1", "R", {"1": "INM", "2": "X"}, "2k"),
+        Composant("R2", "R", {"1": "X", "2": "VOUT"}, "3k"),
+    ])
+    res = detecteur.analyser(g)
+    ilot = res.ilots[0]
+    m = circuit_viewer._circuit_principal_ilot(ilot, g, res)
+    assert m is not None
+    assert m["circuit_type"] == "Amplificateur inverseur (AOP)"
+
+
+def test_circuit_principal_ilot_none_pour_ilot_passif():
+    # Un ilot purement passif n'a pas de composant principal a drawer dedie.
+    from circuit_analyzer import detecteur
+    from gui import circuit_viewer
+    g = construire_graphe([
+        Composant("R1", "R", {"1": "VIN", "2": "M"}, "1k"),
+        Composant("R2", "R", {"1": "M", "2": "VOUT"}, "2k"),
+    ])
+    res = detecteur.analyser(g)
+    ilot = res.ilots[0]
+    assert circuit_viewer._circuit_principal_ilot(ilot, g, res) is None
+
+
 def test_pont_ilot_detecte_le_pont():
     from circuit_analyzer.composant import Composant, construire_graphe
     from gui import circuit_viewer
