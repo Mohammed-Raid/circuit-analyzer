@@ -449,7 +449,7 @@ class TabAnalyze:
             grid.grid_columnconfigure((0, 1), weight=1)
 
             for i, item in enumerate(items):
-                card = _CircuitCard(grid, item, self._comp_info)
+                card = _CircuitCard(grid, item, self._comp_info, graph=self._graph)
                 card.grid(row=i // 2, column=i % 2,
                           sticky="ew", padx=4, pady=4)
 
@@ -876,12 +876,13 @@ class _IslandSection(ctk.CTkFrame):
 class _CircuitCard(ctk.CTkFrame):
     """@brief Carte d'un circuit détecté (type, composants, nœuds, ouverture du schéma)."""
 
-    def __init__(self, parent, result: dict, comp_info: dict = None):
+    def __init__(self, parent, result: dict, comp_info: dict = None, graph=None):
         """@brief Construit la carte d'un circuit.
 
         @param parent Widget parent.
         @param result Match du circuit détecté.
         @param comp_info Dict {ref -> infos composant} pour le rendu du schéma.
+        @param graph Graphe du circuit (pour le clic drill-down sur les boîtes Z).
         """
         bg, fg, icon = _type_style(result["circuit_type"])
         super().__init__(parent, corner_radius=12,
@@ -890,6 +891,7 @@ class _CircuitCard(ctk.CTkFrame):
                          border_color=_darken(bg))
         self._result = result
         self._comp_info = comp_info or {}
+        self._graph = graph
 
         # Header
         hdr = ctk.CTkFrame(self, fg_color="transparent")
@@ -943,7 +945,7 @@ class _CircuitCard(ctk.CTkFrame):
 
     def _open_schema(self):
         """@brief Ouvre la fenêtre de schéma du circuit de cette carte."""
-        show_circuit(self._result, self._comp_info)
+        show_circuit(self._result, self._comp_info, graph=self._graph)
 
 
 # ── Utilities ────────────────────────────────────────────────────────────────

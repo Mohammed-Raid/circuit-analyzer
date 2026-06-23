@@ -147,12 +147,13 @@ def _build_dipole_model(refs, graph, comp_info, label="Detail Z") -> dict:
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
-def show_circuit(result: dict, comp_info: dict, parent=None):
+def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
     """@brief Ouvre une fenêtre affichant le schéma d'un circuit détecté.
 
     @param result Match du circuit détecté (type, composants, nœuds).
     @param comp_info Dict {ref -> {type, value, pins}} des composants.
     @param parent Fenêtre parente (optionnel).
+    @param graph Graphe du circuit, requis pour le clic drill-down sur les boîtes Z (optionnel).
     @return None
     """
     name    = result["circuit_type"]
@@ -171,6 +172,10 @@ def show_circuit(result: dict, comp_info: dict, parent=None):
     ctk.CTkLabel(hdr, text=f"⚡  {name}",
                  font=ctk.CTkFont("Segoe UI", 14, "bold"),
                  text_color="#f1f5f9").pack(side="left", padx=18, pady=14)
+    if result.get("gain"):
+        ctk.CTkLabel(hdr, text=f"Av = {result['gain']}",
+                     font=ctk.CTkFont("Consolas", 12, "bold"),
+                     text_color="#34d399").pack(side="right", padx=18)
 
     # Component chips
     chips = ctk.CTkFrame(popup, fg_color=UI_BG)
@@ -198,6 +203,16 @@ def show_circuit(result: dict, comp_info: dict, parent=None):
     canvas.draw()
     canvas.get_tk_widget().configure(bg=SCH_BG, highlightthickness=0)
     canvas.get_tk_widget().pack(fill="both", expand=True, padx=4, pady=4)
+
+    # Clic sur une boîte Z -> détail R/L/C (drill-down série/parallèle existant).
+    def _on_click(event):
+        if graph is None or event.xdata is None or event.ydata is None:
+            return
+        for x0, x1, y0, y1, refs, composition in getattr(fig, "_z_hitboxes", []):
+            if x0 <= event.xdata <= x1 and y0 <= event.ydata <= y1:
+                show_dipole_detail(refs, composition, graph, comp_info, popup)
+                return
+    canvas.mpl_connect("button_press_event", _on_click)
 
     # Bottom bar
     bar = ctk.CTkFrame(popup, fg_color=UI_CARD, corner_radius=0, height=44)
@@ -430,11 +445,14 @@ def _make_fig(result, comp_info, drawer_fn):
     # (la boite d'impedance, horizontale, paraissait verticale).
     ax.set_aspect("equal")
 
+    fig._z_hitboxes = []   # zones cliquables des Z (renseignées par le drawer)
     if drawer_fn:
         try:
             with schemdraw.Drawing(canvas=ax, show=False) as d:
                 d.config(fontsize=11, inches_per_unit=0.5)
+                d._z_hitboxes = []
                 drawer_fn(d, result, comp_info)
+                fig._z_hitboxes = list(d._z_hitboxes)
         except Exception as e:
             ax.text(0.5, 0.5, f"Schéma non disponible\n{e}",
                     ha="center", va="center",
