@@ -418,3 +418,33 @@ def test_formater_valeur_avec_unite():
     assert impedance.formater_valeur("470", "R") == "470 Ω"
     assert impedance.formater_valeur("", "R") == ""
     assert impedance.formater_valeur("abc", "R") == "abc"  # non interpretable -> tel quel
+
+
+def test_gain_inverseur_resistif_est_un_reel_negatif():
+    g = construire_graphe([
+        Composant("Rin", "R", {"1": "A", "2": "B"}, "1k"),
+        Composant("R1", "R", {"1": "B", "2": "C"}, "10k"),
+        Composant("R2", "R", {"1": "C", "2": "D"}, "10k"),
+    ])
+    # Zf = R1+R2 = 20k ; Zin = Rin = 1k ; Av = -20
+    s = impedance.gain_inverseur(g, "Rin", "R1+R2")
+    assert s == "-20"
+
+
+def test_gain_inverseur_reactif_donne_module_a_la_frequence():
+    g = construire_graphe([
+        Composant("Rin", "R", {"1": "A", "2": "B"}, "1k"),
+        Composant("Rf", "R", {"1": "B", "2": "C"}, "10k"),
+        Composant("Cf", "C", {"1": "B", "2": "C"}, "10n"),
+    ])
+    s = impedance.gain_inverseur(g, "Rin", "Rf//Cf", f=1000.0)
+    assert s.startswith("|Av|")
+    assert "1000 Hz" in s
+
+
+def test_gain_inverseur_valeur_manquante_renvoie_none():
+    g = construire_graphe([
+        Composant("Rin", "R", {"1": "A", "2": "B"}, ""),   # pas de valeur
+        Composant("Rf", "R", {"1": "B", "2": "C"}, "10k"),
+    ])
+    assert impedance.gain_inverseur(g, "Rin", "Rf") is None

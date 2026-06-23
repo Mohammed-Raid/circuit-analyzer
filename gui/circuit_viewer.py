@@ -147,6 +147,38 @@ def _build_dipole_model(refs, graph, comp_info, label="Detail Z") -> dict:
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
+def _texte_gain(result, graph):
+    """@brief Texte du gain pour l'entête : symbolique + numérique si évaluable.
+
+    @param result Match (porte 'gain' symbolique et éventuellement 'impedances').
+    @param graph Graphe d'origine (pour évaluer numériquement), ou None.
+    @return str|None « Av = −Zf/Zin = -20 » (résistif) / « … (|Av|≈3.2 à 1000 Hz) »
+            (réactif) / « Av = −Zf/Zin » si non évaluable, ou None si pas de gain.
+    """
+    g = result.get("gain")
+    if not g:
+        return None
+    imp = result.get("impedances")
+    if imp and graph is not None:
+        from circuit_analyzer import impedance
+        num = impedance.gain_inverseur(
+            graph, imp["Zin"]["composition"], imp["Zf"]["composition"])
+        if num:
+            return f"Av = {g}  ({num})" if num.startswith("|Av|") else f"Av = {g} = {num}"
+    return f"Av = {g}"
+
+
+def _suivre_curseur_z(canvas, fig):
+    """@brief Curseur « main » au survol d'une boîte Z cliquable (découvrabilité)."""
+    widget = canvas.get_tk_widget()
+    def _on_motion(event):
+        over = event.xdata is not None and event.ydata is not None and any(
+            x0 <= event.xdata <= x1 and y0 <= event.ydata <= y1
+            for x0, x1, y0, y1, *_ in getattr(fig, "_z_hitboxes", []))
+        widget.configure(cursor="hand2" if over else "")
+    canvas.mpl_connect("motion_notify_event", _on_motion)
+
+
 def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
     """@brief Ouvre une fenêtre affichant le schéma d'un circuit détecté.
 
@@ -172,8 +204,9 @@ def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
     ctk.CTkLabel(hdr, text=f"⚡  {name}",
                  font=ctk.CTkFont("Segoe UI", 14, "bold"),
                  text_color="#f1f5f9").pack(side="left", padx=18, pady=14)
-    if result.get("gain"):
-        ctk.CTkLabel(hdr, text=f"Av = {result['gain']}",
+    _gain_txt = _texte_gain(result, graph)
+    if _gain_txt:
+        ctk.CTkLabel(hdr, text=_gain_txt,
                      font=ctk.CTkFont("Consolas", 12, "bold"),
                      text_color="#34d399").pack(side="right", padx=18)
 
@@ -213,6 +246,8 @@ def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
                 show_dipole_detail(refs, composition, graph, comp_info, popup)
                 return
     canvas.mpl_connect("button_press_event", _on_click)
+    if graph is not None:
+        _suivre_curseur_z(canvas, fig)
 
     # Bottom bar
     bar = ctk.CTkFrame(popup, fg_color=UI_CARD, corner_radius=0, height=44)
@@ -354,8 +389,9 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                  font=ctk.CTkFont("Segoe UI", 14, "bold"),
                  text_color="#f1f5f9").pack(side="left", padx=18, pady=14)
     _principal_hdr = _circuit_principal_ilot(ilot, graph, results)
-    if _principal_hdr and _principal_hdr.get("gain"):
-        ctk.CTkLabel(hdr, text=f"Av = {_principal_hdr['gain']}",
+    _gain_txt = _texte_gain(_principal_hdr, graph) if _principal_hdr else None
+    if _gain_txt:
+        ctk.CTkLabel(hdr, text=_gain_txt,
                      font=ctk.CTkFont("Consolas", 12, "bold"),
                      text_color="#34d399").pack(side="right", padx=18)
 
@@ -408,6 +444,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                 return
 
     canvas.mpl_connect("button_press_event", _on_click)
+    _suivre_curseur_z(canvas, fig)
 
     bar = ctk.CTkFrame(popup, fg_color=UI_CARD, corner_radius=0, height=44)
     bar.pack(fill="x", side="bottom")
@@ -522,6 +559,13 @@ def _make_fig(result, comp_info, drawer_fn):
                 "  ·  ".join(result["components"]),
                 ha="center", va="center", transform=ax.transAxes,
                 fontsize=11, color="#64748b", fontfamily="monospace")
+
+    # Astuce de découvrabilité : si le schéma comporte des boîtes Z cliquables,
+    # on l'indique (sinon l'utilisateur ne sait pas qu'il peut déplier les Z).
+    if fig._z_hitboxes:
+        ax.text(0.01, 0.01, "Astuce : cliquez une boîte Z pour voir le détail R/L/C",
+                transform=ax.transAxes, fontsize=8, color="#64748b",
+                va="bottom", ha="left")
 
     # Marge autour du tracé : évite que les étiquettes (labels de bornes,
     # composition d'une Impédance Z) soient rognées par le bord de la figure.
@@ -1009,6 +1053,30 @@ def _lbl(ref, comp_info):
     val = comp_info.get(ref, {}).get("value", "")
     return f"{ref}\n{val}" if val else ref
 
+
+def _z_label(prefix, zinfo, comp_info):
+    """@brief Étiquette d'une boîte Z : « Zin / composition [= valeur si 1 composant] ».
+
+    Pour une impédance d'un seul composant, on affiche directement sa valeur
+    formatée (« Zf / R4 = 22 kΩ »). Pour un composite, on garde la composition
+    symbolique (« Zin / R1+(C1//R2) ») — le détail chiffré s'obtient au clic.
+
+    @param prefix « Zin » ou « Zf ».
+    @param zinfo Dict {'refs', 'composition', ...} de l'impédance.
+    @param comp_info Dict {ref → {type, value}}.
+    @return str Étiquette multi-lignes.
+    """
+    from circuit_analyzer.impedance import formater_expr, formater_valeur
+    compo = formater_expr(zinfo["composition"])
+    refs = zinfo.get("refs", [])
+    if len(refs) == 1:
+        info = comp_info.get(refs[0], {})
+        val = formater_valeur(info.get("value", ""), info.get("type", "R"))
+        if val:
+            return f"{prefix}\n{compo} = {val}"
+    return f"{prefix}\n{compo}"
+
+
 def _ref(result, comp_info, typ):
     """@brief Première référence d'un type donné dans le circuit.
 
@@ -1158,7 +1226,6 @@ def _draw_inverting_amp(d, result, ci):
 
     Repli : si le match ne porte pas d'impédances structurées, dessin résistances.
     """
-    from circuit_analyzer.impedance import formater_expr
     imp = result.get("impedances")
     if not imp:
         rs = _refs(result, ci, "R")
@@ -1183,7 +1250,7 @@ def _draw_inverting_amp(d, result, ci):
     # Zin : entrée -> IN- (boîte Z horizontale)
     zin_p1 = (in1[0] - 3.0, in1[1])
     d.add(elm.ResistorIEC().at(zin_p1).to(in1).label(
-        "Zin\n" + formater_expr(zin["composition"]), loc="top"))
+        _z_label("Zin", zin, ci), loc="top"))
     d.add(elm.Line().at(zin_p1).left(0.7))
     d.add(elm.Dot().label("IN", loc="left"))
     # IN+ à la masse
@@ -1194,7 +1261,7 @@ def _draw_inverting_amp(d, result, ci):
     d.add(elm.Line().at(in1).up(2.0))
     zf_p1, zf_p2 = (in1[0], above_y), (out[0], above_y)
     d.add(elm.ResistorIEC().at(zf_p1).to(zf_p2).label(
-        "Zf\n" + formater_expr(zf["composition"]), loc="top"))
+        _z_label("Zf", zf, ci), loc="top"))
     d.add(elm.Line().at(zf_p2).toy(out[1]))
     d.add(elm.Line().at(out).right(1.0).label("OUT", loc="right"))
 

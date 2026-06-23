@@ -408,6 +408,33 @@ def evaluer_impedance(graphe, expr: str, f: float) -> complex:
     return _ev(ast.parse(expr, mode='eval'))
 
 
+def gain_inverseur(graphe, zin_expr: str, zf_expr: str, f: float = 1000.0):
+    """@brief Gain numérique d'un ampli inverseur : Av = −Zf/Zin, formaté pour affichage.
+
+    Si Zin et Zf sont purement résistifs, Av est réel et indépendant de la
+    fréquence (« −12.1 »). Sinon, on donne le module |Av| à la fréquence f
+    (« |Av|≈3.2 à 1000 Hz »).
+
+    @param graphe Graphe d'origine (dict 'components').
+    @param zin_expr Composition de l'impédance d'entrée (ex. « R1 »).
+    @param zf_expr Composition de l'impédance de contre-réaction (ex. « R2//C1 »).
+    @param f Fréquence d'évaluation en Hz (pour le cas réactif).
+    @return str|None Étiquette du gain, ou None si non évaluable (valeur manquante).
+    """
+    try:
+        zin = evaluer_impedance(graphe, zin_expr, f)
+        zf = evaluer_impedance(graphe, zf_expr, f)
+        av = -zf / zin
+    except (ValueError, ZeroDivisionError):
+        return None
+    comps = graphe.graph.get('components', {})
+    refs = set(re.findall(r'[A-Za-z]\w*', f"{zin_expr} {zf_expr}"))
+    resistif = all(comps[r].type == 'R' for r in refs if r in comps)
+    if resistif:
+        return f"{av.real:.3g}"
+    return f"|Av|≈{abs(av):.3g} à {f:.0f} Hz"
+
+
 def _convertir_noeud(node):
     """@brief Convertit un nœud AST en arbre série/parallèle, ou None si * / /."""
     if isinstance(node, ast.Name):
