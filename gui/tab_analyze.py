@@ -11,7 +11,8 @@ from circuit_analyzer.xml import lire_xml as parse_xml, generer_xml as component
 from circuit_analyzer.detecteur import analyser as match_patterns
 from circuit_analyzer.rapport import generate
 from circuit_analyzer.drc import verifier_drc
-from gui.circuit_viewer import show_circuit, show_island
+# gui.circuit_viewer importe matplotlib + schemdraw (~2 s). On le charge à la
+# demande (ouverture d'un schéma), pas au démarrage : la fenêtre s'affiche vite.
 
 from gui.theme import BG, CARD, CARD2, BORDER, TEXT, MUTED, BLUE
 
@@ -864,6 +865,7 @@ class _IslandSection(ctk.CTkFrame):
         """@brief Ouvre le schema reel de l'ilot."""
         if self._graph is None:
             return
+        from gui.circuit_viewer import show_island
         show_island(
             self._ilot,
             self._graph,
@@ -945,6 +947,7 @@ class _CircuitCard(ctk.CTkFrame):
 
     def _open_schema(self):
         """@brief Ouvre la fenêtre de schéma du circuit de cette carte."""
+        from gui.circuit_viewer import show_circuit
         show_circuit(self._result, self._comp_info, graph=self._graph)
 
 
