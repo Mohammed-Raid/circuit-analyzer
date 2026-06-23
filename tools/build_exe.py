@@ -8,7 +8,7 @@ Usage : python tools/build_exe.py
   1. Vérifie que PyInstaller est installé.
   2. Build PyInstaller depuis packaging/analyseur.spec -> dist/AnalyseurCircuits/
   3. Copie config/net_aliases.json à côté des exes (fichier éditable).
-  4. Test de fumée : analyse de circuits_industriels/relay_driver.xml
+  4. Test de fumée : analyse de circuits_industriels/aop_inverseur_zf_composite.xml
      avec l'exe CLI fraîchement compilé.
   5. Zip : dist/AnalyseurCircuits-<VERSION>.zip
 """
@@ -145,21 +145,21 @@ def copier_config() -> None:
 
 
 def test_de_fumee() -> None:
-    """@brief Test de fumée : analyse relay_driver.xml avec l'exe CLI fraîchement compilé."""
-    etape('4/5 Test de fumée (analyse de relay_driver.xml avec l\'exe CLI)')
+    """@brief Test de fumée : analyse aop_inverseur_zf_composite.xml avec l'exe CLI compilé."""
+    etape('4/5 Test de fumée (analyse de aop_inverseur_zf_composite.xml avec l\'exe CLI)')
     with tempfile.TemporaryDirectory() as tmp:
         rapport = Path(tmp) / 'rapport.txt'
         resultat = subprocess.run(
             [str(DOSSIER_APP / 'analyseur-cli.exe'),
-             str(RACINE / 'circuits_industriels' / 'relay_driver.xml'),
+             str(RACINE / 'circuits_industriels' / 'aop_inverseur_zf_composite.xml'),
              '--output', str(rapport)],
             capture_output=True, text=True,
         )
         if resultat.returncode != 0:
             sys.exit(f'Échec du test de fumée :\n{resultat.stdout}\n{resultat.stderr}')
         contenu = rapport.read_text(encoding='utf-8')
-        if 'Commande de relais' not in contenu:
-            sys.exit('Test de fumée : « Commande de relais » absent du rapport.')
+        if 'Amplificateur inverseur (AOP)' not in contenu:
+            sys.exit('Test de fumée : « Amplificateur inverseur (AOP) » absent du rapport.')
     print('Rapport conforme.')
 
 
