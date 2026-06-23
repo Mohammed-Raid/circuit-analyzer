@@ -14,6 +14,26 @@ def _ampli_inverseur_zf_composite():
     ])
 
 
+def _integrateur():
+    # AOP U1 ; entree VIN -Re- M(IN-) ; contre-reaction M -Cf- O(OUT).
+    return construire_graphe([
+        Composant("U1", "U", {"IN+": "GND", "IN-": "M", "OUT": "O"}),
+        Composant("Re", "R", {"1": "VIN", "2": "M"}, "10k"),
+        Composant("Cf", "C", {"1": "M", "2": "O"}, "100n"),
+    ])
+
+
+def test_integrateur_expose_impedances_et_gain():
+    res = detecteur.analyser(_integrateur())
+    integ = [r for r in res if r["circuit_type"] == "Intégrateur (AOP)"]
+    assert len(integ) == 1
+    m = integ[0]
+    assert m["gain"] == "−Zf/Zin"
+    assert m["impedances"]["Zf"]["refs"] == ["Cf"]          # condensateur de contre-réaction
+    assert m["impedances"]["Zin"]["refs"] == ["Re"]
+    assert m["impedances"]["Zf"]["nodes"] == ("M", "O")
+
+
 def test_inverseur_expose_impedances_et_gain():
     res = detecteur.analyser(_ampli_inverseur_zf_composite())
     inv = [r for r in res if r["circuit_type"] == "Amplificateur inverseur (AOP)"]

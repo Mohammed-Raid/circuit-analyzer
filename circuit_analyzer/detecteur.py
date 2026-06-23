@@ -231,20 +231,27 @@ def detecter_integrateur(graphe):
         if not entree_neg or not sortie:
             continue
 
-        r_entree = []
-        c_feedback = []
+        entree = None
+        feedback = None
         for u, v, data in graphe.edges(entree_neg, data=True):
             autre = v if u == entree_neg else u
-            if _type_correspond(data, 'R', inclure_z=True) and autre != sortie:
-                r_entree.append(data['ref'])
-            elif data['type'] == 'C' and autre == sortie:
-                c_feedback.append(data['ref'])
+            bloc = {
+                'refs': list(data.get('refs', [data['ref']])),
+                'composition': data.get('composition', data['ref']),
+                'nodes': (entree_neg, autre),
+            }
+            if data['type'] == 'C' and autre == sortie:
+                feedback = bloc                       # condensateur de contre-réaction
+            elif _type_correspond(data, 'R', inclure_z=True) and autre != sortie:
+                entree = bloc
 
-        if r_entree and c_feedback:
+        if entree and feedback:
             resultats.append({
                 'circuit_type': 'Intégrateur (AOP)',
-                'components': [ref_aop] + r_entree + c_feedback,
+                'components': [ref_aop] + entree['refs'] + feedback['refs'],
                 'nodes': [comp.pins.get('IN+', ''), entree_neg, sortie],
+                'impedances': {'Zin': entree, 'Zf': feedback},
+                'gain': '−Zf/Zin',
             })
 
     return resultats

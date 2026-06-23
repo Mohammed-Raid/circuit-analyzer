@@ -1282,6 +1282,19 @@ def _draw_inverting_amp(d, result, ci):
         d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
         return
 
+    _draw_aop_inverseur_zin_zf(d, imp, ci)
+
+
+def _draw_aop_inverseur_zin_zf(d, imp, ci):
+    """@brief Dessin commun des montages à topologie inverseuse : AOP + Zin/Zf cliquables.
+
+    Partagé par l'ampli inverseur, l'intégrateur, le dérivateur… (même structure :
+    Zin sur IN-, Zf de IN- vers OUT, IN+ à la masse). Zf est rendu selon le type
+    dominant du bloc (condensateur, bobine, sinon boîte Z générique).
+
+    @param imp Dict {'Zin': bloc, 'Zf': bloc} (cf. détecteurs).
+    @param ci Dict {ref → {type, value}} pour étiquettes/valeurs.
+    """
     zin, zf = imp["Zin"], imp["Zf"]
     op = d.add(elm.Opamp().anchor("in1").at((4.5, 0)).color(_WIRE).fill(_OPAMP_FILL))
     in1, out = op.in1, op.out
@@ -1366,7 +1379,15 @@ def _draw_follower(d, result, ci):
 
 
 def _draw_integrator(d, result, ci):
-    """@brief Dessine le schéma « Intégrateur (AOP) »."""
+    """@brief Dessine le schéma « Intégrateur (AOP) » : AOP + Zin/Zf cliquables.
+
+    Repli : si le match ne porte pas d'impédances structurées, dessin R/C fixe.
+    """
+    imp = result.get("impedances")
+    if imp:
+        _draw_aop_inverseur_zin_zf(d, imp, ci)
+        return
+
     rs = _refs(result, ci, "R"); cs = _refs(result, ci, "C")
     r = rs[0] if rs else "R"
     c = cs[0] if cs else "C"
