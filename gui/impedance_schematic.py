@@ -101,6 +101,12 @@ SCH_BG = "#fafafa"   # fond clair standard de schéma (idem circuit_viewer)
 _WIRE = "#1e293b"
 _BUS = "#475569"
 
+# Boîtes Z : bleu rempli (idem circuit_viewer) — lisibilité + affordance du clic.
+_Z_FILL = "#dbeafe"
+_Z_EDGE = "#2563eb"
+# Couleur des symboles par type (idem palette _COMP_COLORS de l'app).
+_COMP_COLORS = {"R": "#1d4ed8", "C": "#0891b2", "L": "#059669"}
+
 # Symbole schemdraw par type de composant ; défaut = boîte Z générique.
 _SYMB = {
     "R": elm.Resistor,
@@ -139,18 +145,19 @@ def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes):
                 n = ordre_groupes.index(ref) + 1
                 prefixe = "Z" if len(ordre_groupes) == 1 else f"Z{n}"
                 label = f"{prefixe}\n{impedance.formater_expr(gcompo)}"
-                d += elm.ResistorIEC().at((x1, y)).to((x2, y)).label(
-                    label, loc="bottom", fontsize=9)
+                d += elm.ResistorIEC().at((x1, y)).to((x2, y)).color(_Z_EDGE).fill(
+                    _Z_FILL).label(label, loc="bottom", fontsize=9, color=_Z_EDGE)
                 hitboxes.append((x1 - 0.1, x2 + 0.1, y - 0.6, y + 0.6,
                                  list(grefs), gcompo))
             else:
                 comp = comps.get(ref)
-                cls = _SYMB.get(getattr(comp, "type", ""), elm.ResistorIEC)
-                vfmt = impedance.formater_valeur(getattr(comp, "value", ""),
-                                                 getattr(comp, "type", ""))
+                typ = getattr(comp, "type", "")
+                cls = _SYMB.get(typ, elm.ResistorIEC)
+                coul = _COMP_COLORS.get(typ, _WIRE)
+                vfmt = impedance.formater_valeur(getattr(comp, "value", ""), typ)
                 etiquette = f"{ref}\n{vfmt}" if vfmt else ref
-                d += cls().at((x1, y)).to((x2, y)).label(etiquette, loc="bottom",
-                                                         fontsize=9)
+                d += cls().at((x1, y)).to((x2, y)).color(coul).label(
+                    etiquette, loc="bottom", fontsize=9, color=coul)
         for (xa, ya), (xb, yb) in fils:
             d += elm.Line().at((xa, ya)).to((xb, yb)).color(_WIRE)
         d += elm.Dot().at((0.0, dims.y_borne)).label(a, loc="left", color=_BUS)
@@ -233,13 +240,16 @@ def _elem_bras(bras, comps, p1, p2):
     if len(refs) == 1:
         ref = refs[0]
         comp = comps.get(ref)
-        cls = _SYMB.get(getattr(comp, "type", ""), elm.ResistorIEC)
-        vfmt = impedance.formater_valeur(getattr(comp, "value", ""),
-                                         getattr(comp, "type", ""))
+        typ = getattr(comp, "type", "")
+        cls = _SYMB.get(typ, elm.ResistorIEC)
+        coul = _COMP_COLORS.get(typ, _WIRE)
+        vfmt = impedance.formater_valeur(getattr(comp, "value", ""), typ)
         label = f"{ref}\n{vfmt}" if vfmt else ref
-        return cls().at(p1).to(p2).label(label, loc="bottom", fontsize=9), None
+        return cls().at(p1).to(p2).color(coul).label(
+            label, loc="bottom", fontsize=9, color=coul), None
     label = impedance.formater_expr(bras["composition"])
-    el = elm.ResistorIEC().at(p1).to(p2).label(label, loc="bottom", fontsize=9)
+    el = elm.ResistorIEC().at(p1).to(p2).color(_Z_EDGE).fill(_Z_FILL).label(
+        label, loc="bottom", fontsize=9, color=_Z_EDGE)
     # Hitbox centrée sur le SYMBOLE (milieu du bras), pas sur tout le segment :
     # deux bras adjacents partagent un sommet, donc des bbox pleine-longueur se
     # chevaucheraient près des sommets et rendraient le clic ambigu.
