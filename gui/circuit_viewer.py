@@ -161,8 +161,12 @@ def _texte_gain(result, graph):
     imp = result.get("impedances")
     if imp and graph is not None:
         from circuit_analyzer import impedance
-        num = impedance.gain_inverseur(
-            graph, imp["Zin"]["composition"], imp["Zf"]["composition"])
+        if "Zg" in imp:        # non-inverseur : Av = 1 + Zf/Zg
+            num = impedance.gain_non_inverseur(
+                graph, imp["Zf"]["composition"], imp["Zg"]["composition"])
+        else:                  # inverseur / intégrateur / dérivateur : Av = −Zf/Zin
+            num = impedance.gain_inverseur(
+                graph, imp["Zin"]["composition"], imp["Zf"]["composition"])
         if num:
             return f"Av = {g}  ({num})" if num.startswith("|Av|") else f"Av = {g} = {num}"
     return f"Av = {g}"
@@ -1334,8 +1338,67 @@ def _draw_aop_inverseur_zin_zf(d, imp, ci):
                    above_y - pad, above_y + pad, list(zf["refs"]), zf["composition"]))
 
 
+def _draw_aop_non_inverseur_zf_zg(d, imp, ci):
+    """@brief Dessin du non-inverseur : signal sur IN+, pont Zf/Zg cliquable sur IN-.
+
+    Topologie distincte de l'inverseur : l'entrée attaque IN+, et IN- porte un
+    diviseur Zf (vers OUT, par le haut) / Zg (vers la masse, vers le bas). Les
+    deux boîtes Z sont cliquables (drill-down R/L/C). Gain = 1 + Zf/Zg.
+
+    @param imp Dict {'Zf': bloc, 'Zg': bloc} (cf. détecteur).
+    @param ci Dict {ref → {type, value}} pour étiquettes/valeurs.
+    """
+    zf, zg = imp["Zf"], imp["Zg"]
+    op = d.add(elm.Opamp().anchor("in2").at((4.5, 0)).color(_WIRE).fill(_OPAMP_FILL))
+    in1, out = op.in1, op.out                          # in1 = IN-, in2 = IN+ (signal)
+
+    # Entrée -> IN+ (broche du bas)
+    d.add(elm.Line().at(op.in2).left(1.2).color(_WIRE))
+    d.add(elm.Dot().color(_WIRE).label("IN", loc="left", color=_WIRE))
+
+    # Nœud du diviseur, déporté loin à gauche : sa branche Zg descend verticalement
+    # vers la masse sans croiser le fil du signal qui entre, lui, par IN+ (en bas).
+    noeud = (in1[0] - 3.0, in1[1])
+    d.add(elm.Line().at(noeud).to(in1).color(_WIRE))
+    d.add(elm.Dot().at(noeud).color(_WIRE))
+
+    # Zf : contre-réaction nœud -> OUT (riser à gauche puis par le haut)
+    above_y = in1[1] + 2.0
+    d.add(elm.Line().at(noeud).up(above_y - noeud[1]).color(_WIRE))
+    zf_p1, zf_p2 = (noeud[0], above_y), (out[0], above_y)
+    d.add(elm.ResistorIEC().at(zf_p1).to(zf_p2).color(_Z_EDGE).fill(_Z_FILL).label(
+        _z_label("Zf", zf, ci), loc="top", color=_Z_EDGE))
+    d.add(elm.Line().at(zf_p2).toy(out[1]).color(_WIRE))
+    d.add(elm.Line().at(out).right(1.0).color(_WIRE).label("OUT", loc="right", color=_WIRE))
+
+    # Zg : nœud -> masse (boîte Z verticale, vers le bas)
+    zg_p2 = (noeud[0], noeud[1] - 3.0)
+    d.add(elm.ResistorIEC().at(noeud).to(zg_p2).color(_Z_EDGE).fill(_Z_FILL).label(
+        _z_label("Zg", zg, ci), loc="left", color=_Z_EDGE))
+    d.add(elm.Line().at(zg_p2).down(0.7).color(_WIRE))    # dégage l'étiquette de la masse
+    d.add(elm.Ground().color(_WIRE))
+
+    # Zones cliquables -> drill-down R/L/C
+    hb = getattr(d, "_z_hitboxes", None)
+    if hb is not None:
+        pad = 0.5
+        hb.append((min(zf_p1[0], zf_p2[0]) - pad, max(zf_p1[0], zf_p2[0]) + pad,
+                   above_y - pad, above_y + pad, list(zf["refs"]), zf["composition"]))
+        hb.append((noeud[0] - pad, noeud[0] + pad,
+                   min(noeud[1], zg_p2[1]) - pad, max(noeud[1], zg_p2[1]) + pad,
+                   list(zg["refs"]), zg["composition"]))
+
+
 def _draw_non_inverting_amp(d, result, ci):
-    """@brief Dessine le schéma « Amplificateur non-inverseur (AOP) »."""
+    """@brief Dessine le schéma « Amplificateur non-inverseur (AOP) » : AOP + Zf/Zg cliquables.
+
+    Repli : si le match ne porte pas d'impédances structurées, dessin R fixe.
+    """
+    imp = result.get("impedances")
+    if imp:
+        _draw_aop_non_inverseur_zf_zg(d, imp, ci)
+        return
+
     rs = _refs(result, ci, "R")
     rf  = rs[0] if rs else "Rf"
     rg  = rs[1] if len(rs) > 1 else "Rg"

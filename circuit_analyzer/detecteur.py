@@ -141,11 +141,12 @@ def detecter_amplificateur_non_inverseur(graphe):
     @param graphe Graphe NetworkX du circuit.
     @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
 
-    Schéma :
+    Schéma (Zf et Zg peuvent être composites — pont Zf/Zg sur IN-) :
         IN ──── IN+
-                AOP ──── OUT ──[R_feedback]──┐
-                IN- ──[R_gnd]── GND          │
-                  └──────────────────────────┘
+                AOP ──── OUT ──[Zf]──┐
+                IN- ──[Zg]── GND     │
+                  └──────────────────┘
+    Gain = 1 + Zf/Zg.
     """
     resultats = []
     composants = graphe.graph.get('components', {})
@@ -159,16 +160,29 @@ def detecter_amplificateur_non_inverseur(graphe):
         if not entree_neg or not sortie:
             continue
 
-        resistances_sur_inm = _voisins_de_type(graphe, entree_neg, 'R', inclure_z=True)
+        feedback = None
+        vers_gnd = None
+        for u, v, data in graphe.edges(entree_neg, data=True):
+            autre = v if u == entree_neg else u
+            if not _type_correspond(data, 'R', inclure_z=True):
+                continue
+            bloc = {
+                'refs': list(data.get('refs', [data['ref']])),
+                'composition': data.get('composition', data['ref']),
+                'nodes': (entree_neg, autre),
+            }
+            if autre == sortie:
+                feedback = bloc                       # Zf : contre-réaction
+            elif est_masse(autre):
+                vers_gnd = bloc                       # Zg : vers la masse
 
-        r_feedback = [ref for ref, autre in resistances_sur_inm if autre == sortie]
-        r_vers_gnd = [ref for ref, autre in resistances_sur_inm if est_masse(autre)]
-
-        if r_feedback and r_vers_gnd:
+        if feedback and vers_gnd:
             resultats.append({
                 'circuit_type': 'Amplificateur non-inverseur (AOP)',
-                'components': [ref_aop] + r_feedback + r_vers_gnd,
+                'components': [ref_aop] + feedback['refs'] + vers_gnd['refs'],
                 'nodes': [comp.pins.get('IN+', ''), entree_neg, sortie],
+                'impedances': {'Zf': feedback, 'Zg': vers_gnd},
+                'gain': '1 + Zf/Zg',
             })
 
     return resultats

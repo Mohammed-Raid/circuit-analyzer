@@ -98,6 +98,48 @@ def test_derivateur_reel_rin_serie_cin():
     assert "+" in deriv[0]["impedances"]["Zin"]["composition"]   # Zin série composite
 
 
+def _non_inverseur():
+    # AOP U1 ; signal sur IN+ ; pont Zf/Zg sur IN- : Rf (IN-→OUT), Rg (IN-→GND).
+    return construire_graphe([
+        Composant("U1", "U", {"IN+": "VIN", "IN-": "M", "OUT": "O"}),
+        Composant("Rf", "R", {"1": "M", "2": "O"}, "10k"),
+        Composant("Rg", "R", {"1": "M", "2": "GND"}, "1k"),
+    ])
+
+
+def test_non_inverseur_expose_impedances_et_gain():
+    res = detecteur.analyser(_non_inverseur())
+    ni = [r for r in res if r["circuit_type"] == "Amplificateur non-inverseur (AOP)"]
+    assert len(ni) == 1
+    m = ni[0]
+    assert m["gain"] == "1 + Zf/Zg"
+    assert m["impedances"]["Zf"]["refs"] == ["Rf"]          # contre-réaction
+    assert m["impedances"]["Zg"]["refs"] == ["Rg"]          # vers la masse
+    assert m["impedances"]["Zf"]["nodes"] == ("M", "O")
+
+
+def test_non_inverseur_zf_composite():
+    # Zf = R1 + R2 (série) dans la contre-réaction.
+    g = construire_graphe([
+        Composant("U1", "U", {"IN+": "VIN", "IN-": "M", "OUT": "O"}),
+        Composant("R1", "R", {"1": "M", "2": "X"}, "4k"),
+        Composant("R2", "R", {"1": "X", "2": "O"}, "6k"),
+        Composant("Rg", "R", {"1": "M", "2": "GND"}, "1k"),
+    ])
+    res = detecteur.analyser(g)
+    ni = [r for r in res if r["circuit_type"] == "Amplificateur non-inverseur (AOP)"]
+    assert len(ni) == 1, [r["circuit_type"] for r in res]
+    assert set(ni[0]["impedances"]["Zf"]["refs"]) == {"R1", "R2"}
+    assert "+" in ni[0]["impedances"]["Zf"]["composition"]
+
+
+def test_gain_non_inverseur_resistif():
+    from circuit_analyzer import impedance
+    g = _non_inverseur()
+    # Av = 1 + Zf/Zg = 1 + 10k/1k = 11
+    assert impedance.gain_non_inverseur(g, "Rf", "Rg") == "11"
+
+
 def test_inverseur_expose_impedances_et_gain():
     res = detecteur.analyser(_ampli_inverseur_zf_composite())
     inv = [r for r in res if r["circuit_type"] == "Amplificateur inverseur (AOP)"]

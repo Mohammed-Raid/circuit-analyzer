@@ -435,6 +435,33 @@ def gain_inverseur(graphe, zin_expr: str, zf_expr: str, f: float = 1000.0):
     return f"|Av|≈{abs(av):.3g} à {f:.0f} Hz"
 
 
+def gain_non_inverseur(graphe, zf_expr: str, zg_expr: str, f: float = 1000.0):
+    """@brief Gain numérique d'un ampli non-inverseur : Av = 1 + Zf/Zg, formaté.
+
+    Si Zf et Zg sont purement résistifs, Av est réel et indépendant de la
+    fréquence (« 11 »). Sinon, on donne le module |Av| à la fréquence f
+    (« |Av|≈3.2 à 1000 Hz »).
+
+    @param graphe Graphe d'origine (dict 'components').
+    @param zf_expr Composition de l'impédance de contre-réaction (IN-→OUT).
+    @param zg_expr Composition de l'impédance vers la masse (IN-→GND).
+    @param f Fréquence d'évaluation en Hz (pour le cas réactif).
+    @return str|None Étiquette du gain, ou None si non évaluable.
+    """
+    try:
+        zf = evaluer_impedance(graphe, zf_expr, f)
+        zg = evaluer_impedance(graphe, zg_expr, f)
+        av = 1 + zf / zg
+    except (ValueError, ZeroDivisionError):
+        return None
+    comps = graphe.graph.get('components', {})
+    refs = set(re.findall(r'[A-Za-z]\w*', f"{zf_expr} {zg_expr}"))
+    resistif = all(comps[r].type == 'R' for r in refs if r in comps)
+    if resistif:
+        return f"{av.real:.3g}"
+    return f"|Av|≈{abs(av):.3g} à {f:.0f} Hz"
+
+
 def _convertir_noeud(node):
     """@brief Convertit un nœud AST en arbre série/parallèle, ou None si * / /."""
     if isinstance(node, ast.Name):
