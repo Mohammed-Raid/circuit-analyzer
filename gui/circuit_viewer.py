@@ -1564,7 +1564,7 @@ def _draw_follower(d, result, ci, origin=(4.5, 0), in_label="IN", out_label="OUT
 
     # Feedback routes ABOVE the opamp to avoid crossing IN+:
     # OUT → right → up above opamp → left back to IN− x → down to IN−
-    top_y = in1_pt[1] + 1.2
+    top_y = in1_pt[1] + 2.0
     d.add(elm.Line().at(out_pt0).right(0.6))
     d.add(elm.Line().toy(top_y))
     d.add(elm.Line().tox(in1_pt[0]))
@@ -1576,6 +1576,7 @@ def _draw_follower(d, result, ci, origin=(4.5, 0), in_label="IN", out_label="OUT
 
 
 _CHAINE_DX = 10.0     # pas horizontal entre deux blocs de montage (largeur bloc + marge)
+_AOP_OUT_DY = 0.625   # décalage broche->sortie de l'AOP schemdraw (out sous in1, mesuré)
 
 
 def _dessiner_montage_a(d, match, ci, origin, in_label, out_label):
@@ -1607,7 +1608,13 @@ def _draw_island_chain(d, ordered, ci):
     for i, match in enumerate(ordered):
         in_label = "VIN" if i == 0 else ""
         out_label = "VOUT" if i == n - 1 else ""
-        origin = (4.5 + i * _CHAINE_DX, 0)
+        # y de l'origine : la sortie de chaque AOP doit tomber sur la même ligne
+        # (y=0) pour aligner les triangles. Inverseur/intég/dériv sont ancrés par
+        # IN- (broche du haut) -> on monte de +dy ; non-inverseur/suiveur ancrés
+        # par IN+ (broche du bas) -> on descend de -dy.
+        imp = match.get("impedances") or {}
+        oy = _AOP_OUT_DY if "Zin" in imp else -_AOP_OUT_DY
+        origin = (4.5 + i * _CHAINE_DX, oy)
         ancres.append(_dessiner_montage_a(d, match, ci, origin, in_label, out_label))
 
     for i in range(n - 1):
