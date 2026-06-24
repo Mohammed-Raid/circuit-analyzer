@@ -1356,9 +1356,9 @@ def _draw_aop_non_inverseur_zf_zg(d, imp, ci):
     d.add(elm.Line().at(op.in2).left(1.2).color(_WIRE))
     d.add(elm.Dot().color(_WIRE).label("IN", loc="left", color=_WIRE))
 
-    # Nœud du diviseur, déporté loin à gauche : sa branche Zg descend verticalement
-    # vers la masse sans croiser le fil du signal qui entre, lui, par IN+ (en bas).
-    noeud = (in1[0] - 3.0, in1[1])
+    # Nœud du diviseur, juste à gauche de IN-. Zf en repart vers le haut (puis OUT)
+    # et Zg vers la gauche (horizontale, comme la Zin de l'inverseur) jusqu'à la masse.
+    noeud = (in1[0] - 1.3, in1[1])
     d.add(elm.Line().at(noeud).to(in1).color(_WIRE))
     d.add(elm.Dot().at(noeud).color(_WIRE))
 
@@ -1371,11 +1371,11 @@ def _draw_aop_non_inverseur_zf_zg(d, imp, ci):
     d.add(elm.Line().at(zf_p2).toy(out[1]).color(_WIRE))
     d.add(elm.Line().at(out).right(1.0).color(_WIRE).label("OUT", loc="right", color=_WIRE))
 
-    # Zg : nœud -> masse (boîte Z verticale, vers le bas)
-    zg_p2 = (noeud[0], noeud[1] - 3.0)
-    d.add(elm.ResistorIEC().at(noeud).to(zg_p2).color(_Z_EDGE).fill(_Z_FILL).label(
-        _z_label("Zg", zg, ci), loc="left", color=_Z_EDGE))
-    d.add(elm.Line().at(zg_p2).down(0.7).color(_WIRE))    # dégage l'étiquette de la masse
+    # Zg : nœud -> masse (boîte Z horizontale vers la gauche, masse en bout)
+    zg_p1 = (noeud[0] - 3.0, noeud[1])
+    d.add(elm.ResistorIEC().at(zg_p1).to(noeud).color(_Z_EDGE).fill(_Z_FILL).label(
+        _z_label("Zg", zg, ci), loc="top", color=_Z_EDGE))
+    d.add(elm.Line().at(zg_p1).left(0.5).color(_WIRE))
     d.add(elm.Ground().color(_WIRE))
 
     # Zones cliquables -> drill-down R/L/C
@@ -1384,9 +1384,8 @@ def _draw_aop_non_inverseur_zf_zg(d, imp, ci):
         pad = 0.5
         hb.append((min(zf_p1[0], zf_p2[0]) - pad, max(zf_p1[0], zf_p2[0]) + pad,
                    above_y - pad, above_y + pad, list(zf["refs"]), zf["composition"]))
-        hb.append((noeud[0] - pad, noeud[0] + pad,
-                   min(noeud[1], zg_p2[1]) - pad, max(noeud[1], zg_p2[1]) + pad,
-                   list(zg["refs"]), zg["composition"]))
+        hb.append((min(zg_p1[0], noeud[0]) - pad, max(zg_p1[0], noeud[0]) + pad,
+                   noeud[1] - pad, noeud[1] + pad, list(zg["refs"]), zg["composition"]))
 
 
 def _draw_non_inverting_amp(d, result, ci):
