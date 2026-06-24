@@ -1344,23 +1344,24 @@ def _draw_inverting_amp(d, result, ci):
     _draw_aop_inverseur_zin_zf(d, imp, ci)
 
 
-def _draw_aop_inverseur_zin_zf(d, imp, ci):
+def _draw_aop_inverseur_zin_zf(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT"):
     """@brief Dessin commun des montages à topologie inverseuse : AOP + Zin/Zf cliquables.
 
-    Partagé par l'ampli inverseur, l'intégrateur, le dérivateur… (même structure :
-    Zin sur IN-, Zf de IN- vers OUT, IN+ à la masse). Zf est rendu selon le type
-    dominant du bloc (condensateur, bobine, sinon boîte Z générique).
+    Partagé par l'ampli inverseur, l'intégrateur, le dérivateur (même structure :
+    Zin sur IN-, Zf de IN- vers OUT, IN+ à la masse).
 
     @param imp Dict {'Zin': bloc, 'Zf': bloc} (cf. détecteurs).
     @param ci Dict {ref → {type, value}} pour étiquettes/valeurs.
+    @param origin Position de l'AOP (pour chaîner plusieurs montages).
+    @param in_label/out_label Libellés d'entrée/sortie ("" pour les masquer).
+    @return dict {"in": (x,y), "out": (x,y)} : points de connexion du bloc.
     """
     zin, zf = imp["Zin"], imp["Zf"]
-    op = d.add(elm.Opamp().anchor("in1").at((4.5, 0)).color(_WIRE).fill(_OPAMP_FILL))
+    op = d.add(elm.Opamp().anchor("in1").at(origin).color(_WIRE).fill(_OPAMP_FILL))
     in1, out = op.in1, op.out
 
     # Nœud de sommation, déporté à GAUCHE du triangle : Zin y arrive, un court fil
-    # le relie à IN-, et la contre-réaction en repart vers le haut. Ainsi le fil
-    # de feedback monte dans le vide à gauche de l'AOP, et ne longe plus son bord.
+    # le relie à IN-, et la contre-réaction en repart vers le haut.
     noeud = (in1[0] - 1.3, in1[1])
     d.add(elm.Line().at(noeud).to(in1).color(_WIRE))
     d.add(elm.Dot().at(noeud).color(_WIRE))
@@ -1370,7 +1371,8 @@ def _draw_aop_inverseur_zin_zf(d, imp, ci):
     d.add(elm.ResistorIEC().at(zin_p1).to(noeud).color(_Z_EDGE).fill(_Z_FILL).label(
         _z_label("Zin", zin, ci), loc="top", color=_Z_EDGE))
     d.add(elm.Line().at(zin_p1).left(0.7).color(_WIRE))
-    d.add(elm.Dot().color(_WIRE).label("IN", loc="left", color=_WIRE))
+    in_pt = (zin_p1[0] - 0.7, zin_p1[1])
+    d.add(elm.Dot().at(in_pt).color(_WIRE).label(in_label, loc="left", color=_WIRE))
     # IN+ à la masse
     d.add(elm.Line().at(op.in2).left(1.0).color(_WIRE))
     d.add(elm.Ground().color(_WIRE))
@@ -1381,7 +1383,8 @@ def _draw_aop_inverseur_zin_zf(d, imp, ci):
     d.add(elm.ResistorIEC().at(zf_p1).to(zf_p2).color(_Z_EDGE).fill(_Z_FILL).label(
         _z_label("Zf", zf, ci), loc="top", color=_Z_EDGE))
     d.add(elm.Line().at(zf_p2).toy(out[1]).color(_WIRE))
-    d.add(elm.Line().at(out).right(1.0).color(_WIRE).label("OUT", loc="right", color=_WIRE))
+    out_pt = (out[0] + 1.0, out[1])
+    d.add(elm.Line().at(out).to(out_pt).color(_WIRE).label(out_label, loc="right", color=_WIRE))
 
     # Zones cliquables (centrées sur chaque boîte) -> drill-down R/L/C
     hb = getattr(d, "_z_hitboxes", None)
@@ -1391,25 +1394,28 @@ def _draw_aop_inverseur_zin_zf(d, imp, ci):
                    noeud[1] - pad, noeud[1] + pad, list(zin["refs"]), zin["composition"]))
         hb.append((min(zf_p1[0], zf_p2[0]) - pad, max(zf_p1[0], zf_p2[0]) + pad,
                    above_y - pad, above_y + pad, list(zf["refs"]), zf["composition"]))
+    return {"in": in_pt, "out": out_pt}
 
 
-def _draw_aop_non_inverseur_zf_zg(d, imp, ci):
+def _draw_aop_non_inverseur_zf_zg(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT"):
     """@brief Dessin du non-inverseur : signal sur IN+, pont Zf/Zg cliquable sur IN-.
 
     Topologie distincte de l'inverseur : l'entrée attaque IN+, et IN- porte un
-    diviseur Zf (vers OUT, par le haut) / Zg (vers la masse, vers le bas). Les
-    deux boîtes Z sont cliquables (drill-down R/L/C). Gain = 1 + Zf/Zg.
+    diviseur Zf (vers OUT, par le haut) / Zg (vers la masse). Gain = 1 + Zf/Zg.
 
     @param imp Dict {'Zf': bloc, 'Zg': bloc} (cf. détecteur).
     @param ci Dict {ref → {type, value}} pour étiquettes/valeurs.
+    @param origin/in_label/out_label cf. _draw_aop_inverseur_zin_zf.
+    @return dict {"in": (x,y), "out": (x,y)}.
     """
     zf, zg = imp["Zf"], imp["Zg"]
-    op = d.add(elm.Opamp().anchor("in2").at((4.5, 0)).color(_WIRE).fill(_OPAMP_FILL))
+    op = d.add(elm.Opamp().anchor("in2").at(origin).color(_WIRE).fill(_OPAMP_FILL))
     in1, out = op.in1, op.out                          # in1 = IN-, in2 = IN+ (signal)
 
     # Entrée -> IN+ (broche du bas)
     d.add(elm.Line().at(op.in2).left(1.2).color(_WIRE))
-    d.add(elm.Dot().color(_WIRE).label("IN", loc="left", color=_WIRE))
+    in_pt = (op.in2[0] - 1.2, op.in2[1])
+    d.add(elm.Dot().at(in_pt).color(_WIRE).label(in_label, loc="left", color=_WIRE))
 
     # Nœud du diviseur, juste à gauche de IN-. Zf en repart vers le haut (puis OUT)
     # et Zg vers la gauche (horizontale, comme la Zin de l'inverseur) jusqu'à la masse.
@@ -1424,7 +1430,8 @@ def _draw_aop_non_inverseur_zf_zg(d, imp, ci):
     d.add(elm.ResistorIEC().at(zf_p1).to(zf_p2).color(_Z_EDGE).fill(_Z_FILL).label(
         _z_label("Zf", zf, ci), loc="top", color=_Z_EDGE))
     d.add(elm.Line().at(zf_p2).toy(out[1]).color(_WIRE))
-    d.add(elm.Line().at(out).right(1.0).color(_WIRE).label("OUT", loc="right", color=_WIRE))
+    out_pt = (out[0] + 1.0, out[1])
+    d.add(elm.Line().at(out).to(out_pt).color(_WIRE).label(out_label, loc="right", color=_WIRE))
 
     # Zg : nœud -> masse (boîte Z horizontale vers la gauche, masse en bout)
     zg_p1 = (noeud[0] - 3.0, noeud[1])
@@ -1441,6 +1448,7 @@ def _draw_aop_non_inverseur_zf_zg(d, imp, ci):
                    above_y - pad, above_y + pad, list(zf["refs"]), zf["composition"]))
         hb.append((min(zg_p1[0], noeud[0]) - pad, max(zg_p1[0], noeud[0]) + pad,
                    noeud[1] - pad, noeud[1] + pad, list(zg["refs"]), zg["composition"]))
+    return {"in": in_pt, "out": out_pt}
 
 
 def _draw_non_inverting_amp(d, result, ci):
@@ -1476,23 +1484,31 @@ def _draw_non_inverting_amp(d, result, ci):
     d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
 
 
-def _draw_follower(d, result, ci):
-    """@brief Dessine le schéma « Suiveur de tension (AOP) »."""
-    op = d.add(elm.Opamp().anchor("in2").at((4.5, 0)))
-    d.add(elm.Line().at(op.in2).left(1.2).label("IN", loc="left"))
+def _draw_follower(d, result, ci, origin=(4.5, 0), in_label="IN", out_label="OUT"):
+    """@brief Dessine le schéma « Suiveur de tension (AOP) ».
 
-    out_pt = op.out
+    @param origin/in_label/out_label cf. _draw_aop_inverseur_zin_zf.
+    @return dict {"in": (x,y), "out": (x,y)}.
+    """
+    op = d.add(elm.Opamp().anchor("in2").at(origin))
+    d.add(elm.Line().at(op.in2).left(1.2))
+    in_pt = (op.in2[0] - 1.2, op.in2[1])
+    d.add(elm.Dot().at(in_pt).label(in_label, loc="left"))
+
+    out_pt0 = op.out
     in1_pt = op.in1   # IN− (upper pin)
 
     # Feedback routes ABOVE the opamp to avoid crossing IN+:
     # OUT → right → up above opamp → left back to IN− x → down to IN−
     top_y = in1_pt[1] + 1.2
-    d.add(elm.Line().at(out_pt).right(0.6))
+    d.add(elm.Line().at(out_pt0).right(0.6))
     d.add(elm.Line().toy(top_y))
     d.add(elm.Line().tox(in1_pt[0]))
     d.add(elm.Line().toy(in1_pt[1]))
-    d.add(elm.Dot().at(out_pt))
-    d.add(elm.Line().at(out_pt).right(1).label("OUT", loc="right"))
+    d.add(elm.Dot().at(out_pt0))
+    out_pt = (out_pt0[0] + 1.0, out_pt0[1])
+    d.add(elm.Line().at(out_pt0).to(out_pt).label(out_label, loc="right"))
+    return {"in": in_pt, "out": out_pt}
 
 
 def _draw_integrator(d, result, ci):

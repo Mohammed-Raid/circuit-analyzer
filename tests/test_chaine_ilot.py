@@ -39,3 +39,23 @@ def test_ordonner_montages_flux_non_chaine_renvoie_none():
     res = analyser(construire_graphe(comps))
     aops = [r for r in res if "(AOP)" in r["circuit_type"]]
     assert cv._ordonner_montages_flux(aops) is None
+
+
+import schemdraw
+
+
+def _imp_inv():
+    return {"Zin": {"refs": ["R3"], "composition": "R3", "nodes": ("M", "A")},
+            "Zf": {"refs": ["R4"], "composition": "R4", "nodes": ("M", "B")}}
+
+
+def test_drawer_inverseur_renvoie_ancres_et_suit_origin():
+    with schemdraw.Drawing(show=False) as d:
+        d._z_hitboxes = []
+        a0 = cv._draw_aop_inverseur_zin_zf(d, _imp_inv(), {}, origin=(0, 0))
+    with schemdraw.Drawing(show=False) as d:
+        d._z_hitboxes = []
+        a10 = cv._draw_aop_inverseur_zin_zf(d, _imp_inv(), {}, origin=(10, 0))
+    assert set(a0) == {"in", "out"}
+    assert a0["out"][0] > a0["in"][0]                 # OUT à droite de IN
+    assert abs(a10["in"][0] - a0["in"][0] - 10) < 1e-6  # l'origine décale tout de +10
