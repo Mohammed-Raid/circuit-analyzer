@@ -102,6 +102,35 @@ def test_chaine_garde_les_aop_orientes_a_droite_apres_une_masse():
         assert abs(a["out"][1]) < 1e-6
 
 
+def test_chaine_comparateur_nest_pas_dessine_en_suiveur():
+    # Dans la chaine, un comparateur doit utiliser SON dessin (label REF),
+    # pas le repli suiveur (_draw_follower) faute de dispatch dedie.
+    match = {"circuit_type": "Comparateur (AOP)", "components": ["U1"],
+             "nodes": ["A", "GND", "B"]}
+    fig = Figure(figsize=(7, 4)); ax = fig.add_subplot(111)
+    ax.axis("off"); ax.set_aspect("equal")
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d._z_hitboxes = []
+        cv._dessiner_montage_a(d, match, {}, (4.5, 0), "", "VOUT")
+    assert "REF" in [t.get_text() for t in ax.texts]
+
+
+def test_chaine_schmitt_dessine_avec_contre_reaction_positive():
+    # Schmitt en chaine : boite Zf cliquable SOUS la ligne (contre-reaction
+    # positive), pas au-dessus comme le ferait le dessin inverseur (branche Zin).
+    match = {"circuit_type": "Bascule de Schmitt (AOP)",
+             "components": ["U1", "Rf", "Rin"], "nodes": ["P", "GND", "O"],
+             "impedances": {"Zf": {"refs": ["Rf"], "composition": "Rf", "nodes": ("P", "O")},
+                            "Zin": {"refs": ["Rin"], "composition": "Rin", "nodes": ("P", "IN")}}}
+    with schemdraw.Drawing(show=False) as d:
+        d._z_hitboxes = []
+        cv._dessiner_montage_a(d, match, {}, (4.5, 0), "", "")
+        hb = list(d._z_hitboxes)
+    assert len(hb) == 2
+    ys = [(y0 + y1) / 2 for _x0, _x1, y0, y1, *_ in hb]
+    assert min(ys) < 0   # Zf routee sous la ligne -> specifique au Schmitt
+
+
 def test_suiveur_ne_superpose_pas_le_fil_vout_et_le_retour():
     fig = Figure(figsize=(7, 4))
     ax = fig.add_subplot(111)

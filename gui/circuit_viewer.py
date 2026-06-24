@@ -1641,6 +1641,12 @@ def _dessiner_montage_a(d, match, ci, origin, in_label, out_label):
     @return dict {"in": (x,y), "out": (x,y)}.
     """
     imp = match.get("impedances") or {}
+    ct = match.get("circuit_type", "")
+    # Montages ancrés "center" (à router avant les branches Zin/Zg) :
+    if "Schmitt" in ct:
+        return _draw_aop_schmitt(d, imp, ci, origin, in_label, out_label)
+    if "Comparateur" in ct:
+        return _draw_aop_comparateur(d, match, ci, origin, in_label, out_label)
     if "Zg" in imp:
         return _draw_aop_non_inverseur_zf_zg(d, imp, ci, origin, in_label, out_label)
     if "Zin" in imp:
@@ -1669,7 +1675,15 @@ def _draw_island_chain(d, ordered, ci):
         # IN- (broche du haut) -> on monte de +dy ; non-inverseur/suiveur ancrés
         # par IN+ (broche du bas) -> on descend de -dy.
         imp = match.get("impedances") or {}
-        oy = _AOP_OUT_DY if "Zin" in imp else -_AOP_OUT_DY
+        ct = match.get("circuit_type", "")
+        # Schmitt/comparateur sont ancrés "center" -> OUT déjà sur la centerline
+        # (oy=0). Zin-family ancré in1 (haut) -> +dy ; non-inv/suiveur in2 (bas) -> -dy.
+        if "Schmitt" in ct or "Comparateur" in ct:
+            oy = 0.0
+        elif "Zin" in imp:
+            oy = _AOP_OUT_DY
+        else:
+            oy = -_AOP_OUT_DY
         origin = (4.5 + i * _CHAINE_DX, oy)
         ancres.append(_dessiner_montage_a(d, match, ci, origin, in_label, out_label))
 
@@ -1740,14 +1754,28 @@ def _draw_differentiator(d, result, ci):
     d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
 
 
-def _draw_comparator(d, result, ci):
-    """@brief Dessine le schéma « Comparateur (AOP) »."""
-    op = d.add(elm.Opamp().right().anchor("center").at((4.5, 0)).color(_WIRE).fill(_OPAMP_FILL))
+def _draw_aop_comparateur(d, _result, ci, origin=(4.5, 0), in_label="IN+", out_label="OUT"):
+    """@brief Comparateur (AOP) en boucle ouverte : IN+ signal / IN- REF / OUT.
+
+    Aucune impédance (pas de Z cliquable). Paramétré (origin/libellés) et renvoyant
+    ses ancres pour être chaînable dans la vue îlot.
+
+    @return dict {"in": (x,y), "out": (x,y)}.
+    """
+    op = d.add(elm.Opamp().right().anchor("center").at(origin).color(_WIRE).fill(_OPAMP_FILL))
     d.add(elm.Line().at(op.in2).left(1.3).color(_WIRE))
-    d.add(elm.Dot().at((op.in2[0] - 1.3, op.in2[1])).color(_WIRE).label("IN+", loc="left", color=_WIRE))
+    in_pt = (op.in2[0] - 1.3, op.in2[1])
+    d.add(elm.Dot().at(in_pt).color(_WIRE).label(in_label, loc="left", color=_WIRE))
     d.add(elm.Line().at(op.in1).left(1.3).color(_WIRE))
     d.add(elm.Dot().at((op.in1[0] - 1.3, op.in1[1])).color(_WIRE).label("REF", loc="left", color=_WIRE))
-    d.add(elm.Line().at(op.out).right(1.3).color(_WIRE).label("OUT", loc="right", color=_WIRE))
+    out_pt = (op.out[0] + 1.3, op.out[1])
+    d.add(elm.Line().at(op.out).to(out_pt).color(_WIRE).label(out_label, loc="right", color=_WIRE))
+    return {"in": in_pt, "out": out_pt}
+
+
+def _draw_comparator(d, result, ci):
+    """@brief Dessine le schéma « Comparateur (AOP) » (vue autonome)."""
+    _draw_aop_comparateur(d, result, ci)
 
 
 def _draw_aop_schmitt(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT"):
