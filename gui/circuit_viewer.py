@@ -756,8 +756,11 @@ def _ordonner_montages_flux(matches):
 
     def in_net(m):
         imp = m.get("impedances") or {}
-        if "Zin" in imp:
-            return imp["Zin"]["nodes"][1]
+        zin = imp.get("Zin")
+        # Zin unique (dict) = entrée chaînable ; Zin liste (sommateur multi-entrées)
+        # ou absent (non-inverseur/suiveur) -> on retombe sur le net IN+.
+        if isinstance(zin, dict):
+            return zin["nodes"][1]
         return m["nodes"][0]
 
     par_in = {}

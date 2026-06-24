@@ -41,6 +41,27 @@ def test_ordonner_montages_flux_non_chaine_renvoie_none():
     assert cv._ordonner_montages_flux(aops) is None
 
 
+def test_ordonner_ne_crashe_pas_avec_un_sommateur():
+    # Sommateur (Zin = LISTE de blocs) dans un ilot multi-AOP : ne doit pas
+    # planter (regression : in_net indexait Zin comme un bloc unique).
+    from circuit_analyzer.composant import Composant
+    comps = [
+        Composant("U1", "U", {"IN+": "GND", "IN-": "S", "OUT": "SUM"}),
+        Composant("Ra", "R", {"1": "IN1", "2": "S"}, "10k"),
+        Composant("Rb", "R", {"1": "IN2", "2": "S"}, "10k"),
+        Composant("Rf1", "R", {"1": "S", "2": "SUM"}, "10k"),
+        Composant("U2", "U", {"IN+": "GND", "IN-": "M", "OUT": "O"}),
+        Composant("Rin", "R", {"1": "SUM", "2": "M"}, "10k"),
+        Composant("Rf2", "R", {"1": "M", "2": "O"}, "100k"),
+    ]
+    res = analyser(construire_graphe(comps))
+    aops = [r for r in res if "(AOP)" in r["circuit_type"]]
+    ordre = cv._ordonner_montages_flux(aops)   # ne doit pas lever
+    # sommateur en tete (entree externe IN1/IN2) puis inverseur en aval
+    assert ordre is not None
+    assert ordre[0]["circuit_type"] == "Amplificateur sommateur (AOP)"
+
+
 import schemdraw
 from matplotlib.figure import Figure
 
