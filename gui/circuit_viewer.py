@@ -1739,10 +1739,12 @@ def _draw_differentiator(d, result, ci):
 
 def _draw_comparator(d, result, ci):
     """@brief Dessine le schéma « Comparateur (AOP) »."""
-    op = d.add(elm.Opamp().anchor("center").at((4.5, 0)))
-    d.add(elm.Line().at(op.in2).left(1.2).label("IN+", loc="left"))
-    d.add(elm.Line().at(op.in1).left(1.2).label("IN−", loc="left"))
-    d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
+    op = d.add(elm.Opamp().right().anchor("center").at((4.5, 0)).color(_WIRE).fill(_OPAMP_FILL))
+    d.add(elm.Line().at(op.in2).left(1.3).color(_WIRE))
+    d.add(elm.Dot().at((op.in2[0] - 1.3, op.in2[1])).color(_WIRE).label("IN+", loc="left", color=_WIRE))
+    d.add(elm.Line().at(op.in1).left(1.3).color(_WIRE))
+    d.add(elm.Dot().at((op.in1[0] - 1.3, op.in1[1])).color(_WIRE).label("REF", loc="left", color=_WIRE))
+    d.add(elm.Line().at(op.out).right(1.3).color(_WIRE).label("OUT", loc="right", color=_WIRE))
 
 
 def _draw_aop_schmitt(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT"):

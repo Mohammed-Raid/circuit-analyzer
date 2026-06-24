@@ -128,3 +128,13 @@ def test_draw_schmitt_deux_boites_z():
     assert len(fig._z_hitboxes) == 2
     refs = sorted(b[4][0] for b in fig._z_hitboxes)
     assert refs == ["Rf", "Rin"]
+
+
+def test_draw_comparateur_sans_hitbox():
+    result = {
+        "circuit_type": "Comparateur (AOP)",
+        "components": ["U1"],
+        "nodes": ["INP", "INM", "OUT"],
+    }
+    fig = cv._make_fig(result, {}, cv._DRAWERS["Comparateur (AOP)"])
+    assert fig._z_hitboxes == []   # aucune impédance à driller

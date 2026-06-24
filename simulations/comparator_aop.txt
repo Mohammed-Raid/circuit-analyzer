@@ -1,0 +1,2 @@
+# Comparateur AOP en boucle ouverte : OUT bascule selon IN+ vs REF
+U1  /IN   /REF   /OUT   /VCC   /GND
