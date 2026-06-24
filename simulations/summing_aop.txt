@@ -1,0 +1,6 @@
+# Amplificateur sommateur AOP : Vout = -(Rf/R1 V1 + Rf/R2 V2 + Rf/R3 V3)
+U1  /GND   /INM   /OUT   /VCC   /GND
+R1  /IN1   /INM   10k
+R2  /IN2   /INM   10k
+R3  /IN3   /INM   10k
+Rf  /INM   /OUT   10k

@@ -1481,6 +1481,46 @@ def _draw_aop_inverseur_zin_zf(d, imp, ci, origin=(4.5, 0), in_label="IN", out_l
     return {"in": in_pt, "out": out_pt}
 
 
+def _draw_aop_sommateur(d, imp, ci, origin=(5.0, 0), out_label="OUT"):
+    """@brief Dessine le sommateur : bus d'entrées Zin + Zf cliquables sur IN-.
+
+    @param imp Dict {'Zf': bloc, 'Zin': [bloc, ...]} (cf. détecteur).
+    @return dict {"in": (x,y), "out": (x,y)}.
+    """
+    zf, zin = imp["Zf"], imp["Zin"]
+    op = d.add(elm.Opamp().right().anchor("in1").at(origin).color(_WIRE).fill(_OPAMP_FILL))
+    inm, out = op.in1, op.out
+
+    # IN+ à la masse
+    d.add(elm.Line().at(op.in2).left(0.8).color(_WIRE))
+    d.add(elm.Ground().color(_WIRE))
+
+    node_x = inm[0] - 1.3
+    d.add(elm.Line().at((node_x, inm[1])).to(inm).color(_WIRE))
+    n = len(zin)
+    spacing = 1.4
+    top_y = inm[1] + (n - 1) * spacing
+    d.add(elm.Line().at((node_x, inm[1])).toy(top_y).color(_WIRE))   # bus vertical
+    d.add(elm.Dot().at((node_x, inm[1])).color(_WIRE))
+
+    for i, bloc in enumerate(zin):
+        y = inm[1] + i * spacing
+        p1 = (node_x - 3.0, y)
+        _z_box(d, p1, (node_x, y), f"Z{i+1}", bloc, ci)
+        d.add(elm.Line().at(p1).left(0.5).color(_WIRE))
+        d.add(elm.Dot().at((p1[0] - 0.5, y)).color(_WIRE).label(f"IN{i+1}", loc="left", color=_WIRE))
+
+    # Zf : du nœud de sommation vers le haut puis OUT
+    above_y = top_y + 1.2
+    d.add(elm.Line().at((node_x, inm[1])).up(above_y - inm[1]).color(_WIRE))
+    _z_box(d, (node_x, above_y), (out[0], above_y), "Zf", zf, ci)
+    d.add(elm.Line().at((out[0], above_y)).toy(out[1]).color(_WIRE))
+
+    out_pt = (out[0] + 1.0, out[1])
+    d.add(elm.Line().at(out).to(out_pt).color(_WIRE).label(out_label, loc="right", color=_WIRE))
+    return {"in": (node_x - 3.5, inm[1]), "out": out_pt}
+
+
 def _draw_aop_non_inverseur_zf_zg(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT"):
     """@brief Dessin du non-inverseur : signal sur IN+, pont Zf/Zg cliquable sur IN-.
 
@@ -1810,6 +1850,11 @@ def _draw_differential_amp(d, result, ci):
 
 def _draw_summing_amp(d, result, ci):
     """@brief Dessine le schéma « Amplificateur sommateur (AOP) »."""
+    imp = result.get("impedances")
+    if imp:
+        _draw_aop_sommateur(d, imp, ci)
+        return
+
     rs = _refs(result, ci, "R")
     rf = rs[0] if rs else "Rf"
     inputs = rs[1:] if len(rs) > 1 else ["Ra", "Rb"]

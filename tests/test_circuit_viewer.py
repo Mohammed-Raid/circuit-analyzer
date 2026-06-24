@@ -3,6 +3,27 @@
 from gui import circuit_viewer as cv
 
 
+def test_draw_sommateur_n_plus_un_boites_z():
+    result = {
+        "circuit_type": "Amplificateur sommateur (AOP)",
+        "components": ["U1", "Rf", "R1", "R2", "R3"],
+        "nodes": ["GND", "INM", "OUT"],
+        "impedances": {
+            "Zf": {"refs": ["Rf"], "composition": "Rf", "nodes": ("INM", "OUT")},
+            "Zin": [
+                {"refs": ["R1"], "composition": "R1", "nodes": ("INM", "IN1")},
+                {"refs": ["R2"], "composition": "R2", "nodes": ("INM", "IN2")},
+                {"refs": ["R3"], "composition": "R3", "nodes": ("INM", "IN3")},
+            ],
+        },
+        "gain": "−Σ Zf/Zk",
+    }
+    fig = cv._make_fig(result, {}, cv._DRAWERS["Amplificateur sommateur (AOP)"])
+    assert len(fig._z_hitboxes) == 4   # Zf + 3 entrées
+    refs = sorted(b[4][0] for b in fig._z_hitboxes)
+    assert refs == ["R1", "R2", "R3", "Rf"]
+
+
 def test_make_fig_remonte_les_hitboxes_du_drawer():
     def _faux_drawer(d, result, ci):
         d._z_hitboxes.append((0.0, 1.0, 0.0, 1.0, ["R1"], "R1"))

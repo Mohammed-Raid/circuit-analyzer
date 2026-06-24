@@ -23,6 +23,27 @@ def _integrateur():
     ])
 
 
+def _sommateur():
+    # IN1 -R1-, IN2 -R2-, IN3 -R3- vers INM ; Rf INM -> OUT
+    return construire_graphe([
+        Composant("U1", "U", {"IN+": "GND", "IN-": "INM", "OUT": "OUT"}),
+        Composant("R1", "R", {"1": "IN1", "2": "INM"}, "10k"),
+        Composant("R2", "R", {"1": "IN2", "2": "INM"}, "10k"),
+        Composant("R3", "R", {"1": "IN3", "2": "INM"}, "10k"),
+        Composant("Rf", "R", {"1": "INM", "2": "OUT"}, "10k"),
+    ])
+
+
+def test_sommateur_expose_zf_et_entrees():
+    res = detecteur.analyser(_sommateur())
+    m = [r for r in res if r["circuit_type"] == "Amplificateur sommateur (AOP)"]
+    assert len(m) == 1
+    imp = m[0]["impedances"]
+    assert imp["Zf"]["refs"] == ["Rf"]
+    assert sorted(b["refs"][0] for b in imp["Zin"]) == ["R1", "R2", "R3"]
+    assert m[0]["gain"] == "−Σ Zf/Zk"
+
+
 def test_integrateur_expose_impedances_et_gain():
     res = detecteur.analyser(_integrateur())
     integ = [r for r in res if r["circuit_type"] == "Intégrateur (AOP)"]

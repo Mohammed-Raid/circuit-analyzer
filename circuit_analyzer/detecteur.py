@@ -561,16 +561,26 @@ def detecter_amplificateur_sommateur(graphe):
         if not entree_neg or not sortie:
             continue
 
-        resistances_sur_inm = _voisins_de_type(graphe, entree_neg, 'R', inclure_z=True)
-        r_feedback = [ref for ref, autre in resistances_sur_inm if autre == sortie]
-        r_entrees  = [ref for ref, autre in resistances_sur_inm if autre != sortie]
+        zf = None
+        zin = []
+        for u, v, data in graphe.edges(entree_neg, data=True):
+            if not _type_correspond(data, 'R', inclure_z=True):
+                continue
+            autre = v if u == entree_neg else u
+            bloc = _bloc_impedance(entree_neg, data, autre)
+            if autre == sortie:
+                zf = bloc
+            else:
+                zin.append(bloc)
 
-        # Un sommateur a AU MOINS 2 entrées distinctes
-        if r_feedback and len(r_entrees) >= 2:
+        if zf and len(zin) >= 2:
+            refs_entrees = [r for b in zin for r in b['refs']]
             resultats.append({
                 'circuit_type': 'Amplificateur sommateur (AOP)',
-                'components': [ref_aop] + r_feedback + r_entrees,
+                'components': [ref_aop] + zf['refs'] + refs_entrees,
                 'nodes': [comp.pins.get('IN+', ''), entree_neg, sortie],
+                'impedances': {'Zf': zf, 'Zin': zin},
+                'gain': '−Σ Zf/Zk',
             })
 
     return resultats
