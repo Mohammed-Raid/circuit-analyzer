@@ -415,6 +415,9 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     principal = _circuit_principal_ilot(ilot, graph, results)
     _sp = _arbre_serie_parallele_ilot(ilot, graph) if principal is None else None
     _pont = _pont_ilot(ilot, graph) if (principal is None and _sp is None) else None
+    _chaine = None
+    if principal is None and _sp is None and _pont is None:
+        _chaine = _ordonner_montages_flux(_matches_for_island(ilot, results))
     if principal is not None:
         # Îlot = montage actif détecté : on réutilise son drawer dédié (schéma
         # propre « AOP + Zin/Zf », hitboxes Z cliquables), pas le layout générique.
@@ -427,16 +430,32 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         from gui import impedance_schematic
         _pont_struct, _comps = _pont
         fig = impedance_schematic.dessiner_pont(_pont_struct, _comps)
+    elif _chaine is not None:
+        # Îlot multi-AOP en chaîne : un seul grand schéma, étages reliés OUT->IN.
+        fig = _make_chain_fig(_chaine, comp_info)
     else:
         matches = _matches_for_island(ilot, results)
         fig = _make_island_fig(model, matches=matches)
     canvas_frame = ctk.CTkFrame(popup, fg_color=SCH_BG, corner_radius=10)
     canvas_frame.pack(fill="both", expand=True, padx=14, pady=(4, 0))
 
-    canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
+    # La chaîne est large : on la met dans un cadre à défilement horizontal pour
+    # lire le signal de gauche à droite sans rogner. Les autres vues remplissent.
+    if _chaine is not None:
+        scroll = ctk.CTkScrollableFrame(canvas_frame, orientation="horizontal",
+                                        fg_color=SCH_BG)
+        scroll.pack(fill="both", expand=True, padx=4, pady=4)
+        master = scroll
+    else:
+        master = canvas_frame
+
+    canvas = FigureCanvasTkAgg(fig, master=master)
     canvas.draw()
     canvas.get_tk_widget().configure(bg=SCH_BG, highlightthickness=0)
-    canvas.get_tk_widget().pack(fill="both", expand=True, padx=4, pady=4)
+    if _chaine is not None:
+        canvas.get_tk_widget().pack(padx=4, pady=4)        # taille native -> scroll
+    else:
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=4, pady=4)
 
     def _on_click(event):
         # Clic dans une zone de Z -> ouvre le sous-schema des R/L/C qui le composent.
@@ -590,6 +609,51 @@ def _make_fig(result, comp_info, drawer_fn):
 
     # Marge réduite : le tracé occupe presque toute la figure (lisibilité).
     ax.margins(0.06)
+    try:
+        fig.tight_layout(pad=0.4)
+    except Exception:
+        pass
+    return fig
+
+
+def _make_chain_fig(ordered, comp_info):
+    """@brief Figure d'une chaîne de montages connectés (vue îlot multi-AOP).
+
+    Large par construction (un bloc par étage) : destinée à un conteneur à
+    défilement horizontal. Hauteur bornée à 4.2" pour tenir dans la fenêtre.
+
+    @param ordered Montages triés par flux (cf. _ordonner_montages_flux).
+    @param comp_info Dict {ref -> {type, value}}.
+    @return matplotlib.figure.Figure (porte fig._z_hitboxes).
+    """
+    fig = Figure(figsize=(8, 4.5))
+    ax = fig.add_subplot(111)
+    fig.patch.set_facecolor(SCH_BG)
+    ax.set_facecolor(SCH_BG)
+    ax.axis("off")
+    ax.set_aspect("equal")
+    fig._z_hitboxes = []
+    try:
+        with schemdraw.Drawing(canvas=ax, show=False) as d:
+            d.config(fontsize=12, inches_per_unit=0.5)
+            d._z_hitboxes = []
+            _draw_island_chain(d, ordered, ci=comp_info)
+            fig._z_hitboxes = list(d._z_hitboxes)
+            try:
+                bb = d.get_bbox()
+                w, h = (bb.xmax - bb.xmin), (bb.ymax - bb.ymin)
+                if w > 0 and h > 0:
+                    haut = 4.2
+                    fig.set_size_inches(haut * (w / h), haut)   # PAS de plafond : large -> scroll
+            except Exception:
+                pass
+    except Exception as e:
+        ax.text(0.5, 0.5, f"Schéma non disponible\n{e}", ha="center", va="center",
+                transform=ax.transAxes, fontsize=12, color="#64748b")
+    if fig._z_hitboxes:
+        ax.text(0.005, 0.01, "Astuce : cliquez une boîte Z pour voir le détail R/L/C",
+                transform=ax.transAxes, fontsize=9, color="#64748b", va="bottom", ha="left")
+    ax.margins(0.04)
     try:
         fig.tight_layout(pad=0.4)
     except Exception:

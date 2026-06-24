@@ -74,3 +74,15 @@ def test_draw_island_chain_hitboxes_et_ordre():
     assert len(hb) == 8
     xs = [(x0 + x1) / 2 for x0, x1, *_ in hb]
     assert max(xs) - min(xs) > 10
+
+
+def test_make_chain_fig_porte_les_hitboxes():
+    comps = lire_xml("circuits_industriels/chaine_5_aop.xml")
+    res = analyser(construire_graphe(comps))
+    ci = {c.ref: {"type": c.type, "value": c.value} for c in comps}
+    ordre = cv._ordonner_montages_flux([r for r in res if "(AOP)" in r["circuit_type"]])
+    fig = cv._make_chain_fig(ordre, ci)
+    assert len(getattr(fig, "_z_hitboxes", [])) == 8
+    w, h = fig.get_size_inches()
+    assert h <= 4.2 + 1e-6        # hauteur bornée (tient dans la fenêtre)
+    assert w > h                  # figure large (chaîne) -> défilement horizontal
