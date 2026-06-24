@@ -641,7 +641,15 @@ def _make_chain_fig(ordered, comp_info):
             fig._z_hitboxes = list(d._z_hitboxes)
             try:
                 bb = d.get_bbox()
-                w, h = (bb.xmax - bb.xmin), (bb.ymax - bb.ymin)
+                # get_bbox ne compte PAS le texte des étiquettes : on fixe des
+                # limites explicites avec marge (Zf au-dessus, VIN/VOUT sur les
+                # côtés, masses en dessous) et on cale l'aspect figure dessus.
+                # Sinon set_aspect('equal') rogne/écrase le dernier étage.
+                x0, x1 = bb.xmin - 1.5, bb.xmax + 1.8
+                y0, y1 = bb.ymin - 0.7, bb.ymax + 0.9
+                ax.set_xlim(x0, x1)
+                ax.set_ylim(y0, y1)
+                w, h = (x1 - x0), (y1 - y0)
                 if w > 0 and h > 0:
                     haut = 4.2
                     fig.set_size_inches(haut * (w / h), haut)   # PAS de plafond : large -> scroll
@@ -1421,7 +1429,7 @@ def _draw_aop_inverseur_zin_zf(d, imp, ci, origin=(4.5, 0), in_label="IN", out_l
     @return dict {"in": (x,y), "out": (x,y)} : points de connexion du bloc.
     """
     zin, zf = imp["Zin"], imp["Zf"]
-    op = d.add(elm.Opamp().anchor("in1").at(origin).color(_WIRE).fill(_OPAMP_FILL))
+    op = d.add(elm.Opamp().right().anchor("in1").at(origin).color(_WIRE).fill(_OPAMP_FILL))
     in1, out = op.in1, op.out
 
     # Nœud de sommation, déporté à GAUCHE du triangle : Zin y arrive, un court fil
@@ -1473,7 +1481,7 @@ def _draw_aop_non_inverseur_zf_zg(d, imp, ci, origin=(4.5, 0), in_label="IN", ou
     @return dict {"in": (x,y), "out": (x,y)}.
     """
     zf, zg = imp["Zf"], imp["Zg"]
-    op = d.add(elm.Opamp().anchor("in2").at(origin).color(_WIRE).fill(_OPAMP_FILL))
+    op = d.add(elm.Opamp().right().anchor("in2").at(origin).color(_WIRE).fill(_OPAMP_FILL))
     in1, out = op.in1, op.out                          # in1 = IN-, in2 = IN+ (signal)
 
     # Entrée -> IN+ (broche du bas)
@@ -1554,7 +1562,7 @@ def _draw_follower(d, result, ci, origin=(4.5, 0), in_label="IN", out_label="OUT
     @param origin/in_label/out_label cf. _draw_aop_inverseur_zin_zf.
     @return dict {"in": (x,y), "out": (x,y)}.
     """
-    op = d.add(elm.Opamp().anchor("in2").at(origin))
+    op = d.add(elm.Opamp().right().anchor("in2").at(origin))
     d.add(elm.Line().at(op.in2).left(1.2))
     in_pt = (op.in2[0] - 1.2, op.in2[1])
     d.add(elm.Dot().at(in_pt).label(in_label, loc="left"))
@@ -1565,13 +1573,16 @@ def _draw_follower(d, result, ci, origin=(4.5, 0), in_label="IN", out_label="OUT
     # Feedback routes ABOVE the opamp to avoid crossing IN+:
     # OUT → right → up above opamp → left back to IN− x → down to IN−
     top_y = in1_pt[1] + 2.0
-    d.add(elm.Line().at(out_pt0).right(0.6))
-    d.add(elm.Line().toy(top_y))
-    d.add(elm.Line().tox(in1_pt[0]))
+    branch_pt = (out_pt0[0] + 0.75, out_pt0[1])
+    out_pt = (branch_pt[0] + 0.8, branch_pt[1])
+    d.add(elm.Line().at(out_pt0).to(branch_pt))
+    d.add(elm.Dot().at(branch_pt))
+    feedback_x = in1_pt[0] - 0.85
+    d.add(elm.Line().at(branch_pt).toy(top_y))
+    d.add(elm.Line().tox(feedback_x))
     d.add(elm.Line().toy(in1_pt[1]))
-    d.add(elm.Dot().at(out_pt0))
-    out_pt = (out_pt0[0] + 1.0, out_pt0[1])
-    d.add(elm.Line().at(out_pt0).to(out_pt).label(out_label, loc="right"))
+    d.add(elm.Line().to(in1_pt))
+    d.add(elm.Line().at(branch_pt).to(out_pt).label(out_label, loc="right"))
     return {"in": in_pt, "out": out_pt}
 
 

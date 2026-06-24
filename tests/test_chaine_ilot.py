@@ -42,6 +42,7 @@ def test_ordonner_montages_flux_non_chaine_renvoie_none():
 
 
 import schemdraw
+from matplotlib.figure import Figure
 
 
 def _imp_inv():
@@ -59,6 +60,64 @@ def test_drawer_inverseur_renvoie_ancres_et_suit_origin():
     assert set(a0) == {"in", "out"}
     assert a0["out"][0] > a0["in"][0]                 # OUT à droite de IN
     assert abs(a10["in"][0] - a0["in"][0] - 10) < 1e-6  # l'origine décale tout de +10
+
+
+def test_chaine_garde_les_aop_orientes_a_droite_apres_une_masse():
+    comps = lire_xml("circuits_industriels/chaine_5_aop.xml")
+    res = analyser(construire_graphe(comps))
+    ci = {c.ref: {"type": c.type, "value": c.value} for c in comps}
+    ordre = cv._ordonner_montages_flux([r for r in res if "(AOP)" in r["circuit_type"]])
+    with schemdraw.Drawing(show=False) as d:
+        d._z_hitboxes = []
+        ancres = []
+        for i, match in enumerate(ordre):
+            imp = match.get("impedances") or {}
+            oy = cv._AOP_OUT_DY if "Zin" in imp else -cv._AOP_OUT_DY
+            origin = (4.5 + i * cv._CHAINE_DX, oy)
+            ancres.append(cv._dessiner_montage_a(d, match, ci, origin, "", ""))
+
+    for a in ancres:
+        assert a["out"][0] > a["in"][0]
+        assert abs(a["out"][1]) < 1e-6
+
+
+def test_suiveur_ne_superpose_pas_le_fil_vout_et_le_retour():
+    fig = Figure(figsize=(7, 4))
+    ax = fig.add_subplot(111)
+    ax.axis("off")
+    ax.set_aspect("equal")
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d._z_hitboxes = []
+        cv._draw_follower(d, {}, {}, origin=(4.5, -cv._AOP_OUT_DY), in_label="", out_label="VOUT")
+
+    horizontaux_sortie = []
+    for line in ax.lines:
+        xs = [float(x) for x in line.get_xdata()]
+        ys = [float(y) for y in line.get_ydata()]
+        if len(xs) >= 2 and all(abs(y) < 1e-9 for y in ys):
+            horizontaux_sortie.append((min(xs), max(xs)))
+
+    for i, (a0, a1) in enumerate(horizontaux_sortie):
+        for b0, b1 in horizontaux_sortie[i + 1:]:
+            assert min(a1, b1) - max(a0, b0) <= 1e-9
+
+
+def test_suiveur_decale_le_retour_du_bord_de_l_aop():
+    fig = Figure(figsize=(7, 4))
+    ax = fig.add_subplot(111)
+    ax.axis("off")
+    ax.set_aspect("equal")
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d._z_hitboxes = []
+        cv._draw_follower(d, {}, {}, origin=(4.5, -cv._AOP_OUT_DY), in_label="", out_label="VOUT")
+
+    bord_aop_x = 4.5
+    pin_in_moins_y = 0.625
+    for line in ax.lines:
+        xs = [float(x) for x in line.get_xdata()]
+        ys = [float(y) for y in line.get_ydata()]
+        if len(xs) >= 2 and all(abs(x - bord_aop_x) < 1e-9 for x in xs):
+            assert max(ys) <= pin_in_moins_y + 1e-9
 
 
 def test_draw_island_chain_hitboxes_et_ordre():
