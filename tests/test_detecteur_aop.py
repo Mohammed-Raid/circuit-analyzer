@@ -194,3 +194,22 @@ def test_differentiel_expose_quatre_impedances():
     assert imp["Z3"]["refs"] == ["R3"]
     assert imp["Zg"]["refs"] == ["Rg"]
     assert m[0]["gain"] == "Zf/Z1 · (V2−V1)"
+
+
+def _schmitt():
+    # IN -Rin- INP ; Rf OUT -> INP (contre-reaction positive) ; REF sur IN-
+    return construire_graphe([
+        Composant("U1", "U", {"IN+": "INP", "IN-": "REF", "OUT": "OUT"}),
+        Composant("Rin", "R", {"1": "IN", "2": "INP"}, "10k"),
+        Composant("Rf", "R", {"1": "OUT", "2": "INP"}, "100k"),
+    ])
+
+
+def test_schmitt_expose_zf_et_zin():
+    res = detecteur.analyser(_schmitt())
+    m = [r for r in res if r["circuit_type"] == "Bascule de Schmitt (AOP)"]
+    assert len(m) == 1
+    imp = m[0]["impedances"]
+    assert imp["Zf"]["refs"] == ["Rf"]
+    assert imp["Zin"]["refs"] == ["Rin"]
+    assert "hystérésis" in m[0]["gain"]

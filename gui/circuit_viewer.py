@@ -1745,8 +1745,54 @@ def _draw_comparator(d, result, ci):
     d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
 
 
+def _draw_aop_schmitt(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT"):
+    """@brief Dessine la bascule de Schmitt : contre-réaction positive Zf
+    (OUT → IN+) + patte d'entrée Zin sur IN+, toutes deux cliquables.
+
+    @param imp Dict {'Zf': bloc, 'Zin': bloc?} (cf. détecteur).
+    @return dict {"in": (x,y), "out": (x,y)}.
+    """
+    zf = imp["Zf"]
+    zin = imp.get("Zin")
+    op = d.add(elm.Opamp().right().anchor("center").at(origin).color(_WIRE).fill(_OPAMP_FILL))
+    inm, inp, out = op.in1, op.in2, op.out
+
+    # IN- = référence
+    d.add(elm.Line().at(inm).left(1.2).color(_WIRE))
+    d.add(elm.Dot().at((inm[0] - 1.2, inm[1])).color(_WIRE).label("REF", loc="left", color=_WIRE))
+
+    # Nœud IN+
+    np_node = (inp[0] - 1.0, inp[1])
+    d.add(elm.Line().at(np_node).to(inp).color(_WIRE))
+    d.add(elm.Dot().at(np_node).color(_WIRE))
+    in_pt = np_node
+
+    # Zin : entrée -> IN+ (horizontale vers la gauche)
+    if zin:
+        zin_p1 = (np_node[0] - 3.0, np_node[1])
+        _z_box(d, zin_p1, np_node, "Zin", zin, ci)
+        d.add(elm.Line().at(zin_p1).left(0.5).color(_WIRE))
+        in_pt = (zin_p1[0] - 0.5, zin_p1[1])
+        d.add(elm.Dot().at(in_pt).color(_WIRE).label(in_label, loc="left", color=_WIRE))
+
+    # Zf : contre-réaction positive OUT -> IN+ (par le bas pour éviter le corps)
+    below_y = inp[1] - 1.8
+    d.add(elm.Line().at(np_node).down(np_node[1] - below_y).color(_WIRE))
+    _z_box(d, (np_node[0], below_y), (out[0], below_y), "Zf", zf, ci, label_loc="bottom")
+    d.add(elm.Line().at((out[0], below_y)).toy(out[1]).color(_WIRE))
+
+    out_pt = (out[0] + 1.2, out[1])
+    d.add(elm.Line().at(out).to(out_pt).color(_WIRE).label(out_label, loc="right", color=_WIRE))
+    return {"in": in_pt, "out": out_pt}
+
+
 def _draw_schmitt(d, result, ci):
     """@brief Dessine le schéma « Bascule de Schmitt (AOP) »."""
+    imp = result.get("impedances")
+    if imp:
+        _draw_aop_schmitt(d, imp, ci)
+        return
+
     rs = _refs(result, ci, "R")
     rf = rs[0] if rs else "Rf"
 

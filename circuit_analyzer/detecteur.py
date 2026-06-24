@@ -425,11 +425,33 @@ def detecter_bascule_schmitt(graphe):
         r_positive = [ref for ref, autre in _voisins_de_type(graphe, entree_pos, 'R', inclure_z=True)
                       if autre == sortie]
 
-        if r_positive:
+        if not r_positive:
+            continue
+
+        zf = None
+        zin = None
+        for u, v, data in graphe.edges(entree_pos, data=True):
+            if not _type_correspond(data, 'R', inclure_z=True):
+                continue
+            autre = v if u == entree_pos else u
+            bloc = _bloc_impedance(entree_pos, data, autre)
+            if autre == sortie:
+                zf = bloc
+            elif zin is None:
+                zin = bloc
+
+        if zf:
+            imp = {'Zf': zf}
+            comps = [ref_aop] + zf['refs']
+            if zin:
+                imp['Zin'] = zin
+                comps += zin['refs']
             resultats.append({
                 'circuit_type': 'Bascule de Schmitt (AOP)',
-                'components': [ref_aop] + r_positive,
+                'components': comps,
                 'nodes': [entree_pos, entree_neg, sortie],
+                'impedances': imp,
+                'gain': 'hystérésis ±Vsat·Zin/(Zin+Zf)',
             })
 
     return resultats

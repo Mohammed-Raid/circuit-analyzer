@@ -1,0 +1,4 @@
+# Bascule de Schmitt AOP (non-inverseuse) : hysteresis par Rf/Rin
+U1  /INP   /REF   /OUT   /VCC   /GND
+Rin /IN    /INP   10k
+Rf  /OUT   /INP   100k

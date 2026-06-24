@@ -111,3 +111,20 @@ def test_draw_differentiel_quatre_boites_z():
     assert len(fig._z_hitboxes) == 4
     refs = sorted(b[4][0] for b in fig._z_hitboxes)
     assert refs == ["R1", "R3", "Rf", "Rg"]
+
+
+def test_draw_schmitt_deux_boites_z():
+    result = {
+        "circuit_type": "Bascule de Schmitt (AOP)",
+        "components": ["U1", "Rf", "Rin"],
+        "nodes": ["INP", "REF", "OUT"],
+        "impedances": {
+            "Zf": {"refs": ["Rf"], "composition": "Rf", "nodes": ("INP", "OUT")},
+            "Zin": {"refs": ["Rin"], "composition": "Rin", "nodes": ("INP", "IN")},
+        },
+        "gain": "hystérésis ±Vsat·Zin/(Zin+Zf)",
+    }
+    fig = cv._make_fig(result, {}, cv._DRAWERS["Bascule de Schmitt (AOP)"])
+    assert len(fig._z_hitboxes) == 2
+    refs = sorted(b[4][0] for b in fig._z_hitboxes)
+    assert refs == ["Rf", "Rin"]
