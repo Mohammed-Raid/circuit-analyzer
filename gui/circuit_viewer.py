@@ -559,7 +559,11 @@ def _make_fig(result, comp_info, drawer_fn):
                     w, h = (bb.xmax - bb.xmin), (bb.ymax - bb.ymin)
                     if w > 0 and h > 0:
                         asp = max(0.4, min(3.2, w / h))
-                        haut = 6.0
+                        # La fenêtre fait 560 px de haut ; après en-tête + puces +
+                        # barre du bas il reste ~420 px (~4.2") pour le tracé. Le
+                        # canvas Tk ne redimensionne pas la figure : si elle dépasse,
+                        # le haut (où se trouve Zf) est rogné. On la borne donc à 4.2".
+                        haut = 4.2
                         fig.set_size_inches(haut * asp, haut)
                 except Exception:
                     pass
