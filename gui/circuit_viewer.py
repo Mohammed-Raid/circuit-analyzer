@@ -1511,6 +1511,50 @@ def _draw_follower(d, result, ci, origin=(4.5, 0), in_label="IN", out_label="OUT
     return {"in": in_pt, "out": out_pt}
 
 
+_CHAINE_DX = 10.0     # pas horizontal entre deux blocs de montage (largeur bloc + marge)
+
+
+def _dessiner_montage_a(d, match, ci, origin, in_label, out_label):
+    """@brief Dessine un montage à `origin` via son drawer partagé ; renvoie ses ancres.
+
+    @return dict {"in": (x,y), "out": (x,y)}.
+    """
+    imp = match.get("impedances") or {}
+    if "Zg" in imp:
+        return _draw_aop_non_inverseur_zf_zg(d, imp, ci, origin, in_label, out_label)
+    if "Zin" in imp:
+        return _draw_aop_inverseur_zin_zf(d, imp, ci, origin, in_label, out_label)
+    return _draw_follower(d, match, ci, origin, in_label, out_label)
+
+
+def _draw_island_chain(d, ordered, ci):
+    """@brief Dessine une chaîne de montages reliés OUT(N) -> IN(N+1).
+
+    Chaque montage est posé à un x croissant ; un fil en Z relie la sortie d'un
+    bloc à l'entrée du suivant. Premier bloc étiqueté VIN, dernier VOUT, internes
+    sans libellé. Les boîtes Z poussent leurs hitboxes (coords absolues) -> le
+    drill-down R/L/C reste cliquable.
+
+    @param ordered Montages triés par flux (cf. _ordonner_montages_flux).
+    @param ci Dict {ref → {type, value}}.
+    """
+    n = len(ordered)
+    ancres = []
+    for i, match in enumerate(ordered):
+        in_label = "VIN" if i == 0 else ""
+        out_label = "VOUT" if i == n - 1 else ""
+        origin = (4.5 + i * _CHAINE_DX, 0)
+        ancres.append(_dessiner_montage_a(d, match, ci, origin, in_label, out_label))
+
+    for i in range(n - 1):
+        out_pt = ancres[i]["out"]
+        in_pt = ancres[i + 1]["in"]
+        mx = (out_pt[0] + in_pt[0]) / 2          # fil en Z : horizontal, vertical, horizontal
+        d.add(elm.Line().at(out_pt).to((mx, out_pt[1])).color(_WIRE))
+        d.add(elm.Line().at((mx, out_pt[1])).to((mx, in_pt[1])).color(_WIRE))
+        d.add(elm.Line().at((mx, in_pt[1])).to(in_pt).color(_WIRE))
+
+
 def _draw_integrator(d, result, ci):
     """@brief Dessine le schéma « Intégrateur (AOP) » : AOP + Zin/Zf cliquables.
 

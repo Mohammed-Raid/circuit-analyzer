@@ -59,3 +59,18 @@ def test_drawer_inverseur_renvoie_ancres_et_suit_origin():
     assert set(a0) == {"in", "out"}
     assert a0["out"][0] > a0["in"][0]                 # OUT à droite de IN
     assert abs(a10["in"][0] - a0["in"][0] - 10) < 1e-6  # l'origine décale tout de +10
+
+
+def test_draw_island_chain_hitboxes_et_ordre():
+    comps = lire_xml("circuits_industriels/chaine_5_aop.xml")
+    res = analyser(construire_graphe(comps))
+    ci = {c.ref: {"type": c.type, "value": c.value} for c in comps}
+    ordre = cv._ordonner_montages_flux([r for r in res if "(AOP)" in r["circuit_type"]])
+    with schemdraw.Drawing(show=False) as d:
+        d._z_hitboxes = []
+        cv._draw_island_chain(d, ordre, ci)
+        hb = list(d._z_hitboxes)
+    # non-inv(2) + inverseur(2) + intégrateur(2) + dérivateur(2) + suiveur(0) = 8
+    assert len(hb) == 8
+    xs = [(x0 + x1) / 2 for x0, x1, *_ in hb]
+    assert max(xs) - min(xs) > 10
