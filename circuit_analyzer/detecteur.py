@@ -74,6 +74,21 @@ def _voisins_de_type(graphe, noeud, type_composant, inclure_z=False):
     return resultats
 
 
+def _bloc_impedance(noeud, data, autre):
+    """@brief Construit un bloc d'impédance à partir d'une arête du graphe.
+
+    @param noeud Nœud de référence (une extrémité de l'arête).
+    @param data Attributs de l'arête (ref/refs/composition).
+    @param autre Autre extrémité de l'arête.
+    @return dict {'refs','composition','nodes'}.
+    """
+    return {
+        'refs': list(data.get('refs', [data['ref']])),
+        'composition': data.get('composition', data['ref']),
+        'nodes': (noeud, autre),
+    }
+
+
 # =============================================================================
 # DÉTECTION DES MONTAGES AOP (Amplificateurs Opérationnels)
 # =============================================================================

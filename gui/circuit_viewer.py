@@ -1416,6 +1416,28 @@ def _draw_inverting_amp(d, result, ci):
     _draw_aop_inverseur_zin_zf(d, imp, ci)
 
 
+def _z_box(d, p1, p2, name, bloc, ci, label_loc="top"):
+    """@brief Dessine une boîte Z cliquable (ResistorIEC bleue) de p1 à p2 et
+    enregistre sa hitbox sur d._z_hitboxes.
+
+    @param d Dessin schemdraw.
+    @param p1/p2 Extrémités de la boîte (x, y).
+    @param name Préfixe d'étiquette (« Zin », « Zf »…).
+    @param bloc Bloc d'impédance {'refs','composition','nodes'}.
+    @param ci Dict {ref → {type, value}} pour l'étiquette.
+    @param label_loc Position de l'étiquette schemdraw.
+    @return None
+    """
+    d.add(elm.ResistorIEC().at(p1).to(p2).color(_Z_EDGE).fill(_Z_FILL).label(
+        _z_label(name, bloc, ci), loc=label_loc, color=_Z_EDGE))
+    hb = getattr(d, "_z_hitboxes", None)
+    if hb is not None:
+        pad = 0.5
+        hb.append((min(p1[0], p2[0]) - pad, max(p1[0], p2[0]) + pad,
+                   min(p1[1], p2[1]) - pad, max(p1[1], p2[1]) + pad,
+                   list(bloc["refs"]), bloc["composition"]))
+
+
 def _draw_aop_inverseur_zin_zf(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT"):
     """@brief Dessin commun des montages à topologie inverseuse : AOP + Zin/Zf cliquables.
 
@@ -1440,8 +1462,7 @@ def _draw_aop_inverseur_zin_zf(d, imp, ci, origin=(4.5, 0), in_label="IN", out_l
 
     # Zin : entrée -> nœud de sommation (boîte Z bleue, cliquable)
     zin_p1 = (noeud[0] - 3.0, noeud[1])
-    d.add(elm.ResistorIEC().at(zin_p1).to(noeud).color(_Z_EDGE).fill(_Z_FILL).label(
-        _z_label("Zin", zin, ci), loc="top", color=_Z_EDGE))
+    _z_box(d, zin_p1, noeud, "Zin", zin, ci)
     d.add(elm.Line().at(zin_p1).left(0.7).color(_WIRE))
     in_pt = (zin_p1[0] - 0.7, zin_p1[1])
     d.add(elm.Dot().at(in_pt).color(_WIRE).label(in_label, loc="left", color=_WIRE))
@@ -1452,20 +1473,11 @@ def _draw_aop_inverseur_zin_zf(d, imp, ci, origin=(4.5, 0), in_label="IN", out_l
     above_y = in1[1] + 2.0
     d.add(elm.Line().at(noeud).up(above_y - noeud[1]).color(_WIRE))
     zf_p1, zf_p2 = (noeud[0], above_y), (out[0], above_y)
-    d.add(elm.ResistorIEC().at(zf_p1).to(zf_p2).color(_Z_EDGE).fill(_Z_FILL).label(
-        _z_label("Zf", zf, ci), loc="top", color=_Z_EDGE))
+    _z_box(d, zf_p1, zf_p2, "Zf", zf, ci)
     d.add(elm.Line().at(zf_p2).toy(out[1]).color(_WIRE))
     out_pt = (out[0] + 1.0, out[1])
     d.add(elm.Line().at(out).to(out_pt).color(_WIRE).label(out_label, loc="right", color=_WIRE))
 
-    # Zones cliquables (centrées sur chaque boîte) -> drill-down R/L/C
-    hb = getattr(d, "_z_hitboxes", None)
-    if hb is not None:
-        pad = 0.5
-        hb.append((min(zin_p1[0], noeud[0]) - pad, max(zin_p1[0], noeud[0]) + pad,
-                   noeud[1] - pad, noeud[1] + pad, list(zin["refs"]), zin["composition"]))
-        hb.append((min(zf_p1[0], zf_p2[0]) - pad, max(zf_p1[0], zf_p2[0]) + pad,
-                   above_y - pad, above_y + pad, list(zf["refs"]), zf["composition"]))
     return {"in": in_pt, "out": out_pt}
 
 
@@ -1499,27 +1511,17 @@ def _draw_aop_non_inverseur_zf_zg(d, imp, ci, origin=(4.5, 0), in_label="IN", ou
     above_y = in1[1] + 2.0
     d.add(elm.Line().at(noeud).up(above_y - noeud[1]).color(_WIRE))
     zf_p1, zf_p2 = (noeud[0], above_y), (out[0], above_y)
-    d.add(elm.ResistorIEC().at(zf_p1).to(zf_p2).color(_Z_EDGE).fill(_Z_FILL).label(
-        _z_label("Zf", zf, ci), loc="top", color=_Z_EDGE))
+    _z_box(d, zf_p1, zf_p2, "Zf", zf, ci)
     d.add(elm.Line().at(zf_p2).toy(out[1]).color(_WIRE))
     out_pt = (out[0] + 1.0, out[1])
     d.add(elm.Line().at(out).to(out_pt).color(_WIRE).label(out_label, loc="right", color=_WIRE))
 
     # Zg : nœud -> masse (boîte Z horizontale vers la gauche, masse en bout)
     zg_p1 = (noeud[0] - 3.0, noeud[1])
-    d.add(elm.ResistorIEC().at(zg_p1).to(noeud).color(_Z_EDGE).fill(_Z_FILL).label(
-        _z_label("Zg", zg, ci), loc="top", color=_Z_EDGE))
+    _z_box(d, zg_p1, noeud, "Zg", zg, ci)
     d.add(elm.Line().at(zg_p1).left(0.5).color(_WIRE))
     d.add(elm.Ground().color(_WIRE))
 
-    # Zones cliquables -> drill-down R/L/C
-    hb = getattr(d, "_z_hitboxes", None)
-    if hb is not None:
-        pad = 0.5
-        hb.append((min(zf_p1[0], zf_p2[0]) - pad, max(zf_p1[0], zf_p2[0]) + pad,
-                   above_y - pad, above_y + pad, list(zf["refs"]), zf["composition"]))
-        hb.append((min(zg_p1[0], noeud[0]) - pad, max(zg_p1[0], noeud[0]) + pad,
-                   noeud[1] - pad, noeud[1] + pad, list(zg["refs"]), zg["composition"]))
     return {"in": in_pt, "out": out_pt}
 
 
