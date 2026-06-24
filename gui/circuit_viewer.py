@@ -1729,8 +1729,57 @@ def _draw_schmitt(d, result, ci):
     d.add(elm.Line().at(out_pt).right(1.6).label("OUT", loc="right"))
 
 
+def _draw_aop_differentiel(d, imp, ci, origin=(6.0, 0),
+                           in1_label="IN1", in2_label="IN2", out_label="OUT"):
+    """@brief Dessine le différentiel : AOP + pont Z1/Zf/Z3/Zg cliquable.
+
+    @param imp Dict {'Z1','Zf','Z3','Zg'} (cf. détecteur).
+    @return dict {"in": (x,y), "out": (x,y)}.
+    """
+    z1, zf, z3, zg = imp["Z1"], imp["Zf"], imp["Z3"], imp["Zg"]
+    op = d.add(elm.Opamp().right().anchor("center").at(origin).color(_WIRE).fill(_OPAMP_FILL))
+    inm, inp, out = op.in1, op.in2, op.out
+
+    # IN- (haut) : Z1 depuis la source, Zf en contre-réaction par le haut
+    nm = (inm[0] - 1.3, inm[1])
+    d.add(elm.Line().at(nm).to(inm).color(_WIRE))
+    d.add(elm.Dot().at(nm).color(_WIRE))
+    z1_p1 = (nm[0] - 3.0, nm[1])
+    _z_box(d, z1_p1, nm, "Z1", z1, ci)
+    d.add(elm.Line().at(z1_p1).left(0.6).color(_WIRE))
+    in1_pt = (z1_p1[0] - 0.6, z1_p1[1])
+    d.add(elm.Dot().at(in1_pt).color(_WIRE).label(in1_label, loc="left", color=_WIRE))
+    above_y = inm[1] + 2.2
+    d.add(elm.Line().at(nm).up(above_y - nm[1]).color(_WIRE))
+    _z_box(d, (nm[0], above_y), (out[0], above_y), "Zf", zf, ci)
+    d.add(elm.Line().at((out[0], above_y)).toy(out[1]).color(_WIRE))
+
+    # IN+ (bas) : Z3 depuis la source, Zg vers la masse (verticale)
+    npn = (inp[0] - 1.3, inp[1])
+    d.add(elm.Line().at(npn).to(inp).color(_WIRE))
+    d.add(elm.Dot().at(npn).color(_WIRE))
+    z3_p1 = (npn[0] - 3.0, npn[1])
+    _z_box(d, z3_p1, npn, "Z3", z3, ci)
+    d.add(elm.Line().at(z3_p1).left(0.6).color(_WIRE))
+    in2_pt = (z3_p1[0] - 0.6, z3_p1[1])
+    d.add(elm.Dot().at(in2_pt).color(_WIRE).label(in2_label, loc="left", color=_WIRE))
+    zg_p2 = (npn[0], npn[1] - 1.6)
+    _z_box(d, npn, zg_p2, "Zg", zg, ci, label_loc="bottom")
+    d.add(elm.Line().at(zg_p2).down(0.4).color(_WIRE))
+    d.add(elm.Ground().color(_WIRE))
+
+    out_pt = (out[0] + 1.0, out[1])
+    d.add(elm.Line().at(out).to(out_pt).color(_WIRE).label(out_label, loc="right", color=_WIRE))
+    return {"in": in1_pt, "out": out_pt}
+
+
 def _draw_differential_amp(d, result, ci):
     """@brief Dessine le schéma « Amplificateur différentiel (AOP) »."""
+    imp = result.get("impedances")
+    if imp:
+        _draw_aop_differentiel(d, imp, ci)
+        return
+
     rs = _refs(result, ci, "R")
     # Pattern returns [U, r_inp_to_gnd, r_inp_from_src, r_inm_feedback, r_inm_from_src]
     rg  = rs[0] if len(rs) > 0 else "Rg"   # IN+ → GND  (bias/gain)

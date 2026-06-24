@@ -150,3 +150,26 @@ def test_inverseur_expose_impedances_et_gain():
     assert "+" in m["impedances"]["Zf"]["composition"]      # Zf composite
     assert m["impedances"]["Zin"]["refs"] == ["Rin"]
     assert m["impedances"]["Zf"]["nodes"] == ("INM", "OUT")
+
+
+def _differentiel():
+    # IN1 -R1- INM -Rf- OUT ; IN2 -R3- INP -Rg- GND
+    return construire_graphe([
+        Composant("U1", "U", {"IN+": "INP", "IN-": "INM", "OUT": "OUT"}),
+        Composant("R1", "R", {"1": "IN1", "2": "INM"}, "10k"),
+        Composant("Rf", "R", {"1": "INM", "2": "OUT"}, "100k"),
+        Composant("R3", "R", {"1": "IN2", "2": "INP"}, "10k"),
+        Composant("Rg", "R", {"1": "INP", "2": "GND"}, "100k"),
+    ])
+
+
+def test_differentiel_expose_quatre_impedances():
+    res = detecteur.analyser(_differentiel())
+    m = [r for r in res if r["circuit_type"] == "Amplificateur différentiel (AOP)"]
+    assert len(m) == 1
+    imp = m[0]["impedances"]
+    assert imp["Z1"]["refs"] == ["R1"]
+    assert imp["Zf"]["refs"] == ["Rf"]
+    assert imp["Z3"]["refs"] == ["R3"]
+    assert imp["Zg"]["refs"] == ["Rg"]
+    assert m[0]["gain"] == "Zf/Z1 · (V2−V1)"

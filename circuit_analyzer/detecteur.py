@@ -506,18 +506,31 @@ def detecter_amplificateur_differentiel(graphe):
         if entree_neg == sortie:
             continue
 
-        # Résistances sur IN+
-        r_inp_vers_gnd   = [ref for ref, autre in _voisins_de_type(graphe, entree_pos, 'R', inclure_z=True) if est_masse(autre)]
-        r_inp_depuis_src = [ref for ref, autre in _voisins_de_type(graphe, entree_pos, 'R', inclure_z=True) if not est_masse(autre)]
-        # Résistances sur IN-
-        r_inm_feedback   = [ref for ref, autre in _voisins_de_type(graphe, entree_neg, 'R', inclure_z=True) if autre == sortie]
-        r_inm_depuis_src = [ref for ref, autre in _voisins_de_type(graphe, entree_neg, 'R', inclure_z=True) if autre != sortie]
+        z1 = zf = z3 = zg = None
+        for u, v, data in graphe.edges(entree_neg, data=True):
+            if not _type_correspond(data, 'R', inclure_z=True):
+                continue
+            autre = v if u == entree_neg else u
+            if autre == sortie:
+                zf = _bloc_impedance(entree_neg, data, autre)
+            elif z1 is None:
+                z1 = _bloc_impedance(entree_neg, data, autre)
+        for u, v, data in graphe.edges(entree_pos, data=True):
+            if not _type_correspond(data, 'R', inclure_z=True):
+                continue
+            autre = v if u == entree_pos else u
+            if est_masse(autre):
+                zg = _bloc_impedance(entree_pos, data, autre)
+            elif z3 is None:
+                z3 = _bloc_impedance(entree_pos, data, autre)
 
-        if r_inp_vers_gnd and r_inp_depuis_src and r_inm_feedback and r_inm_depuis_src:
+        if z1 and zf and z3 and zg:
             resultats.append({
                 'circuit_type': 'Amplificateur différentiel (AOP)',
-                'components': [ref_aop] + r_inp_vers_gnd + r_inp_depuis_src + r_inm_feedback + r_inm_depuis_src,
+                'components': [ref_aop] + z1['refs'] + zf['refs'] + z3['refs'] + zg['refs'],
                 'nodes': [entree_pos, entree_neg, sortie],
+                'impedances': {'Z1': z1, 'Zf': zf, 'Z3': z3, 'Zg': zg},
+                'gain': 'Zf/Z1 · (V2−V1)',
             })
 
     return resultats

@@ -71,3 +71,22 @@ def test_draw_inverting_amp_deux_boites_z():
     refs = sorted((sorted(b[4]) for b in hb), key=len)
     assert refs[0] == ["Rin"]
     assert refs[1] == ["R1", "R2"]
+
+
+def test_draw_differentiel_quatre_boites_z():
+    result = {
+        "circuit_type": "Amplificateur différentiel (AOP)",
+        "components": ["U1", "R1", "Rf", "R3", "Rg"],
+        "nodes": ["INP", "INM", "OUT"],
+        "impedances": {
+            "Z1": {"refs": ["R1"], "composition": "R1", "nodes": ("INM", "IN1")},
+            "Zf": {"refs": ["Rf"], "composition": "Rf", "nodes": ("INM", "OUT")},
+            "Z3": {"refs": ["R3"], "composition": "R3", "nodes": ("INP", "IN2")},
+            "Zg": {"refs": ["Rg"], "composition": "Rg", "nodes": ("INP", "GND")},
+        },
+        "gain": "Zf/Z1 · (V2−V1)",
+    }
+    fig = cv._make_fig(result, {}, cv._DRAWERS["Amplificateur différentiel (AOP)"])
+    assert len(fig._z_hitboxes) == 4
+    refs = sorted(b[4][0] for b in fig._z_hitboxes)
+    assert refs == ["R1", "R3", "Rf", "Rg"]
