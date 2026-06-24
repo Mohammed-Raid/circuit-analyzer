@@ -663,6 +663,57 @@ def _matches_for_island(ilot, results):
     return matches
 
 
+def _ordonner_montages_flux(matches):
+    """@brief Ordonne des montages AOP par flux de signal (OUT(N) -> IN(N+1)).
+
+    Pour chaque montage : out_net = net de la broche OUT (= nodes[-1]) ; in_net =
+    nœud extérieur de Zin si présent (inverseur/intégrateur/dérivateur), sinon le
+    net IN+ (= nodes[0], non-inverseur/suiveur). On relie i->j quand
+    out_net(i) == in_net(j), puis on suit la chaîne depuis l'unique étage dont
+    l'entrée n'est alimentée par aucun autre.
+
+    @param matches Liste des matches de montages d'un même îlot.
+    @return list[dict] | None Montages triés entrée->sortie, ou None si ce n'est
+            pas une chaîne linéaire unique couvrant tous les montages.
+    """
+    if len(matches) < 2:
+        return None
+
+    def out_net(m):
+        return m["nodes"][-1]
+
+    def in_net(m):
+        imp = m.get("impedances") or {}
+        if "Zin" in imp:
+            return imp["Zin"]["nodes"][1]
+        return m["nodes"][0]
+
+    par_in = {}
+    for m in matches:
+        par_in.setdefault(in_net(m), []).append(m)
+    outs = {out_net(m) for m in matches}
+
+    # Tête de chaîne : un montage dont l'entrée n'est la sortie d'aucun autre.
+    tetes = [m for m in matches if in_net(m) not in outs]
+    if len(tetes) != 1:
+        return None
+
+    ordre = []
+    vus = set()
+    courant = tetes[0]
+    while courant is not None and id(courant) not in vus:
+        ordre.append(courant)
+        vus.add(id(courant))
+        suivants = par_in.get(out_net(courant), [])
+        if len(suivants) > 1:
+            return None                      # bifurcation : pas une chaîne linéaire
+        courant = suivants[0] if suivants else None
+
+    if len(ordre) != len(matches):
+        return None                          # tous les montages ne sont pas chaînés
+    return ordre
+
+
 _NC_NAMES = {"NC", "N/C", "NRELIEE", ""}
 ROW_PITCH = 2.0        # pas vertical entre deux bandes de dipoles (symbole + label + marge)
 MULTI_PITCH = 3.4      # pas elargi autour d'un composant multi-broches (AOP, bloc)
