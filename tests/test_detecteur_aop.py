@@ -63,6 +63,41 @@ def test_feedback_resonant_lc_reste_inverseur():
     assert "Amplificateur inverseur (AOP)" in types
 
 
+def _derivateur():
+    # AOP U1 ; entree VIN -Ce- M(IN-) ; contre-reaction M -Rf- O(OUT).
+    return construire_graphe([
+        Composant("U1", "U", {"IN+": "GND", "IN-": "M", "OUT": "O"}),
+        Composant("Ce", "C", {"1": "VIN", "2": "M"}, "100n"),
+        Composant("Rf", "R", {"1": "M", "2": "O"}, "10k"),
+    ])
+
+
+def test_derivateur_expose_impedances_et_gain():
+    res = detecteur.analyser(_derivateur())
+    deriv = [r for r in res if r["circuit_type"] == "Dérivateur (AOP)"]
+    assert len(deriv) == 1
+    m = deriv[0]
+    assert m["gain"] == "−Zf/Zin"
+    assert m["impedances"]["Zin"]["refs"] == ["Ce"]          # condensateur d'entrée
+    assert m["impedances"]["Zf"]["refs"] == ["Rf"]
+    assert m["impedances"]["Zin"]["nodes"] == ("M", "VIN")
+
+
+def test_derivateur_reel_rin_serie_cin():
+    # Dérivateur réel : Zin = Rin + Cin (résistance en série du condensateur d'entrée).
+    g = construire_graphe([
+        Composant("U1", "U", {"IN+": "GND", "IN-": "M", "OUT": "O"}),
+        Composant("Rin", "R", {"1": "VIN", "2": "X"}, "1k"),
+        Composant("Cin", "C", {"1": "X", "2": "M"}, "100n"),
+        Composant("Rf", "R", {"1": "M", "2": "O"}, "10k"),
+    ])
+    res = detecteur.analyser(g)
+    deriv = [r for r in res if r["circuit_type"] == "Dérivateur (AOP)"]
+    assert len(deriv) == 1, [r["circuit_type"] for r in res]
+    assert set(deriv[0]["impedances"]["Zin"]["refs"]) == {"Rin", "Cin"}
+    assert "+" in deriv[0]["impedances"]["Zin"]["composition"]   # Zin série composite
+
+
 def test_inverseur_expose_impedances_et_gain():
     res = detecteur.analyser(_ampli_inverseur_zf_composite())
     inv = [r for r in res if r["circuit_type"] == "Amplificateur inverseur (AOP)"]

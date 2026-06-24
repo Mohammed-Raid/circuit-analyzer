@@ -1408,7 +1408,15 @@ def _draw_integrator(d, result, ci):
 
 
 def _draw_differentiator(d, result, ci):
-    """@brief Dessine le schéma « Dérivateur (AOP) »."""
+    """@brief Dessine le schéma « Dérivateur (AOP) » : AOP + Zin/Zf cliquables.
+
+    Repli : si le match ne porte pas d'impédances structurées, dessin C/R fixe.
+    """
+    imp = result.get("impedances")
+    if imp:
+        _draw_aop_inverseur_zin_zf(d, imp, ci)
+        return
+
     cs = _refs(result, ci, "C"); rs = _refs(result, ci, "R")
     c = cs[0] if cs else "C"
     r = rs[0] if rs else "R"

@@ -285,17 +285,46 @@ def detecter_integrateur(graphe):
     return resultats
 
 
+def _entree_capacitive(bloc, composants) -> bool:
+    """
+    @brief Vrai si le bloc d'entrée est capacitif (dérivateur idéal ou réel).
+
+    Dual de _feedback_capacitif. Deux formes acceptées :
+      - condensateur seul (dérivateur idéal) ;
+      - Rin + Cin (dérivateur réel : une R en série du condensateur, qui borne le
+        gain en haute fréquence et stabilise le montage).
+    Une entrée résistive pure n'est PAS capacitive → ce n'est pas un dérivateur
+    (reste un ampli inverseur).
+
+    @param bloc Bloc d'entrée ({'refs', 'composition'}).
+    @param composants Dict {ref → Composant} (pour les types).
+    @return bool
+    """
+    refs = bloc['refs']
+    types = [composants[r].type for r in refs if r in composants]
+    if not any(t == 'C' for t in types):
+        return False
+    if len(refs) == 1:
+        return types == ['C']                      # condensateur seul (idéal)
+    # réel : la composition doit être une série de feuilles {une R, une C}
+    arbre = impedance.arbre_expr(bloc['composition'])
+    if arbre and arbre[0] == 'serie' and all(c[0] == 'feuille' for c in arbre[1]):
+        tset = sorted(composants[c[1]].type for c in arbre[1] if c[1] in composants)
+        return tset == ['C', 'R']
+    return False
+
+
 def detecter_derivateur(graphe):
     """
-    @brief Dérivateur : AOP avec condensateur d'entrée sur IN- et R de feedback (OUT → IN-).
+    @brief Dérivateur : AOP avec Z d'entrée capacitive sur IN- et feedback résistif (OUT → IN-).
 
     @param graphe Graphe NetworkX du circuit.
     @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     La sortie est proportionnelle à la dérivée du signal d'entrée.
 
-    Schéma :
-        IN ──[C]── IN- ──[R]── OUT
-                    └── AOP ───┘
+    Schéma (Zin = condensateur seul, ou Rin + Cin pour le dérivateur réel) :
+        IN ──[Zin]── IN- ──[Zf]── OUT
+                      └── AOP ────┘
     """
     resultats = []
     composants = graphe.graph.get('components', {})
@@ -309,20 +338,27 @@ def detecter_derivateur(graphe):
         if not entree_neg or not sortie:
             continue
 
-        c_entree = []
-        r_feedback = []
+        entree = None
+        feedback = None
         for u, v, data in graphe.edges(entree_neg, data=True):
             autre = v if u == entree_neg else u
-            if data['type'] == 'C' and autre != sortie:
-                c_entree.append(data['ref'])
+            bloc = {
+                'refs': list(data.get('refs', [data['ref']])),
+                'composition': data.get('composition', data['ref']),
+                'nodes': (entree_neg, autre),
+            }
+            if autre != sortie and _entree_capacitive(bloc, composants):
+                entree = bloc                         # entrée capacitive
             elif _type_correspond(data, 'R', inclure_z=True) and autre == sortie:
-                r_feedback.append(data['ref'])
+                feedback = bloc                       # contre-réaction résistive
 
-        if c_entree and r_feedback:
+        if entree and feedback:
             resultats.append({
                 'circuit_type': 'Dérivateur (AOP)',
-                'components': [ref_aop] + c_entree + r_feedback,
+                'components': [ref_aop] + entree['refs'] + feedback['refs'],
                 'nodes': [comp.pins.get('IN+', ''), entree_neg, sortie],
+                'impedances': {'Zin': entree, 'Zf': feedback},
+                'gain': '−Zf/Zin',
             })
 
     return resultats
