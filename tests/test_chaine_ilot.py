@@ -25,6 +25,35 @@ def test_ordonner_montages_flux_chaine_5():
     ]
 
 
+def test_layers_montages_flux_pid_trois_couches():
+    # pid = DAG branche : entree -> {P, I, D paralleles} -> sommateur -> buffer.
+    # _ordonner_montages_flux echoue (bifurcation) ; _layers_montages_flux doit
+    # produire 3 couches malgre le back-edge du a la mauvaise detection de l'etage P.
+    comps = lire_xml("circuits_industriels/pid_controller.xml")
+    res = analyser(construire_graphe(comps))
+    ilot = max(res.ilots, key=lambda i: len(i["composants"]))
+    matches = cv._matches_for_island(ilot, res)
+    layers = cv._layers_montages_flux(matches)
+    assert layers is not None
+    assert len(layers) == 3
+    assert len(layers[0]) == 3                                  # P, I, D en parallele
+    assert layers[1][0]["circuit_type"] == "Amplificateur sommateur (AOP)"
+    assert layers[2][0]["circuit_type"] == "Suiveur de tension (AOP)"
+
+
+def test_make_branched_fig_pid_rend_sans_erreur():
+    # La vue branchee de pid se rend en schema connecte (pas de repli grille).
+    comps = lire_xml("circuits_industriels/pid_controller.xml")
+    res = analyser(construire_graphe(comps))
+    ilot = max(res.ilots, key=lambda i: len(i["composants"]))
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    layers = cv._layers_montages_flux(cv._matches_for_island(ilot, res))
+    fig = cv._make_branched_fig(layers, ci)
+    txts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    assert not any("non disponible" in t for t in txts)
+    assert len(getattr(fig, "_z_hitboxes", [])) >= 6   # boites Z des etages preservees
+
+
 def test_ordonner_montages_flux_non_chaine_renvoie_none():
     # Deux montages sans lien OUT->IN entre eux : pas une chaîne.
     from circuit_analyzer.composant import Composant
@@ -245,6 +274,42 @@ def test_differentiel_labels_z1_z3_ne_se_chevauchent_pas():
     assert ys["Z3"] < z3_centre_y, f"label Z3 du mauvais cote: {ys['Z3']} >= {z3_centre_y}"
     # ... et les deux libelles divergent nettement.
     assert ys["Z1"] - ys["Z3"] >= 1.8, f"labels trop proches: Z1={ys['Z1']}, Z3={ys['Z3']}"
+
+
+def test_dessiner_montage_a_sommateur_expose_ins_par_net():
+    # Pour le cablage branche, le sommateur doit exposer une ancre par net d'entree.
+    match = {
+        "circuit_type": "Amplificateur sommateur (AOP)",
+        "components": ["U1", "Rf", "Ra", "Rb"], "nodes": ["GND", "S", "OUT"],
+        "impedances": {
+            "Zf": {"refs": ["Rf"], "composition": "Rf", "nodes": ("S", "OUT")},
+            "Zin": [{"refs": ["Ra"], "composition": "Ra", "nodes": ("S", "A")},
+                    {"refs": ["Rb"], "composition": "Rb", "nodes": ("S", "B")}],
+        },
+    }
+    with schemdraw.Drawing(show=False) as d:
+        d._z_hitboxes = []
+        res = cv._dessiner_montage_a(d, match, {}, (5.0, cv._AOP_OUT_DY), "", "")
+    assert set(res["ins"]) == {"A", "B"}
+    for pt in res["ins"].values():
+        assert len(pt) == 2
+
+
+def test_dessiner_montage_a_differentiel_expose_deux_ins():
+    match = {
+        "circuit_type": "Amplificateur différentiel (AOP)",
+        "components": ["U1", "R1", "Rf", "R3", "Rg"], "nodes": ["P", "N", "OUT"],
+        "impedances": {
+            "Z1": {"refs": ["R1"], "composition": "R1", "nodes": ("N", "E1")},
+            "Zf": {"refs": ["Rf"], "composition": "Rf", "nodes": ("N", "OUT")},
+            "Z3": {"refs": ["R3"], "composition": "R3", "nodes": ("P", "E2")},
+            "Zg": {"refs": ["Rg"], "composition": "Rg", "nodes": ("P", "GND")},
+        },
+    }
+    with schemdraw.Drawing(show=False) as d:
+        d._z_hitboxes = []
+        res = cv._dessiner_montage_a(d, match, {}, (6.0, 0), "", "")
+    assert set(res["ins"]) == {"E1", "E2"}
 
 
 def test_suiveur_dessine_le_pont_diviseur_sur_in_plus():

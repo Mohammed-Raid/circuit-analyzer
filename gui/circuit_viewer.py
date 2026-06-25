@@ -418,9 +418,11 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     principal = _circuit_principal_ilot(ilot, graph, results)
     _sp = _arbre_serie_parallele_ilot(ilot, graph) if principal is None else None
     _pont = _pont_ilot(ilot, graph) if (principal is None and _sp is None) else None
-    _chaine = None
+    _chaine = _branches = None
     if principal is None and _sp is None and _pont is None:
         _chaine = _ordonner_montages_flux(_matches_for_island(ilot, results))
+        if _chaine is None:                # pas linéaire -> essai DAG en couches (PID…)
+            _branches = _layers_montages_flux(_matches_for_island(ilot, results))
     if principal is not None:
         # Îlot = montage actif détecté : on réutilise son drawer dédié (schéma
         # propre « AOP + Zin/Zf », hitboxes Z cliquables), pas le layout générique.
@@ -436,6 +438,9 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     elif _chaine is not None:
         # Îlot multi-AOP en chaîne : un seul grand schéma, étages reliés OUT->IN.
         fig = _make_chain_fig(_chaine, comp_info)
+    elif _branches is not None:
+        # Îlot multi-AOP branché (P/I/D parallèles -> sommateur…) : schéma en couches.
+        fig = _make_branched_fig(_branches, comp_info)
     else:
         matches = _matches_for_island(ilot, results)
         fig = _make_island_fig(model, matches=matches)
@@ -445,7 +450,8 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     # Vues larges (chaîne OU gros îlot-grille) : défilement horizontal à taille
     # native pour ne pas écraser le schéma dans le popup. Les petites vues
     # remplissent simplement le cadre.
-    _defile = _chaine is not None or fig.get_size_inches()[0] > 11.0
+    _defile = (_chaine is not None or _branches is not None
+               or fig.get_size_inches()[0] > 11.0)
     if _defile:
         scroll = ctk.CTkScrollableFrame(canvas_frame, orientation="horizontal",
                                         fg_color=SCH_BG)
@@ -674,6 +680,53 @@ def _make_chain_fig(ordered, comp_info):
     return fig
 
 
+def _make_branched_fig(layers, comp_info):
+    """@brief Figure d'un îlot multi-AOP branché (DAG en couches, cf.
+    _layers_montages_flux). Large et haute -> conteneur à défilement.
+
+    @param layers list[list[match]] couches ordonnées.
+    @param comp_info Dict {ref -> {type, value}}.
+    @return matplotlib.figure.Figure (porte fig._z_hitboxes).
+    """
+    fig = Figure(figsize=(8, 6))
+    ax = fig.add_subplot(111)
+    fig.patch.set_facecolor(SCH_BG)
+    ax.set_facecolor(SCH_BG)
+    ax.axis("off")
+    ax.set_aspect("equal")
+    fig._z_hitboxes = []
+    try:
+        with schemdraw.Drawing(canvas=ax, show=False) as d:
+            d.config(fontsize=12, inches_per_unit=0.5)
+            d._z_hitboxes = []
+            _draw_branched_chain(d, layers, ci=comp_info)
+            fig._z_hitboxes = list(d._z_hitboxes)
+            try:
+                bb = d.get_bbox()
+                x0, x1 = bb.xmin - 1.5, bb.xmax + 1.8
+                y0, y1 = bb.ymin - 0.9, bb.ymax + 0.9
+                ax.set_xlim(x0, x1)
+                ax.set_ylim(y0, y1)
+                w, h = (x1 - x0), (y1 - y0)
+                if w > 0 and h > 0:
+                    scale = 0.45                     # ~0.45"/unité, sans écraser l'aspect
+                    fig.set_size_inches(min(40.0, w * scale), min(20.0, h * scale))
+            except Exception:
+                pass
+    except Exception as e:
+        ax.text(0.5, 0.5, f"Schéma non disponible\n{e}", ha="center", va="center",
+                transform=ax.transAxes, fontsize=12, color="#64748b")
+    if fig._z_hitboxes:
+        ax.text(0.005, 0.01, "Astuce : cliquez une boîte Z pour voir le détail R/L/C",
+                transform=ax.transAxes, fontsize=9, color="#64748b", va="bottom", ha="left")
+    ax.margins(0.04)
+    try:
+        fig.tight_layout(pad=0.4)
+    except Exception:
+        pass
+    return fig
+
+
 def _make_island_fig(model, matches=None):
     """@brief Construit un vrai rendu schematique d'un ilot.
 
@@ -795,6 +848,87 @@ def _ordonner_montages_flux(matches):
     if len(ordre) != len(matches):
         return None                          # tous les montages ne sont pas chaînés
     return ordre
+
+
+def _in_nets(m):
+    """@brief Nets d'entrée d'un montage (côté source du signal), selon son type.
+
+    Différentiel : nœuds extérieurs de Z1 et Z3. Sommateur : nœud extérieur de
+    chaque entrée Zin (liste). Inverseur/intégrateur/dérivateur : nœud extérieur de
+    Zin. Non-inverseur/suiveur/comparateur : net IN+ (nodes[0]).
+    @return list[str] nets d'entrée.
+    """
+    imp = m.get("impedances") or {}
+    if "Z1" in imp and "Z3" in imp:
+        return [imp["Z1"]["nodes"][1], imp["Z3"]["nodes"][1]]
+    zin = imp.get("Zin")
+    if isinstance(zin, list):
+        return [e["nodes"][1] for e in zin]
+    if isinstance(zin, dict):
+        return [zin["nodes"][1]]
+    return [m["nodes"][0]]
+
+
+def _layers_montages_flux(matches):
+    """@brief Ordonne des montages AOP branchés en couches (DAG par flux de signal).
+
+    Pour les îlots non linéaires (ex. PID : entrée → P/I/D parallèles → sommateur →
+    buffer). Arête producteur→consommateur quand out_net(producteur) ∈ in_nets(conso).
+    Les étages ayant une entrée *externe* (non produite par un autre étage) sont des
+    sources (couche 0) ; un back-edge vers une source est ignoré (tolère les boucles
+    issues d'une détection imparfaite). Profondeur = plus long chemin depuis une source.
+
+    @param matches Matches d'un même îlot (les non-AOP sont ignorés).
+    @return list[list[match]] couches ordonnées (≥ 2), ou None si pas exploitable.
+    """
+    stages = [m for m in matches if "(AOP)" in m.get("circuit_type", "")]
+    if len(stages) < 2:
+        return None
+
+    out_net = {id(m): m["nodes"][-1] for m in stages}
+    producteurs = {net: m for m in stages for net in [out_net[id(m)]]}
+
+    incoming = {}      # id(stage) -> list des étages producteurs (dans l'îlot)
+    a_entree_externe = {}
+    for m in stages:
+        prods = []
+        externe = False
+        for net in _in_nets(m):
+            p = producteurs.get(net)
+            if p is not None and p is not m:
+                prods.append(p)
+            else:
+                externe = True            # net non produit par un étage = entrée externe
+        incoming[id(m)] = prods
+        a_entree_externe[id(m)] = externe
+
+    # Sources : entrée externe (signal d'entrée), fixées en couche 0.
+    layer = {id(m): (0 if a_entree_externe[id(m)] else None) for m in stages}
+
+    for _ in range(len(stages)):           # relaxation bornée (longest-path, sources figées)
+        change = False
+        for m in stages:
+            if a_entree_externe[id(m)]:
+                continue                   # source figée à 0 -> ignore les back-edges
+            niveaux = [layer[id(p)] for p in incoming[id(m)] if layer[id(p)] is not None]
+            if niveaux:
+                nouveau = 1 + max(niveaux)
+                if layer[id(m)] != nouveau:
+                    layer[id(m)] = nouveau
+                    change = True
+        if not change:
+            break
+
+    if any(layer[id(m)] is None for m in stages):
+        return None                        # étage non rattaché (cycle pur / isolé)
+
+    profondeur_max = max(layer.values())
+    if profondeur_max < 1:
+        return None                        # tout en une couche : pas une chaîne
+    couches = [[] for _ in range(profondeur_max + 1)]
+    for m in stages:                       # ordre d'apparition préservé dans chaque couche
+        couches[layer[id(m)]].append(m)
+    return couches
 
 
 _NC_NAMES = {"NC", "N/C", "NRELIEE", ""}
@@ -1514,6 +1648,7 @@ def _draw_aop_sommateur(d, imp, ci, origin=(5.0, 0), in_label="IN1", out_label="
     d.add(elm.Line().at((node_x, inm[1])).toy(top_y).color(_WIRE))   # bus vertical
     d.add(elm.Dot().at((node_x, inm[1])).color(_WIRE))
 
+    in_pts = []                            # une ancre par entrée (ordre des Zin)
     for i, bloc in enumerate(zin):
         y = inm[1] + i * spacing
         p1 = (node_x - 3.0, y)
@@ -1524,6 +1659,7 @@ def _draw_aop_sommateur(d, imp, ci, origin=(5.0, 0), in_label="IN1", out_label="
         if label:
             dot = dot.label(label, loc="left", color=_WIRE)
         d.add(dot)
+        in_pts.append((p1[0] - 0.5, y))
 
     # Zf : du nœud de sommation vers le haut puis OUT
     above_y = top_y + 1.2
@@ -1533,7 +1669,7 @@ def _draw_aop_sommateur(d, imp, ci, origin=(5.0, 0), in_label="IN1", out_label="
 
     out_pt = (out[0] + 1.0, out[1])
     d.add(elm.Line().at(out).to(out_pt).color(_WIRE).label(out_label, loc="right", color=_WIRE))
-    return {"in": (node_x - 3.5, inm[1]), "out": out_pt}
+    return {"in": in_pts[0], "out": out_pt, "in_pts": in_pts}
 
 
 def _draw_aop_non_inverseur_zf_zg(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT"):
@@ -1708,25 +1844,32 @@ def _dessiner_montage_a(d, match, ci, origin, in_label, out_label):
     ct = match.get("circuit_type", "")
     # Montages ancrés "center" (à router avant les branches Zin/Zg) :
     if "sommateur" in ct.lower():
-        return _draw_aop_sommateur(d, imp, ci, origin, in_label, out_label)
-    if "différentiel" in ct.lower() or "differentiel" in ct.lower():
+        res = _draw_aop_sommateur(d, imp, ci, origin, in_label, out_label)
+    elif "différentiel" in ct.lower() or "differentiel" in ct.lower():
         in1 = "VIN-" if in_label == "VIN" else (in_label or "IN1")
         in2 = "VIN+" if in_label == "VIN" else "IN2"
-        return _draw_aop_differentiel(
+        res = _draw_aop_differentiel(
             d, imp, ci, origin,
             in1_label=in1,
             in2_label=in2,
             out_label=out_label,
         )
-    if "Schmitt" in ct:
-        return _draw_aop_schmitt(d, imp, ci, origin, in_label, out_label)
-    if "Comparateur" in ct:
-        return _draw_aop_comparateur(d, match, ci, origin, in_label, out_label)
-    if "Zg" in imp:
-        return _draw_aop_non_inverseur_zf_zg(d, imp, ci, origin, in_label, out_label)
-    if "Zin" in imp:
-        return _draw_aop_inverseur_zin_zf(d, imp, ci, origin, in_label, out_label)
-    return _draw_follower(d, match, ci, origin, in_label, out_label)
+    elif "Schmitt" in ct:
+        res = _draw_aop_schmitt(d, imp, ci, origin, in_label, out_label)
+    elif "Comparateur" in ct:
+        res = _draw_aop_comparateur(d, match, ci, origin, in_label, out_label)
+    elif "Zg" in imp:
+        res = _draw_aop_non_inverseur_zf_zg(d, imp, ci, origin, in_label, out_label)
+    elif "Zin" in imp:
+        res = _draw_aop_inverseur_zin_zf(d, imp, ci, origin, in_label, out_label)
+    else:
+        res = _draw_follower(d, match, ci, origin, in_label, out_label)
+
+    # Ancres par net d'entrée (pour le câblage branché) : les drawers multi-entrées
+    # exposent "in_pts" (ordonné comme _in_nets) ; sinon l'unique "in" suffit.
+    in_pts = res.get("in_pts") or [res["in"]]
+    res["ins"] = dict(zip(_in_nets(match), in_pts))
+    return res
 
 
 def _draw_island_chain(d, ordered, ci):
@@ -1749,28 +1892,74 @@ def _draw_island_chain(d, ordered, ci):
         # (y=0) pour aligner les triangles. Inverseur/intég/dériv sont ancrés par
         # IN- (broche du haut) -> on monte de +dy ; non-inverseur/suiveur ancrés
         # par IN+ (broche du bas) -> on descend de -dy.
-        imp = match.get("impedances") or {}
-        ct = match.get("circuit_type", "")
-        # Schmitt/comparateur sont ancrés "center" -> OUT déjà sur la centerline
-        # (oy=0). Zin-family ancré in1 (haut) -> +dy ; non-inv/suiveur in2 (bas) -> -dy.
-        if "sommateur" in ct.lower():
-            oy = _AOP_OUT_DY
-        elif "Schmitt" in ct or "Comparateur" in ct or "différentiel" in ct.lower() or "differentiel" in ct.lower():
-            oy = 0.0
-        elif "Zin" in imp:
-            oy = _AOP_OUT_DY
-        else:
-            oy = -_AOP_OUT_DY
-        origin = (4.5 + i * _CHAINE_DX, oy)
+        origin = (4.5 + i * _CHAINE_DX, _oy_for(match))
         ancres.append(_dessiner_montage_a(d, match, ci, origin, in_label, out_label))
 
     for i in range(n - 1):
         out_pt = ancres[i]["out"]
         in_pt = ancres[i + 1]["in"]
-        mx = (out_pt[0] + in_pt[0]) / 2          # fil en Z : horizontal, vertical, horizontal
-        d.add(elm.Line().at(out_pt).to((mx, out_pt[1])).color(_WIRE))
-        d.add(elm.Line().at((mx, out_pt[1])).to((mx, in_pt[1])).color(_WIRE))
-        d.add(elm.Line().at((mx, in_pt[1])).to(in_pt).color(_WIRE))
+        _fil_en_z(d, out_pt, in_pt)
+
+
+def _oy_for(match):
+    """@brief Décalage y de l'origine d'un montage pour que sa sortie tombe sur la
+    ligne de base de sa bande (alignement des triangles).
+
+    Schmitt/comparateur/différentiel ancrés "center" -> 0. Inverseur/intég/dériv
+    ancrés in1 (haut) et sommateur -> +dy. Non-inverseur/suiveur (in2, bas) -> -dy.
+    """
+    imp = match.get("impedances") or {}
+    ct = match.get("circuit_type", "")
+    if "sommateur" in ct.lower():
+        return _AOP_OUT_DY
+    if ("Schmitt" in ct or "Comparateur" in ct
+            or "différentiel" in ct.lower() or "differentiel" in ct.lower()):
+        return 0.0
+    if "Zin" in imp:
+        return _AOP_OUT_DY
+    return -_AOP_OUT_DY
+
+
+def _fil_en_z(d, out_pt, in_pt):
+    """@brief Relie deux points par un fil en Z (horizontal, vertical, horizontal)."""
+    mx = (out_pt[0] + in_pt[0]) / 2
+    d.add(elm.Line().at(out_pt).to((mx, out_pt[1])).color(_WIRE))
+    d.add(elm.Line().at((mx, out_pt[1])).to((mx, in_pt[1])).color(_WIRE))
+    d.add(elm.Line().at((mx, in_pt[1])).to(in_pt).color(_WIRE))
+
+
+_BRANCHE_ROW_GAP = 9.0     # écart vertical entre étages parallèles d'une même couche
+
+
+def _draw_branched_chain(d, layers, ci):
+    """@brief Dessine un îlot multi-AOP branché en couches (cf. _layers_montages_flux).
+
+    Couche = colonne (x croissant) ; étages parallèles empilés verticalement. Chaque
+    entrée d'un étage est reliée à la sortie de son producteur (fan-out / fan-in),
+    via les ancres par net exposées par _dessiner_montage_a ("ins").
+
+    @param layers list[list[match]] couches ordonnées entrée->sortie.
+    @param ci Dict {ref → {type, value}}.
+    """
+    ancres = {}                            # id(match) -> ancres ("out","ins",...)
+    out_by_net = {}                        # net de sortie -> match producteur
+    dernier = len(layers) - 1
+    for lx, couche in enumerate(layers):
+        m = len(couche)
+        for ry, match in enumerate(couche):
+            y_row = (ry - (m - 1) / 2.0) * _BRANCHE_ROW_GAP
+            origin = (4.5 + lx * _CHAINE_DX, y_row + _oy_for(match))
+            out_label = "VOUT" if lx == dernier else ""
+            ancres[id(match)] = _dessiner_montage_a(d, match, ci, origin, "", out_label)
+            out_by_net[match["nodes"][-1]] = match
+
+    for couche in layers:                  # câblage producteur.out -> consommateur.ins[net]
+        for match in couche:
+            for net, in_pt in ancres[id(match)].get("ins", {}).items():
+                prod = out_by_net.get(net)
+                if prod is None or prod is match:
+                    continue
+                _fil_en_z(d, ancres[id(prod)]["out"], in_pt)
 
 
 def _draw_integrator(d, result, ci):
@@ -1968,7 +2157,8 @@ def _draw_aop_differentiel(d, imp, ci, origin=(6.0, 0),
 
     out_pt = (out[0] + 1.0, out[1])
     d.add(elm.Line().at(out).to(out_pt).color(_WIRE).label(out_label, loc="right", color=_WIRE))
-    return {"in": in1_pt, "out": out_pt}
+    # in_pts ordonné comme _in_nets (Z1 puis Z3) pour le câblage branché.
+    return {"in": in1_pt, "out": out_pt, "in_pts": [in1_pt, in2_pt]}
 
 
 def _draw_differential_amp(d, result, ci):
