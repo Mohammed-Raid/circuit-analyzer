@@ -21,6 +21,12 @@ class CommonEmitterAmp(Pattern):
     def match(self, graph): return detecteur.detecter_amplificateur_emetteur_commun(graph)
 
 
+class SuiveurEmetteur(Pattern):
+    """@brief Pattern « Collecteur commun (suiveur d'émetteur) » (délègue à detecteur)."""
+    name = "Collecteur commun (suiveur d'émetteur)"
+    def match(self, graph): return detecteur.detecter_suiveur_emetteur(graph)
+
+
 class CurrentMirror(Pattern):
     """@brief Pattern « Miroir de courant BJT » (délègue à detecteur)."""
     name = "Miroir de courant BJT"
@@ -49,6 +55,7 @@ class RelayDriver(Pattern):
 TRANSISTOR_PATTERNS = [
     CurrentMirror(),
     RelayDriver(),
+    SuiveurEmetteur(),
     CommonEmitterAmp(),
     TransistorSwitch(),
     MosfetSwitch(),

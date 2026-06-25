@@ -681,6 +681,11 @@ def detecter_amplificateur_emetteur_commun(graphe):
         if not all([base, collecteur, emetteur]):
             continue
 
+        # Collecteur directement sur le rail = collecteur commun (suiveur d'émetteur),
+        # pas un émetteur commun (dont le Rc est ENTRE le rail et le collecteur).
+        if est_alimentation(collecteur):
+            continue
+
         r_collecteur = [ref for ref, _ in _voisins_de_type(graphe, collecteur, 'R')]
         r_base       = [ref for ref, _ in _voisins_de_type(graphe, base, 'R')]
 
@@ -690,6 +695,58 @@ def detecter_amplificateur_emetteur_commun(graphe):
                 'components': [ref_q] + r_collecteur + r_base,
                 'nodes': [base, collecteur, emetteur],
             })
+
+    return resultats
+
+
+def detecter_suiveur_emetteur(graphe):
+    """
+    @brief Collecteur commun (suiveur d'émetteur) : collecteur sur le rail, sortie
+    sur l'émetteur via une résistance Re vers la masse.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
+
+    Schéma :
+        VCC ──── Collecteur
+                 Transistor BJT
+        IN ──[Rb]── Base
+                 Emetteur ──┬── sortie
+                          [Re]
+                            └── GND
+    """
+    resultats = []
+    composants = graphe.graph.get('components', {})
+
+    for ref_q, comp in composants.items():
+        if comp.type != 'Q':
+            continue
+
+        base       = comp.pins.get('B')
+        collecteur = comp.pins.get('C')
+        emetteur   = comp.pins.get('E')
+        if not all([base, collecteur, emetteur]):
+            continue
+
+        # Collecteur sur le rail, émetteur non masse (sinon c'est une commutation).
+        if not est_alimentation(collecteur) or est_masse(emetteur):
+            continue
+
+        # Re : résistance de l'émetteur vers la masse (= sortie chargée).
+        re_refs = []
+        for ref_r, _ in _voisins_de_type(graphe, emetteur, 'R'):
+            rc = composants.get(ref_r)
+            if rc and any(est_masse(n) for n in rc.pins.values()):
+                re_refs.append(ref_r)
+        if not re_refs:
+            continue
+
+        r_base = [ref for ref, _ in _voisins_de_type(graphe, base, 'R')]
+        resultats.append({
+            'circuit_type': "Collecteur commun (suiveur d'émetteur)",
+            'components': [ref_q] + re_refs + r_base,
+            'nodes': [base, collecteur, emetteur],
+        })
 
     return resultats
 
@@ -1333,6 +1390,7 @@ _DETECTEURS_COMPLEXES = [
     detecter_comparateur,                  # AOP sans feedback
     detecter_miroir_courant,               # 2 BJT, bases communes
     detecter_commande_relais,              # Relais + transistor
+    detecter_suiveur_emetteur,             # collecteur sur rail, Re émetteur->GND (avant émetteur commun)
     detecter_amplificateur_emetteur_commun,
     detecter_transistor_commutation,
     detecter_mosfet_commutation,

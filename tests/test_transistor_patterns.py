@@ -6,8 +6,38 @@
 from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.patterns.transistor import (
-    TransistorSwitch, CommonEmitterAmp, CurrentMirror, MosfetSwitch
+    TransistorSwitch, CommonEmitterAmp, CurrentMirror, MosfetSwitch, SuiveurEmetteur
 )
+
+
+def _follower_comps():
+    # Collecteur commun : collecteur sur VCC, sortie sur l'émetteur via Re vers GND,
+    # base polarisée vers VCC.
+    return [
+        Component('Q1', 'Q', {'B': 'NB', 'C': 'VCC', 'E': 'NOUT'}),
+        Component('R1', 'R', {'1': 'NB', '2': 'VCC'}, '47k'),
+        Component('Re', 'R', {'1': 'NOUT', '2': 'GND'}, '1k'),
+    ]
+
+
+def test_suiveur_emetteur_found():
+    matches = SuiveurEmetteur().match(build_graph(_follower_comps()))
+    assert len(matches) == 1
+    assert 'Q1' in matches[0]['components']
+    assert 'Re' in matches[0]['components']
+
+
+def test_suiveur_emetteur_pas_classe_en_emetteur_commun():
+    # Le faux positif corrigé : un suiveur ne doit plus matcher l'émetteur commun.
+    assert CommonEmitterAmp().match(build_graph(_follower_comps())) == []
+
+
+def test_suiveur_emetteur_not_found_without_re():
+    comps = [
+        Component('Q1', 'Q', {'B': 'NB', 'C': 'VCC', 'E': 'NOUT'}),
+        Component('R1', 'R', {'1': 'NB', '2': 'VCC'}, '47k'),
+    ]
+    assert SuiveurEmetteur().match(build_graph(comps)) == []
 
 
 def test_transistor_switch_found():
