@@ -1605,16 +1605,68 @@ def _draw_non_inverting_amp(d, result, ci):
     d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
 
 
+def _diviseur_sur_net(net, ci):
+    """@brief Repère un pont diviseur (passif vers une alim + passif vers la masse)
+    branché sur `net`.
+
+    @param net Net à inspecter (typiquement l'entrée IN+ d'un suiveur).
+    @param ci Dict {ref → {type, value, pins}}.
+    @return tuple (haut, bas) de blocs Z {'refs','composition','nodes'} si `net`
+            porte exactement une jambe vers l'alim et une vers la masse, sinon None.
+    """
+    if not net:
+        return None
+    haut = bas = None
+    for ref, info in (ci or {}).items():
+        if (info.get("type") or "").upper() not in ("R", "C", "L"):
+            continue
+        nets = list(((info or {}).get("pins") or {}).values())
+        if net not in nets:
+            continue
+        autres = [n for n in nets if n != net]
+        if len(autres) != 1:
+            continue
+        autre = autres[0]
+        bloc = {"refs": [ref], "composition": ref, "nodes": (net, autre)}
+        if is_power_net(autre):
+            haut = bloc
+        elif is_ground_net(autre):
+            bas = bloc
+    return (haut, bas) if (haut and bas) else None
+
+
 def _draw_follower(d, result, ci, origin=(4.5, 0), in_label="IN", out_label="OUT"):
     """@brief Dessine le schéma « Suiveur de tension (AOP) ».
+
+    Si l'entrée IN+ est alimentée par un pont diviseur rail↔masse (cas du buffer
+    de référence), le pont est dessiné en deux boîtes Z cliquables ; sinon IN+ est
+    une simple entrée. cf. _diviseur_sur_net.
 
     @param origin/in_label/out_label cf. _draw_aop_inverseur_zin_zf.
     @return dict {"in": (x,y), "out": (x,y)}.
     """
     op = d.add(elm.Opamp().right().anchor("in2").at(origin))
-    d.add(elm.Line().at(op.in2).left(1.2))
-    in_pt = (op.in2[0] - 1.2, op.in2[1])
-    d.add(elm.Dot().at(in_pt).label(in_label, loc="left"))
+    in_net = (result.get("nodes") or [None])[0] if isinstance(result, dict) else None
+    pont = _diviseur_sur_net(in_net, ci)
+    if pont:
+        haut, bas = pont
+        npt = (op.in2[0] - 1.2, op.in2[1])
+        d.add(elm.Line().at(op.in2).to(npt).color(_WIRE))
+        d.add(elm.Dot().at(npt).color(_WIRE))
+        # Jambe haute -> alim
+        ztop = (npt[0], npt[1] + 1.7)
+        _z_box(d, npt, ztop, "Z1", haut, ci)
+        d.add(elm.Line().at(ztop).up(0.4).color(_WIRE).label("VCC", loc="top", color=_WIRE))
+        # Jambe basse -> masse
+        zbot = (npt[0], npt[1] - 1.7)
+        _z_box(d, npt, zbot, "Z2", bas, ci, label_loc="bottom")
+        d.add(elm.Line().at(zbot).down(0.4).color(_WIRE))
+        d.add(elm.Ground().color(_WIRE))
+        in_pt = npt
+    else:
+        d.add(elm.Line().at(op.in2).left(1.2))
+        in_pt = (op.in2[0] - 1.2, op.in2[1])
+        d.add(elm.Dot().at(in_pt).label(in_label, loc="left"))
 
     out_pt0 = op.out
     in1_pt = op.in1   # IN− (upper pin)
@@ -1895,7 +1947,9 @@ def _draw_aop_differentiel(d, imp, ci, origin=(6.0, 0),
     d.add(elm.Line().at(npn).to(inp).color(_WIRE))
     d.add(elm.Dot().at(npn).color(_WIRE))
     z3_p1 = (npn[0] - 3.0, npn[1])
-    _z_box(d, z3_p1, npn, "Z3", z3, ci)
+    # Label sous la boite : la branche IN+ est tout pres de IN- (meme plage x),
+    # un label "top" percuterait la boite Z1 au-dessus.
+    _z_box(d, z3_p1, npn, "Z3", z3, ci, label_loc="bottom")
     d.add(elm.Line().at(z3_p1).left(0.6).color(_WIRE))
     in2_pt = (z3_p1[0] - 0.6, z3_p1[1])
     d.add(elm.Dot().at(in2_pt).color(_WIRE).label(in2_label, loc="left", color=_WIRE))

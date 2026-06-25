@@ -206,6 +206,71 @@ def test_differentiel_tete_de_chaine_libelle_vin_moins_plus():
     assert "VIN+" in textes
 
 
+def test_differentiel_labels_z1_z3_ne_se_chevauchent_pas():
+    # Z1 (sur IN-) et Z3 (sur IN+) partagent la meme plage x et des branches
+    # d'entree tres proches : leurs libelles doivent rester separes verticalement.
+    imp = {
+        "Z1": {"refs": ["R1"], "composition": "R1", "nodes": ("INM", "IN1")},
+        "Zf": {"refs": ["R2"], "composition": "R2", "nodes": ("INM", "OUT")},
+        "Z3": {"refs": ["R3"], "composition": "R3", "nodes": ("INP", "IN2")},
+        "Zg": {"refs": ["R4"], "composition": "R4", "nodes": ("INP", "GND")},
+    }
+    ci = {r: {"type": "R", "value": "10k"} for r in ("R1", "R2", "R3", "R4")}
+    fig = Figure(figsize=(7, 5))
+    ax = fig.add_subplot(111)
+    ax.axis("off")
+    ax.set_aspect("equal")
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d._z_hitboxes = []
+        cv._draw_aop_differentiel(d, imp, ci, (6.0, 0))
+        hbs = list(d._z_hitboxes)
+
+    ys = {t.get_text().split("\n")[0]: t.get_position()[1] for t in ax.texts}
+    z3_box = next(h for h in hbs if h[4] == ["R3"])
+    z3_centre_y = (z3_box[2] + z3_box[3]) / 2
+    # Le libelle Z3 doit etre ancre SOUS sa boite (cote oppose a Z1, qui est
+    # au-dessus) : sinon son texte 2 lignes remonte dans la boite Z1.
+    assert ys["Z3"] < z3_centre_y, f"label Z3 du mauvais cote: {ys['Z3']} >= {z3_centre_y}"
+    # ... et les deux libelles divergent nettement.
+    assert ys["Z1"] - ys["Z3"] >= 1.8, f"labels trop proches: Z1={ys['Z1']}, Z3={ys['Z3']}"
+
+
+def test_suiveur_dessine_le_pont_diviseur_sur_in_plus():
+    # IN+ alimente par un pont VCC-VREF_IN-GND : le suiveur dessine les 2 Z + VCC.
+    result = {"circuit_type": "Suiveur de tension (AOP)",
+              "nodes": ["VREF_IN", "VOUT"], "components": ["U1"]}
+    ci = {
+        "U1": {"type": "U", "value": "", "pins": {"IN+": "VREF_IN", "IN-": "VOUT", "OUT": "VOUT"}},
+        "R1": {"type": "R", "value": "100k", "pins": {"1": "VCC", "2": "VREF_IN"}},
+        "R2": {"type": "R", "value": "100k", "pins": {"1": "VREF_IN", "2": "GND"}},
+    }
+    fig = Figure(figsize=(7, 5))
+    ax = fig.add_subplot(111)
+    ax.axis("off")
+    ax.set_aspect("equal")
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d._z_hitboxes = []
+        cv._draw_follower(d, result, ci, (4.5, 0), "IN", "OUT")
+        hb = list(d._z_hitboxes)
+
+    assert len(hb) == 2, f"attendu 2 boites Z (pont diviseur), obtenu {len(hb)}"
+    textes = [t.get_text() for t in ax.texts]
+    assert any("VCC" in t for t in textes), f"pas de rail VCC dessine: {textes}"
+
+
+def test_suiveur_sans_pont_ne_dessine_aucune_boite_z():
+    # En chaine (result vide / IN+ pilote par l'etage precedent) : aucun pont.
+    fig = Figure(figsize=(7, 4))
+    ax = fig.add_subplot(111)
+    ax.axis("off")
+    ax.set_aspect("equal")
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d._z_hitboxes = []
+        cv._draw_follower(d, {}, {}, (4.5, 0), "IN", "OUT")
+        hb = list(d._z_hitboxes)
+    assert hb == []
+
+
 def test_suiveur_ne_superpose_pas_le_fil_vout_et_le_retour():
     fig = Figure(figsize=(7, 4))
     ax = fig.add_subplot(111)
