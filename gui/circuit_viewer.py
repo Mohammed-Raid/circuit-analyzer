@@ -442,9 +442,11 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     canvas_frame = ctk.CTkFrame(popup, fg_color=SCH_BG, corner_radius=10)
     canvas_frame.pack(fill="both", expand=True, padx=14, pady=(4, 0))
 
-    # La chaîne est large : on la met dans un cadre à défilement horizontal pour
-    # lire le signal de gauche à droite sans rogner. Les autres vues remplissent.
-    if _chaine is not None:
+    # Vues larges (chaîne OU gros îlot-grille) : défilement horizontal à taille
+    # native pour ne pas écraser le schéma dans le popup. Les petites vues
+    # remplissent simplement le cadre.
+    _defile = _chaine is not None or fig.get_size_inches()[0] > 11.0
+    if _defile:
         scroll = ctk.CTkScrollableFrame(canvas_frame, orientation="horizontal",
                                         fg_color=SCH_BG)
         scroll.pack(fill="both", expand=True, padx=4, pady=4)
@@ -455,7 +457,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     canvas = FigureCanvasTkAgg(fig, master=master)
     canvas.draw()
     canvas.get_tk_widget().configure(bg=SCH_BG, highlightthickness=0)
-    if _chaine is not None:
+    if _defile:
         canvas.get_tk_widget().pack(padx=4, pady=4)        # taille native -> scroll
     else:
         canvas.get_tk_widget().pack(fill="both", expand=True, padx=4, pady=4)
@@ -689,7 +691,10 @@ def _make_island_fig(model, matches=None):
     # lignes : le compactage reduit le nombre de bandes, donc la figure raccourcit.
     yvals = [r["y"] for r in plan["rows"]] or [0.0]
     height = max(4.8, 0.7 * (max(yvals) - min(yvals)) + 3.0)
-    fig = Figure(figsize=(min(20.0, width), min(15.0, height)))
+    # Largeur non plafonnee a l'ecrasement : les gros ilots s'affichent a taille
+    # native et defilent horizontalement (cf. show_island). Hauteur bornee (pas de
+    # scroll vertical confortable).
+    fig = Figure(figsize=(min(40.0, width), min(15.0, height)))
     ax = fig.add_subplot(111)
     fig.patch.set_facecolor(SCH_BG)
     ax.set_facecolor(SCH_BG)
