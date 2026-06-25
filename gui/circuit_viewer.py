@@ -1515,6 +1515,9 @@ def _z_label(prefix, zinfo, comp_info):
         info = comp_info.get(refs[0], {})
         val = formater_valeur(info.get("value", ""), info.get("type", "R"))
         if val:
+            # Évite « Rb / Rb = 10 kΩ » quand la ref porte déjà le nom du rôle.
+            if compo == prefix:
+                return f"{prefix} = {val}"
             return f"{prefix}\n{compo} = {val}"
     return f"{prefix}\n{compo}"
 
@@ -2122,6 +2125,16 @@ _ROLE_ETAGE = {
     "Suiveur de tension (AOP)":          "Suiveur",
     "Comparateur (AOP)":                 "Comparateur",
     "Bascule de Schmitt (AOP)":          "Schmitt",
+    # Transistors
+    "Transistor en commutation":         "Commutation",
+    "Amplificateur émetteur commun":     "Émetteur commun",
+    "Collecteur commun (suiveur d'émetteur)": "Suiveur d'émetteur",
+    "Étage push-pull":                   "Push-pull",
+    "Paire Darlington":                  "Darlington",
+    "Miroir de courant BJT":             "Miroir de courant",
+    "MOSFET en commutation":             "MOSFET commutation",
+    "MOSFET haute-tension (côté haut)":  "MOSFET côté-haut",
+    "Commande de relais":                "Commande relais",
 }
 
 
@@ -2129,6 +2142,23 @@ def _titre_etage(match):
     """@brief Rôle court d'un montage pour l'étiqueter dans la chaîne / le DAG."""
     ct = match.get("circuit_type", "")
     return _ROLE_ETAGE.get(ct, ct.replace(" (AOP)", ""))
+
+
+def _titre_montage(d, result, pt):
+    """@brief Affiche le rôle d'un montage (titre) au point `pt` d'un drawer standalone."""
+    d.add(elm.Label().at(pt).label(_titre_etage(result), color=_TITRE_COLOR, fontsize=12))
+
+
+def _z_passif(d, ref, ci, p1, p2, nom, label_loc="top"):
+    """@brief Dessine un passif unique en boîte Z cliquable (drill-down R/L/C).
+
+    @param ref Référence du passif (R/C/L), ou None pour ne rien dessiner.
+    @param p1/p2 Extrémités de la boîte. @param nom Préfixe d'étiquette.
+    """
+    if not ref:
+        return
+    bloc = {"refs": [ref], "composition": ref, "nodes": ()}
+    _z_box(d, p1, p2, nom, bloc, ci, label_loc=label_loc)
 
 
 def _annoter_etage(d, ancres, match):
@@ -2486,14 +2516,17 @@ def _draw_summing_amp(d, result, ci):
 # ── Transistor patterns ───────────────────────────────────────────────────────
 
 def _draw_bjt_switch(d, result, ci):
-    """@brief Dessine le schéma « Transistor en commutation »."""
+    """@brief Dessine le schéma « Transistor en commutation » (Rb en boîte Z)."""
     q = _ref(result, ci, "Q"); r = _ref(result, ci, "R")
     t = d.add(elm.BjtNpn().at((3, 0)))
-    d.add(elm.Resistor().at(t.base).left().label(_lbl(r, ci), loc="top"))
-    d.add(elm.Dot().label("IN", loc="left"))
+    bx, by = t.base
+    _z_passif(d, r, ci, (bx - 2.6, by), (bx - 0.9, by), "Rb")
+    d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
+    d.add(elm.Dot().at((bx - 2.6, by)).label("IN", loc="left"))
     d.add(elm.Line().at(t.collector).up(1).label("LOAD", loc="right"))
     d.add(elm.Line().at(t.emitter).down(0.5))
     d.add(elm.Ground())
+    _titre_montage(d, result, (t.collector[0], t.collector[1] + 1.8))
 
 
 def _draw_common_emitter(d, result, ci):
@@ -2506,27 +2539,34 @@ def _draw_common_emitter(d, result, ci):
     remaining = [r for r in rs if r != rc]
     rb = _ref_on_net(remaining, ci, q_pins.get("B"), remaining[0] if remaining else "Rb")
     t = d.add(elm.BjtNpn().at((3, 0)))
-    d.add(elm.Resistor().at(t.base).left().label(_lbl(rb, ci), loc="top"))
-    d.add(elm.Dot().label("IN", loc="left"))
-    # loc="bot" on UP element = physical right side at midpoint; no overlap with VCC at top-end
-    d.add(elm.Resistor().at(t.collector).up(1.15).label(_lbl(rc, ci), loc="bot"))
-    d.add(elm.Dot())
-    d.add(elm.Line().up(0.45).label("VCC", loc="top"))
+    bx, by = t.base
+    _z_passif(d, rb, ci, (bx - 2.6, by), (bx - 0.9, by), "Rb")
+    d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
+    d.add(elm.Dot().at((bx - 2.6, by)).label("IN", loc="left"))
+    # Rc en boîte Z verticale, du collecteur vers VCC
+    cx, cy = t.collector
+    _z_passif(d, rc, ci, (cx, cy + 0.5), (cx, cy + 1.9), "Rc", label_loc="left")
+    d.add(elm.Line().at(t.collector).to((cx, cy + 0.5)))
+    d.add(elm.Line().at((cx, cy + 1.9)).up(0.4).label("VCC", loc="top"))
     d.add(elm.Line().at(t.emitter).down(0.5))
     d.add(elm.Ground())
     d.add(elm.Line().at(t.collector).right(1.5).label("OUT", loc="right"))
+    _titre_montage(d, result, (cx, cy + 2.7))
 
 
 def _draw_mosfet_switch(d, result, ci):
     """@brief Dessine le schéma « MOSFET en commutation »."""
     m = _ref(result, ci, "M"); r = _ref(result, ci, "R")
     t = d.add(elm.NFet().at((3, 0)))
-    # In schemdraw 0.22, NFet gate is on the RIGHT side — resistor goes right (no body overlap)
-    d.add(elm.Resistor().at(t.gate).right().label(_lbl(r, ci), loc="top"))
-    d.add(elm.Dot().label("IN", loc="right"))
+    # NFet 0.22 : grille à DROITE -> Rg en boîte Z vers la droite.
+    gx, gy = t.gate
+    _z_passif(d, r, ci, (gx + 0.9, gy), (gx + 2.6, gy), "Rg")
+    d.add(elm.Line().at(t.gate).to((gx + 0.9, gy)))
+    d.add(elm.Dot().at((gx + 2.6, gy)).label("IN", loc="right"))
     d.add(elm.Line().at(t.drain).up(1).label("LOAD", loc="right"))
     d.add(elm.Line().at(t.source).down(0.5))
     d.add(elm.Ground())
+    _titre_montage(d, result, (t.drain[0], t.drain[1] + 1.8))
 
 
 def _draw_high_side_mosfet(d, result, ci):
@@ -2534,15 +2574,18 @@ def _draw_high_side_mosfet(d, result, ci):
     m = _ref(result, ci, "M")
     r = _ref(result, ci, "R")
     t = d.add(elm.NFet().at((3, 0)))
-    # Gate resistor goes right (gate is on right in NFet 0.22)
-    d.add(elm.Resistor().at(t.gate).right().label(_lbl(r, ci), loc="top"))
-    d.add(elm.Dot().label("IN", loc="right"))
+    # Rg en boîte Z vers la droite (grille à droite dans NFet 0.22).
+    gx, gy = t.gate
+    _z_passif(d, r, ci, (gx + 0.9, gy), (gx + 2.6, gy), "Rg")
+    d.add(elm.Line().at(t.gate).to((gx + 0.9, gy)))
+    d.add(elm.Dot().at((gx + 2.6, gy)).label("IN", loc="right"))
     # Drain at top → VCC power rail
     d.add(elm.Line().at(t.drain).up(1))
     d.add(elm.Dot().label("VCC", loc="right"))
     # Source at bottom → load (not GND)
     d.add(elm.Line().at(t.source).down(1))
     d.add(elm.Dot().label("LOAD", loc="left"))
+    _titre_montage(d, result, (t.drain[0], t.drain[1] + 1.8))
 
 
 def _draw_relay_driver(d, result, ci):
@@ -2561,10 +2604,12 @@ def _draw_relay_driver(d, result, ci):
     emit_pin = t.source if use_mosfet else t.emitter
     ctrl_lbl = "VG" if use_mosfet else "CMD"
 
-    # Contrôle : résistance de base ou ligne directe
+    # Contrôle : résistance de base en boîte Z cliquable, ou ligne directe
+    cxp, cyp = ctrl_pin
     if rbs:
-        d.add(elm.Resistor().at(ctrl_pin).left().label(_lbl(rbs[0], ci), loc="top"))
-        d.add(elm.Dot().label(ctrl_lbl, loc="left"))
+        _z_passif(d, rbs[0], ci, (cxp - 2.4, cyp), (cxp - 0.7, cyp), "Rb")
+        d.add(elm.Line().at((cxp - 0.7, cyp)).to((cxp, cyp)))
+        d.add(elm.Dot().at((cxp - 2.4, cyp)).label(ctrl_lbl, loc="left"))
     else:
         d.add(elm.Line().at(ctrl_pin).left(1).label(ctrl_lbl, loc="left"))
 
@@ -2584,6 +2629,7 @@ def _draw_relay_driver(d, result, ci):
     # Émetteur → GND
     d.add(elm.Line().at(emit_pin).down(0.5))
     d.add(elm.Ground())
+    _titre_montage(d, result, (coil_top[0], coil_top[1] + 0.9))
 
 
 def _draw_current_mirror(d, result, ci):
@@ -2619,6 +2665,83 @@ def _draw_current_mirror(d, result, ci):
     d.add(elm.Ground())
     d.add(elm.Line().at(t2.emitter).down(0.3))
     d.add(elm.Ground())
+    _titre_montage(d, result, ((t1.collector[0] + t2.collector[0]) / 2, iref_top + 0.7))
+
+
+def _draw_suiveur_emetteur(d, result, ci):
+    """@brief « Collecteur commun (suiveur d'émetteur) » : collecteur sur VCC,
+    sortie sur l'émetteur via Re (boîtes Z cliquables : Rb base, Re émetteur)."""
+    q = _ref(result, ci, "Q")
+    rs = _refs(result, ci, "R")
+    q_pins = ci.get(q, {}).get("pins", {})
+    re = _ref_on_net(rs, ci, q_pins.get("E"), rs[0] if rs else "Re")
+    rb = next((r for r in rs if r != re), None)
+    t = d.add(elm.BjtNpn().at((3, 0)))
+    bx, by = t.base
+    if rb:
+        _z_passif(d, rb, ci, (bx - 2.6, by), (bx - 0.9, by), "Rb")
+        d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
+        d.add(elm.Dot().at((bx - 2.6, by)).label("IN", loc="left"))
+    else:
+        d.add(elm.Line().at(t.base).left(1).label("IN", loc="left"))
+    # Collecteur -> VCC
+    d.add(elm.Line().at(t.collector).up(1).label("VCC", loc="top"))
+    # Émetteur -> Re -> GND, sortie au point d'émetteur
+    ex, ey = t.emitter
+    d.add(elm.Line().at(t.emitter).right(1.4).label("OUT", loc="right"))
+    _z_passif(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), "Re", label_loc="right")
+    d.add(elm.Line().at(t.emitter).to((ex, ey - 0.6)))
+    d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
+    d.add(elm.Ground())
+    _titre_montage(d, result, (t.collector[0], t.collector[1] + 1.8))
+
+
+def _draw_push_pull(d, result, ci):
+    """@brief « Étage push-pull » : NPN (haut, C=VCC) + PNP (bas, C=GND),
+    émetteurs communs = sortie, bases communes = entrée."""
+    qn = d.add(elm.BjtNpn().at((3, 1.5)))
+    qp = d.add(elm.BjtPnp().at((3, -1.5)))
+    # Bases communes (entrée) reliées verticalement
+    d.add(elm.Line().at(qn.base).to(qp.base))
+    midb = ((qn.base[0] + qp.base[0]) / 2, (qn.base[1] + qp.base[1]) / 2)
+    d.add(elm.Dot().at(midb))
+    d.add(elm.Line().at(midb).left(1.2).label("IN", loc="left"))
+    # Collecteurs : NPN -> VCC, PNP -> GND
+    d.add(elm.Line().at(qn.collector).up(0.8).label("VCC", loc="top"))
+    d.add(elm.Line().at(qp.collector).down(0.8))
+    d.add(elm.Ground())
+    # Émetteurs communs -> sortie
+    d.add(elm.Line().at(qn.emitter).to(qp.emitter))
+    mide = ((qn.emitter[0] + qp.emitter[0]) / 2, (qn.emitter[1] + qp.emitter[1]) / 2)
+    d.add(elm.Dot().at(mide))
+    d.add(elm.Line().at(mide).right(1.4).label("OUT", loc="right"))
+    _titre_montage(d, result, (qn.collector[0], qn.collector[1] + 1.6))
+
+
+def _draw_darlington(d, result, ci):
+    """@brief « Paire Darlington » : émetteur de Q1 sur la base de Q2, collecteurs
+    communs ; Re (charge d'émetteur) en boîte Z cliquable."""
+    re = _ref(result, ci, "R")
+    q1 = d.add(elm.BjtNpn().at((2.5, 1.4)))
+    q2 = d.add(elm.BjtNpn().at((4.2, -1.0)))
+    d.add(elm.Line().at(q1.base).left(1.2).label("IN", loc="left"))
+    # Collecteurs communs -> VCC
+    d.add(elm.Line().at(q1.collector).up(0.8))
+    top = d.here
+    d.add(elm.Line().at(q2.collector).toy(top[1]))
+    d.add(elm.Line().at((q2.collector[0], top[1])).to(top))
+    d.add(elm.Line().at(top).up(0.4).label("VCC", loc="top"))
+    # E(Q1) -> B(Q2)
+    d.add(elm.Line().at(q1.emitter).to(q2.base))
+    d.add(elm.Dot().at(q2.base))
+    # Sortie sur l'émetteur de Q2, Re vers GND
+    ex, ey = q2.emitter
+    d.add(elm.Line().at(q2.emitter).right(1.4).label("OUT", loc="right"))
+    _z_passif(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), "Re", label_loc="right")
+    d.add(elm.Line().at(q2.emitter).to((ex, ey - 0.6)))
+    d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
+    d.add(elm.Ground())
+    _titre_montage(d, result, (top[0], top[1] + 1.2))
 
 
 # ── Pattern registry ──────────────────────────────────────────────────────────
@@ -2646,4 +2769,7 @@ _DRAWERS = {
     "Miroir de courant BJT":             _draw_current_mirror,
     "MOSFET en commutation":             _draw_mosfet_switch,
     "MOSFET haute-tension (côté haut)": _draw_high_side_mosfet,
+    "Collecteur commun (suiveur d'émetteur)": _draw_suiveur_emetteur,
+    "Étage push-pull":                   _draw_push_pull,
+    "Paire Darlington":                  _draw_darlington,
 }
