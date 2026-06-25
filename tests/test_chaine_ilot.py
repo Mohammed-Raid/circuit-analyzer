@@ -181,6 +181,18 @@ def test_sommateur_chaine_masque_l_entree_interne_in1():
     assert "IN2" in textes
 
 
+def test_texte_gain_sommateur_ne_plante_pas():
+    # Sommateur : imp['Zin'] est une LISTE (entrees multiples). _texte_gain ne doit
+    # pas la traiter comme un dict -> sinon show_island plante avant d'afficher l'ilot.
+    comps = lire_xml("circuits_industriels/summing_aop.xml")
+    graph = construire_graphe(comps)
+    res = analyser(graph)
+    somm = next(r for r in res if r["circuit_type"] == "Amplificateur sommateur (AOP)")
+    assert isinstance(somm["impedances"]["Zin"], list)   # garde-fou du scenario
+    txt = cv._texte_gain(somm, graph)
+    assert txt is None or txt.startswith("Av")
+
+
 def test_differentiel_tete_de_chaine_libelle_vin_moins_plus():
     match = {
         "circuit_type": "Amplificateur différentiel (AOP)",

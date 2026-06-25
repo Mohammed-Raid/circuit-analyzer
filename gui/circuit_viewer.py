@@ -161,12 +161,15 @@ def _texte_gain(result, graph):
     imp = result.get("impedances")
     if imp and graph is not None:
         from circuit_analyzer import impedance
+        zin = imp.get("Zin")
         if "Zg" in imp:        # non-inverseur : Av = 1 + Zf/Zg
             num = impedance.gain_non_inverseur(
                 graph, imp["Zf"]["composition"], imp["Zg"]["composition"])
-        else:                  # inverseur / intégrateur / dérivateur : Av = −Zf/Zin
+        elif isinstance(zin, dict):   # inverseur / intégrateur / dérivateur : Av = −Zf/Zin
             num = impedance.gain_inverseur(
-                graph, imp["Zin"]["composition"], imp["Zf"]["composition"])
+                graph, zin["composition"], imp["Zf"]["composition"])
+        else:                  # sommateur (Zin = liste d'entrées) : pas d'Av scalaire
+            num = None
         if num:
             return f"Av = {g}  ({num})" if num.startswith("|Av|") else f"Av = {g} = {num}"
     return f"Av = {g}"
