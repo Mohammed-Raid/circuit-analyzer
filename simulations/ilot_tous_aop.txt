@@ -1,0 +1,52 @@
+# Ilot de test synthetique : tous les montages AOP dans un seul ilot.
+# Objectif : fixture visuel pour la vue "Schema ilot", pas circuit industriel.
+# Flux principal :
+#   differentiel -> sommateur -> non-inverseur -> inverseur -> integrateur
+#   -> derivateur -> suiveur -> Schmitt -> comparateur
+
+# 1) Amplificateur differentiel (VINP/VINM -> S1)
+U1    /VINP   /N1     /S1     /VCC   /GND
+R1a   /VINM   /N1     10k
+R1f   /N1     /S1     100k
+R1b   /VINP_SRC /VINP 10k
+R1g   /VINP   /GND    100k
+
+# 2) Amplificateur sommateur (S1 + AUXSUM -> S2)
+# IN+ est relie a S1 pour rendre le fixture chainable dans la vue ilot.
+U2    /S1     /N2     /S2     /VCC   /GND
+R2a   /S1     /N2     10k
+R2b   /AUXSUM /N2     10k
+R2f   /N2     /S2     100k
+
+# 3) Amplificateur non-inverseur (S2 -> S3)
+U3    /S2     /N3     /S3     /VCC   /GND
+R3f   /N3     /S3     100k
+R3g   /N3     /GND    10k
+
+# 4) Amplificateur inverseur (S3 -> S4)
+U4    /GND    /N4     /S4     /VCC   /GND
+R4in  /S3     /N4     10k
+R4f   /N4     /S4     100k
+
+# 5) Integrateur (S4 -> S5)
+U5    /GND    /N5     /S5     /VCC   /GND
+R5in  /S4     /N5     10k
+C5f   /N5     /S5     10n
+
+# 6) Derivateur (S5 -> S6)
+U6    /GND    /N6     /S6     /VCC   /GND
+C6in  /S5     /N6     10n
+R6f   /N6     /S6     100k
+
+# 7) Suiveur de tension (S6 -> S7)
+U7    /S6     /S7     /S7     /VCC   /GND
+
+# 8) Bascule de Schmitt (S7 -> S8)
+U8    /P8     /GND    /S8     /VCC   /GND
+R8in  /S7     /P8     10k
+R8f   /S8     /P8     100k
+
+# 9) Comparateur final (S8 vs VREF -> S9)
+U9    /S8     /VREF   /S9     /VCC   /GND
+Rref1 /VCC    /VREF   10k
+Rref2 /VREF   /GND    10k

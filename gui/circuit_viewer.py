@@ -1484,7 +1484,7 @@ def _draw_aop_inverseur_zin_zf(d, imp, ci, origin=(4.5, 0), in_label="IN", out_l
     return {"in": in_pt, "out": out_pt}
 
 
-def _draw_aop_sommateur(d, imp, ci, origin=(5.0, 0), out_label="OUT"):
+def _draw_aop_sommateur(d, imp, ci, origin=(5.0, 0), in_label="IN1", out_label="OUT"):
     """@brief Dessine le sommateur : bus d'entrées Zin + Zf cliquables sur IN-.
 
     @param imp Dict {'Zf': bloc, 'Zin': [bloc, ...]} (cf. détecteur).
@@ -1511,7 +1511,11 @@ def _draw_aop_sommateur(d, imp, ci, origin=(5.0, 0), out_label="OUT"):
         p1 = (node_x - 3.0, y)
         _z_box(d, p1, (node_x, y), f"Z{i+1}", bloc, ci)
         d.add(elm.Line().at(p1).left(0.5).color(_WIRE))
-        d.add(elm.Dot().at((p1[0] - 0.5, y)).color(_WIRE).label(f"IN{i+1}", loc="left", color=_WIRE))
+        label = in_label if i == 0 else f"IN{i+1}"
+        dot = elm.Dot().at((p1[0] - 0.5, y)).color(_WIRE)
+        if label:
+            dot = dot.label(label, loc="left", color=_WIRE)
+        d.add(dot)
 
     # Zf : du nœud de sommation vers le haut puis OUT
     above_y = top_y + 1.2
@@ -1643,6 +1647,17 @@ def _dessiner_montage_a(d, match, ci, origin, in_label, out_label):
     imp = match.get("impedances") or {}
     ct = match.get("circuit_type", "")
     # Montages ancrés "center" (à router avant les branches Zin/Zg) :
+    if "sommateur" in ct.lower():
+        return _draw_aop_sommateur(d, imp, ci, origin, in_label, out_label)
+    if "différentiel" in ct.lower() or "differentiel" in ct.lower():
+        in1 = "VIN-" if in_label == "VIN" else (in_label or "IN1")
+        in2 = "VIN+" if in_label == "VIN" else "IN2"
+        return _draw_aop_differentiel(
+            d, imp, ci, origin,
+            in1_label=in1,
+            in2_label=in2,
+            out_label=out_label,
+        )
     if "Schmitt" in ct:
         return _draw_aop_schmitt(d, imp, ci, origin, in_label, out_label)
     if "Comparateur" in ct:
@@ -1678,7 +1693,9 @@ def _draw_island_chain(d, ordered, ci):
         ct = match.get("circuit_type", "")
         # Schmitt/comparateur sont ancrés "center" -> OUT déjà sur la centerline
         # (oy=0). Zin-family ancré in1 (haut) -> +dy ; non-inv/suiveur in2 (bas) -> -dy.
-        if "Schmitt" in ct or "Comparateur" in ct:
+        if "sommateur" in ct.lower():
+            oy = _AOP_OUT_DY
+        elif "Schmitt" in ct or "Comparateur" in ct or "différentiel" in ct.lower() or "differentiel" in ct.lower():
             oy = 0.0
         elif "Zin" in imp:
             oy = _AOP_OUT_DY

@@ -62,6 +62,30 @@ def test_ordonner_ne_crashe_pas_avec_un_sommateur():
     assert ordre[0]["circuit_type"] == "Amplificateur sommateur (AOP)"
 
 
+def test_ilot_tous_aop_est_une_chaine_rendue_sans_erreur():
+    comps = lire_xml("circuits_industriels/ilot_tous_aop.xml")
+    res = analyser(construire_graphe(comps))
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    ilot = max(res.ilots, key=lambda i: len(i["composants"]))
+    ordre = cv._ordonner_montages_flux(cv._matches_for_island(ilot, res))
+    assert [m["circuit_type"] for m in ordre] == [
+        "Amplificateur différentiel (AOP)",
+        "Amplificateur sommateur (AOP)",
+        "Amplificateur non-inverseur (AOP)",
+        "Amplificateur inverseur (AOP)",
+        "Intégrateur (AOP)",
+        "Dérivateur (AOP)",
+        "Suiveur de tension (AOP)",
+        "Bascule de Schmitt (AOP)",
+        "Comparateur (AOP)",
+    ]
+
+    fig = cv._make_chain_fig(ordre, ci)
+    textes = [t.get_text() for t in fig.axes[0].texts]
+    assert not any("Schéma non disponible" in t for t in textes)
+    assert len(getattr(fig, "_z_hitboxes", [])) >= 14
+
+
 import schemdraw
 from matplotlib.figure import Figure
 
@@ -72,12 +96,12 @@ def _imp_inv():
 
 
 def test_drawer_inverseur_renvoie_ancres_et_suit_origin():
-    with schemdraw.Drawing(show=False) as d:
-        d._z_hitboxes = []
-        a0 = cv._draw_aop_inverseur_zin_zf(d, _imp_inv(), {}, origin=(0, 0))
-    with schemdraw.Drawing(show=False) as d:
-        d._z_hitboxes = []
-        a10 = cv._draw_aop_inverseur_zin_zf(d, _imp_inv(), {}, origin=(10, 0))
+    d = schemdraw.Drawing(show=False)
+    d._z_hitboxes = []
+    a0 = cv._draw_aop_inverseur_zin_zf(d, _imp_inv(), {}, origin=(0, 0))
+    d = schemdraw.Drawing(show=False)
+    d._z_hitboxes = []
+    a10 = cv._draw_aop_inverseur_zin_zf(d, _imp_inv(), {}, origin=(10, 0))
     assert set(a0) == {"in", "out"}
     assert a0["out"][0] > a0["in"][0]                 # OUT à droite de IN
     assert abs(a10["in"][0] - a0["in"][0] - 10) < 1e-6  # l'origine décale tout de +10
@@ -88,14 +112,14 @@ def test_chaine_garde_les_aop_orientes_a_droite_apres_une_masse():
     res = analyser(construire_graphe(comps))
     ci = {c.ref: {"type": c.type, "value": c.value} for c in comps}
     ordre = cv._ordonner_montages_flux([r for r in res if "(AOP)" in r["circuit_type"]])
-    with schemdraw.Drawing(show=False) as d:
-        d._z_hitboxes = []
-        ancres = []
-        for i, match in enumerate(ordre):
-            imp = match.get("impedances") or {}
-            oy = cv._AOP_OUT_DY if "Zin" in imp else -cv._AOP_OUT_DY
-            origin = (4.5 + i * cv._CHAINE_DX, oy)
-            ancres.append(cv._dessiner_montage_a(d, match, ci, origin, "", ""))
+    d = schemdraw.Drawing(show=False)
+    d._z_hitboxes = []
+    ancres = []
+    for i, match in enumerate(ordre):
+        imp = match.get("impedances") or {}
+        oy = cv._AOP_OUT_DY if "Zin" in imp else -cv._AOP_OUT_DY
+        origin = (4.5 + i * cv._CHAINE_DX, oy)
+        ancres.append(cv._dessiner_montage_a(d, match, ci, origin, "", ""))
 
     for a in ancres:
         assert a["out"][0] > a["in"][0]
@@ -122,13 +146,64 @@ def test_chaine_schmitt_dessine_avec_contre_reaction_positive():
              "components": ["U1", "Rf", "Rin"], "nodes": ["P", "GND", "O"],
              "impedances": {"Zf": {"refs": ["Rf"], "composition": "Rf", "nodes": ("P", "O")},
                             "Zin": {"refs": ["Rin"], "composition": "Rin", "nodes": ("P", "IN")}}}
-    with schemdraw.Drawing(show=False) as d:
-        d._z_hitboxes = []
-        cv._dessiner_montage_a(d, match, {}, (4.5, 0), "", "")
-        hb = list(d._z_hitboxes)
+    d = schemdraw.Drawing(show=False)
+    d._z_hitboxes = []
+    cv._dessiner_montage_a(d, match, {}, (4.5, 0), "", "")
+    hb = list(d._z_hitboxes)
     assert len(hb) == 2
     ys = [(y0 + y1) / 2 for _x0, _x1, y0, y1, *_ in hb]
     assert min(ys) < 0   # Zf routee sous la ligne -> specifique au Schmitt
+
+
+def test_sommateur_chaine_masque_l_entree_interne_in1():
+    match = {
+        "circuit_type": "Amplificateur sommateur (AOP)",
+        "components": ["U1", "Rf", "Ra", "Rb"],
+        "nodes": ["PREV", "S", "OUT"],
+        "impedances": {
+            "Zf": {"refs": ["Rf"], "composition": "Rf", "nodes": ("S", "OUT")},
+            "Zin": [
+                {"refs": ["Ra"], "composition": "Ra", "nodes": ("S", "PREV")},
+                {"refs": ["Rb"], "composition": "Rb", "nodes": ("S", "AUX")},
+            ],
+        },
+    }
+    fig = Figure(figsize=(7, 4))
+    ax = fig.add_subplot(111)
+    ax.axis("off")
+    ax.set_aspect("equal")
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d._z_hitboxes = []
+        cv._dessiner_montage_a(d, match, {}, (5.0, cv._AOP_OUT_DY), "", "")
+
+    textes = [t.get_text() for t in ax.texts]
+    assert "IN1" not in textes
+    assert "IN2" in textes
+
+
+def test_differentiel_tete_de_chaine_libelle_vin_moins_plus():
+    match = {
+        "circuit_type": "Amplificateur différentiel (AOP)",
+        "components": ["U1", "R1", "Rf", "R3", "Rg"],
+        "nodes": ["P", "N", "OUT"],
+        "impedances": {
+            "Z1": {"refs": ["R1"], "composition": "R1", "nodes": ("N", "VINM")},
+            "Zf": {"refs": ["Rf"], "composition": "Rf", "nodes": ("N", "OUT")},
+            "Z3": {"refs": ["R3"], "composition": "R3", "nodes": ("P", "VINP")},
+            "Zg": {"refs": ["Rg"], "composition": "Rg", "nodes": ("P", "GND")},
+        },
+    }
+    fig = Figure(figsize=(7, 4))
+    ax = fig.add_subplot(111)
+    ax.axis("off")
+    ax.set_aspect("equal")
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d._z_hitboxes = []
+        cv._dessiner_montage_a(d, match, {}, (6.0, 0), "VIN", "")
+
+    textes = [t.get_text() for t in ax.texts]
+    assert "VIN-" in textes
+    assert "VIN+" in textes
 
 
 def test_suiveur_ne_superpose_pas_le_fil_vout_et_le_retour():
@@ -175,10 +250,10 @@ def test_draw_island_chain_hitboxes_et_ordre():
     res = analyser(construire_graphe(comps))
     ci = {c.ref: {"type": c.type, "value": c.value} for c in comps}
     ordre = cv._ordonner_montages_flux([r for r in res if "(AOP)" in r["circuit_type"]])
-    with schemdraw.Drawing(show=False) as d:
-        d._z_hitboxes = []
-        cv._draw_island_chain(d, ordre, ci)
-        hb = list(d._z_hitboxes)
+    d = schemdraw.Drawing(show=False)
+    d._z_hitboxes = []
+    cv._draw_island_chain(d, ordre, ci)
+    hb = list(d._z_hitboxes)
     # non-inv(2) + inverseur(2) + intégrateur(2) + dérivateur(2) + suiveur(0) = 8
     assert len(hb) == 8
     xs = [(x0 + x1) / 2 for x0, x1, *_ in hb]
