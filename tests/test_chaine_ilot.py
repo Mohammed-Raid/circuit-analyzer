@@ -54,6 +54,28 @@ def test_make_branched_fig_pid_rend_sans_erreur():
     assert len(getattr(fig, "_z_hitboxes", [])) >= 6   # boites Z des etages preservees
 
 
+def test_titre_etage_roles():
+    assert cv._titre_etage({"circuit_type": "Intégrateur (AOP)"}) == "Intégrateur"
+    assert cv._titre_etage({"circuit_type": "Amplificateur sommateur (AOP)"}) == "Sommateur"
+    assert cv._titre_etage({"circuit_type": "Amplificateur non-inverseur (AOP)"}) == "Non-inverseur"
+    assert cv._titre_etage({"circuit_type": "Suiveur de tension (AOP)"}) == "Suiveur"
+
+
+def test_branched_view_annote_roles_et_gains():
+    # Chaque étage porte son rôle (titre) ; les étages à gain affichent "Av = …".
+    comps = lire_xml("circuits_industriels/pid_controller.xml")
+    res = analyser(construire_graphe(comps))
+    ilot = max(res.ilots, key=lambda i: len(i["composants"]))
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    layers = cv._layers_montages_flux(cv._matches_for_island(ilot, res))
+    fig = cv._make_branched_fig(layers, ci)
+    txts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    blob = " | ".join(txts)
+    for role in ("Intégrateur", "Dérivateur", "Sommateur", "Suiveur"):
+        assert role in blob, f"rôle manquant: {role}"
+    assert sum(1 for t in txts if t.startswith("Av")) >= 3   # gains par étage
+
+
 def test_branched_edges_pid_forward_only():
     # Le câblage branché ne doit garder que les arêtes AVANT : pas de fil de retour
     # buffer -> étage P (back-edge dû à la mauvaise détection) qui traverse tout.

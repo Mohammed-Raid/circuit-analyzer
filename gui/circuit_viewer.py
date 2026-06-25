@@ -2067,6 +2067,7 @@ def _draw_island_chain(d, ordered, ci):
         # par IN+ (broche du bas) -> on descend de -dy.
         origin = (4.5 + i * _CHAINE_DX, _oy_for(match))
         ancres.append(_dessiner_montage_a(d, match, ci, origin, in_label, out_label))
+        _annoter_etage(d, ancres[-1], match)
 
     for i in range(n - 1):
         out_pt = ancres[i]["out"]
@@ -2109,6 +2110,44 @@ def _fil_canal(d, out_pt, in_pt, channel_x):
 _BRANCHE_ROW_GAP = 9.0     # écart vertical entre étages parallèles d'une même couche
 _BRANCHE_DX = 13.0         # pas horizontal entre couches (large : place pour les canaux)
 
+_TITRE_COLOR = "#1e293b"   # rôle de l'étage (slate foncé)
+_GAIN_COLOR = "#0f766e"    # gain de l'étage (teal)
+_ROLE_ETAGE = {
+    "Amplificateur différentiel (AOP)":  "Différentiel",
+    "Amplificateur sommateur (AOP)":     "Sommateur",
+    "Amplificateur non-inverseur (AOP)": "Non-inverseur",
+    "Amplificateur inverseur (AOP)":     "Inverseur",
+    "Intégrateur (AOP)":                 "Intégrateur",
+    "Dérivateur (AOP)":                  "Dérivateur",
+    "Suiveur de tension (AOP)":          "Suiveur",
+    "Comparateur (AOP)":                 "Comparateur",
+    "Bascule de Schmitt (AOP)":          "Schmitt",
+}
+
+
+def _titre_etage(match):
+    """@brief Rôle court d'un montage pour l'étiqueter dans la chaîne / le DAG."""
+    ct = match.get("circuit_type", "")
+    return _ROLE_ETAGE.get(ct, ct.replace(" (AOP)", ""))
+
+
+def _annoter_etage(d, ancres, match):
+    """@brief Étiquette un étage : rôle au-dessus de sa sortie, gain en dessous.
+
+    Placé à droite de l'AOP (espace inter-étages) pour ne pas percuter le réseau
+    Zf/Zg. Purement additif : aucun impact sur le câblage ni les ancres.
+    """
+    out = ancres.get("out")
+    if not out:
+        return
+    x = out[0] + 1.4
+    d.add(elm.Label().at((x, out[1] + 0.85)).label(
+        _titre_etage(match), color=_TITRE_COLOR, fontsize=11))
+    gain = _texte_gain(match, None)
+    if gain:
+        d.add(elm.Label().at((x, out[1] - 0.85)).label(
+            gain, color=_GAIN_COLOR, fontsize=8))
+
 
 def _branched_edges(layers):
     """@brief Arêtes AVANT du DAG de montages (producteur.couche < consommateur.couche).
@@ -2150,6 +2189,7 @@ def _draw_branched_chain(d, layers, ci):
             origin = (4.5 + lx * _BRANCHE_DX, y_row + _oy_for(match))
             out_label = "VOUT" if lx == dernier else ""
             ancres[id(match)] = _dessiner_montage_a(d, match, ci, origin, "", out_label)
+            _annoter_etage(d, ancres[id(match)], match)
 
     # Câblage : un canal vertical distinct par entrée d'un même consommateur (fan-in).
     par_conso = {}
