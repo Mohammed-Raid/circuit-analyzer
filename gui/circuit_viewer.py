@@ -9,6 +9,7 @@ dans _DRAWERS. Les fonctions _draw_* reçoivent toutes (d, result, ci) :
   @param ci Dict {ref -> infos composant} (comp_info).
 """
 import customtkinter as ctk
+import tkinter as tk
 import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
@@ -30,6 +31,49 @@ _COMP_COLORS = {
     "D": "#dc2626", "Q": "#7c3aed", "M": "#6d28d9",
     "U": "#b45309", "F": "#374151",
 }
+
+
+def _figure_pixel_size(fig):
+    """@brief Taille native d'une figure Matplotlib en pixels."""
+    w, h = fig.get_size_inches()
+    return max(1, int(round(w * fig.dpi))), max(1, int(round(h * fig.dpi)))
+
+
+_VIEWER_ZOOM_STEP = 1.15
+_VIEWER_ZOOM_MIN = 0.3
+_VIEWER_ZOOM_MAX = 3.0
+
+
+def _zoom_next_scale(current, wheel_delta):
+    """@brief Calcule le prochain zoom borne pour un evenement molette."""
+    factor = _VIEWER_ZOOM_STEP if wheel_delta > 0 else 1 / _VIEWER_ZOOM_STEP
+    return max(_VIEWER_ZOOM_MIN, min(_VIEWER_ZOOM_MAX, current * factor))
+
+
+def _zoom_scroll_fractions(old_size, new_size, viewport, pointer, canvas_origin):
+    """@brief Fractions x/y pour garder le point sous la souris pendant le zoom.
+
+    @param old_size Taille scrollregion avant zoom.
+    @param new_size Taille scrollregion apres zoom.
+    @param viewport Taille visible du canvas.
+    @param pointer Position souris dans le viewport.
+    @param canvas_origin Coordonnees monde du coin visible avant zoom.
+    """
+    old_w, old_h = old_size
+    new_w, new_h = new_size
+    view_w, view_h = viewport
+    px, py = pointer
+    ox, oy = canvas_origin
+
+    scale_x = new_w / old_w if old_w else 1.0
+    scale_y = new_h / old_h if old_h else 1.0
+    target_x = (ox + px) * scale_x - px
+    target_y = (oy + py) * scale_y - py
+    max_x = max(1, new_w - view_w)
+    max_y = max(1, new_h - view_h)
+    fx = max(0.0, min(1.0, target_x / max_x))
+    fy = max(0.0, min(1.0, target_y / max_y))
+    return fx, fy
 
 
 def _is_rail_net(net: str) -> bool:
@@ -453,19 +497,11 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     _defile = (_chaine is not None or _branches is not None
                or fig.get_size_inches()[0] > 11.0)
     if _defile:
-        scroll = ctk.CTkScrollableFrame(canvas_frame, orientation="horizontal",
-                                        fg_color=SCH_BG)
-        scroll.pack(fill="both", expand=True, padx=4, pady=4)
-        master = scroll
+        canvas = _pack_scrollable_figure(canvas_frame, fig)
     else:
-        master = canvas_frame
-
-    canvas = FigureCanvasTkAgg(fig, master=master)
-    canvas.draw()
-    canvas.get_tk_widget().configure(bg=SCH_BG, highlightthickness=0)
-    if _defile:
-        canvas.get_tk_widget().pack(padx=4, pady=4)        # taille native -> scroll
-    else:
+        canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
+        canvas.draw()
+        canvas.get_tk_widget().configure(bg=SCH_BG, highlightthickness=0)
         canvas.get_tk_widget().pack(fill="both", expand=True, padx=4, pady=4)
 
     def _on_click(event):
@@ -494,6 +530,97 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                   font=ctk.CTkFont("Segoe UI", 11),
                   fg_color="#374151", hover_color="#4b5563",
                   command=popup.destroy).pack(side="right", padx=12, pady=7)
+
+
+def _pack_scrollable_figure(parent, fig):
+    """@brief Affiche une figure a sa taille native dans un viewport scrollable."""
+    base_w, base_h = _figure_pixel_size(fig)
+    state = {"scale": 1.0}
+
+    viewport = tk.Frame(parent, bg=SCH_BG)
+    viewport.pack(fill="both", expand=True, padx=4, pady=4)
+    viewport.grid_rowconfigure(0, weight=1)
+    viewport.grid_columnconfigure(0, weight=1)
+
+    xbar = tk.Scrollbar(viewport, orient="horizontal")
+    ybar = tk.Scrollbar(viewport, orient="vertical")
+    view = tk.Canvas(
+        viewport,
+        bg=SCH_BG,
+        highlightthickness=0,
+        cursor="fleur",
+        xscrollcommand=xbar.set,
+        yscrollcommand=ybar.set,
+    )
+    xbar.configure(command=view.xview)
+    ybar.configure(command=view.yview)
+
+    view.grid(row=0, column=0, sticky="nsew")
+    ybar.grid(row=0, column=1, sticky="ns")
+    xbar.grid(row=1, column=0, sticky="ew")
+
+    inner = tk.Frame(view, bg=SCH_BG)
+    view.create_window((0, 0), window=inner, anchor="nw")
+
+    canvas = FigureCanvasTkAgg(fig, master=inner)
+    canvas.draw()
+    canvas.get_tk_widget().configure(
+        width=base_w,
+        height=base_h,
+        bg=SCH_BG,
+        highlightthickness=0,
+    )
+    canvas.get_tk_widget().pack()
+
+    inner.bind("<Configure>", lambda _e: view.configure(scrollregion=view.bbox("all")))
+
+    def _resize_matplotlib_widget(scale):
+        w = max(1, int(round(base_w * scale)))
+        h = max(1, int(round(base_h * scale)))
+        canvas.get_tk_widget().configure(width=w, height=h)
+        inner.configure(width=w, height=h)
+        view.configure(scrollregion=(0, 0, w, h))
+        return w, h
+
+    def _on_mousewheel(event):
+        old_scale = state["scale"]
+        new_scale = _zoom_next_scale(old_scale, getattr(event, "delta", 0))
+        if abs(new_scale - old_scale) < 1e-9:
+            return "break"
+
+        old_size = (max(1, int(round(base_w * old_scale))),
+                    max(1, int(round(base_h * old_scale))))
+        origin = (view.canvasx(0), view.canvasy(0))
+        new_size = _resize_matplotlib_widget(new_scale)
+        state["scale"] = new_scale
+        fx, fy = _zoom_scroll_fractions(
+            old_size=old_size,
+            new_size=new_size,
+            viewport=(max(1, view.winfo_width()), max(1, view.winfo_height())),
+            pointer=(event.x, event.y),
+            canvas_origin=origin,
+        )
+        view.xview_moveto(fx)
+        view.yview_moveto(fy)
+        return "break"
+
+    def _on_pan_start(event):
+        view.scan_mark(event.x, event.y)
+        view.configure(cursor="fleur")
+        return "break"
+
+    def _on_pan_drag(event):
+        view.scan_dragto(event.x, event.y, gain=1)
+        return "break"
+
+    view.bind("<MouseWheel>", _on_mousewheel)
+    view.bind("<ButtonPress-1>", _on_pan_start)
+    view.bind("<B1-Motion>", _on_pan_drag)
+    for widget in (inner, canvas.get_tk_widget()):
+        widget.bind("<MouseWheel>", _on_mousewheel)
+        widget.bind("<ButtonPress-1>", _on_pan_start)
+        widget.bind("<B1-Motion>", _on_pan_drag)
+    return canvas
 
 
 def show_dipole_detail(refs, composition, graph, comp_info, parent=None):
@@ -1561,6 +1688,39 @@ def _draw_inverting_amp(d, result, ci):
     _draw_aop_inverseur_zin_zf(d, imp, ci)
 
 
+_Z_LABEL_CLEAR = 0.95
+_SUM_INPUT_SPACING = 2.2
+_SUM_INPUT_LABEL_DX = 0.25
+_SUM_INPUT_LABEL_DY = 0.45
+
+
+def _z_label_anchor(p1, p2, label_loc="top"):
+    """@brief Positionne un label Z hors du corps du composant.
+
+    Les labels Z sont souvent sur deux lignes ; le label schemdraw par defaut est
+    trop proche et retombe sur le symbole. @return dict pos/ha/va pour elm.Label.
+    """
+    x0, x1 = sorted((p1[0], p2[0]))
+    y0, y1 = sorted((p1[1], p2[1]))
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    if label_loc == "bottom":
+        return {"pos": (cx, y0 - _Z_LABEL_CLEAR), "ha": "center", "va": "top"}
+    if label_loc == "left":
+        return {"pos": (x0 - _Z_LABEL_CLEAR, cy), "ha": "right", "va": "center"}
+    if label_loc == "right":
+        return {"pos": (x1 + _Z_LABEL_CLEAR, cy), "ha": "left", "va": "center"}
+    return {"pos": (cx, y1 + _Z_LABEL_CLEAR), "ha": "center", "va": "bottom"}
+
+
+def _sum_input_label_anchor(dot_pt):
+    """@brief Ancre un label INx hors de la piste d'entree du sommateur."""
+    return {
+        "pos": (dot_pt[0] - _SUM_INPUT_LABEL_DX, dot_pt[1] + _SUM_INPUT_LABEL_DY),
+        "ha": "right",
+        "va": "bottom",
+    }
+
+
 def _z_box(d, p1, p2, name, bloc, ci, label_loc="top"):
     """@brief Dessine une boîte Z cliquable (ResistorIEC bleue) de p1 à p2 et
     enregistre sa hitbox sur d._z_hitboxes.
@@ -1573,8 +1733,14 @@ def _z_box(d, p1, p2, name, bloc, ci, label_loc="top"):
     @param label_loc Position de l'étiquette schemdraw.
     @return None
     """
-    d.add(elm.ResistorIEC().at(p1).to(p2).color(_Z_EDGE).fill(_Z_FILL).label(
-        _z_label(name, bloc, ci), loc=label_loc, color=_Z_EDGE))
+    d.add(elm.ResistorIEC().at(p1).to(p2).color(_Z_EDGE).fill(_Z_FILL))
+    label = _z_label_anchor(p1, p2, label_loc)
+    d.add(elm.Label().at(label["pos"]).label(
+        _z_label(name, bloc, ci),
+        halign=label["ha"],
+        valign=label["va"],
+        color=_Z_EDGE,
+    ))
     hb = getattr(d, "_z_hitboxes", None)
     if hb is not None:
         pad = 0.5
@@ -1643,7 +1809,7 @@ def _draw_aop_sommateur(d, imp, ci, origin=(5.0, 0), in_label="IN1", out_label="
     node_x = inm[0] - 1.3
     d.add(elm.Line().at((node_x, inm[1])).to(inm).color(_WIRE))
     n = len(zin)
-    spacing = 1.4
+    spacing = _SUM_INPUT_SPACING
     top_y = inm[1] + (n - 1) * spacing
     d.add(elm.Line().at((node_x, inm[1])).toy(top_y).color(_WIRE))   # bus vertical
     d.add(elm.Dot().at((node_x, inm[1])).color(_WIRE))
@@ -1655,11 +1821,18 @@ def _draw_aop_sommateur(d, imp, ci, origin=(5.0, 0), in_label="IN1", out_label="
         _z_box(d, p1, (node_x, y), f"Z{i+1}", bloc, ci)
         d.add(elm.Line().at(p1).left(0.5).color(_WIRE))
         label = in_label if i == 0 else f"IN{i+1}"
-        dot = elm.Dot().at((p1[0] - 0.5, y)).color(_WIRE)
+        dot_pt = (p1[0] - 0.5, y)
+        dot = elm.Dot().at(dot_pt).color(_WIRE)
         if label:
-            dot = dot.label(label, loc="left", color=_WIRE)
+            lab = _sum_input_label_anchor(dot_pt)
+            d.add(elm.Label().at(lab["pos"]).label(
+                label,
+                halign=lab["ha"],
+                valign=lab["va"],
+                color=_WIRE,
+            ))
         d.add(dot)
-        in_pts.append((p1[0] - 0.5, y))
+        in_pts.append(dot_pt)
 
     # Zf : du nœud de sommation vers le haut puis OUT
     above_y = top_y + 1.2
@@ -1922,44 +2095,72 @@ def _oy_for(match):
 
 def _fil_en_z(d, out_pt, in_pt):
     """@brief Relie deux points par un fil en Z (horizontal, vertical, horizontal)."""
-    mx = (out_pt[0] + in_pt[0]) / 2
-    d.add(elm.Line().at(out_pt).to((mx, out_pt[1])).color(_WIRE))
-    d.add(elm.Line().at((mx, out_pt[1])).to((mx, in_pt[1])).color(_WIRE))
-    d.add(elm.Line().at((mx, in_pt[1])).to(in_pt).color(_WIRE))
+    _fil_canal(d, out_pt, in_pt, (out_pt[0] + in_pt[0]) / 2)
+
+
+def _fil_canal(d, out_pt, in_pt, channel_x):
+    """@brief Relie out_pt -> in_pt en passant par un canal vertical à `channel_x`
+    (horizontal jusqu'au canal, vertical, horizontal jusqu'à l'entrée)."""
+    d.add(elm.Line().at(out_pt).to((channel_x, out_pt[1])).color(_WIRE))
+    d.add(elm.Line().at((channel_x, out_pt[1])).to((channel_x, in_pt[1])).color(_WIRE))
+    d.add(elm.Line().at((channel_x, in_pt[1])).to(in_pt).color(_WIRE))
 
 
 _BRANCHE_ROW_GAP = 9.0     # écart vertical entre étages parallèles d'une même couche
+_BRANCHE_DX = 13.0         # pas horizontal entre couches (large : place pour les canaux)
+
+
+def _branched_edges(layers):
+    """@brief Arêtes AVANT du DAG de montages (producteur.couche < consommateur.couche).
+
+    Ignore les back-edges (issus d'une détection imparfaite) qui traverseraient le
+    schéma. @return list[(prod_match, cons_match, net)].
+    """
+    layer_of = {id(m): lx for lx, L in enumerate(layers) for m in L}
+    out_by_net = {m["nodes"][-1]: m for L in layers for m in L}
+    edges = []
+    for couche in layers:
+        for cons in couche:
+            for net in _in_nets(cons):
+                prod = out_by_net.get(net)
+                if prod is None or prod is cons:
+                    continue
+                if layer_of[id(prod)] >= layer_of[id(cons)]:
+                    continue
+                edges.append((prod, cons, net))
+    return edges
 
 
 def _draw_branched_chain(d, layers, ci):
     """@brief Dessine un îlot multi-AOP branché en couches (cf. _layers_montages_flux).
 
     Couche = colonne (x croissant) ; étages parallèles empilés verticalement. Chaque
-    entrée d'un étage est reliée à la sortie de son producteur (fan-out / fan-in),
-    via les ancres par net exposées par _dessiner_montage_a ("ins").
+    arête avant relie producteur.out -> consommateur.ins[net] via un canal vertical
+    dédié (étalé par consommateur) pour éviter les chevauchements du fan-in.
 
     @param layers list[list[match]] couches ordonnées entrée->sortie.
     @param ci Dict {ref → {type, value}}.
     """
     ancres = {}                            # id(match) -> ancres ("out","ins",...)
-    out_by_net = {}                        # net de sortie -> match producteur
     dernier = len(layers) - 1
     for lx, couche in enumerate(layers):
         m = len(couche)
         for ry, match in enumerate(couche):
             y_row = (ry - (m - 1) / 2.0) * _BRANCHE_ROW_GAP
-            origin = (4.5 + lx * _CHAINE_DX, y_row + _oy_for(match))
+            origin = (4.5 + lx * _BRANCHE_DX, y_row + _oy_for(match))
             out_label = "VOUT" if lx == dernier else ""
             ancres[id(match)] = _dessiner_montage_a(d, match, ci, origin, "", out_label)
-            out_by_net[match["nodes"][-1]] = match
 
-    for couche in layers:                  # câblage producteur.out -> consommateur.ins[net]
-        for match in couche:
-            for net, in_pt in ancres[id(match)].get("ins", {}).items():
-                prod = out_by_net.get(net)
-                if prod is None or prod is match:
-                    continue
-                _fil_en_z(d, ancres[id(prod)]["out"], in_pt)
+    # Câblage : un canal vertical distinct par entrée d'un même consommateur (fan-in).
+    par_conso = {}
+    for prod, cons, net in _branched_edges(layers):
+        par_conso.setdefault(id(cons), []).append((prod, cons, net))
+    for groupe in par_conso.values():
+        groupe.sort(key=lambda e: ancres[id(e[1])]["ins"][e[2]][1])
+        for k, (prod, cons, net) in enumerate(groupe):
+            in_pt = ancres[id(cons)]["ins"][net]
+            channel_x = in_pt[0] - 1.0 - k * 1.4
+            _fil_canal(d, ancres[id(prod)]["out"], in_pt, channel_x)
 
 
 def _draw_integrator(d, result, ci):

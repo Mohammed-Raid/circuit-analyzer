@@ -54,6 +54,123 @@ def test_make_branched_fig_pid_rend_sans_erreur():
     assert len(getattr(fig, "_z_hitboxes", [])) >= 6   # boites Z des etages preservees
 
 
+def test_branched_edges_pid_forward_only():
+    # Le câblage branché ne doit garder que les arêtes AVANT : pas de fil de retour
+    # buffer -> étage P (back-edge dû à la mauvaise détection) qui traverse tout.
+    comps = lire_xml("circuits_industriels/pid_controller.xml")
+    res = analyser(construire_graphe(comps))
+    ilot = max(res.ilots, key=lambda i: len(i["composants"]))
+    layers = cv._layers_montages_flux(cv._matches_for_island(ilot, res))
+    edges = cv._branched_edges(layers)
+    layer_of = {id(m): lx for lx, L in enumerate(layers) for m in L}
+    assert edges, "au moins une arête attendue"
+    assert all(layer_of[id(p)] < layer_of[id(c)] for p, c, _ in edges)
+    assert len(edges) == 4          # D, I, P -> sommateur ; sommateur -> buffer
+
+
+def test_branched_fanin_channels_follow_input_order(monkeypatch):
+    # Dans un fan-in ordonne bas -> haut, les entrees basses doivent prendre les
+    # canaux les plus a droite. Sinon le long fil de la branche basse traverse
+    # la zone des autres sorties avant d'entrer dans le sommateur.
+    import schemdraw
+
+    comps = lire_xml("circuits_industriels/pid_controller.xml")
+    res = analyser(construire_graphe(comps))
+    ilot = max(res.ilots, key=lambda i: len(i["composants"]))
+    layers = cv._layers_montages_flux(cv._matches_for_island(ilot, res))
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+
+    routes = []
+
+    def capture_route(_d, out_pt, in_pt, channel_x):
+        routes.append((out_pt, in_pt, channel_x))
+
+    monkeypatch.setattr(cv, "_fil_canal", capture_route)
+    d = schemdraw.Drawing(show=False)
+    d._z_hitboxes = []
+    cv._draw_branched_chain(d, layers, ci)
+
+    fanin = [r for r in routes if abs(r[1][0] - 12.7) < 1e-6]
+    assert len(fanin) == 3
+    fanin.sort(key=lambda r: r[1][1])       # entree basse -> entree haute
+    xs = [r[2] for r in fanin]
+    assert xs == sorted(xs, reverse=True)
+
+
+def test_z_label_anchor_is_clear_of_component_body():
+    # Les labels Z sont sur deux lignes ; a 0.35 unite ils chevauchent le symbole
+    # et les pistes. On garde au moins 0.9 unite de degagement vertical.
+    top = cv._z_label_anchor((1.0, 2.0), (4.0, 2.0), "top")
+    bottom = cv._z_label_anchor((1.0, 2.0), (4.0, 2.0), "bottom")
+
+    assert top["pos"] == (2.5, 2.95)
+    assert top["ha"] == "center"
+    assert top["va"] == "bottom"
+    assert bottom["pos"] == (2.5, 1.05)
+    assert bottom["ha"] == "center"
+    assert bottom["va"] == "top"
+
+
+def test_sommateur_input_rows_leave_room_for_two_line_labels():
+    import schemdraw
+
+    match = {
+        "circuit_type": "Amplificateur sommateur (AOP)",
+        "components": ["U1", "Rf", "Ra", "Rb", "Rc"],
+        "nodes": ["A", "S", "OUT"],
+        "impedances": {
+            "Zf": {"refs": ["Rf"], "composition": "Rf", "nodes": ("S", "OUT")},
+            "Zin": [
+                {"refs": ["Ra"], "composition": "Ra", "nodes": ("S", "A")},
+                {"refs": ["Rb"], "composition": "Rb", "nodes": ("S", "B")},
+                {"refs": ["Rc"], "composition": "Rc", "nodes": ("S", "C")},
+            ],
+        },
+    }
+    d = schemdraw.Drawing(show=False)
+    d._z_hitboxes = []
+    anchors = cv._dessiner_montage_a(d, match, {}, (5.0, cv._AOP_OUT_DY), "", "")
+    ys = [pt[1] for pt in anchors["in_pts"]]
+
+    assert min(b - a for a, b in zip(ys, ys[1:])) >= 2.2
+
+
+def test_sommateur_input_label_anchor_stays_above_track():
+    label = cv._sum_input_label_anchor((10.0, 4.0))
+
+    assert label["pos"] == (9.75, 4.45)
+    assert label["ha"] == "right"
+    assert label["va"] == "bottom"
+
+
+def test_figure_pixel_size_uses_native_matplotlib_dimensions():
+    from matplotlib.figure import Figure
+
+    fig = Figure(figsize=(12.5, 7.25), dpi=120)
+
+    assert cv._figure_pixel_size(fig) == (1500, 870)
+
+
+def test_zoom_scale_is_clamped():
+    assert cv._zoom_next_scale(1.0, 120) == 1.15
+    assert cv._zoom_next_scale(1.0, -120) == 1 / 1.15
+    assert cv._zoom_next_scale(2.95, 120) == 3.0
+    assert cv._zoom_next_scale(0.31, -120) == 0.3
+
+
+def test_zoom_scroll_fraction_keeps_mouse_world_point_stable():
+    fx, fy = cv._zoom_scroll_fractions(
+        old_size=(1000, 800),
+        new_size=(1500, 1200),
+        viewport=(500, 400),
+        pointer=(250, 200),
+        canvas_origin=(100, 80),
+    )
+
+    assert round(fx, 4) == 0.275
+    assert round(fy, 4) == 0.275
+
+
 def test_ordonner_montages_flux_non_chaine_renvoie_none():
     # Deux montages sans lien OUT->IN entre eux : pas une chaîne.
     from circuit_analyzer.composant import Composant
