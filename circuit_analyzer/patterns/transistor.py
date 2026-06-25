@@ -27,6 +27,18 @@ class SuiveurEmetteur(Pattern):
     def match(self, graph): return detecteur.detecter_suiveur_emetteur(graph)
 
 
+class PushPull(Pattern):
+    """@brief Pattern « Étage push-pull » (délègue à detecteur)."""
+    name = "Étage push-pull"
+    def match(self, graph): return detecteur.detecter_push_pull(graph)
+
+
+class Darlington(Pattern):
+    """@brief Pattern « Paire Darlington » (délègue à detecteur)."""
+    name = "Paire Darlington"
+    def match(self, graph): return detecteur.detecter_darlington(graph)
+
+
 class CurrentMirror(Pattern):
     """@brief Pattern « Miroir de courant BJT » (délègue à detecteur)."""
     name = "Miroir de courant BJT"
@@ -53,6 +65,8 @@ class RelayDriver(Pattern):
 
 ## @brief Liste ordonnée des patterns à transistors (miroir/relais avant les commutations simples).
 TRANSISTOR_PATTERNS = [
+    PushPull(),
+    Darlington(),
     CurrentMirror(),
     RelayDriver(),
     SuiveurEmetteur(),

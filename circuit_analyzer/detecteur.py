@@ -751,6 +751,72 @@ def detecter_suiveur_emetteur(graphe):
     return resultats
 
 
+def detecter_push_pull(graphe):
+    """
+    @brief Étage push-pull (classe B/AB) : NPN + PNP, émetteurs communs (sortie),
+    un collecteur sur l'alim, l'autre sur la masse.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
+    """
+    resultats = []
+    composants = graphe.graph.get('components', {})
+    bjts = [(r, c) for r, c in composants.items()
+            if c.type == 'Q' and all(c.pins.get(p) for p in ('B', 'C', 'E'))]
+
+    vus = set()
+    for i in range(len(bjts)):
+        for j in range(i + 1, len(bjts)):
+            r1, q1 = bjts[i]
+            r2, q2 = bjts[j]
+            if q1.pins['E'] != q2.pins['E']:           # émetteurs communs = sortie
+                continue
+            c1, c2 = q1.pins['C'], q2.pins['C']
+            # un collecteur sur l'alim, l'autre sur la masse (étage complémentaire).
+            haut_bas = (est_alimentation(c1) and est_masse(c2)) or \
+                       (est_alimentation(c2) and est_masse(c1))
+            if not haut_bas:
+                continue
+            cle = frozenset((r1, r2))
+            if cle in vus:
+                continue
+            vus.add(cle)
+            resultats.append({
+                'circuit_type': 'Étage push-pull',
+                'components': [r1, r2],
+                'nodes': [q1.pins['B'], q2.pins['B'], q1.pins['E']],
+            })
+    return resultats
+
+
+def detecter_darlington(graphe):
+    """
+    @brief Paire Darlington : l'émetteur de Q1 attaque la base de Q2 (gain composé).
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
+    """
+    resultats = []
+    composants = graphe.graph.get('components', {})
+    bjts = [(r, c) for r, c in composants.items()
+            if c.type == 'Q' and all(c.pins.get(p) for p in ('B', 'C', 'E'))]
+
+    for r1, q1 in bjts:
+        e1 = q1.pins['E']
+        if est_masse(e1) or est_alimentation(e1):
+            continue                                   # liaison interne, pas un rail
+        for r2, q2 in bjts:
+            if r2 == r1:
+                continue
+            if q2.pins['B'] == e1:                      # E(Q1) -> B(Q2)
+                resultats.append({
+                    'circuit_type': 'Paire Darlington',
+                    'components': [r1, r2],
+                    'nodes': [q1.pins['B'], q1.pins['C'], q2.pins['E']],
+                })
+    return resultats
+
+
 def detecter_miroir_courant(graphe):
     """
     @brief Miroir de courant BJT : deux transistors avec la base commune et les émetteurs à GND.
@@ -1388,6 +1454,8 @@ _DETECTEURS_COMPLEXES = [
     detecter_amplificateur_inverseur,      # R entrée + R feedback
     detecter_suiveur_tension,              # IN- = OUT (court-circuit)
     detecter_comparateur,                  # AOP sans feedback
+    detecter_push_pull,                    # NPN+PNP, émetteurs communs, collecteurs rail/masse
+    detecter_darlington,                   # E(Q1) -> B(Q2)
     detecter_miroir_courant,               # 2 BJT, bases communes
     detecter_commande_relais,              # Relais + transistor
     detecter_suiveur_emetteur,             # collecteur sur rail, Re émetteur->GND (avant émetteur commun)
