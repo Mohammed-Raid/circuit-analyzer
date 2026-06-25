@@ -1,0 +1,16 @@
+# Conditionneur de signal capteur (bascule de Schmitt non-inverseuse).
+# Un signal capteur lent et bruite (SENSIN) est mis en forme en un front logique
+# propre (SQOUT). L'hysteresis (contre-reaction positive Rf) evite le broutage
+# autour du seuil. Le seuil est fixe par un pont de reference sur IN-.
+
+U1   /P      /VREF   /SQOUT  /VCC   /GND
+
+# Entree capteur -> IN+ via Rin
+Rin  /SENSIN /P      10k
+
+# Contre-reaction positive (fixe la largeur d'hysteresis Rin/Rf)
+Rf   /SQOUT  /P      100k
+
+# Reference de seuil (pont diviseur, seuil non nul)
+Rr1  /VCC    /VREF   10k
+Rr2  /VREF   /GND    10k
