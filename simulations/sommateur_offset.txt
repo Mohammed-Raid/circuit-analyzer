@@ -1,0 +1,16 @@
+# Sommateur inverseur (melangeur de voies + offset de calibration).
+# Additionne deux signaux (VSIG1, VSIG2) et une tension d'offset de calibration
+# (VOFF) sur un meme noeud de sommation. Vout = -(Rf/R) * (VSIG1 + VSIG2 + VOFF).
+# Toutes les resistances 10k -> gain unitaire par voie. IN+ a la masse.
+
+U1   /GND    /SUM    /VOUT   /VCC   /GND
+
+# Voies de signal
+R1   /VSIG1  /SUM    10k
+R2   /VSIG2  /SUM    10k
+
+# Voie d'offset de calibration
+R3   /VOFF   /SUM    10k
+
+# Contre-reaction
+Rf   /SUM    /VOUT   10k

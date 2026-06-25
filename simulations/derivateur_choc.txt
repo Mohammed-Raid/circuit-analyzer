@@ -1,0 +1,13 @@
+# Derivateur (detecteur de taux de variation / front).
+# Met en evidence les variations rapides d'un signal : ex. detection de choc a
+# partir d'un accelerometre, ou front montant d'un capteur. Sortie proportionnelle
+# a la derivee de l'entree. Cin a l'entree, Rf en contre-reaction : Zin = C,
+# Zf = R, reductibles en impedances Z. IN+ a la masse.
+
+U1   /GND    /SUM    /VOUT   /VCC   /GND
+
+# Condensateur d'entree (derive le signal)
+Cin  /VACC   /SUM    100n
+
+# Contre-reaction (fixe le gain HF)
+Rf   /SUM    /VOUT   100k

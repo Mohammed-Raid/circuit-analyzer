@@ -1,0 +1,13 @@
+# Coeur integrateur (boucle de regulation PI / generateur de rampe de consigne).
+# Une commande VCMD est integree pour produire une rampe lisse en sortie (ex:
+# montee en vitesse d'un moteur, terme integral d'un PID). Rin a l'entree, Cf en
+# contre-reaction : Zin = R, Zf = C, tous deux reductibles en impedances Z.
+# IN+ a la masse (reference).
+
+U1   /GND    /SUM    /VOUT   /VCC   /GND
+
+# Resistance d'entree (fixe la constante de temps avec Cf)
+Rin  /VCMD   /SUM    10k
+
+# Condensateur d'integration en contre-reaction
+Cf   /SUM    /VOUT   100n

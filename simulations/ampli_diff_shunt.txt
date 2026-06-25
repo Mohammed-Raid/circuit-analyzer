@@ -1,0 +1,14 @@
+# Ampli differentiel de mesure de courant sur shunt (rejet du mode commun).
+# Mesure la difference de potentiel aux bornes d'un shunt flottant (SHUNT_HI /
+# SHUNT_LO) en rejetant la tension de mode commun. Gain differentiel = Rf/R1 = 10
+# avec equilibrage Rg/R3 = Rf/R1. Les 4 resistances sont reductibles en Z.
+
+U1   /VINP   /VINM    /VOUT   /VCC   /GND
+
+# Branche IN- : borne haute du shunt + contre-reaction
+R1   /SHUNT_HI /VINM  10k
+Rf   /VINM   /VOUT    100k
+
+# Branche IN+ : borne basse du shunt + reference vers la masse
+R3   /SHUNT_LO /VINP  10k
+Rg   /VINP   /GND     100k
