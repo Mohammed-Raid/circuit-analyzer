@@ -10,7 +10,7 @@ from circuit_analyzer.composant import construire_graphe
 from circuit_analyzer.detecteur import analyser
 import gui.circuit_viewer as cv
 
-xml = sys.argv[1] if len(sys.argv) > 1 else "circuits_industriels/signal_conditioning.xml"
+xml = sys.argv[1] if len(sys.argv) > 1 else "circuits_industriels/ilot_tous_aop.xml"
 out = Path("build_rebuild/ilots_render")
 out.mkdir(parents=True, exist_ok=True)
 
