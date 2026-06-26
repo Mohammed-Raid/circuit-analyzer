@@ -2275,12 +2275,12 @@ def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0):
         d.add(elm.Line().at(p2).down(0.25).color(_WIRE))
         d.add(elm.Ground())
     else:
-        p1 = (ax + 0.45, ay - 0.35 - index * 0.75)
-        p2 = (ax + 1.65, ay - 0.35 - index * 0.75)
+        # Couplage vers un net non-rail : stub vertical vers le BAS (hors du fil
+        # d'entrée/sortie horizontal de l'étage). Pas de ré-étiquetage du net :
+        # le port (VIN/VOUT) est déjà nommé par le drawer -> évite les doublons.
+        p1, p2 = (ax + dx, ay - 0.55), (ax + dx, ay - 1.75)
         d.add(elm.Line().at(anchor).to(p1).color(_WIRE))
-        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci)
-        if other_net:
-            d.add(elm.Dot().at(p2).label(other_net, loc="right"))
+        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right")
 
 
 def _draw_island_chain(d, ordered, ci, couplages=None):

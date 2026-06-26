@@ -701,6 +701,24 @@ def test_couplage_cap_simple_est_cliquable():
     assert "Cc" in refs
 
 
+def test_z_locale_ne_double_pas_le_label_de_port():
+    # Une Z locale vers un net non-rail ne doit PAS re-etiqueter ce net : le port
+    # (VIN/VOUT) est deja nomme par le drawer -> evite les doublons. Reste cliquable.
+    import schemdraw
+    fig = cv.Figure(figsize=(4, 3))
+    ax = fig.add_subplot(111)
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d._z_hitboxes = []
+        cv._dessiner_z_locale(
+            d, (0, 0), "VIN",
+            {"refs": ["C1"], "composition": "C1", "nodes": ("NB", "VIN")},
+            {"C1": {"type": "C", "value": "1u"}})
+        hits = len(d._z_hitboxes)
+    texts = [t.get_text() for t in ax.texts]
+    assert "VIN" not in texts          # pas de re-etiquetage du port
+    assert hits >= 1                   # mais la Z locale reste cliquable
+
+
 def test_chaine_couplage_complexe_affiche_boite_z():
     from circuit_analyzer.composant import Composant
     comps = [
