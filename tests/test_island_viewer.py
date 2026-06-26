@@ -100,6 +100,50 @@ def test_cascade_2ce_ne_tombe_pas_sur_la_grille():
     assert chaine is not None and len(chaine) == 2
 
 
+def _label_collisions(fig):
+    """Nombre de paires d'etiquettes qui se chevauchent (>25% de la plus petite)."""
+    fig.canvas.draw()
+    boxes = []
+    for ax in fig.axes:
+        for t in ax.texts:
+            s = t.get_text().strip()
+            if not s or "Astuce" in s:
+                continue
+            boxes.append(t.get_window_extent())
+    n = 0
+    for i in range(len(boxes)):
+        for j in range(i + 1, len(boxes)):
+            a, b = boxes[i], boxes[j]
+            ix = max(0, min(a.x1, b.x1) - max(a.x0, b.x0))
+            iy = max(0, min(a.y1, b.y1) - max(a.y0, b.y0))
+            inter = ix * iy
+            amin = min(a.width * a.height, b.width * b.height) or 1
+            if inter > 0.25 * amin:
+                n += 1
+    return n
+
+
+def test_schmitt_island_labels_sans_chevauchement():
+    import matplotlib
+    matplotlib.use("Agg")
+    from circuit_analyzer import detecteur
+    from gui import circuit_viewer
+    g = construire_graphe([
+        Composant("U1", "U", {"IN+": "NP", "IN-": "GND", "OUT": "VOUT"}),
+        Composant("R1", "R", {"1": "VIN", "2": "NP"}, "10k"),
+        Composant("R2", "R", {"1": "VOUT", "2": "NP"}, "100k"),
+    ])
+    res = detecteur.analyser(g)
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins}
+          for c in g.graph["components"].values()}
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    p = circuit_viewer._circuit_principal_ilot(ilot, g, res)
+    fig = circuit_viewer._make_fig(
+        p, ci, circuit_viewer._DRAWERS[p["circuit_type"]],
+        matches=circuit_viewer._matches_for_island(ilot, res))
+    assert _label_collisions(fig) == 0
+
+
 # ── Plan / layout pur (unites construites directement) ────────────────────────
 
 def test_plan_drops_nc_and_classifies_stub_vs_column():

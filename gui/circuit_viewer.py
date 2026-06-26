@@ -2665,9 +2665,10 @@ def _draw_aop_schmitt(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT
     op = d.add(elm.Opamp().right().anchor("center").at(origin).color(_WIRE).fill(_OPAMP_FILL))
     inm, inp, out = op.in1, op.in2, op.out
 
-    # IN- = référence
+    # IN- = référence. Étiquette au-DESSUS de la patte (l'étiquette de Zin occupe
+    # l'espace à gauche, entre les deux entrées) -> évite le chevauchement REF/Zin.
     d.add(elm.Line().at(inm).left(1.2).color(_WIRE))
-    d.add(elm.Dot().at((inm[0] - 1.2, inm[1])).color(_WIRE).label("REF", loc="left", color=_WIRE))
+    d.add(elm.Dot().at((inm[0] - 1.2, inm[1])).color(_WIRE).label("REF", loc="top", color=_WIRE))
 
     # Nœud IN+
     np_node = (inp[0] - 1.0, inp[1])
@@ -2675,10 +2676,12 @@ def _draw_aop_schmitt(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT
     d.add(elm.Dot().at(np_node).color(_WIRE))
     in_pt = np_node
 
-    # Zin : entrée -> IN+ (horizontale vers la gauche)
+    # Zin : entrée -> IN+ (horizontale vers la gauche). Étiquette en DESSOUS :
+    # REF est au-dessus (sur IN-), l'étiquette de la couche supérieure servirait
+    # sinon de zone de collision (REF / titre de l'étage amont en vue chaîne).
     if zin:
         zin_p1 = (np_node[0] - 3.0, np_node[1])
-        _z_box(d, zin_p1, np_node, "Zin", zin, ci)
+        _z_box(d, zin_p1, np_node, "Zin", zin, ci, label_loc="bottom")
         d.add(elm.Line().at(zin_p1).left(0.5).color(_WIRE))
         in_pt = (zin_p1[0] - 0.5, zin_p1[1])
         d.add(elm.Dot().at(in_pt).color(_WIRE).label(in_label, loc="left", color=_WIRE))
