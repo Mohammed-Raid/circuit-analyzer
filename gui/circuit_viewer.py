@@ -2099,6 +2099,13 @@ def _dessiner_montage_a(d, match, ci, origin, in_label, out_label):
     """
     imp = match.get("impedances") or {}
     ct = match.get("circuit_type", "")
+    if ct in _DRAWERS and (ct in _MONTAGES_TRANSISTOR_CHAINABLES
+                           or ct in _MONTAGES_TRANSISTOR_TERMINAUX):
+        res = _DRAWERS[ct](d, match, ci, origin=origin, titre=False)
+        ins, _out = _io_montage(match, ci)
+        res["ins"] = {n: res["in"] for n in ins}
+        return res
+
     # Montages ancrés "center" (à router avant les branches Zin/Zg) :
     if "sommateur" in ct.lower():
         res = _draw_aop_sommateur(d, imp, ci, origin, in_label, out_label)
@@ -2168,6 +2175,13 @@ def _oy_for(match):
     """
     imp = match.get("impedances") or {}
     ct = match.get("circuit_type", "")
+    if ct in _MONTAGES_TRANSISTOR_CHAINABLES or ct in _MONTAGES_TRANSISTOR_TERMINAUX:
+        # OUT = collecteur (origine + 0.697) ou émetteur (origine - 0.697).
+        # On place l'origine pour que la sortie tombe à peu près sur la ligne de base.
+        if ct in ("Collecteur commun (suiveur d'émetteur)", "Étage push-pull",
+                  "Paire Darlington"):
+            return 0.697
+        return -0.697
     if "sommateur" in ct.lower():
         return _AOP_OUT_DY
     if ("Schmitt" in ct or "Comparateur" in ct

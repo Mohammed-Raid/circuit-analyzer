@@ -654,3 +654,13 @@ def test_ordonner_cascade_2ce_a_travers_couplage():
                      "Amplificateur émetteur commun"]
     # Le couplage (Impédance Z) n'est PAS un étage de la chaîne.
     assert all(m["circuit_type"] != "Impédance Z" for m in ordre)
+
+
+def test_chaine_2ce_dessine_des_transistors_pas_des_aop():
+    matches, ci = _cascade_2ce()
+    ordre = cv._ordonner_montages_flux(matches, ci)
+    fig = cv._make_chain_fig(ordre, ci)
+    txts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    assert not any("non disponible" in t for t in txts)
+    assert sum("Émetteur commun" in t for t in txts) >= 2
+    assert not any("Suiveur" in t for t in txts)
