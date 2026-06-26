@@ -1028,6 +1028,8 @@ def _io_transistor(match, ci):
     ct = match["circuit_type"]
     qs = [r for r in match["components"] if ci.get(r, {}).get("type") == "Q"]
     pins = {r: ci.get(r, {}).get("pins", {}) for r in qs}
+    if not qs:
+        return [match["nodes"][0]] if match.get("nodes") else [], None
     if ct == "Paire Darlington":
         emetteurs = {pins[r].get("E") for r in qs}
         q2 = next((r for r in qs if pins[r].get("B") in emetteurs), qs[-1])

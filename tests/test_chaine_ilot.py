@@ -601,3 +601,11 @@ def test_io_montage_aop_inchange():
     ins, out = cv._io_montage(match, {})
     assert ins == cv._in_nets(match)
     assert out == "VOUT"
+
+
+def test_io_montage_transistor_sans_Q_ne_plante_pas():
+    # Match classé chaînable mais ci sans transistor : ne doit pas lever IndexError.
+    match = {"circuit_type": "Amplificateur émetteur commun",
+             "components": ["Rx"], "nodes": ["NB", "NC", "GND"]}
+    ins, out = cv._io_montage(match, {"Rx": {"type": "R", "pins": {}}})
+    assert out is None
