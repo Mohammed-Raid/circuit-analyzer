@@ -21,6 +21,12 @@ class PartialDifferentiator(Pattern):
     def match(self, graph): return detecteur.detecter_derivateur_partiel(graph)
 
 
+class PIController(Pattern):
+    """@brief Pattern « Ampli inverseur + action intégrale (AOP) » (délègue à detecteur)."""
+    name = "Ampli inverseur + action intégrale (AOP)"
+    def match(self, graph): return detecteur.detecter_correcteur_pi(graph)
+
+
 class NonInvertingAmplifier(Pattern):
     """@brief Pattern « Amplificateur non-inverseur (AOP) » (délègue à detecteur)."""
     name = "Amplificateur non-inverseur (AOP)"
@@ -78,6 +84,7 @@ OPAMP_PATTERNS = [
     SchmittTrigger(),
     NonInvertingAmplifier(),
     PartialDifferentiator(),
+    PIController(),
     InvertingAmplifier(),
     VoltageFollower(),
     Comparator(),

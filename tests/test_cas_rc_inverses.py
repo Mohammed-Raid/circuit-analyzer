@@ -70,3 +70,26 @@ def test_inverseur_pur_inchange():
     t = _types(comps)
     assert "Amplificateur inverseur (AOP)" in t
     assert "boost HF" not in " ".join(t)
+
+
+def test_action_integrale_detecte():
+    # Zin = Rin, Zf = Rf + Cf en serie -> action integrale (PI).
+    comps = [
+        Composant("U1", "U", {"IN+": "GND", "IN-": "M", "OUT": "VOUT"}),
+        Composant("Rin", "R", {"1": "VIN", "2": "M"}, "10k"),
+        Composant("Rf", "R", {"1": "M", "2": "X"}, "10k"),
+        Composant("Cf", "C", {"1": "X", "2": "VOUT"}, "100n"),
+    ]
+    assert "Ampli inverseur + action intégrale (AOP)" in _types(comps)
+
+
+def test_integrateur_ideal_inchange():
+    # Cf seul en feedback -> reste Integrateur (pas action integrale).
+    comps = [
+        Composant("U1", "U", {"IN+": "GND", "IN-": "M", "OUT": "VOUT"}),
+        Composant("Rin", "R", {"1": "VIN", "2": "M"}, "10k"),
+        Composant("Cf", "C", {"1": "M", "2": "VOUT"}, "100n"),
+    ]
+    t = _types(comps)
+    assert "Intégrateur (AOP)" in t
+    assert "action intégrale" not in " ".join(t)
