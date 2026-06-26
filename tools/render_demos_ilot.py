@@ -20,7 +20,8 @@ def fig_for(ilot, g, res, comp_info):
     principal = cv._circuit_principal_ilot(ilot, g, res)
     matches = cv._matches_for_island(ilot, res)
     if principal is not None:
-        return cv._make_fig(principal, comp_info, cv._DRAWERS[principal["circuit_type"]]), "principal"
+        return cv._make_fig(principal, comp_info, cv._DRAWERS[principal["circuit_type"]],
+                            matches=matches), "principal"
     chaine = cv._ordonner_montages_flux(matches, comp_info)
     if chaine is not None:
         return cv._make_chain_fig(chaine, comp_info, matches=matches), "chaine"

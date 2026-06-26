@@ -485,7 +485,10 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     if principal is not None:
         # Îlot = montage actif détecté : on réutilise son drawer dédié (schéma
         # propre « AOP + Zin/Zf », hitboxes Z cliquables), pas le layout générique.
-        fig = _make_fig(principal, comp_info, _DRAWERS[principal["circuit_type"]])
+        # On passe les matches pour que les réseaux Z restants (charges/couplages)
+        # soient dessinés cliquables au lieu d'être ignorés.
+        fig = _make_fig(principal, comp_info, _DRAWERS[principal["circuit_type"]],
+                        matches=_matches_for_island(ilot, results))
     elif _sp is not None:
         from gui import impedance_schematic
         _arbre, _comps = _sp
@@ -699,12 +702,15 @@ def show_dipole_detail(refs, composition, graph, comp_info, parent=None):
                   command=popup.destroy).pack(side="right", padx=12, pady=7)
 
 
-def _make_fig(result, comp_info, drawer_fn):
+def _make_fig(result, comp_info, drawer_fn, matches=None):
     """@brief Construit la figure matplotlib du schéma (ou un texte de repli).
 
     @param result Match du circuit détecté.
     @param comp_info Dict des infos composants.
     @param drawer_fn Fonction de dessin dédiée, ou None.
+    @param matches Matches de l'îlot : si fournis, les réseaux d'impédance Z
+        restants (couplages/charges non dessinés par le montage) sont ajoutés en
+        boîtes Z cliquables autour du montage, au lieu d'être ignorés.
     @return matplotlib.figure.Figure La figure prête à afficher.
     """
     fig = Figure(figsize=(8, 4.5))
@@ -722,7 +728,12 @@ def _make_fig(result, comp_info, drawer_fn):
             with schemdraw.Drawing(canvas=ax, show=False) as d:
                 d.config(fontsize=14, inches_per_unit=0.62)
                 d._z_hitboxes = []
-                drawer_fn(d, result, comp_info)
+                ancres = drawer_fn(d, result, comp_info)
+                # Réseaux d'impédance Z restants de l'îlot (charges/couplages que le
+                # montage seul ne dessine pas) -> boîtes Z cliquables, pas ignorés.
+                coupl = [m for m in (matches or []) if _est_couplage(m)]
+                if coupl and isinstance(ancres, dict) and ancres.get("nets"):
+                    _dessiner_impedances_locales(d, [result], [ancres], coupl, set(), comp_info)
                 fig._z_hitboxes = list(d._z_hitboxes)
                 # Ajuster la figure au format réel du dessin : sinon le schéma
                 # (large) est « letterboxé » dans une figure carrée -> petit, avec

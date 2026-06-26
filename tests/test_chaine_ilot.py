@@ -701,6 +701,23 @@ def test_couplage_cap_simple_est_cliquable():
     assert "Cc" in refs
 
 
+def test_make_fig_principal_dessine_les_impedances_restantes():
+    # Vue "principal" (montage seul) : un reseau Z restant connecte a un net du
+    # montage doit etre dessine cliquable, pas ignore. (E2)
+    result = {"circuit_type": "Amplificateur émetteur commun",
+              "components": ["Q1", "Rc", "Rb"], "nodes": ["NB", "NCOL", "GND"]}
+    ci = {"Q1": {"type": "Q", "value": "", "pins": {"B": "NB", "C": "NCOL", "E": "GND"}},
+          "Rc": {"type": "R", "value": "1k", "pins": {"1": "VCC", "2": "NCOL"}},
+          "Rb": {"type": "R", "value": "10k", "pins": {"1": "VCC", "2": "NB"}},
+          "Cload": {"type": "C", "value": "100n", "pins": {"1": "NCOL", "2": "GND"}}}
+    matches = [result,
+               {"circuit_type": "Impédance Z", "components": ["Cload"],
+                "refs": ["Cload"], "composition": "Cload", "nodes": ["NCOL", "GND"]}]
+    fig = cv._make_fig(result, ci, cv._DRAWERS[result["circuit_type"]], matches=matches)
+    refs = {r for hb in fig._z_hitboxes for r in hb[4]}
+    assert "Cload" in refs
+
+
 def test_z_locale_ne_double_pas_le_label_de_port():
     # Une Z locale vers un net non-rail ne doit PAS re-etiqueter ce net : le port
     # (VIN/VOUT) est deja nomme par le drawer -> evite les doublons. Reste cliquable.
