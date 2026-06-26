@@ -236,6 +236,28 @@ def detecter_suiveur_tension(graphe):
     return resultats
 
 
+def _est_rc_serie(bloc, composants) -> bool:
+    """@brief Vrai si le bloc est une serie de 2 feuilles {une R, une C}."""
+    if len(bloc.get("refs", [])) != 2:
+        return False
+    arbre = impedance.arbre_expr(bloc["composition"])
+    if arbre and arbre[0] == "serie" and all(c[0] == "feuille" for c in arbre[1]):
+        tset = sorted(composants[c[1]].type for c in arbre[1] if c[1] in composants)
+        return tset == ["C", "R"]
+    return False
+
+
+def _est_rc_parallele(bloc, composants) -> bool:
+    """@brief Vrai si le bloc est un parallele de 2 feuilles {une R, une C}."""
+    if len(bloc.get("refs", [])) != 2:
+        return False
+    arbre = impedance.arbre_expr(bloc["composition"])
+    if arbre and arbre[0] == "parallele" and all(c[0] == "feuille" for c in arbre[1]):
+        tset = sorted(composants[c[1]].type for c in arbre[1] if c[1] in composants)
+        return tset == ["C", "R"]
+    return False
+
+
 def _feedback_capacitif(bloc, composants) -> bool:
     """
     @brief Vrai si le bloc de contre-réaction est capacitif (intégrateur idéal ou réel).
@@ -257,11 +279,7 @@ def _feedback_capacitif(bloc, composants) -> bool:
     if len(refs) == 1:
         return types == ['C']                      # condensateur seul (idéal)
     # leaky : la composition doit être un parallèle de feuilles {une R, une C}
-    arbre = impedance.arbre_expr(bloc['composition'])
-    if arbre and arbre[0] == 'parallele' and all(c[0] == 'feuille' for c in arbre[1]):
-        tset = sorted(composants[c[1]].type for c in arbre[1] if c[1] in composants)
-        return tset == ['C', 'R']
-    return False
+    return _est_rc_parallele(bloc, composants)
 
 
 def detecter_integrateur(graphe):
@@ -336,11 +354,7 @@ def _entree_capacitive(bloc, composants) -> bool:
     if len(refs) == 1:
         return types == ['C']                      # condensateur seul (idéal)
     # réel : la composition doit être une série de feuilles {une R, une C}
-    arbre = impedance.arbre_expr(bloc['composition'])
-    if arbre and arbre[0] == 'serie' and all(c[0] == 'feuille' for c in arbre[1]):
-        tset = sorted(composants[c[1]].type for c in arbre[1] if c[1] in composants)
-        return tset == ['C', 'R']
-    return False
+    return _est_rc_serie(bloc, composants)
 
 
 def detecter_derivateur(graphe):
