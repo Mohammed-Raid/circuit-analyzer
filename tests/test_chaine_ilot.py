@@ -609,3 +609,19 @@ def test_io_montage_transistor_sans_Q_ne_plante_pas():
              "components": ["Rx"], "nodes": ["NB", "NC", "GND"]}
     ins, out = cv._io_montage(match, {"Rx": {"type": "R", "pins": {}}})
     assert out is None
+
+
+def test_est_couplage_impedance_z_2_noeuds():
+    assert cv._est_couplage({"circuit_type": "Impédance Z", "nodes": ["NC1", "NB2"]})
+    assert not cv._est_couplage({"circuit_type": "Amplificateur émetteur commun",
+                                  "nodes": ["NB", "NC", "GND"]})
+
+
+def test_couplage_find_fusionne_les_nets_relies():
+    matches = [
+        {"circuit_type": "Impédance Z", "nodes": ["NC1", "NB2"]},
+        {"circuit_type": "Amplificateur émetteur commun", "nodes": ["NB1", "NC1", "GND"]},
+    ]
+    find = cv._couplage_find(matches)
+    assert find("NC1") == find("NB2")       # reliés par le couplage
+    assert find("NB1") != find("NC1")       # non reliés

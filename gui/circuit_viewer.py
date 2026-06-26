@@ -1056,6 +1056,36 @@ def _io_montage(match, ci):
     return _in_nets(match), match["nodes"][-1]
 
 
+def _est_couplage(match):
+    """@brief Vrai si le match est un dipôle de couplage (Impédance Z à 2 nœuds)."""
+    return (match.get("circuit_type") == "Impédance Z"
+            and len(match.get("nodes", ())) == 2)
+
+
+def _couplage_find(matches):
+    """@brief Union-find des nets reliés par un couplage (Cc, R série…).
+
+    @return fonction find(net) -> représentant ; deux nets reliés par un dipôle
+            de couplage partagent le même représentant.
+    """
+    parent = {}
+
+    def find(x):
+        parent.setdefault(x, x)
+        racine = x
+        while parent[racine] != racine:
+            racine = parent[racine]
+        while parent[x] != racine:        # compression de chemin
+            parent[x], x = racine, parent[x]
+        return racine
+
+    for m in matches:
+        if _est_couplage(m):
+            n1, n2 = m["nodes"]
+            parent[find(n1)] = find(n2)
+    return find
+
+
 def _layers_montages_flux(matches):
     """@brief Ordonne des montages AOP branchés en couches (DAG par flux de signal).
 
