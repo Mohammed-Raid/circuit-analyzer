@@ -1,6 +1,6 @@
 """@file test_transistor_drawing.py
-@brief Dessin riche des montages transistor : drawers présents, passifs Z cliquables,
-titres de rôle (cf. spec 2026-06-25-transistors-dessin-riche-A)."""
+@brief Dessin SIMPLE des montages transistor : symboles classiques + titre du
+montage, sans boîtes Z cliquables (cf. spec 2026-06-26-transistors-schemas-simples)."""
 import matplotlib
 matplotlib.use("Agg")
 
@@ -49,20 +49,24 @@ def test_nouveaux_drawers_transistor_enregistres():
         assert ct in cv._DRAWERS
 
 
-def test_nouveaux_montages_rendent_sans_erreur():
-    for result, ci in (SUIVEUR, PUSH_PULL, DARLINGTON):
+def test_montages_rendent_sans_erreur():
+    for result, ci in (SUIVEUR, PUSH_PULL, DARLINGTON, EMETTEUR_COMMUN):
         _fig, txts = _render(result, ci)
         assert not any("non disponible" in t for t in txts), result["circuit_type"]
 
 
-def test_emetteur_commun_passifs_cliquables():
-    fig, _txts = _render(*EMETTEUR_COMMUN)
-    assert len(fig._z_hitboxes) >= 2          # Rc et Rb en boîtes Z
+def test_aucune_boite_z_sur_transistors():
+    # Schéma simple : pas de boîtes Z cliquables sur les passifs transistor.
+    for result, ci in (EMETTEUR_COMMUN, SUIVEUR, DARLINGTON):
+        fig, _txts = _render(result, ci)
+        assert fig._z_hitboxes == [], result["circuit_type"]
 
 
-def test_suiveur_passifs_cliquables():
-    fig, _txts = _render(*SUIVEUR)
-    assert len(fig._z_hitboxes) >= 2          # Re et R1
+def test_resistances_affichees_en_etiquette():
+    # Les résistances apparaissent en symbole classique avec leur nom.
+    _fig, txts = _render(*EMETTEUR_COMMUN)
+    joined = " ".join(txts)
+    assert "Rb" in joined and "Rc" in joined
 
 
 def test_titre_role_transistor_affiche():

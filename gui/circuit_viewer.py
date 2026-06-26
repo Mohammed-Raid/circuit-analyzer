@@ -2149,16 +2149,23 @@ def _titre_montage(d, result, pt):
     d.add(elm.Label().at(pt).label(_titre_etage(result), color=_TITRE_COLOR, fontsize=12))
 
 
-def _z_passif(d, ref, ci, p1, p2, nom, label_loc="top"):
-    """@brief Dessine un passif unique en boîte Z cliquable (drill-down R/L/C).
+def _r_simple(d, ref, ci, p1, p2, nom, label_loc="top"):
+    """@brief Dessine un passif en résistance simple (symbole classique + étiquette).
+
+    Version « schéma simple » des montages transistor : pas de boîte Z, pas de
+    drill-down cliquable. Étiquette « nom = valeur » (ex. « Rb = 10 kΩ »).
 
     @param ref Référence du passif (R/C/L), ou None pour ne rien dessiner.
-    @param p1/p2 Extrémités de la boîte. @param nom Préfixe d'étiquette.
+    @param p1/p2 Extrémités du composant. @param nom Préfixe d'étiquette.
+    @param label_loc Position de l'étiquette ('top'/'bottom'/'left'/'right').
     """
     if not ref:
         return
-    bloc = {"refs": [ref], "composition": ref, "nodes": ()}
-    _z_box(d, p1, p2, nom, bloc, ci, label_loc=label_loc)
+    from circuit_analyzer.impedance import formater_valeur
+    info = ci.get(ref, {})
+    val = formater_valeur(info.get("value", ""), info.get("type", "R"))
+    texte = f"{nom} = {val}" if val else nom
+    d.add(elm.Resistor().at(p1).to(p2).label(texte, loc=label_loc))
 
 
 def _annoter_etage(d, ancres, match):
@@ -2520,7 +2527,7 @@ def _draw_bjt_switch(d, result, ci):
     q = _ref(result, ci, "Q"); r = _ref(result, ci, "R")
     t = d.add(elm.BjtNpn().at((3, 0)))
     bx, by = t.base
-    _z_passif(d, r, ci, (bx - 2.6, by), (bx - 0.9, by), "Rb")
+    _r_simple(d, r, ci, (bx - 2.6, by), (bx - 0.9, by), "Rb")
     d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
     d.add(elm.Dot().at((bx - 2.6, by)).label("IN", loc="left"))
     d.add(elm.Line().at(t.collector).up(1).label("LOAD", loc="right"))
@@ -2540,12 +2547,12 @@ def _draw_common_emitter(d, result, ci):
     rb = _ref_on_net(remaining, ci, q_pins.get("B"), remaining[0] if remaining else "Rb")
     t = d.add(elm.BjtNpn().at((3, 0)))
     bx, by = t.base
-    _z_passif(d, rb, ci, (bx - 2.6, by), (bx - 0.9, by), "Rb")
+    _r_simple(d, rb, ci, (bx - 2.6, by), (bx - 0.9, by), "Rb")
     d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
     d.add(elm.Dot().at((bx - 2.6, by)).label("IN", loc="left"))
     # Rc en boîte Z verticale, du collecteur vers VCC
     cx, cy = t.collector
-    _z_passif(d, rc, ci, (cx, cy + 0.5), (cx, cy + 1.9), "Rc", label_loc="left")
+    _r_simple(d, rc, ci, (cx, cy + 0.5), (cx, cy + 1.9), "Rc", label_loc="left")
     d.add(elm.Line().at(t.collector).to((cx, cy + 0.5)))
     d.add(elm.Line().at((cx, cy + 1.9)).up(0.4).label("VCC", loc="top"))
     d.add(elm.Line().at(t.emitter).down(0.5))
@@ -2560,7 +2567,7 @@ def _draw_mosfet_switch(d, result, ci):
     t = d.add(elm.NFet().at((3, 0)))
     # NFet 0.22 : grille à DROITE -> Rg en boîte Z vers la droite.
     gx, gy = t.gate
-    _z_passif(d, r, ci, (gx + 0.9, gy), (gx + 2.6, gy), "Rg")
+    _r_simple(d, r, ci, (gx + 0.9, gy), (gx + 2.6, gy), "Rg")
     d.add(elm.Line().at(t.gate).to((gx + 0.9, gy)))
     d.add(elm.Dot().at((gx + 2.6, gy)).label("IN", loc="right"))
     d.add(elm.Line().at(t.drain).up(1).label("LOAD", loc="right"))
@@ -2576,7 +2583,7 @@ def _draw_high_side_mosfet(d, result, ci):
     t = d.add(elm.NFet().at((3, 0)))
     # Rg en boîte Z vers la droite (grille à droite dans NFet 0.22).
     gx, gy = t.gate
-    _z_passif(d, r, ci, (gx + 0.9, gy), (gx + 2.6, gy), "Rg")
+    _r_simple(d, r, ci, (gx + 0.9, gy), (gx + 2.6, gy), "Rg")
     d.add(elm.Line().at(t.gate).to((gx + 0.9, gy)))
     d.add(elm.Dot().at((gx + 2.6, gy)).label("IN", loc="right"))
     # Drain at top → VCC power rail
@@ -2607,7 +2614,7 @@ def _draw_relay_driver(d, result, ci):
     # Contrôle : résistance de base en boîte Z cliquable, ou ligne directe
     cxp, cyp = ctrl_pin
     if rbs:
-        _z_passif(d, rbs[0], ci, (cxp - 2.4, cyp), (cxp - 0.7, cyp), "Rb")
+        _r_simple(d, rbs[0], ci, (cxp - 2.4, cyp), (cxp - 0.7, cyp), "Rb")
         d.add(elm.Line().at((cxp - 0.7, cyp)).to((cxp, cyp)))
         d.add(elm.Dot().at((cxp - 2.4, cyp)).label(ctrl_lbl, loc="left"))
     else:
@@ -2679,7 +2686,7 @@ def _draw_suiveur_emetteur(d, result, ci):
     t = d.add(elm.BjtNpn().at((3, 0)))
     bx, by = t.base
     if rb:
-        _z_passif(d, rb, ci, (bx - 2.6, by), (bx - 0.9, by), "Rb")
+        _r_simple(d, rb, ci, (bx - 2.6, by), (bx - 0.9, by), "Rb")
         d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
         d.add(elm.Dot().at((bx - 2.6, by)).label("IN", loc="left"))
     else:
@@ -2689,7 +2696,7 @@ def _draw_suiveur_emetteur(d, result, ci):
     # Émetteur -> Re -> GND, sortie au point d'émetteur
     ex, ey = t.emitter
     d.add(elm.Line().at(t.emitter).right(1.4).label("OUT", loc="right"))
-    _z_passif(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), "Re", label_loc="right")
+    _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), "Re", label_loc="right")
     d.add(elm.Line().at(t.emitter).to((ex, ey - 0.6)))
     d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
     d.add(elm.Ground())
@@ -2737,7 +2744,7 @@ def _draw_darlington(d, result, ci):
     # Sortie sur l'émetteur de Q2, Re vers GND
     ex, ey = q2.emitter
     d.add(elm.Line().at(q2.emitter).right(1.4).label("OUT", loc="right"))
-    _z_passif(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), "Re", label_loc="right")
+    _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), "Re", label_loc="right")
     d.add(elm.Line().at(q2.emitter).to((ex, ey - 0.6)))
     d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
     d.add(elm.Ground())
