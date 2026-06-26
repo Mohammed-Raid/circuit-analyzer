@@ -27,7 +27,7 @@ def fig_for(ilot, g, res, comp_info):
         return cv._make_chain_fig(chaine, comp_info, matches=matches), "chaine"
     branches = cv._layers_montages_flux(matches, comp_info)
     if branches is not None:
-        return cv._make_branched_fig(branches, comp_info), "branchee"
+        return cv._make_branched_fig(branches, comp_info, matches=matches), "branchee"
     model = cv._build_island_model(ilot, g, comp_info)
     return cv._make_island_fig(model, matches=matches), "GRILLE"
 
