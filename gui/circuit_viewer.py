@@ -1047,11 +1047,31 @@ def _io_transistor(match, ci):
         emetteurs = {pins[r].get("E") for r in qs}
         q2 = next((r for r in qs if pins[r].get("B") in emetteurs), qs[-1])
         q1 = next((r for r in qs if r != q2), qs[0])
-        return [pins[q1].get("B")], pins[q2].get("E")
+        return [pins[q1].get("B")], _darlington_sortie(pins[q2])
     p = pins[qs[0]]
     if ct in ("Collecteur commun (suiveur d'émetteur)", "Étage push-pull"):
         return [p.get("B")], p.get("E")
     return [p.get("B")], p.get("C")
+
+
+def _darlington_config(q2_pins):
+    """@brief Configuration d'un Darlington d'après les broches de Q2.
+
+    @return "emetteur_commun" si l'émetteur de Q2 est à la masse (sortie sur le
+        collecteur), sinon "suiveur" (collecteurs au rail, sortie sur l'émetteur).
+    """
+    emetteur, collecteur = q2_pins.get("E"), q2_pins.get("C")
+    if is_ground_net(emetteur) and not is_power_net(collecteur):
+        return "emetteur_commun"
+    return "suiveur"
+
+
+def _darlington_sortie(q2_pins):
+    """@brief Net de sortie d'un Darlington : collecteur (émetteur commun) ou
+    émetteur (suiveur), selon la configuration."""
+    if _darlington_config(q2_pins) == "emetteur_commun":
+        return q2_pins.get("C")
+    return q2_pins.get("E")
 
 
 def _io_montage(match, ci):
@@ -2271,9 +2291,15 @@ def _dessiner_impedances_locales(d, stages, ancres, z_matches, z_utilises, ci):
 
 
 def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0):
-    """@brief Dessine une Z locale depuis `anchor` vers un rail ou une etiquette."""
+    """@brief Dessine une Z locale depuis `anchor` vers un rail ou une etiquette.
+
+    Plusieurs Z sur un même nœud sont étalées horizontalement (`index`) et leur
+    étiquette passe dessous pour ne pas se chevaucher.
+    """
     ax, ay = anchor
-    dx = index * 0.9
+    # Étalement horizontal large quand plusieurs Z partagent le même nœud
+    # (ex. couplage d'entrée + polarisation sur la même base) -> pas de chevauchement.
+    dx = index * 1.8
     if other_net == "VCC":
         p1, p2 = (ax + dx, ay + 0.45), (ax + dx, ay + 1.65)
         d.add(elm.Line().at(anchor).to(p1).color(_WIRE))
@@ -2291,7 +2317,7 @@ def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0):
         # le port (VIN/VOUT) est déjà nommé par le drawer -> évite les doublons.
         p1, p2 = (ax + dx, ay - 0.55), (ax + dx, ay - 1.75)
         d.add(elm.Line().at(anchor).to(p1).color(_WIRE))
-        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right")
+        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="bottom")
 
 
 def _draw_island_chain(d, ordered, ci, couplages=None):
@@ -3131,9 +3157,20 @@ def _draw_push_pull(d, result, ci, origin=(3, 0), titre=True,
 
 def _draw_darlington(d, result, ci, origin=(3, 0), titre=True,
                      in_label="IN", out_label="OUT"):
-    """@brief « Paire Darlington ». Paramétrique en origine."""
+    """@brief « Paire Darlington » (suiveur OU émetteur commun selon Q2).
+
+    Suiveur : collecteurs au rail, sortie sur l'émetteur de Q2 via Re. Émetteur
+    commun : émetteur de Q2 à la masse, sortie sur le collecteur de Q2 (cas du
+    Darlington pilotant une charge côté collecteur, ex. relais)."""
     ox, oy = origin
-    re = _ref(result, ci, "R")
+    qs = _refs(result, ci, "Q")
+    pins = {r: ci.get(r, {}).get("pins", {}) for r in qs}
+    emetteurs = {pins[r].get("E") for r in qs}
+    q2ref = next((r for r in qs if pins[r].get("B") in emetteurs), qs[-1] if qs else None)
+    q1ref = next((r for r in qs if r != q2ref), qs[0] if qs else None)
+    q2pins = pins.get(q2ref, {})
+    config = _darlington_config(q2pins) if q2pins else "suiveur"
+
     q1 = d.add(elm.BjtNpn().at((ox, oy + 1.7)))
     q2 = d.add(elm.BjtNpn().at((ox + 1.8, oy - 1.4)))
     in_pt = (q1.base[0] - 1.4, q1.base[1])
@@ -3141,32 +3178,57 @@ def _draw_darlington(d, result, ci, origin=(3, 0), titre=True,
     if in_label:
         line = line.label(in_label, loc="left")
     d.add(line)
-    # Collecteurs communs -> VCC (routage orthogonal : verticales + horizontale)
-    d.add(elm.Line().at(q1.collector).up(0.9))
-    top = d.here
-    d.add(elm.Line().at(q2.collector).toy(top[1]))
-    d.add(elm.Line().tox(top[0]))
-    d.add(elm.Line().at(top).up(0.4).label("VCC", loc="top"))
     # E(Q1) -> B(Q2) : descente verticale puis horizontale (pas de diagonale)
     d.add(elm.Line().at(q1.emitter).toy(q2.base[1]))
     d.add(elm.Line().tox(q2.base[0]))
     d.add(elm.Dot().at(q2.base))
-    # Sortie sur l'émetteur de Q2, Re vers GND (étiquette à gauche, loin de OUT)
-    ex, ey = q2.emitter
-    out_pt = (ex + 1.6, ey)
-    line = elm.Line().at(q2.emitter).to(out_pt)
-    if out_label:
-        line = line.label(out_label, loc="right")
-    d.add(line)
-    _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), None)
-    d.add(elm.Label().at((ex + 0.85, ey - 1.25))
-          .label(_texte_passif_simple(re, ci, "Re"), fontsize=9))
-    d.add(elm.Line().at(q2.emitter).to((ex, ey - 0.6)))
-    d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
-    d.add(elm.Ground())
+    nets = {pins.get(q1ref, {}).get("B"): in_pt}
+
+    if config == "emetteur_commun":
+        # Q1.C -> VCC ; sortie sur le COLLECTEUR de Q2 ; émetteur de Q2 -> GND.
+        d.add(elm.Line().at(q1.collector).up(0.9).label("VCC", loc="top"))
+        cx, cy = q2.collector
+        node = (cx, cy + 0.7)
+        d.add(elm.Line().at(q2.collector).to(node))
+        out_pt = (node[0] + 1.6, node[1])
+        line = elm.Line().at(node).to(out_pt)
+        if out_label:
+            line = line.label(out_label, loc="right")
+        d.add(line)
+        d.add(elm.Line().at(q2.emitter).down(0.5))
+        d.add(elm.Ground())
+        title_pt = (q1.collector[0], q1.collector[1] + 1.5)
+        if q2pins.get("C"):
+            nets[q2pins["C"]] = node
+        if q2pins.get("E"):
+            nets[q2pins["E"]] = q2.emitter
+    else:
+        # Suiveur : collecteurs communs -> VCC, sortie sur l'émetteur de Q2 via Re.
+        re = _ref(result, ci, "R")
+        d.add(elm.Line().at(q1.collector).up(0.9))
+        top = d.here
+        d.add(elm.Line().at(q2.collector).toy(top[1]))
+        d.add(elm.Line().tox(top[0]))
+        d.add(elm.Line().at(top).up(0.4).label("VCC", loc="top"))
+        ex, ey = q2.emitter
+        out_pt = (ex + 1.6, ey)
+        line = elm.Line().at(q2.emitter).to(out_pt)
+        if out_label:
+            line = line.label(out_label, loc="right")
+        d.add(line)
+        _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), None)
+        d.add(elm.Label().at((ex + 0.85, ey - 1.25))
+              .label(_texte_passif_simple(re, ci, "Re"), fontsize=9))
+        d.add(elm.Line().at(q2.emitter).to((ex, ey - 0.6)))
+        d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
+        d.add(elm.Ground())
+        title_pt = (top[0], top[1] + 1.2)
+        if q2pins.get("E"):
+            nets[q2pins["E"]] = out_pt
+
     if titre:
-        _titre_montage(d, result, (top[0], top[1] + 1.2))
-    return {"in": in_pt, "out": out_pt, "title": (top[0], top[1] + 1.2)}
+        _titre_montage(d, result, title_pt)
+    return {"in": in_pt, "out": out_pt, "title": title_pt, "nets": nets}
 
 
 # ── Pattern registry ──────────────────────────────────────────────────────────

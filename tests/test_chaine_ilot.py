@@ -619,6 +619,28 @@ def test_io_montage_aop_inchange():
     assert out == "VOUT"
 
 
+def test_io_montage_darlington_emetteur_commun_out_collecteur():
+    # Darlington en config emetteur-commun (Q2.E a la masse, Q2.C = charge) :
+    # la sortie est le COLLECTEUR de Q2, pas son emetteur.
+    ci = {"Q1": {"type": "Q", "pins": {"B": "NB", "C": "VCC", "E": "NE"}},
+          "Q2": {"type": "Q", "pins": {"B": "NE", "C": "NOUT", "E": "GND"}}}
+    match = {"circuit_type": "Paire Darlington",
+             "components": ["Q1", "Q2"], "nodes": ["NB", "VCC", "GND"]}
+    ins, out = cv._io_montage(match, ci)
+    assert ins == ["NB"]
+    assert out == "NOUT"
+
+
+def test_io_montage_darlington_suiveur_out_emetteur():
+    # Config suiveur (collecteurs au rail, Q2.E = sortie) : out = emetteur (inchange).
+    ci = {"Q1": {"type": "Q", "pins": {"B": "NB", "C": "VCC", "E": "NE1"}},
+          "Q2": {"type": "Q", "pins": {"B": "NE1", "C": "VCC", "E": "NOUT"}}}
+    match = {"circuit_type": "Paire Darlington",
+             "components": ["Q1", "Q2"], "nodes": ["NB", "VCC", "NOUT"]}
+    _ins, out = cv._io_montage(match, ci)
+    assert out == "NOUT"
+
+
 def test_io_montage_transistor_sans_Q_ne_plante_pas():
     # Match classé chaînable mais ci sans transistor : ne doit pas lever IndexError.
     match = {"circuit_type": "Amplificateur émetteur commun",
