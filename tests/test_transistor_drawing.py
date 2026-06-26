@@ -4,6 +4,8 @@ montage, sans boîtes Z cliquables (cf. spec 2026-06-26-transistors-schemas-simp
 import matplotlib
 matplotlib.use("Agg")
 
+import schemdraw
+
 import gui.circuit_viewer as cv
 
 
@@ -72,3 +74,37 @@ def test_resistances_affichees_en_etiquette():
 def test_titre_role_transistor_affiche():
     _fig, txts = _render(*EMETTEUR_COMMUN)
     assert any("Émetteur commun" in t for t in txts)
+
+
+def _ancres(drawer, result, ci, origin):
+    with schemdraw.Drawing(show=False) as d:
+        d._z_hitboxes = []
+        return drawer(d, result, ci, origin=origin, titre=False)
+
+
+def test_drawer_ce_renvoie_ancres_in_out():
+    res = _ancres(cv._draw_common_emitter, *EMETTEUR_COMMUN, origin=(0, 0))
+    assert "in" in res and "out" in res
+    assert res["out"][0] > res["in"][0]
+
+
+def test_drawer_ce_origine_decale_le_dessin():
+    a = _ancres(cv._draw_common_emitter, *EMETTEUR_COMMUN, origin=(0, 0))
+    b = _ancres(cv._draw_common_emitter, *EMETTEUR_COMMUN, origin=(10, 0))
+    assert round(b["in"][0] - a["in"][0], 3) == 10.0
+
+
+def test_drawer_titre_false_pas_de_titre():
+    fig = cv.Figure(figsize=(4, 3))
+    ax = fig.add_subplot(111)
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d._z_hitboxes = []
+        cv._draw_common_emitter(d, *EMETTEUR_COMMUN, origin=(0, 0), titre=False)
+    direct = [t.get_text() for t in ax.texts]
+    assert not any("Émetteur commun" in t for t in direct)
+
+    standalone = [t.get_text()
+                  for ax in cv._make_fig(EMETTEUR_COMMUN[0], EMETTEUR_COMMUN[1],
+                                         cv._draw_common_emitter).axes
+                  for t in ax.texts]
+    assert any("Émetteur commun" in t for t in standalone)

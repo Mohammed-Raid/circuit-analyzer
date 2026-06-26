@@ -2603,22 +2603,28 @@ def _draw_summing_amp(d, result, ci):
 
 # ── Transistor patterns ───────────────────────────────────────────────────────
 
-def _draw_bjt_switch(d, result, ci):
-    """@brief Dessine le schéma « Transistor en commutation » (Rb en boîte Z)."""
+def _draw_bjt_switch(d, result, ci, origin=(3, 0), titre=True):
+    """@brief Schéma « Transistor en commutation ». Paramétrique en origine."""
     q = _ref(result, ci, "Q"); r = _ref(result, ci, "R")
-    t = d.add(elm.BjtNpn().at((3, 0)))
+    t = d.add(elm.BjtNpn().at(origin))
     bx, by = t.base
-    _r_simple(d, r, ci, (bx - 2.6, by), (bx - 0.9, by), "Rb")
+    in_pt = (bx - 2.6, by)
+    _r_simple(d, r, ci, in_pt, (bx - 0.9, by), "Rb")
     d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
-    d.add(elm.Dot().at((bx - 2.6, by)).label("IN", loc="left"))
-    d.add(elm.Line().at(t.collector).up(1).label("LOAD", loc="right"))
+    d.add(elm.Dot().at(in_pt).label("IN", loc="left"))
+    cx, cy = t.collector
+    out_pt = (cx, cy + 1.0)
+    d.add(elm.Line().at(t.collector).to(out_pt).label("LOAD", loc="right"))
     d.add(elm.Line().at(t.emitter).down(0.5))
     d.add(elm.Ground())
-    _titre_montage(d, result, (t.collector[0], t.collector[1] + 1.8))
+    if titre:
+        _titre_montage(d, result, (cx, cy + 1.8))
+    return {"in": in_pt, "out": out_pt}
 
 
-def _draw_common_emitter(d, result, ci):
-    """@brief Dessine le schéma « Amplificateur émetteur commun »."""
+def _draw_common_emitter(d, result, ci, origin=(3, 0), titre=True):
+    """@brief Schéma « Amplificateur émetteur commun ». Paramétrique en origine,
+    renvoie ses ancres {"in","out"} (réutilisé en vue chaîne)."""
     q = _ref(result, ci, "Q")
     rs = _refs(result, ci, "R")
     # Pattern returns [Q, r_at_collector, r_at_base] → rs[0]=Rc, rs[1]=Rb
@@ -2626,11 +2632,12 @@ def _draw_common_emitter(d, result, ci):
     rc = _ref_on_net(rs, ci, q_pins.get("C"), rs[0] if rs else "Rc")
     remaining = [r for r in rs if r != rc]
     rb = _ref_on_net(remaining, ci, q_pins.get("B"), remaining[0] if remaining else "Rb")
-    t = d.add(elm.BjtNpn().at((3, 0)))
+    t = d.add(elm.BjtNpn().at(origin))
     bx, by = t.base
-    _r_simple(d, rb, ci, (bx - 2.6, by), (bx - 0.9, by), "Rb")
+    in_pt = (bx - 2.6, by)
+    _r_simple(d, rb, ci, in_pt, (bx - 0.9, by), "Rb")
     d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
-    d.add(elm.Dot().at((bx - 2.6, by)).label("IN", loc="left"))
+    d.add(elm.Dot().at(in_pt).label("IN", loc="left"))
     # Rc en boîte Z verticale, du collecteur vers VCC
     cx, cy = t.collector
     _r_simple(d, rc, ci, (cx, cy + 0.5), (cx, cy + 1.9), "Rc", label_loc="left")
@@ -2638,8 +2645,11 @@ def _draw_common_emitter(d, result, ci):
     d.add(elm.Line().at((cx, cy + 1.9)).up(0.4).label("VCC", loc="top"))
     d.add(elm.Line().at(t.emitter).down(0.5))
     d.add(elm.Ground())
-    d.add(elm.Line().at(t.collector).right(1.5).label("OUT", loc="right"))
-    _titre_montage(d, result, (cx, cy + 2.7))
+    out_pt = (cx + 1.5, cy)
+    d.add(elm.Line().at(t.collector).to(out_pt).label("OUT", loc="right"))
+    if titre:
+        _titre_montage(d, result, (cx, cy + 2.7))
+    return {"in": in_pt, "out": out_pt}
 
 
 def _draw_mosfet_switch(d, result, ci):
@@ -2763,44 +2773,49 @@ def _draw_current_mirror(d, result, ci):
     _titre_montage(d, result, ((t1.collector[0] + t2.collector[0]) / 2, iref_top + 0.7))
 
 
-def _draw_suiveur_emetteur(d, result, ci):
-    """@brief « Collecteur commun (suiveur d'émetteur) » : collecteur sur VCC,
-    sortie sur l'émetteur via Re (boîtes Z cliquables : Rb base, Re émetteur)."""
+def _draw_suiveur_emetteur(d, result, ci, origin=(3, 0), titre=True):
+    """@brief « Collecteur commun (suiveur d'émetteur) ». Paramétrique en origine."""
     q = _ref(result, ci, "Q")
     rs = _refs(result, ci, "R")
     q_pins = ci.get(q, {}).get("pins", {})
     re = _ref_on_net(rs, ci, q_pins.get("E"), rs[0] if rs else "Re")
     rb = next((r for r in rs if r != re), None)
-    t = d.add(elm.BjtNpn().at((3, 0)))
+    t = d.add(elm.BjtNpn().at(origin))
     bx, by = t.base
+    in_pt = (bx - 2.6, by)
     if rb:
-        _r_simple(d, rb, ci, (bx - 2.6, by), (bx - 0.9, by), "Rb")
+        _r_simple(d, rb, ci, in_pt, (bx - 0.9, by), "Rb")
         d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
-        d.add(elm.Dot().at((bx - 2.6, by)).label("IN", loc="left"))
+        d.add(elm.Dot().at(in_pt).label("IN", loc="left"))
     else:
-        d.add(elm.Line().at(t.base).left(1).label("IN", loc="left"))
+        in_pt = (bx - 1.0, by)
+        d.add(elm.Line().at(t.base).to(in_pt).label("IN", loc="left"))
     # Collecteur -> VCC
     d.add(elm.Line().at(t.collector).up(1).label("VCC", loc="top"))
     # Émetteur -> Re -> GND, sortie au point d'émetteur
     ex, ey = t.emitter
-    d.add(elm.Line().at(t.emitter).right(1.4).label("OUT", loc="right"))
+    out_pt = (ex + 1.4, ey)
+    d.add(elm.Line().at(t.emitter).to(out_pt).label("OUT", loc="right"))
     _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), "Re", label_loc="right")
     d.add(elm.Line().at(t.emitter).to((ex, ey - 0.6)))
     d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
     d.add(elm.Ground())
-    _titre_montage(d, result, (t.collector[0], t.collector[1] + 1.8))
+    if titre:
+        _titre_montage(d, result, (t.collector[0], t.collector[1] + 1.8))
+    return {"in": in_pt, "out": out_pt}
 
 
-def _draw_push_pull(d, result, ci):
-    """@brief « Étage push-pull » : NPN (haut, C=VCC) + PNP (bas, C=GND),
-    émetteurs communs = sortie, bases communes = entrée."""
-    qn = d.add(elm.BjtNpn().at((3, 1.7)))
-    qp = d.add(elm.BjtPnp().at((3, -1.7)))
+def _draw_push_pull(d, result, ci, origin=(3, 0), titre=True):
+    """@brief « Étage push-pull ». Paramétrique en origine."""
+    ox, oy = origin
+    qn = d.add(elm.BjtNpn().at((ox, oy + 1.7)))
+    qp = d.add(elm.BjtPnp().at((ox, oy - 1.7)))
     # Bases communes (entrée) reliées verticalement, prise d'entrée à gauche
     d.add(elm.Line().at(qn.base).to(qp.base))
     midb = ((qn.base[0] + qp.base[0]) / 2, (qn.base[1] + qp.base[1]) / 2)
     d.add(elm.Dot().at(midb))
-    d.add(elm.Line().at(midb).left(1.8).label("IN", loc="left"))
+    in_pt = (midb[0] - 1.8, midb[1])
+    d.add(elm.Line().at(midb).to(in_pt).label("IN", loc="left"))
     # Collecteurs : NPN -> VCC, PNP -> GND
     d.add(elm.Line().at(qn.collector).up(1.0).label("VCC", loc="top"))
     d.add(elm.Line().at(qp.collector).down(1.0))
@@ -2809,17 +2824,21 @@ def _draw_push_pull(d, result, ci):
     d.add(elm.Line().at(qn.emitter).to(qp.emitter))
     mide = ((qn.emitter[0] + qp.emitter[0]) / 2, (qn.emitter[1] + qp.emitter[1]) / 2)
     d.add(elm.Dot().at(mide))
-    d.add(elm.Line().at(mide).right(2.0).label("OUT", loc="right"))
-    _titre_montage(d, result, (qn.collector[0], qn.collector[1] + 1.8))
+    out_pt = (mide[0] + 2.0, mide[1])
+    d.add(elm.Line().at(mide).to(out_pt).label("OUT", loc="right"))
+    if titre:
+        _titre_montage(d, result, (qn.collector[0], qn.collector[1] + 1.8))
+    return {"in": in_pt, "out": out_pt}
 
 
-def _draw_darlington(d, result, ci):
-    """@brief « Paire Darlington » : émetteur de Q1 sur la base de Q2, collecteurs
-    communs ; Re (charge d'émetteur) en boîte Z cliquable."""
+def _draw_darlington(d, result, ci, origin=(3, 0), titre=True):
+    """@brief « Paire Darlington ». Paramétrique en origine."""
+    ox, oy = origin
     re = _ref(result, ci, "R")
-    q1 = d.add(elm.BjtNpn().at((2.5, 1.7)))
-    q2 = d.add(elm.BjtNpn().at((4.3, -1.4)))
-    d.add(elm.Line().at(q1.base).left(1.4).label("IN", loc="left"))
+    q1 = d.add(elm.BjtNpn().at((ox, oy + 1.7)))
+    q2 = d.add(elm.BjtNpn().at((ox + 1.8, oy - 1.4)))
+    in_pt = (q1.base[0] - 1.4, q1.base[1])
+    d.add(elm.Line().at(q1.base).to(in_pt).label("IN", loc="left"))
     # Collecteurs communs -> VCC (routage orthogonal : verticales + horizontale)
     d.add(elm.Line().at(q1.collector).up(0.9))
     top = d.here
@@ -2832,12 +2851,15 @@ def _draw_darlington(d, result, ci):
     d.add(elm.Dot().at(q2.base))
     # Sortie sur l'émetteur de Q2, Re vers GND (étiquette à gauche, loin de OUT)
     ex, ey = q2.emitter
-    d.add(elm.Line().at(q2.emitter).right(1.6).label("OUT", loc="right"))
+    out_pt = (ex + 1.6, ey)
+    d.add(elm.Line().at(q2.emitter).to(out_pt).label("OUT", loc="right"))
     _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), "Re", label_loc="left")
     d.add(elm.Line().at(q2.emitter).to((ex, ey - 0.6)))
     d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
     d.add(elm.Ground())
-    _titre_montage(d, result, (top[0], top[1] + 1.2))
+    if titre:
+        _titre_montage(d, result, (top[0], top[1] + 1.2))
+    return {"in": in_pt, "out": out_pt}
 
 
 # ── Pattern registry ──────────────────────────────────────────────────────────
