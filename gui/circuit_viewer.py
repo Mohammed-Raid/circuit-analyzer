@@ -2628,16 +2628,23 @@ def _draw_relay_driver(d, result, ci):
     else:
         d.add(elm.Line().at(ctrl_pin).left(1).label(ctrl_lbl, loc="left"))
 
-    # Bobine du relais : collecteur → haut → VCC
+    # Bobine du relais : collecteur → petit segment → bobine → VCC. Le segment
+    # dégage l'étiquette K1 du fil de collecteur.
     coil_len = 1.8
-    d.add(elm.Inductor2(nturns=3).at(coll_pin).up(coil_len).label(_lbl(k, ci), loc="left"))
+    d.add(elm.Line().at(coll_pin).up(0.4))
+    coil_bot = d.here
+    d.add(elm.Dot().at(coil_bot))
+    d.add(elm.Inductor2(nturns=4).up(coil_len))
     coil_top = d.here
     d.add(elm.Dot().at(coil_top))
     d.add(elm.Line().up(0.3).label("VCC", loc="top"))
+    # Étiquette de la bobine à gauche, dégagée du fil
+    d.add(elm.Label().at((coil_bot[0] - 0.7, (coil_bot[1] + coil_top[1]) / 2))
+          .label(_lbl(k, ci)))
 
-    # Diode flyback : anode côté collecteur, cathode côté VCC (protection inductive)
+    # Diode flyback en parallèle de la bobine (anode côté collecteur, cathode VCC)
     diode_lbl = _lbl(dbs[0], ci) if dbs else ""
-    d.add(elm.Line().at(coll_pin).right(1.6))
+    d.add(elm.Line().at(coil_bot).right(1.6))
     d.add(elm.Diode().up(coil_len).label(diode_lbl, loc="right"))
     d.add(elm.Line().tox(coil_top[0]))
 
@@ -2714,45 +2721,46 @@ def _draw_suiveur_emetteur(d, result, ci):
 def _draw_push_pull(d, result, ci):
     """@brief « Étage push-pull » : NPN (haut, C=VCC) + PNP (bas, C=GND),
     émetteurs communs = sortie, bases communes = entrée."""
-    qn = d.add(elm.BjtNpn().at((3, 1.5)))
-    qp = d.add(elm.BjtPnp().at((3, -1.5)))
-    # Bases communes (entrée) reliées verticalement
+    qn = d.add(elm.BjtNpn().at((3, 1.7)))
+    qp = d.add(elm.BjtPnp().at((3, -1.7)))
+    # Bases communes (entrée) reliées verticalement, prise d'entrée à gauche
     d.add(elm.Line().at(qn.base).to(qp.base))
     midb = ((qn.base[0] + qp.base[0]) / 2, (qn.base[1] + qp.base[1]) / 2)
     d.add(elm.Dot().at(midb))
-    d.add(elm.Line().at(midb).left(1.2).label("IN", loc="left"))
+    d.add(elm.Line().at(midb).left(1.8).label("IN", loc="left"))
     # Collecteurs : NPN -> VCC, PNP -> GND
-    d.add(elm.Line().at(qn.collector).up(0.8).label("VCC", loc="top"))
-    d.add(elm.Line().at(qp.collector).down(0.8))
+    d.add(elm.Line().at(qn.collector).up(1.0).label("VCC", loc="top"))
+    d.add(elm.Line().at(qp.collector).down(1.0))
     d.add(elm.Ground())
-    # Émetteurs communs -> sortie
+    # Émetteurs communs -> sortie, prise de sortie bien à droite
     d.add(elm.Line().at(qn.emitter).to(qp.emitter))
     mide = ((qn.emitter[0] + qp.emitter[0]) / 2, (qn.emitter[1] + qp.emitter[1]) / 2)
     d.add(elm.Dot().at(mide))
-    d.add(elm.Line().at(mide).right(1.4).label("OUT", loc="right"))
-    _titre_montage(d, result, (qn.collector[0], qn.collector[1] + 1.6))
+    d.add(elm.Line().at(mide).right(2.0).label("OUT", loc="right"))
+    _titre_montage(d, result, (qn.collector[0], qn.collector[1] + 1.8))
 
 
 def _draw_darlington(d, result, ci):
     """@brief « Paire Darlington » : émetteur de Q1 sur la base de Q2, collecteurs
     communs ; Re (charge d'émetteur) en boîte Z cliquable."""
     re = _ref(result, ci, "R")
-    q1 = d.add(elm.BjtNpn().at((2.5, 1.4)))
-    q2 = d.add(elm.BjtNpn().at((4.2, -1.0)))
-    d.add(elm.Line().at(q1.base).left(1.2).label("IN", loc="left"))
-    # Collecteurs communs -> VCC
-    d.add(elm.Line().at(q1.collector).up(0.8))
+    q1 = d.add(elm.BjtNpn().at((2.5, 1.7)))
+    q2 = d.add(elm.BjtNpn().at((4.3, -1.4)))
+    d.add(elm.Line().at(q1.base).left(1.4).label("IN", loc="left"))
+    # Collecteurs communs -> VCC (routage orthogonal : verticales + horizontale)
+    d.add(elm.Line().at(q1.collector).up(0.9))
     top = d.here
     d.add(elm.Line().at(q2.collector).toy(top[1]))
-    d.add(elm.Line().at((q2.collector[0], top[1])).to(top))
+    d.add(elm.Line().tox(top[0]))
     d.add(elm.Line().at(top).up(0.4).label("VCC", loc="top"))
-    # E(Q1) -> B(Q2)
-    d.add(elm.Line().at(q1.emitter).to(q2.base))
+    # E(Q1) -> B(Q2) : descente verticale puis horizontale (pas de diagonale)
+    d.add(elm.Line().at(q1.emitter).toy(q2.base[1]))
+    d.add(elm.Line().tox(q2.base[0]))
     d.add(elm.Dot().at(q2.base))
-    # Sortie sur l'émetteur de Q2, Re vers GND
+    # Sortie sur l'émetteur de Q2, Re vers GND (étiquette à gauche, loin de OUT)
     ex, ey = q2.emitter
-    d.add(elm.Line().at(q2.emitter).right(1.4).label("OUT", loc="right"))
-    _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), "Re", label_loc="right")
+    d.add(elm.Line().at(q2.emitter).right(1.6).label("OUT", loc="right"))
+    _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), "Re", label_loc="left")
     d.add(elm.Line().at(q2.emitter).to((ex, ey - 0.6)))
     d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
     d.add(elm.Ground())
