@@ -625,3 +625,32 @@ def test_couplage_find_fusionne_les_nets_relies():
     find = cv._couplage_find(matches)
     assert find("NC1") == find("NB2")       # reliés par le couplage
     assert find("NB1") != find("NC1")       # non reliés
+
+
+def _cascade_2ce():
+    from circuit_analyzer.composant import Composant
+    comps = [
+        Composant("Q1", "Q", {"B": "NB1", "C": "NC1", "E": "GND"}),
+        Composant("Rb1", "R", {"1": "VCC", "2": "NB1"}, "100k"),
+        Composant("Rc1", "R", {"1": "VCC", "2": "NC1"}, "4.7k"),
+        Composant("Cc", "C", {"1": "NC1", "2": "NB2"}, "1u"),
+        Composant("Q2", "Q", {"B": "NB2", "C": "NC2", "E": "GND"}),
+        Composant("Rb2", "R", {"1": "VCC", "2": "NB2"}, "100k"),
+        Composant("Rc2", "R", {"1": "VCC", "2": "NC2"}, "1k"),
+    ]
+    g = construire_graphe(comps)
+    res = analyser(g)
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    return cv._matches_for_island(ilot, res), ci
+
+
+def test_ordonner_cascade_2ce_a_travers_couplage():
+    matches, ci = _cascade_2ce()
+    ordre = cv._ordonner_montages_flux(matches, ci)
+    assert ordre is not None
+    types = [m["circuit_type"] for m in ordre]
+    assert types == ["Amplificateur émetteur commun",
+                     "Amplificateur émetteur commun"]
+    # Le couplage (Impédance Z) n'est PAS un étage de la chaîne.
+    assert all(m["circuit_type"] != "Impédance Z" for m in ordre)

@@ -472,7 +472,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     _pont = _pont_ilot(ilot, graph) if (principal is None and _sp is None) else None
     _chaine = _branches = None
     if principal is None and _sp is None and _pont is None:
-        _chaine = _ordonner_montages_flux(_matches_for_island(ilot, results))
+        _chaine = _ordonner_montages_flux(_matches_for_island(ilot, results), comp_info)
         if _chaine is None:                # pas linéaire -> essai DAG en couches (PID…)
             _branches = _layers_montages_flux(_matches_for_island(ilot, results))
     if principal is not None:
@@ -931,57 +931,48 @@ def _matches_for_island(ilot, results):
     return matches
 
 
-def _ordonner_montages_flux(matches):
-    """@brief Ordonne des montages AOP par flux de signal (OUT(N) -> IN(N+1)).
+def _ordonner_montages_flux(matches, ci=None):
+    """@brief Ordonne des montages par flux de signal (OUT(N) -> IN(N+1)).
 
-    Pour chaque montage : out_net = net de la broche OUT (= nodes[-1]) ; in_net =
-    nœud extérieur de Zin si présent (inverseur/intégrateur/dérivateur), sinon le
-    net IN+ (= nodes[0], non-inverseur/suiveur). On relie i->j quand
-    out_net(i) == in_net(j), puis on suit la chaîne depuis l'unique étage dont
-    l'entrée n'est alimentée par aucun autre.
-
-    @param matches Liste des matches de montages d'un même îlot.
-    @return list[dict] | None Montages triés entrée->sortie, ou None si ce n'est
-            pas une chaîne linéaire unique couvrant tous les montages.
+    Les couplages (Impédance Z 2 nœuds) sont retirés des étages et utilisés pour
+    relier deux étages séparés par un condensateur de liaison (via union-find).
+    Les nets d'E/S sont résolus selon le type (`_io_montage`). @return montages
+    triés entrée->sortie, ou None si ce n'est pas une chaîne linéaire unique.
     """
-    if len(matches) < 2:
+    etages = [m for m in matches if not _est_couplage(m)]
+    if len(etages) < 2:
         return None
+    ci = ci or {}
+    find = _couplage_find(matches)
 
-    def out_net(m):
-        return m["nodes"][-1]
-
-    def in_net(m):
-        imp = m.get("impedances") or {}
-        zin = imp.get("Zin")
-        # Zin unique (dict) = entrée chaînable ; Zin liste (sommateur multi-entrées)
-        # ou absent (non-inverseur/suiveur) -> on retombe sur le net IN+.
-        if isinstance(zin, dict):
-            return zin["nodes"][1]
-        return m["nodes"][0]
+    io = {}
+    for m in etages:
+        ins, out = _io_montage(m, ci)
+        io[id(m)] = ([find(n) for n in ins if n], find(out) if out else None)
 
     par_in = {}
-    for m in matches:
-        par_in.setdefault(in_net(m), []).append(m)
-    outs = {out_net(m) for m in matches}
+    for m in etages:
+        for net in io[id(m)][0]:
+            par_in.setdefault(net, []).append(m)
+    outs = {io[id(m)][1] for m in etages if io[id(m)][1] is not None}
 
-    # Tête de chaîne : un montage dont l'entrée n'est la sortie d'aucun autre.
-    tetes = [m for m in matches if in_net(m) not in outs]
+    # Tête de chaîne : un étage dont aucune entrée n'est la sortie d'un autre.
+    tetes = [m for m in etages if not any(n in outs for n in io[id(m)][0])]
     if len(tetes) != 1:
         return None
 
-    ordre = []
-    vus = set()
-    courant = tetes[0]
+    ordre, vus, courant = [], set(), tetes[0]
     while courant is not None and id(courant) not in vus:
         ordre.append(courant)
         vus.add(id(courant))
-        suivants = par_in.get(out_net(courant), [])
+        out = io[id(courant)][1]
+        suivants = [s for s in par_in.get(out, []) if id(s) not in vus] if out else []
         if len(suivants) > 1:
-            return None                      # bifurcation : pas une chaîne linéaire
+            return None                      # bifurcation : pas linéaire
         courant = suivants[0] if suivants else None
 
-    if len(ordre) != len(matches):
-        return None                          # tous les montages ne sont pas chaînés
+    if len(ordre) != len(etages):
+        return None
     return ordre
 
 
