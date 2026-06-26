@@ -1004,6 +1004,56 @@ def _in_nets(m):
     return [m["nodes"][0]]
 
 
+_MONTAGES_TRANSISTOR_CHAINABLES = {
+    "Amplificateur émetteur commun",
+    "Transistor en commutation",
+    "Collecteur commun (suiveur d'émetteur)",
+    "Étage push-pull",
+    "Paire Darlington",
+}
+_MONTAGES_TRANSISTOR_TERMINAUX = {
+    "Miroir de courant BJT",
+    "Commande de relais",
+    "MOSFET en commutation",
+    "MOSFET haute-tension (côté haut)",
+}
+
+
+def _io_transistor(match, ci):
+    """@brief (in_nets, out_net) d'un montage transistor via les broches du Q.
+
+    Émetteur commun / commutation : OUT = collecteur. Suiveur / push-pull :
+    OUT = émetteur. Darlington : IN = base(Q1), OUT = émetteur(Q2).
+    """
+    ct = match["circuit_type"]
+    qs = [r for r in match["components"] if ci.get(r, {}).get("type") == "Q"]
+    pins = {r: ci.get(r, {}).get("pins", {}) for r in qs}
+    if ct == "Paire Darlington":
+        emetteurs = {pins[r].get("E") for r in qs}
+        q2 = next((r for r in qs if pins[r].get("B") in emetteurs), qs[-1])
+        q1 = next((r for r in qs if r != q2), qs[0])
+        return [pins[q1].get("B")], pins[q2].get("E")
+    p = pins[qs[0]]
+    if ct in ("Collecteur commun (suiveur d'émetteur)", "Étage push-pull"):
+        return [p.get("B")], p.get("E")
+    return [p.get("B")], p.get("C")
+
+
+def _io_montage(match, ci):
+    """@brief Nets d'entrée/sortie d'un montage, selon son type.
+
+    AOP (et montages historiques) : (_in_nets, nodes[-1]) — inchangé. Transistor
+    chaînable : via broches. Transistor terminal : out_net = None (jamais relié
+    en aval). @return (in_nets: list[str], out_net: str | None).
+    """
+    ct = match.get("circuit_type", "")
+    if ct in _MONTAGES_TRANSISTOR_CHAINABLES:
+        return _io_transistor(match, ci)
+    if ct in _MONTAGES_TRANSISTOR_TERMINAUX:
+        return _in_nets(match), None
+    return _in_nets(match), match["nodes"][-1]
+
+
 def _layers_montages_flux(matches):
     """@brief Ordonne des montages AOP branchés en couches (DAG par flux de signal).
 

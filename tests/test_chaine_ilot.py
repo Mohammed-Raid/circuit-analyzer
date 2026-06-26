@@ -551,3 +551,53 @@ def test_make_chain_fig_porte_les_hitboxes():
     w, h = fig.get_size_inches()
     assert h <= 4.2 + 1e-6        # hauteur bornée (tient dans la fenêtre)
     assert w > h                  # figure large (chaîne) -> défilement horizontal
+
+
+def _ci(*e):
+    return {r: {"type": t, "value": v, "pins": p} for r, t, v, p in e}
+
+
+def test_io_montage_emetteur_commun_in_base_out_collecteur():
+    ci = _ci(("Q1", "Q", "", {"B": "NB", "C": "NC", "E": "GND"}))
+    match = {"circuit_type": "Amplificateur émetteur commun",
+             "components": ["Q1", "Rc", "Rb"], "nodes": ["NB", "NC", "GND"]}
+    ins, out = cv._io_montage(match, ci)
+    assert ins == ["NB"]
+    assert out == "NC"
+
+
+def test_io_montage_suiveur_out_emetteur():
+    ci = _ci(("Q1", "Q", "", {"B": "NB", "C": "VCC", "E": "NOUT"}))
+    match = {"circuit_type": "Collecteur commun (suiveur d'émetteur)",
+             "components": ["Q1", "Re"], "nodes": ["NB", "VCC", "NOUT"]}
+    ins, out = cv._io_montage(match, ci)
+    assert ins == ["NB"]
+    assert out == "NOUT"
+
+
+def test_io_montage_darlington_in_q1base_out_q2emetteur():
+    ci = _ci(("Q1", "Q", "", {"B": "NB", "C": "VCC", "E": "NE1"}),
+             ("Q2", "Q", "", {"B": "NE1", "C": "VCC", "E": "NOUT"}))
+    match = {"circuit_type": "Paire Darlington",
+             "components": ["Q1", "Q2", "Re"], "nodes": ["NB", "VCC", "NOUT"]}
+    ins, out = cv._io_montage(match, ci)
+    assert ins == ["NB"]
+    assert out == "NOUT"
+
+
+def test_io_montage_terminal_relais_out_none():
+    ci = _ci(("Q1", "Q", "", {"B": "NB", "C": "NCOIL", "E": "GND"}))
+    match = {"circuit_type": "Commande de relais",
+             "components": ["Q1", "K1"], "nodes": ["NB", "NCOIL", "GND"]}
+    _ins, out = cv._io_montage(match, ci)
+    assert out is None
+
+
+def test_io_montage_aop_inchange():
+    # AOP : doit retourner exactement (_in_nets, nodes[-1]).
+    match = {"circuit_type": "Amplificateur inverseur (AOP)",
+             "nodes": ["VIN", "INM", "VOUT"],
+             "impedances": {"Zin": {"nodes": ["INM", "VIN"], "composition": "R1"}}}
+    ins, out = cv._io_montage(match, {})
+    assert ins == cv._in_nets(match)
+    assert out == "VOUT"
