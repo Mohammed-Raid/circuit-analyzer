@@ -672,3 +672,23 @@ def test_chaine_2ce_affiche_le_couplage_cc():
     fig = cv._make_chain_fig(ordre, ci, matches=matches)
     txts = [t.get_text() for ax in fig.axes for t in ax.texts]
     assert any("Cc" in t for t in txts)
+
+
+def test_branched_inclut_les_etages_transistor():
+    from circuit_analyzer.composant import Composant
+    comps = [
+        Composant("Q1", "Q", {"B": "NIN", "C": "NA", "E": "GND"}),
+        Composant("Rb1", "R", {"1": "VCC", "2": "NIN"}, "100k"),
+        Composant("Rc1", "R", {"1": "VCC", "2": "NA"}, "1k"),
+        Composant("Q2", "Q", {"B": "NIN", "C": "NB", "E": "GND"}),
+        Composant("Rc2", "R", {"1": "VCC", "2": "NB"}, "1k"),
+    ]
+    g = construire_graphe(comps)
+    res = analyser(g)
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    matches = cv._matches_for_island(ilot, res)
+    layers = cv._layers_montages_flux(matches, ci)
+    if layers is not None:
+        plat = [m["circuit_type"] for L in layers for m in L]
+        assert any("émetteur commun" in t.lower() for t in plat)

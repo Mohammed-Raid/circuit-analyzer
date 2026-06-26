@@ -474,7 +474,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     if principal is None and _sp is None and _pont is None:
         _chaine = _ordonner_montages_flux(_matches_for_island(ilot, results), comp_info)
         if _chaine is None:                # pas linéaire -> essai DAG en couches (PID…)
-            _branches = _layers_montages_flux(_matches_for_island(ilot, results))
+            _branches = _layers_montages_flux(_matches_for_island(ilot, results), comp_info)
     if principal is not None:
         # Îlot = montage actif détecté : on réutilise son drawer dédié (schéma
         # propre « AOP + Zin/Zf », hitboxes Z cliquables), pas le layout générique.
@@ -1078,8 +1078,8 @@ def _couplage_find(matches):
     return find
 
 
-def _layers_montages_flux(matches):
-    """@brief Ordonne des montages AOP branchés en couches (DAG par flux de signal).
+def _layers_montages_flux(matches, ci=None):
+    """@brief Ordonne des montages branchés en couches (DAG par flux de signal).
 
     Pour les îlots non linéaires (ex. PID : entrée → P/I/D parallèles → sommateur →
     buffer). Arête producteur→consommateur quand out_net(producteur) ∈ in_nets(conso).
@@ -1087,22 +1087,29 @@ def _layers_montages_flux(matches):
     sources (couche 0) ; un back-edge vers une source est ignoré (tolère les boucles
     issues d'une détection imparfaite). Profondeur = plus long chemin depuis une source.
 
-    @param matches Matches d'un même îlot (les non-AOP sont ignorés).
+    @param matches Matches d'un même îlot.
     @return list[list[match]] couches ordonnées (≥ 2), ou None si pas exploitable.
     """
-    stages = [m for m in matches if "(AOP)" in m.get("circuit_type", "")]
+    ci = ci or {}
+    stages = [m for m in matches if not _est_couplage(m)]
     if len(stages) < 2:
         return None
+    find = _couplage_find(matches)
 
-    out_net = {id(m): m["nodes"][-1] for m in stages}
-    producteurs = {net: m for m in stages for net in [out_net[id(m)]]}
+    out_net = {}
+    in_nets = {}
+    for m in stages:
+        ins, out = _io_montage(m, ci)
+        out_net[id(m)] = find(out) if out else None
+        in_nets[id(m)] = [find(n) for n in ins if n]
+    producteurs = {out_net[id(m)]: m for m in stages if out_net[id(m)] is not None}
 
     incoming = {}      # id(stage) -> list des étages producteurs (dans l'îlot)
     a_entree_externe = {}
     for m in stages:
         prods = []
         externe = False
-        for net in _in_nets(m):
+        for net in in_nets[id(m)]:
             p = producteurs.get(net)
             if p is not None and p is not m:
                 prods.append(p)
@@ -2320,18 +2327,26 @@ def _annoter_etage(d, ancres, match):
             gain, color=_GAIN_COLOR, fontsize=8))
 
 
-def _branched_edges(layers):
+def _branched_edges(layers, ci=None):
     """@brief Arêtes AVANT du DAG de montages (producteur.couche < consommateur.couche).
 
     Ignore les back-edges (issus d'une détection imparfaite) qui traverseraient le
-    schéma. @return list[(prod_match, cons_match, net)].
+    schéma. Agnostique au type via `_io_montage`.
+    @return list[(prod_match, cons_match, net)].
     """
+    ci = ci or {}
     layer_of = {id(m): lx for lx, L in enumerate(layers) for m in L}
-    out_by_net = {m["nodes"][-1]: m for L in layers for m in L}
+    out_by_net = {}
+    for L in layers:
+        for m in L:
+            _ins, out = _io_montage(m, ci)
+            if out:
+                out_by_net[out] = m
     edges = []
     for couche in layers:
         for cons in couche:
-            for net in _in_nets(cons):
+            ins, _out = _io_montage(cons, ci)
+            for net in ins:
                 prod = out_by_net.get(net)
                 if prod is None or prod is cons:
                     continue
@@ -2364,7 +2379,7 @@ def _draw_branched_chain(d, layers, ci):
 
     # Câblage : un canal vertical distinct par entrée d'un même consommateur (fan-in).
     par_conso = {}
-    for prod, cons, net in _branched_edges(layers):
+    for prod, cons, net in _branched_edges(layers, ci):
         par_conso.setdefault(id(cons), []).append((prod, cons, net))
     for groupe in par_conso.values():
         groupe.sort(key=lambda e: ancres[id(e[1])]["ins"][e[2]][1])
