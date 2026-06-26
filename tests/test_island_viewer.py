@@ -487,6 +487,57 @@ def test_circuit_principal_ilot_none_pour_ilot_passif():
     assert circuit_viewer._circuit_principal_ilot(ilot, g, res) is None
 
 
+def test_circuit_principal_ilot_renvoie_push_pull():
+    # Push-pull = 2 transistors mais UN seul montage avec drawer dedie.
+    # L'ilot doit etre dessine par son drawer, pas par la grille generique.
+    from circuit_analyzer import detecteur
+    from gui import circuit_viewer
+    g = construire_graphe([
+        Composant("Q1", "Q", {"B": "NIN", "C": "VCC", "E": "NOUT"}),
+        Composant("Q2", "Q", {"B": "NIN", "C": "GND", "E": "NOUT"}),
+    ])
+    res = detecteur.analyser(g)
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    m = circuit_viewer._circuit_principal_ilot(ilot, g, res)
+    assert m is not None
+    assert m["circuit_type"] == "Étage push-pull"
+
+
+def test_circuit_principal_ilot_renvoie_darlington():
+    # Paire Darlington = 2 transistors -> un seul montage avec drawer dedie.
+    from circuit_analyzer import detecteur
+    from gui import circuit_viewer
+    g = construire_graphe([
+        Composant("Q1", "Q", {"B": "NB", "C": "VCC", "E": "NE1"}),
+        Composant("Q2", "Q", {"B": "NE1", "C": "VCC", "E": "NOUT"}),
+        Composant("Re", "R", {"1": "NOUT", "2": "GND"}, "1k"),
+    ])
+    res = detecteur.analyser(g)
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    m = circuit_viewer._circuit_principal_ilot(ilot, g, res)
+    assert m is not None
+    assert m["circuit_type"] == "Paire Darlington"
+
+
+def test_circuit_principal_ilot_renvoie_commande_relais():
+    # Commande de relais = transistor + bobine (K a >2 broches, donc "actif") :
+    # 2 actifs mais UN seul montage avec drawer dedie.
+    from circuit_analyzer import detecteur
+    from gui import circuit_viewer
+    g = construire_graphe([
+        Composant("Q1", "Q", {"B": "NB", "C": "NCOIL", "E": "GND"}),
+        Composant("Rb", "R", {"1": "NIN", "2": "NB"}, "10k"),
+        Composant("K1", "K", {"A1": "VCC", "A2": "NCOIL",
+                              "11": "COM", "12": "NCN", "14": "NON"}),
+        Composant("D1", "D", {"A": "NCOIL", "K": "VCC"}),
+    ])
+    res = detecteur.analyser(g)
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    m = circuit_viewer._circuit_principal_ilot(ilot, g, res)
+    assert m is not None
+    assert m["circuit_type"] == "Commande de relais"
+
+
 def test_pont_ilot_detecte_le_pont():
     from circuit_analyzer.composant import Composant, construire_graphe
     from gui import circuit_viewer

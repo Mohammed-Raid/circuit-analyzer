@@ -352,17 +352,25 @@ def _circuit_principal_ilot(ilot, graph, results):
     """
     raw = getattr(graph, "graph", {}).get("components", {}) or {}
     refs = [r for r in ilot.get("composants", []) if r in raw]
-    # Le drawer dédié ne sait représenter qu'UN seul composant actif. Si l'îlot en
-    # contient plusieurs (cascade d'AOP, etc.), on laisse le layout générique les
-    # dessiner tous au lieu de n'en montrer qu'un.
     actifs = [r for r in refs if len(getattr(raw.get(r), "pins", {}) or {}) > 2]
-    if len(actifs) != 1:
+
+    # Montages de l'îlot ayant un drawer dédié (hors « Impédance Z »). Un drawer
+    # dédié ne représente qu'UN montage : si l'îlot en contient plusieurs (cascade
+    # d'AOP, etc.), on laisse le layout générique les dessiner tous.
+    drawer_matches = [m for m in _matches_for_island(ilot, results)
+                      if m.get("circuit_type") in _DRAWERS
+                      and m.get("circuit_type") != "Impédance Z"]
+    if len(drawer_matches) != 1:
         return None
-    for m in _matches_for_island(ilot, results):
-        ct = m.get("circuit_type")
-        if ct in _DRAWERS and ct != "Impédance Z":
-            return m
-    return None
+
+    # Le montage peut être multi-actif (push-pull, Darlington, relais = 2 actifs),
+    # mais TOUS les composants actifs de l'îlot doivent lui appartenir : sinon il
+    # reste un actif hors drawer → layout générique.
+    m = drawer_matches[0]
+    montage = set(m.get("components", []))
+    if any(a not in montage for a in actifs):
+        return None
+    return m
 
 
 def _arbre_serie_parallele_ilot(ilot, graph):
