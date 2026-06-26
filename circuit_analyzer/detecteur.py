@@ -407,6 +407,48 @@ def detecter_derivateur(graphe):
     return resultats
 
 
+def detecter_derivateur_partiel(graphe):
+    """@brief Ampli inverseur a entree R//C : gain DC fini + boost HF.
+
+    Zin = R // C (parallele), Zf resistive. Distinct du derivateur ideal
+    (C seul en entree) et de l'inverseur pur (R seule). @return list[dict].
+    """
+    resultats = []
+    composants = graphe.graph.get('components', {})
+    for ref_aop, comp in composants.items():
+        if comp.type != 'U':
+            continue
+        entree_neg = comp.pins.get('IN-')
+        sortie = comp.pins.get('OUT')
+        if not entree_neg or not sortie:
+            continue
+        feedback = entree = None
+        for u, v, data in graphe.edges(entree_neg, data=True):
+            if not _type_correspond(data, 'R', inclure_z=True):
+                continue
+            autre = v if u == entree_neg else u
+            bloc = {
+                'refs': list(data.get('refs', [data['ref']])),
+                'composition': data.get('composition', data['ref']),
+                'nodes': (entree_neg, autre),
+            }
+            if autre == sortie:
+                feedback = bloc
+            elif entree is None:
+                entree = bloc
+        if (feedback and entree
+                and _est_rc_parallele(entree, composants)
+                and not _feedback_capacitif(feedback, composants)):
+            resultats.append({
+                'circuit_type': 'Ampli inverseur + boost HF (AOP)',
+                'components': [ref_aop] + feedback['refs'] + entree['refs'],
+                'nodes': [comp.pins.get('IN+', ''), entree_neg, sortie],
+                'impedances': {'Zin': entree, 'Zf': feedback},
+                'gain': '−Zf/Zin',
+            })
+    return resultats
+
+
 def detecter_bascule_schmitt(graphe):
     """
     @brief Bascule de Schmitt : AOP avec contre-réaction POSITIVE (R de OUT vers IN+).
@@ -1465,6 +1507,7 @@ _DETECTEURS_COMPLEXES = [
     detecter_derivateur,                   # C entrée + R feedback
     detecter_bascule_schmitt,              # R de feedback positif
     detecter_amplificateur_non_inverseur,  # R feedback + R vers GND
+    detecter_derivateur_partiel,           # Zin R//C : inverseur + boost HF
     detecter_amplificateur_inverseur,      # R entrée + R feedback
     detecter_suiveur_tension,              # IN- = OUT (court-circuit)
     detecter_comparateur,                  # AOP sans feedback

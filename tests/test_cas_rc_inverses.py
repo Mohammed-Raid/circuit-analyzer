@@ -32,3 +32,41 @@ def test_est_rc_parallele_faux_si_deux_r():
              "R2": Composant("R2", "R", {})}
     bloc = {"refs": ["R1", "R2"], "composition": "R1//R2"}
     assert not detecteur._est_rc_parallele(bloc, comps)
+
+
+def _types(comps):
+    return [m["circuit_type"] for m in detecteur.analyser(construire_graphe(comps))]
+
+
+def test_boost_hf_detecte():
+    # Zin = Rin // Cin (parallele a l'entree), Zf = Rf -> boost HF.
+    comps = [
+        Composant("U1", "U", {"IN+": "GND", "IN-": "M", "OUT": "VOUT"}),
+        Composant("Rin", "R", {"1": "VIN", "2": "M"}, "10k"),
+        Composant("Cin", "C", {"1": "VIN", "2": "M"}, "100n"),
+        Composant("Rf", "R", {"1": "M", "2": "VOUT"}, "100k"),
+    ]
+    assert "Ampli inverseur + boost HF (AOP)" in _types(comps)
+
+
+def test_derivateur_ideal_inchange():
+    # C seul a l'entree, Rf feedback -> reste Derivateur (pas boost HF).
+    comps = [
+        Composant("U1", "U", {"IN+": "GND", "IN-": "M", "OUT": "VOUT"}),
+        Composant("Cin", "C", {"1": "VIN", "2": "M"}, "100n"),
+        Composant("Rf", "R", {"1": "M", "2": "VOUT"}, "100k"),
+    ]
+    t = _types(comps)
+    assert "Dérivateur (AOP)" in t
+    assert "Ampli inverseur + boost HF (AOP)" not in t
+
+
+def test_inverseur_pur_inchange():
+    comps = [
+        Composant("U1", "U", {"IN+": "GND", "IN-": "M", "OUT": "VOUT"}),
+        Composant("Rin", "R", {"1": "VIN", "2": "M"}, "10k"),
+        Composant("Rf", "R", {"1": "M", "2": "VOUT"}, "100k"),
+    ]
+    t = _types(comps)
+    assert "Amplificateur inverseur (AOP)" in t
+    assert "boost HF" not in " ".join(t)
