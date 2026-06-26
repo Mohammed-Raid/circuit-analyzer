@@ -5,6 +5,7 @@ matplotlib.use("Agg")
 
 from circuit_analyzer.composant import Composant, construire_graphe
 from circuit_analyzer import detecteur
+import gui.circuit_viewer as cv
 
 
 def _rc():
@@ -93,3 +94,32 @@ def test_integrateur_ideal_inchange():
     t = _types(comps)
     assert "Intégrateur (AOP)" in t
     assert "action intégrale" not in " ".join(t)
+
+
+def _ilot_fig(comps):
+    g = construire_graphe(comps)
+    res = detecteur.analyser(g)
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    p = cv._circuit_principal_ilot(ilot, g, res)
+    return cv._make_fig(p, ci, cv._DRAWERS[p["circuit_type"]],
+                        matches=cv._matches_for_island(ilot, res)), p
+
+
+def test_boost_hf_rendu_cliquable():
+    comps = [
+        Composant("U1", "U", {"IN+": "GND", "IN-": "M", "OUT": "VOUT"}),
+        Composant("Rin", "R", {"1": "VIN", "2": "M"}, "10k"),
+        Composant("Cin", "C", {"1": "VIN", "2": "M"}, "100n"),
+        Composant("Rf", "R", {"1": "M", "2": "VOUT"}, "100k"),
+    ]
+    fig, p = _ilot_fig(comps)
+    assert p["circuit_type"] == "Ampli inverseur + boost HF (AOP)"
+    assert len(fig._z_hitboxes) >= 2
+    txts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    assert not any("non disponible" in t for t in txts)
+
+
+def test_role_etage_nouveaux_types():
+    assert cv._ROLE_ETAGE["Ampli inverseur + boost HF (AOP)"]
+    assert cv._ROLE_ETAGE["Ampli inverseur + action intégrale (AOP)"]

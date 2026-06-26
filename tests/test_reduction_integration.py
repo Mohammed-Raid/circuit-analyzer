@@ -40,8 +40,8 @@ def test_inverseur_simple_toujours_detecte():
     assert sorted(inv['components']) == ['Rf', 'Rin', 'U1']
 
 
-def test_inverseur_avec_feedback_mixte_R_serie_C_detecte():
-    """@brief Verifie inverseur avec feedback mixte R serie C."""
+def test_action_integrale_avec_feedback_mixte_R_serie_C_detecte():
+    """@brief Verifie action integrale avec feedback mixte R serie C."""
     # Un feedback mixte R+C devient un dipole de type 'Z'. Les detecteurs AOP
     # doivent pouvoir l'utiliser comme impedance de contre-reaction, puis
     # l'expansion doit restituer les vraies refs Rf et Cf.
@@ -52,7 +52,8 @@ def test_inverseur_avec_feedback_mixte_R_serie_C_detecte():
         Composant('Cf', 'C', {'1': 'MID', '2': 'OUT'}, '100n'),
     ]
     res = analyser(construire_graphe(composants))
-    inv = next((c for c in res if c['circuit_type'] == 'Amplificateur inverseur (AOP)'), None)
+    inv = next((c for c in res
+                if c['circuit_type'] == 'Ampli inverseur + action intégrale (AOP)'), None)
     assert inv is not None
     assert {'U1', 'Rin', 'Rf', 'Cf'} <= set(inv['components'])
     assert 'Int\u00e9grateur (AOP)' not in _types(res)

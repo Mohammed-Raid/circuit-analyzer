@@ -29,6 +29,12 @@ DESCRIPTIONS_CIRCUITS = {
     "Amplificateur inverseur (AOP)":
         "Amplifie en inversant le signal. Résistance d'entrée et résistance "
         "de contre-réaction sur IN-.",
+    "Ampli inverseur + boost HF (AOP)":
+        "Variante inverseuse avec Zin = R//C. Le gain reste fini en continu "
+        "et augmente aux hautes frÃ©quences.",
+    "Ampli inverseur + action intégrale (AOP)":
+        "Variante inverseuse avec Zf = R+C en sÃ©rie. Le comportement ajoute "
+        "une action intÃ©grale aux basses frÃ©quences.",
     "Suiveur de tension (AOP)":
         "Recopie la tension d'entrée (gain 1) en isolant la source. "
         "Sortie directement reliée à IN-.",

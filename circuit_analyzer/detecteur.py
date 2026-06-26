@@ -1373,6 +1373,8 @@ class ResultatsAnalyse(list):
 # Catégorie fonctionnelle par type de circuit
 _CATEGORIES: dict[str, str] = {
     'Amplificateur inverseur (AOP)':       'amplification',
+    'Ampli inverseur + boost HF (AOP)':    'traitement_signal',
+    'Ampli inverseur + action intégrale (AOP)': 'traitement_signal',
     'Amplificateur non-inverseur (AOP)':   'amplification',
     'Suiveur de tension (AOP)':            'amplification',
     'Intégrateur (AOP)':                   'traitement_signal',
@@ -1448,7 +1450,9 @@ def _enrichir(match: dict, graphe) -> dict:
         confidence = 0.95
         reasons.append("IN- directement relié à OUT (même nœud électrique)")
 
-    elif ct in ('Amplificateur inverseur (AOP)', 'Amplificateur non-inverseur (AOP)'):
+    elif ct in ('Amplificateur inverseur (AOP)', 'Amplificateur non-inverseur (AOP)',
+                'Ampli inverseur + boost HF (AOP)',
+                'Ampli inverseur + action intégrale (AOP)'):
         confidence = 0.90
         reasons.append("Contre-réaction négative via résistance entre OUT et IN-")
 
@@ -1583,6 +1587,7 @@ NOMS_CIRCUITS = [
     "Amplificateur différentiel (AOP)", "Amplificateur sommateur (AOP)",
     "Intégrateur (AOP)", "Dérivateur (AOP)", "Bascule de Schmitt (AOP)",
     "Amplificateur non-inverseur (AOP)", "Amplificateur inverseur (AOP)",
+    "Ampli inverseur + boost HF (AOP)", "Ampli inverseur + action intégrale (AOP)",
     "Suiveur de tension (AOP)", "Comparateur (AOP)",
     "Miroir de courant BJT", "Commande de relais",
     "Amplificateur émetteur commun", "Transistor en commutation",
