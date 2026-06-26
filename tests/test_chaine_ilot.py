@@ -193,6 +193,22 @@ def test_zoom_scroll_fraction_keeps_mouse_world_point_stable():
     assert round(fy, 4) == 0.275
 
 
+def test_scrollable_mpl_bindings_preserve_matplotlib_handlers():
+    class _Widget:
+        def __init__(self):
+            self.calls = []
+
+        def bind(self, sequence, callback, add=None):
+            self.calls.append((sequence, callback, add))
+
+    widget = _Widget()
+    cv._bind_scrollable_mpl_events(widget, object(), object(), object())
+
+    assert {seq for seq, _cb, _add in widget.calls} == {
+        "<MouseWheel>", "<ButtonPress-1>", "<B1-Motion>"}
+    assert all(add == "+" for _seq, _cb, add in widget.calls)
+
+
 def test_ordonner_montages_flux_non_chaine_renvoie_none():
     # Deux montages sans lien OUT->IN entre eux : pas une chaîne.
     from circuit_analyzer.composant import Composant
@@ -674,6 +690,69 @@ def test_chaine_2ce_affiche_le_couplage_cc():
     assert any("Cc" in t for t in txts)
 
 
+def test_chaine_couplage_complexe_affiche_boite_z():
+    from circuit_analyzer.composant import Composant
+    comps = [
+        Composant("Q1", "Q", {"B": "NB1", "C": "NC1", "E": "GND"}),
+        Composant("Rb1", "R", {"1": "VCC", "2": "NB1"}, "100k"),
+        Composant("Rc1", "R", {"1": "VCC", "2": "NC1"}, "4.7k"),
+        Composant("C12", "C", {"1": "NC1", "2": "N12"}, "470n"),
+        Composant("R12", "R", {"1": "N12", "2": "NB2"}, "100"),
+        Composant("L12", "L", {"1": "N12", "2": "NB2"}, "2.2u"),
+        Composant("Q2", "Q", {"B": "NB2", "C": "NC2", "E": "GND"}),
+        Composant("Rb2", "R", {"1": "VCC", "2": "NB2"}, "100k"),
+        Composant("Rc2", "R", {"1": "VCC", "2": "NC2"}, "1k"),
+    ]
+    g = construire_graphe(comps)
+    res = analyser(g)
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    matches = cv._matches_for_island(ilot, res)
+    ordre = cv._ordonner_montages_flux(matches, ci)
+    fig = cv._make_chain_fig(ordre, ci, matches=matches)
+    txts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    assert any("C12+(R12//L12)" in t for t in txts)
+    assert any(set(hb[4]) == {"C12", "R12", "L12"}
+               for hb in getattr(fig, "_z_hitboxes", []))
+
+
+def test_chaine_affiche_impedance_emetteur_locale():
+    from circuit_analyzer.composant import Composant
+    comps = [
+        Composant("Q1", "Q", {"B": "NB1", "C": "NC1", "E": "NE1"}),
+        Composant("Rb1", "R", {"1": "VCC", "2": "NB1"}, "100k"),
+        Composant("Rc1", "R", {"1": "VCC", "2": "NC1"}, "4.7k"),
+        Composant("Re1", "R", {"1": "NE1", "2": "GND"}, "1k"),
+        Composant("Ce1", "C", {"1": "NE1", "2": "GND"}, "47u"),
+        Composant("C12", "C", {"1": "NC1", "2": "NB2"}, "470n"),
+        Composant("Q2", "Q", {"B": "NB2", "C": "NC2", "E": "GND"}),
+        Composant("Rb2", "R", {"1": "VCC", "2": "NB2"}, "100k"),
+        Composant("Rc2", "R", {"1": "VCC", "2": "NC2"}, "1k"),
+    ]
+    g = construire_graphe(comps)
+    res = analyser(g)
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    matches = cv._matches_for_island(ilot, res)
+    ordre = cv._ordonner_montages_flux(matches, ci)
+    fig = cv._make_chain_fig(ordre, ci, matches=matches)
+    txts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    assert any("(Re1//Ce1)" in t or "(Ce1//Re1)" in t for t in txts)
+    assert any(set(hb[4]) == {"Re1", "Ce1"}
+               for hb in getattr(fig, "_z_hitboxes", []))
+
+
+def test_chaine_2ce_libelles_externes_seulement():
+    matches, ci = _cascade_2ce()
+    ordre = cv._ordonner_montages_flux(matches, ci)
+    fig = cv._make_chain_fig(ordre, ci, matches=matches)
+    txts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    assert "VIN" in txts
+    assert "VOUT" in txts
+    assert "IN" not in txts
+    assert "OUT" not in txts
+
+
 def test_branched_inclut_les_etages_transistor():
     from circuit_analyzer.composant import Composant
     comps = [
@@ -692,3 +771,58 @@ def test_branched_inclut_les_etages_transistor():
     if layers is not None:
         plat = [m["circuit_type"] for L in layers for m in L]
         assert any("émetteur commun" in t.lower() for t in plat)
+
+
+def test_branched_edges_traversent_les_couplages_ac():
+    from circuit_analyzer.composant import Composant
+    comps = [
+        Composant("Q0", "Q", {"B": "NB0", "C": "NC0", "E": "GND"}),
+        Composant("Rb0", "R", {"1": "VCC", "2": "NB0"}, "100k"),
+        Composant("Rc0", "R", {"1": "VCC", "2": "NC0"}, "4.7k"),
+        Composant("C01", "C", {"1": "NC0", "2": "NB1"}, "470n"),
+        Composant("Q1", "Q", {"B": "NB1", "C": "NC1", "E": "GND"}),
+        Composant("Rb1", "R", {"1": "VCC", "2": "NB1"}, "100k"),
+        Composant("Rc1", "R", {"1": "VCC", "2": "NC1"}, "2.2k"),
+        Composant("C02", "C", {"1": "NC0", "2": "NB2"}, "470n"),
+        Composant("Q2", "Q", {"B": "NB2", "C": "NC2", "E": "GND"}),
+        Composant("Rb2", "R", {"1": "VCC", "2": "NB2"}, "100k"),
+        Composant("Rc2", "R", {"1": "VCC", "2": "NC2"}, "1k"),
+    ]
+    g = construire_graphe(comps)
+    res = analyser(g)
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    matches = cv._matches_for_island(ilot, res)
+    layers = cv._layers_montages_flux(matches, ci)
+    edges = cv._branched_edges(layers, ci, matches=matches)
+    assert len(edges) == 2
+
+
+def test_branched_couplage_complexe_affiche_boite_z():
+    from circuit_analyzer.composant import Composant
+    comps = [
+        Composant("Q0", "Q", {"B": "NB0", "C": "NC0", "E": "GND"}),
+        Composant("Rb0", "R", {"1": "VCC", "2": "NB0"}, "100k"),
+        Composant("Rc0", "R", {"1": "VCC", "2": "NC0"}, "4.7k"),
+        Composant("C01", "C", {"1": "NC0", "2": "N01"}, "470n"),
+        Composant("R01", "R", {"1": "N01", "2": "NB1"}, "100"),
+        Composant("L01", "L", {"1": "N01", "2": "NB1"}, "2.2u"),
+        Composant("Q1", "Q", {"B": "NB1", "C": "NC1", "E": "GND"}),
+        Composant("Rb1", "R", {"1": "VCC", "2": "NB1"}, "100k"),
+        Composant("Rc1", "R", {"1": "VCC", "2": "NC1"}, "2.2k"),
+        Composant("C02", "C", {"1": "NC0", "2": "NB2"}, "47n"),
+        Composant("Q2", "Q", {"B": "NB2", "C": "NC2", "E": "GND"}),
+        Composant("Rb2", "R", {"1": "VCC", "2": "NB2"}, "100k"),
+        Composant("Rc2", "R", {"1": "VCC", "2": "NC2"}, "1k"),
+    ]
+    g = construire_graphe(comps)
+    res = analyser(g)
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    matches = cv._matches_for_island(ilot, res)
+    layers = cv._layers_montages_flux(matches, ci)
+    fig = cv._make_branched_fig(layers, ci, matches=matches)
+    txts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    assert any("C01+(R01//L01)" in t for t in txts)
+    assert any(set(hb[4]) == {"C01", "R01", "L01"}
+               for hb in getattr(fig, "_z_hitboxes", []))

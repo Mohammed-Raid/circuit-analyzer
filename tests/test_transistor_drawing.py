@@ -44,6 +44,13 @@ EMETTEUR_COMMUN = (
         ("Rc", "R", "1k", {"1": "VCC", "2": "NCOL"}),
         ("Rb", "R", "10k", {"1": "VCC", "2": "NB"})),
 )
+BJT_SWITCH = (
+    {"circuit_type": "Transistor en commutation",
+     "components": ["Q1", "Rb", "L1"], "nodes": ["NB", "NL", "GND"]},
+    _ci(("Q1", "Q", "", {"B": "NB", "C": "NL", "E": "GND"}),
+        ("Rb", "R", "10k", {"1": "NIN", "2": "NB"}),
+        ("L1", "L", "10mH", {"1": "VCC", "2": "NL"})),
+)
 
 
 def test_nouveaux_drawers_transistor_enregistres():
@@ -52,7 +59,7 @@ def test_nouveaux_drawers_transistor_enregistres():
 
 
 def test_montages_rendent_sans_erreur():
-    for result, ci in (SUIVEUR, PUSH_PULL, DARLINGTON, EMETTEUR_COMMUN):
+    for result, ci in (SUIVEUR, PUSH_PULL, DARLINGTON, EMETTEUR_COMMUN, BJT_SWITCH):
         _fig, txts = _render(result, ci)
         assert not any("non disponible" in t for t in txts), result["circuit_type"]
 
@@ -69,6 +76,11 @@ def test_resistances_affichees_en_etiquette():
     _fig, txts = _render(*EMETTEUR_COMMUN)
     joined = " ".join(txts)
     assert "Rb" in joined and "Rc" in joined
+
+
+def test_bjt_commutation_affiche_charge_inductive():
+    _fig, txts = _render(*BJT_SWITCH)
+    assert any("L1" in t for t in txts)
 
 
 def test_titre_role_transistor_affiche():
@@ -108,3 +120,13 @@ def test_drawer_titre_false_pas_de_titre():
                                          cv._draw_common_emitter).axes
                   for t in ax.texts]
     assert any("Émetteur commun" in t for t in standalone)
+
+
+def test_commande_relais_affiche_rb_satellite():
+    result = {"circuit_type": "Commande de relais",
+              "components": ["K1", "Q1"], "nodes": ["VCC", "NCOIL"]}
+    ci = _ci(("Q1", "Q", "", {"B": "NB", "C": "NCOIL", "E": "GND"}),
+             ("K1", "K", "", {"A1": "VCC", "A2": "NCOIL"}),
+             ("Rb", "R", "10k", {"1": "NIN", "2": "NB"}))
+    _fig, txts = _render(result, ci)
+    assert any("Rb" in t for t in txts)

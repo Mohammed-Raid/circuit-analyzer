@@ -76,6 +76,13 @@ def _zoom_scroll_fractions(old_size, new_size, viewport, pointer, canvas_origin)
     return fx, fy
 
 
+def _bind_scrollable_mpl_events(widget, on_mousewheel, on_pan_start, on_pan_drag):
+    """@brief Ajoute scroll/pan sans ecraser les bindings Tk de Matplotlib."""
+    widget.bind("<MouseWheel>", on_mousewheel, add="+")
+    widget.bind("<ButtonPress-1>", on_pan_start, add="+")
+    widget.bind("<B1-Motion>", on_pan_drag, add="+")
+
+
 def _is_rail_net(net: str) -> bool:
     return bool(net) and (
         is_ground_net(net) or is_power_net(net) or is_protective_earth_net(net)
@@ -492,7 +499,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         fig = _make_chain_fig(_chaine, comp_info, matches=_matches_for_island(ilot, results))
     elif _branches is not None:
         # Îlot multi-AOP branché (P/I/D parallèles -> sommateur…) : schéma en couches.
-        fig = _make_branched_fig(_branches, comp_info)
+        fig = _make_branched_fig(_branches, comp_info, matches=_matches_for_island(ilot, results))
     else:
         matches = _matches_for_island(ilot, results)
         fig = _make_island_fig(model, matches=matches)
@@ -624,10 +631,12 @@ def _pack_scrollable_figure(parent, fig):
     view.bind("<MouseWheel>", _on_mousewheel)
     view.bind("<ButtonPress-1>", _on_pan_start)
     view.bind("<B1-Motion>", _on_pan_drag)
-    for widget in (inner, canvas.get_tk_widget()):
+    for widget in (inner,):
         widget.bind("<MouseWheel>", _on_mousewheel)
         widget.bind("<ButtonPress-1>", _on_pan_start)
         widget.bind("<B1-Motion>", _on_pan_drag)
+    _bind_scrollable_mpl_events(
+        canvas.get_tk_widget(), _on_mousewheel, _on_pan_start, _on_pan_drag)
     return canvas
 
 
@@ -816,7 +825,7 @@ def _make_chain_fig(ordered, comp_info, matches=None):
     return fig
 
 
-def _make_branched_fig(layers, comp_info):
+def _make_branched_fig(layers, comp_info, matches=None):
     """@brief Figure d'un îlot multi-AOP branché (DAG en couches, cf.
     _layers_montages_flux). Large et haute -> conteneur à défilement.
 
@@ -835,7 +844,8 @@ def _make_branched_fig(layers, comp_info):
         with schemdraw.Drawing(canvas=ax, show=False) as d:
             d.config(fontsize=12, inches_per_unit=0.5)
             d._z_hitboxes = []
-            _draw_branched_chain(d, layers, ci=comp_info)
+            _draw_branched_chain(d, layers, ci=comp_info,
+                                 couplages=(matches or [m for L in layers for m in L]))
             fig._z_hitboxes = list(d._z_hitboxes)
             try:
                 bb = d.get_bbox()
@@ -2109,7 +2119,8 @@ def _dessiner_montage_a(d, match, ci, origin, in_label, out_label):
     ct = match.get("circuit_type", "")
     if ct in _DRAWERS and (ct in _MONTAGES_TRANSISTOR_CHAINABLES
                            or ct in _MONTAGES_TRANSISTOR_TERMINAUX):
-        res = _DRAWERS[ct](d, match, ci, origin=origin, titre=False)
+        res = _DRAWERS[ct](d, match, ci, origin=origin, titre=False,
+                           in_label=in_label, out_label=out_label)
         ins, _out = _io_montage(match, ci)
         res["ins"] = {n: res["in"] for n in ins}
         return res
@@ -2150,6 +2161,11 @@ def _couplage_entre(m_out, m_in, couplages, find, ci):
     ins = _io_montage(m_in, ci)[0]
     if out is None:
         return None
+    entrees = {n for n in ins if n}
+    for z in couplages:
+        a, b = z["nodes"]
+        if out in (a, b) and (a in entrees or b in entrees):
+            return z
     cibles = {find(n) for n in ins if n}
     for z in couplages:
         a, b = z["nodes"]
@@ -2164,13 +2180,95 @@ def _fil_avec_couplage(d, out_pt, in_pt, cc, ci):
     midx = (out_pt[0] + in_pt[0]) / 2
     p1 = (midx - 0.6, out_pt[1])
     p2 = (midx + 0.6, out_pt[1])
-    ref = cc.get("composition") if isinstance(cc.get("composition"), str) else None
-    refs = cc.get("refs") or ([ref] if ref else [])
-    nom = refs[0] if refs else "Cc"
     d.add(elm.Line().at(out_pt).to(p1).color(_WIRE))
-    d.add(elm.Capacitor().at(p1).to(p2).label(nom, loc="top"))
+    _dessiner_symbole_couplage(d, p1, p2, cc, ci)
     d.add(elm.Line().at(p2).to((in_pt[0], out_pt[1])).color(_WIRE))
     d.add(elm.Line().at((in_pt[0], out_pt[1])).to(in_pt).color(_WIRE))
+
+
+def _fil_canal_avec_couplage(d, out_pt, in_pt, channel_x, cc, ci):
+    """@brief Fil en canal avec le couplage dessiné sur la branche de destination."""
+    cap_x = (channel_x + in_pt[0]) / 2
+    p1 = (cap_x - 0.6, in_pt[1])
+    p2 = (cap_x + 0.6, in_pt[1])
+    d.add(elm.Line().at(out_pt).to((channel_x, out_pt[1])).color(_WIRE))
+    d.add(elm.Line().at((channel_x, out_pt[1])).to((channel_x, in_pt[1])).color(_WIRE))
+    d.add(elm.Line().at((channel_x, in_pt[1])).to(p1).color(_WIRE))
+    _dessiner_symbole_couplage(d, p1, p2, cc, ci)
+    d.add(elm.Line().at(p2).to(in_pt).color(_WIRE))
+
+
+def _refs_couplage(cc):
+    """@brief Refs brutes d'un match Impédance Z de couplage."""
+    refs = cc.get("refs") or cc.get("components") or []
+    return [r for r in refs if isinstance(r, str) and not r.startswith("Z")]
+
+
+def _couplage_simple_cap(cc, ci):
+    """@brief Vrai si le couplage est un condensateur unique."""
+    refs = _refs_couplage(cc)
+    return len(refs) == 1 and ci.get(refs[0], {}).get("type") == "C"
+
+
+def _bloc_couplage(cc):
+    """@brief Bloc compatible _z_box pour un couplage Impédance Z."""
+    refs = _refs_couplage(cc)
+    compo = cc.get("composition") or " // ".join(refs) or "Z"
+    return {"refs": refs or [compo], "composition": compo,
+            "nodes": tuple(cc.get("nodes", ()))}
+
+
+def _dessiner_symbole_couplage(d, p1, p2, cc, ci):
+    """@brief Dessine un couplage : C simple ou boîte Z pour un réseau composé."""
+    if _couplage_simple_cap(cc, ci):
+        ref = _refs_couplage(cc)[0]
+        d.add(elm.Capacitor().at(p1).to(p2).label(ref, loc="top"))
+    else:
+        _z_box(d, p1, p2, "Zc", _bloc_couplage(cc), ci)
+
+
+def _dessiner_impedances_locales(d, stages, ancres, z_matches, z_utilises, ci):
+    """@brief Dessine les Impedances Z locales connectees aux nets d'un etage."""
+    offsets = {}
+    for z in z_matches:
+        if id(z) in z_utilises:
+            continue
+        znets = [n for n in z.get("nodes", []) if n]
+        for stage, a in zip(stages, ancres):
+            net_pts = a.get("nets", {})
+            communs = [n for n in znets if n in net_pts]
+            if not communs:
+                continue
+            net = communs[0]
+            other = next((n for n in znets if n != net), "")
+            key = (id(stage), net)
+            offsets[key] = offsets.get(key, 0) + 1
+            _dessiner_z_locale(d, net_pts[net], other, z, ci, offsets[key] - 1)
+            break
+
+
+def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0):
+    """@brief Dessine une Z locale depuis `anchor` vers un rail ou une etiquette."""
+    ax, ay = anchor
+    dx = index * 0.9
+    if other_net == "VCC":
+        p1, p2 = (ax + dx, ay + 0.45), (ax + dx, ay + 1.65)
+        d.add(elm.Line().at(anchor).to(p1).color(_WIRE))
+        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right")
+        d.add(elm.Line().at(p2).up(0.35).label("VCC", loc="top").color(_WIRE))
+    elif other_net == "GND":
+        p1, p2 = (ax + dx, ay - 0.45), (ax + dx, ay - 1.65)
+        d.add(elm.Line().at(anchor).to(p1).color(_WIRE))
+        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right")
+        d.add(elm.Line().at(p2).down(0.25).color(_WIRE))
+        d.add(elm.Ground())
+    else:
+        p1 = (ax + 0.45, ay - 0.35 - index * 0.75)
+        p2 = (ax + 1.65, ay - 0.35 - index * 0.75)
+        d.add(elm.Line().at(anchor).to(p1).color(_WIRE))
+        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci)
+        if other_net:
+            d.add(elm.Dot().at(p2).label(other_net, loc="right"))
 
 
 def _draw_island_chain(d, ordered, ci, couplages=None):
@@ -2202,14 +2300,17 @@ def _draw_island_chain(d, ordered, ci, couplages=None):
 
     coupl = [m for m in (couplages or []) if _est_couplage(m)]
     find = _couplage_find(couplages or [])
+    couplages_utilises = set()
     for i in range(n - 1):
         out_pt = ancres[i]["out"]
         in_pt = ancres[i + 1]["in"]
         cc = _couplage_entre(ordered[i], ordered[i + 1], coupl, find, ci)
         if cc is not None:
+            couplages_utilises.add(id(cc))
             _fil_avec_couplage(d, out_pt, in_pt, cc, ci)
         else:
             _fil_en_z(d, out_pt, in_pt)
+    _dessiner_impedances_locales(d, ordered, ancres, coupl, couplages_utilises, ci)
 
 
 def _oy_for(match):
@@ -2302,11 +2403,29 @@ def _r_simple(d, ref, ci, p1, p2, nom, label_loc="top"):
     """
     if not ref:
         return
+    elem = elm.Resistor().at(p1).to(p2)
+    if nom is None:
+        d.add(elem)
+        return
+    d.add(elem.label(_texte_passif_simple(ref, ci, nom), loc=label_loc))
+
+
+def _texte_passif_simple(ref, ci, nom):
+    """@brief Texte court d'un passif simple (ex. Rb = 10 kΩ)."""
     from circuit_analyzer.impedance import formater_valeur
     info = ci.get(ref, {})
     val = formater_valeur(info.get("value", ""), info.get("type", "R"))
-    texte = f"{nom} = {val}" if val else nom
-    d.add(elm.Resistor().at(p1).to(p2).label(texte, loc=label_loc))
+    return f"{nom} = {val}" if val else nom
+
+
+def _refs_type_sur_net(ci, typ, net):
+    """@brief Références de type `typ` connectées au net donné."""
+    if not net:
+        return []
+    return [
+        ref for ref, info in (ci or {}).items()
+        if info.get("type") == typ and net in ((info.get("pins") or {}).values())
+    ]
 
 
 def _annoter_etage(d, ancres, match):
@@ -2318,16 +2437,17 @@ def _annoter_etage(d, ancres, match):
     out = ancres.get("out")
     if not out:
         return
-    x = out[0] + 1.4
-    d.add(elm.Label().at((x, out[1] + 0.85)).label(
+    title_pt = ancres.get("title") or (out[0] + 1.4, out[1] + 0.85)
+    d.add(elm.Label().at(title_pt).label(
         _titre_etage(match), color=_TITRE_COLOR, fontsize=11))
     gain = _texte_gain(match, None)
     if gain:
+        x = out[0] + 1.4
         d.add(elm.Label().at((x, out[1] - 0.85)).label(
             gain, color=_GAIN_COLOR, fontsize=8))
 
 
-def _branched_edges(layers, ci=None):
+def _branched_edges(layers, ci=None, matches=None):
     """@brief Arêtes AVANT du DAG de montages (producteur.couche < consommateur.couche).
 
     Ignore les back-edges (issus d'une détection imparfaite) qui traverseraient le
@@ -2335,19 +2455,20 @@ def _branched_edges(layers, ci=None):
     @return list[(prod_match, cons_match, net)].
     """
     ci = ci or {}
+    find = _couplage_find(matches or [m for L in layers for m in L])
     layer_of = {id(m): lx for lx, L in enumerate(layers) for m in L}
     out_by_net = {}
     for L in layers:
         for m in L:
             _ins, out = _io_montage(m, ci)
             if out:
-                out_by_net[out] = m
+                out_by_net[find(out)] = m
     edges = []
     for couche in layers:
         for cons in couche:
             ins, _out = _io_montage(cons, ci)
             for net in ins:
-                prod = out_by_net.get(net)
+                prod = out_by_net.get(find(net))
                 if prod is None or prod is cons:
                     continue
                 if layer_of[id(prod)] >= layer_of[id(cons)]:
@@ -2356,7 +2477,7 @@ def _branched_edges(layers, ci=None):
     return edges
 
 
-def _draw_branched_chain(d, layers, ci):
+def _draw_branched_chain(d, layers, ci, couplages=None):
     """@brief Dessine un îlot multi-AOP branché en couches (cf. _layers_montages_flux).
 
     Couche = colonne (x croissant) ; étages parallèles empilés verticalement. Chaque
@@ -2379,14 +2500,26 @@ def _draw_branched_chain(d, layers, ci):
 
     # Câblage : un canal vertical distinct par entrée d'un même consommateur (fan-in).
     par_conso = {}
-    for prod, cons, net in _branched_edges(layers, ci):
+    for prod, cons, net in _branched_edges(layers, ci, matches=couplages):
         par_conso.setdefault(id(cons), []).append((prod, cons, net))
+    coupl = [m for m in (couplages or []) if _est_couplage(m)]
+    find = _couplage_find(couplages or [])
+    couplages_utilises = set()
     for groupe in par_conso.values():
         groupe.sort(key=lambda e: ancres[id(e[1])]["ins"][e[2]][1])
         for k, (prod, cons, net) in enumerate(groupe):
             in_pt = ancres[id(cons)]["ins"][net]
-            channel_x = in_pt[0] - 1.0 - k * 1.4
-            _fil_canal(d, ancres[id(prod)]["out"], in_pt, channel_x)
+            channel_x = in_pt[0] - 2.4 - k * 1.4
+            cc = _couplage_entre(prod, cons, coupl, find, ci)
+            if cc is not None:
+                couplages_utilises.add(id(cc))
+                _fil_canal_avec_couplage(d, ancres[id(prod)]["out"], in_pt,
+                                         channel_x, cc, ci)
+            else:
+                _fil_canal(d, ancres[id(prod)]["out"], in_pt, channel_x)
+    flat = [m for couche in layers for m in couche]
+    flat_ancres = [ancres[id(m)] for m in flat]
+    _dessiner_impedances_locales(d, flat, flat_ancres, coupl, couplages_utilises, ci)
 
 
 def _draw_integrator(d, result, ci):
@@ -2671,26 +2804,52 @@ def _draw_summing_amp(d, result, ci):
 
 # ── Transistor patterns ───────────────────────────────────────────────────────
 
-def _draw_bjt_switch(d, result, ci, origin=(3, 0), titre=True):
+def _draw_bjt_switch(d, result, ci, origin=(3, 0), titre=True,
+                     in_label="IN", out_label="LOAD"):
     """@brief Schéma « Transistor en commutation ». Paramétrique en origine."""
     q = _ref(result, ci, "Q"); r = _ref(result, ci, "R")
+    q_pins = ci.get(q, {}).get("pins", {})
+    loads_l = _refs(result, ci, "L")
     t = d.add(elm.BjtNpn().at(origin))
     bx, by = t.base
     in_pt = (bx - 2.6, by)
-    _r_simple(d, r, ci, in_pt, (bx - 0.9, by), "Rb")
+    _r_simple(d, r, ci, in_pt, (bx - 0.9, by), None)
+    d.add(elm.Label().at(((in_pt[0] + bx - 0.9) / 2, by + 0.52))
+          .label(_texte_passif_simple(r, ci, "Rb"), fontsize=9))
     d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
-    d.add(elm.Dot().at(in_pt).label("IN", loc="left"))
+    dot = elm.Dot().at(in_pt)
+    if in_label:
+        dot = dot.label(in_label, loc="left")
+    d.add(dot)
     cx, cy = t.collector
     out_pt = (cx, cy + 1.0)
-    d.add(elm.Line().at(t.collector).to(out_pt).label("LOAD", loc="right"))
-    d.add(elm.Line().at(t.emitter).down(0.5))
-    d.add(elm.Ground())
+    if loads_l:
+        d.add(elm.Line().at(t.collector).up(0.35))
+        d.add(elm.Inductor2(nturns=4).up(1.1).label(_lbl(loads_l[0], ci), loc="right"))
+        d.add(elm.Line().up(0.35).label("VCC", loc="top"))
+        line = elm.Line().at(t.collector).to((cx + 1.0, cy))
+        if out_label:
+            line = line.label(out_label, loc="right")
+        d.add(line)
+        out_pt = (cx + 1.0, cy)
+    else:
+        line = elm.Line().at(t.collector).to(out_pt)
+        if out_label:
+            line = line.label(out_label, loc="right")
+        d.add(line)
+    emitter_net = q_pins.get("E")
+    if emitter_net == "GND":
+        d.add(elm.Line().at(t.emitter).down(0.5))
+        d.add(elm.Ground())
+    else:
+        d.add(elm.Dot().at(t.emitter))
     if titre:
         _titre_montage(d, result, (cx, cy + 1.8))
-    return {"in": in_pt, "out": out_pt}
+    return {"in": in_pt, "out": out_pt, "title": (cx, cy + 1.8)}
 
 
-def _draw_common_emitter(d, result, ci, origin=(3, 0), titre=True):
+def _draw_common_emitter(d, result, ci, origin=(3, 0), titre=True,
+                         in_label="IN", out_label="OUT"):
     """@brief Schéma « Amplificateur émetteur commun ». Paramétrique en origine,
     renvoie ses ancres {"in","out"} (réutilisé en vue chaîne)."""
     q = _ref(result, ci, "Q")
@@ -2703,21 +2862,38 @@ def _draw_common_emitter(d, result, ci, origin=(3, 0), titre=True):
     t = d.add(elm.BjtNpn().at(origin))
     bx, by = t.base
     in_pt = (bx - 2.6, by)
-    _r_simple(d, rb, ci, in_pt, (bx - 0.9, by), "Rb")
+    _r_simple(d, rb, ci, in_pt, (bx - 0.9, by), None)
+    d.add(elm.Label().at(((in_pt[0] + bx - 0.9) / 2, by - 0.78))
+          .label(_texte_passif_simple(rb, ci, "Rb"), fontsize=8))
     d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
-    d.add(elm.Dot().at(in_pt).label("IN", loc="left"))
+    dot = elm.Dot().at(in_pt)
+    if in_label:
+        dot = dot.label(in_label, loc="left")
+    d.add(dot)
     # Rc en boîte Z verticale, du collecteur vers VCC
     cx, cy = t.collector
-    _r_simple(d, rc, ci, (cx, cy + 0.5), (cx, cy + 1.9), "Rc", label_loc="left")
+    _r_simple(d, rc, ci, (cx, cy + 0.5), (cx, cy + 1.9), None)
+    d.add(elm.Label().at((cx - 1.05, cy + 1.65))
+          .label(_texte_passif_simple(rc, ci, "Rc"), fontsize=8))
     d.add(elm.Line().at(t.collector).to((cx, cy + 0.5)))
     d.add(elm.Line().at((cx, cy + 1.9)).up(0.4).label("VCC", loc="top"))
-    d.add(elm.Line().at(t.emitter).down(0.5))
-    d.add(elm.Ground())
+    emitter_net = q_pins.get("E")
+    if emitter_net == "GND":
+        d.add(elm.Line().at(t.emitter).down(0.5))
+        d.add(elm.Ground())
+    else:
+        d.add(elm.Dot().at(t.emitter))
     out_pt = (cx + 1.5, cy)
-    d.add(elm.Line().at(t.collector).to(out_pt).label("OUT", loc="right"))
+    line = elm.Line().at(t.collector).to(out_pt)
+    if out_label:
+        line = line.label(out_label, loc="right")
+    d.add(line)
     if titre:
         _titre_montage(d, result, (cx, cy + 2.7))
-    return {"in": in_pt, "out": out_pt}
+    return {"in": in_pt, "out": out_pt, "title": (cx, cy + 2.7),
+            "nets": {q_pins.get("B"): in_pt,
+                     q_pins.get("C"): t.collector,
+                     q_pins.get("E"): t.emitter}}
 
 
 def _draw_mosfet_switch(d, result, ci):
@@ -2772,6 +2948,13 @@ def _draw_relay_driver(d, result, ci):
 
     # Contrôle : résistance de base en boîte Z cliquable, ou ligne directe
     cxp, cyp = ctrl_pin
+    if not rbs:
+        ctrl_net = None
+        if qs:
+            ctrl_net = ci.get(qs[0], {}).get("pins", {}).get("B")
+        elif ms:
+            ctrl_net = ci.get(ms[0], {}).get("pins", {}).get("G")
+        rbs = _refs_type_sur_net(ci, "R", ctrl_net)
     if rbs:
         _r_simple(d, rbs[0], ci, (cxp - 2.4, cyp), (cxp - 0.7, cyp), "Rb")
         d.add(elm.Line().at((cxp - 0.7, cyp)).to((cxp, cyp)))
@@ -2841,7 +3024,8 @@ def _draw_current_mirror(d, result, ci):
     _titre_montage(d, result, ((t1.collector[0] + t2.collector[0]) / 2, iref_top + 0.7))
 
 
-def _draw_suiveur_emetteur(d, result, ci, origin=(3, 0), titre=True):
+def _draw_suiveur_emetteur(d, result, ci, origin=(3, 0), titre=True,
+                           in_label="IN", out_label="OUT"):
     """@brief « Collecteur commun (suiveur d'émetteur) ». Paramétrique en origine."""
     q = _ref(result, ci, "Q")
     rs = _refs(result, ci, "R")
@@ -2854,26 +3038,42 @@ def _draw_suiveur_emetteur(d, result, ci, origin=(3, 0), titre=True):
     if rb:
         _r_simple(d, rb, ci, in_pt, (bx - 0.9, by), "Rb")
         d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
-        d.add(elm.Dot().at(in_pt).label("IN", loc="left"))
+        dot = elm.Dot().at(in_pt)
+        if in_label:
+            dot = dot.label(in_label, loc="left")
+        d.add(dot)
     else:
         in_pt = (bx - 1.0, by)
-        d.add(elm.Line().at(t.base).to(in_pt).label("IN", loc="left"))
+        line = elm.Line().at(t.base).to(in_pt)
+        if in_label:
+            line = line.label(in_label, loc="left")
+        d.add(line)
     # Collecteur -> VCC
     d.add(elm.Line().at(t.collector).up(1).label("VCC", loc="top"))
     # Émetteur -> Re -> GND, sortie au point d'émetteur
     ex, ey = t.emitter
     out_pt = (ex + 1.4, ey)
-    d.add(elm.Line().at(t.emitter).to(out_pt).label("OUT", loc="right"))
-    _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), "Re", label_loc="right")
+    line = elm.Line().at(t.emitter).to(out_pt)
+    if out_label:
+        line = line.label(out_label, loc="right")
+    d.add(line)
+    _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), None)
+    d.add(elm.Label().at((ex + 0.9, ey - 1.25))
+          .label(_texte_passif_simple(re, ci, "Re"), fontsize=9))
     d.add(elm.Line().at(t.emitter).to((ex, ey - 0.6)))
     d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
     d.add(elm.Ground())
     if titre:
         _titre_montage(d, result, (t.collector[0], t.collector[1] + 1.8))
-    return {"in": in_pt, "out": out_pt}
+    return {"in": in_pt, "out": out_pt,
+            "title": (t.collector[0], t.collector[1] + 1.8),
+            "nets": {q_pins.get("B"): in_pt,
+                     q_pins.get("C"): t.collector,
+                     q_pins.get("E"): out_pt}}
 
 
-def _draw_push_pull(d, result, ci, origin=(3, 0), titre=True):
+def _draw_push_pull(d, result, ci, origin=(3, 0), titre=True,
+                    in_label="IN", out_label="OUT"):
     """@brief « Étage push-pull ». Paramétrique en origine."""
     ox, oy = origin
     qn = d.add(elm.BjtNpn().at((ox, oy + 1.7)))
@@ -2883,7 +3083,10 @@ def _draw_push_pull(d, result, ci, origin=(3, 0), titre=True):
     midb = ((qn.base[0] + qp.base[0]) / 2, (qn.base[1] + qp.base[1]) / 2)
     d.add(elm.Dot().at(midb))
     in_pt = (midb[0] - 1.8, midb[1])
-    d.add(elm.Line().at(midb).to(in_pt).label("IN", loc="left"))
+    line = elm.Line().at(midb).to(in_pt)
+    if in_label:
+        line = line.label(in_label, loc="left")
+    d.add(line)
     # Collecteurs : NPN -> VCC, PNP -> GND
     d.add(elm.Line().at(qn.collector).up(1.0).label("VCC", loc="top"))
     d.add(elm.Line().at(qp.collector).down(1.0))
@@ -2893,20 +3096,28 @@ def _draw_push_pull(d, result, ci, origin=(3, 0), titre=True):
     mide = ((qn.emitter[0] + qp.emitter[0]) / 2, (qn.emitter[1] + qp.emitter[1]) / 2)
     d.add(elm.Dot().at(mide))
     out_pt = (mide[0] + 2.0, mide[1])
-    d.add(elm.Line().at(mide).to(out_pt).label("OUT", loc="right"))
+    line = elm.Line().at(mide).to(out_pt)
+    if out_label:
+        line = line.label(out_label, loc="right")
+    d.add(line)
     if titre:
         _titre_montage(d, result, (qn.collector[0], qn.collector[1] + 1.8))
-    return {"in": in_pt, "out": out_pt}
+    return {"in": in_pt, "out": out_pt,
+            "title": (qn.collector[0], qn.collector[1] + 1.8)}
 
 
-def _draw_darlington(d, result, ci, origin=(3, 0), titre=True):
+def _draw_darlington(d, result, ci, origin=(3, 0), titre=True,
+                     in_label="IN", out_label="OUT"):
     """@brief « Paire Darlington ». Paramétrique en origine."""
     ox, oy = origin
     re = _ref(result, ci, "R")
     q1 = d.add(elm.BjtNpn().at((ox, oy + 1.7)))
     q2 = d.add(elm.BjtNpn().at((ox + 1.8, oy - 1.4)))
     in_pt = (q1.base[0] - 1.4, q1.base[1])
-    d.add(elm.Line().at(q1.base).to(in_pt).label("IN", loc="left"))
+    line = elm.Line().at(q1.base).to(in_pt)
+    if in_label:
+        line = line.label(in_label, loc="left")
+    d.add(line)
     # Collecteurs communs -> VCC (routage orthogonal : verticales + horizontale)
     d.add(elm.Line().at(q1.collector).up(0.9))
     top = d.here
@@ -2920,14 +3131,19 @@ def _draw_darlington(d, result, ci, origin=(3, 0), titre=True):
     # Sortie sur l'émetteur de Q2, Re vers GND (étiquette à gauche, loin de OUT)
     ex, ey = q2.emitter
     out_pt = (ex + 1.6, ey)
-    d.add(elm.Line().at(q2.emitter).to(out_pt).label("OUT", loc="right"))
-    _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), "Re", label_loc="left")
+    line = elm.Line().at(q2.emitter).to(out_pt)
+    if out_label:
+        line = line.label(out_label, loc="right")
+    d.add(line)
+    _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), None)
+    d.add(elm.Label().at((ex + 0.85, ey - 1.25))
+          .label(_texte_passif_simple(re, ci, "Re"), fontsize=9))
     d.add(elm.Line().at(q2.emitter).to((ex, ey - 0.6)))
     d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
     d.add(elm.Ground())
     if titre:
         _titre_montage(d, result, (top[0], top[1] + 1.2))
-    return {"in": in_pt, "out": out_pt}
+    return {"in": in_pt, "out": out_pt, "title": (top[0], top[1] + 1.2)}
 
 
 # ── Pattern registry ──────────────────────────────────────────────────────────
