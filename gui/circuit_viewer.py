@@ -489,7 +489,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         fig = impedance_schematic.dessiner_pont(_pont_struct, _comps)
     elif _chaine is not None:
         # Îlot multi-AOP en chaîne : un seul grand schéma, étages reliés OUT->IN.
-        fig = _make_chain_fig(_chaine, comp_info)
+        fig = _make_chain_fig(_chaine, comp_info, matches=_matches_for_island(ilot, results))
     elif _branches is not None:
         # Îlot multi-AOP branché (P/I/D parallèles -> sommateur…) : schéma en couches.
         fig = _make_branched_fig(_branches, comp_info)
@@ -762,7 +762,7 @@ def _make_fig(result, comp_info, drawer_fn):
     return fig
 
 
-def _make_chain_fig(ordered, comp_info):
+def _make_chain_fig(ordered, comp_info, matches=None):
     """@brief Figure d'une chaîne de montages connectés (vue îlot multi-AOP).
 
     Large par construction (un bloc par étage) : destinée à un conteneur à
@@ -783,7 +783,8 @@ def _make_chain_fig(ordered, comp_info):
         with schemdraw.Drawing(canvas=ax, show=False) as d:
             d.config(fontsize=12, inches_per_unit=0.5)
             d._z_hitboxes = []
-            _draw_island_chain(d, ordered, ci=comp_info)
+            _draw_island_chain(d, ordered, ci=comp_info,
+                               couplages=(matches or ordered))
             fig._z_hitboxes = list(d._z_hitboxes)
             try:
                 bb = d.get_bbox()
@@ -2136,8 +2137,40 @@ def _dessiner_montage_a(d, match, ci, origin, in_label, out_label):
     return res
 
 
-def _draw_island_chain(d, ordered, ci):
+def _couplage_entre(m_out, m_in, couplages, find, ci):
+    """@brief Couplage reliant la sortie de m_out à l'entrée de m_in, ou None."""
+    out = _io_montage(m_out, ci)[1]
+    ins = _io_montage(m_in, ci)[0]
+    if out is None:
+        return None
+    cibles = {find(n) for n in ins if n}
+    for z in couplages:
+        a, b = z["nodes"]
+        if (find(out) in (find(a), find(b))
+                and (find(a) in cibles or find(b) in cibles)):
+            return z
+    return None
+
+
+def _fil_avec_couplage(d, out_pt, in_pt, cc, ci):
+    """@brief Relie out_pt -> in_pt en intercalant le symbole du couplage."""
+    midx = (out_pt[0] + in_pt[0]) / 2
+    p1 = (midx - 0.6, out_pt[1])
+    p2 = (midx + 0.6, out_pt[1])
+    ref = cc.get("composition") if isinstance(cc.get("composition"), str) else None
+    refs = cc.get("refs") or ([ref] if ref else [])
+    nom = refs[0] if refs else "Cc"
+    d.add(elm.Line().at(out_pt).to(p1).color(_WIRE))
+    d.add(elm.Capacitor().at(p1).to(p2).label(nom, loc="top"))
+    d.add(elm.Line().at(p2).to((in_pt[0], out_pt[1])).color(_WIRE))
+    d.add(elm.Line().at((in_pt[0], out_pt[1])).to(in_pt).color(_WIRE))
+
+
+def _draw_island_chain(d, ordered, ci, couplages=None):
     """@brief Dessine une chaîne de montages reliés OUT(N) -> IN(N+1).
+
+    Si un couplage AC (Impédance Z 2 nœuds) relie deux étages, il est dessiné
+    sur le fil.
 
     Chaque montage est posé à un x croissant ; un fil en Z relie la sortie d'un
     bloc à l'entrée du suivant. Premier bloc étiqueté VIN, dernier VOUT, internes
@@ -2160,10 +2193,16 @@ def _draw_island_chain(d, ordered, ci):
         ancres.append(_dessiner_montage_a(d, match, ci, origin, in_label, out_label))
         _annoter_etage(d, ancres[-1], match)
 
+    coupl = [m for m in (couplages or []) if _est_couplage(m)]
+    find = _couplage_find(couplages or [])
     for i in range(n - 1):
         out_pt = ancres[i]["out"]
         in_pt = ancres[i + 1]["in"]
-        _fil_en_z(d, out_pt, in_pt)
+        cc = _couplage_entre(ordered[i], ordered[i + 1], coupl, find, ci)
+        if cc is not None:
+            _fil_avec_couplage(d, out_pt, in_pt, cc, ci)
+        else:
+            _fil_en_z(d, out_pt, in_pt)
 
 
 def _oy_for(match):

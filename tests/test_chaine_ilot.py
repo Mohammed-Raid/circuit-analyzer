@@ -664,3 +664,11 @@ def test_chaine_2ce_dessine_des_transistors_pas_des_aop():
     assert not any("non disponible" in t for t in txts)
     assert sum("Émetteur commun" in t for t in txts) >= 2
     assert not any("Suiveur" in t for t in txts)
+
+
+def test_chaine_2ce_affiche_le_couplage_cc():
+    matches, ci = _cascade_2ce()
+    ordre = cv._ordonner_montages_flux(matches, ci)
+    fig = cv._make_chain_fig(ordre, ci, matches=matches)
+    txts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    assert any("Cc" in t for t in txts)
