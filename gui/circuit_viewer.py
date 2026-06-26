@@ -1843,12 +1843,22 @@ def _z_box(d, p1, p2, name, bloc, ci, label_loc="top"):
         valign=label["va"],
         color=_Z_EDGE,
     ))
+    _enregistrer_hitbox(d, p1, p2, bloc["refs"], bloc["composition"])
+
+
+def _enregistrer_hitbox(d, p1, p2, refs, composition, pad=0.5):
+    """@brief Enregistre une zone cliquable (drill-down R/L/C) sur d._z_hitboxes.
+
+    Permet de rendre n'importe quel symbole cliquable (boîte Z OU symbole réel
+    comme un condensateur de liaison), pas seulement les ResistorIEC bleues.
+    @param p1/p2 Extrémités du symbole. @param refs Composants bruts du dipôle.
+    @param composition Expression symbolique pour le sous-schéma.
+    """
     hb = getattr(d, "_z_hitboxes", None)
     if hb is not None:
-        pad = 0.5
         hb.append((min(p1[0], p2[0]) - pad, max(p1[0], p2[0]) + pad,
                    min(p1[1], p2[1]) - pad, max(p1[1], p2[1]) + pad,
-                   list(bloc["refs"]), bloc["composition"]))
+                   list(refs), composition))
 
 
 def _draw_aop_inverseur_zin_zf(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT"):
@@ -2219,10 +2229,12 @@ def _bloc_couplage(cc):
 
 
 def _dessiner_symbole_couplage(d, p1, p2, cc, ci):
-    """@brief Dessine un couplage : C simple ou boîte Z pour un réseau composé."""
+    """@brief Dessine un couplage : C simple (symbole + hitbox cliquable) ou
+    boîte Z pour un réseau composé. Dans les deux cas le couplage est cliquable."""
     if _couplage_simple_cap(cc, ci):
-        ref = _refs_couplage(cc)[0]
-        d.add(elm.Capacitor().at(p1).to(p2).label(ref, loc="top"))
+        bloc = _bloc_couplage(cc)
+        d.add(elm.Capacitor().at(p1).to(p2).label(bloc["composition"], loc="top"))
+        _enregistrer_hitbox(d, p1, p2, bloc["refs"], bloc["composition"])
     else:
         _z_box(d, p1, p2, "Zc", _bloc_couplage(cc), ci)
 

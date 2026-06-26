@@ -690,6 +690,17 @@ def test_chaine_2ce_affiche_le_couplage_cc():
     assert any("Cc" in t for t in txts)
 
 
+def test_couplage_cap_simple_est_cliquable():
+    # Un condensateur de liaison unique doit etre cliquable (hitbox enregistree),
+    # comme les boites Z composites — pas un symbole muet.
+    matches, ci = _cascade_2ce()
+    ordre = cv._ordonner_montages_flux(matches, ci)
+    fig = cv._make_chain_fig(ordre, ci, matches=matches)
+    assert len(fig._z_hitboxes) >= 1
+    refs = {r for hb in fig._z_hitboxes for r in hb[4]}
+    assert "Cc" in refs
+
+
 def test_chaine_couplage_complexe_affiche_boite_z():
     from circuit_analyzer.composant import Composant
     comps = [
