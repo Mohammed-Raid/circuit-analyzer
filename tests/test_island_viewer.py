@@ -79,6 +79,27 @@ def test_dipole_model_exposes_raw_components_with_real_symbols():
     assert syms["R8"] == "resistor"
 
 
+def test_cascade_2ce_ne_tombe_pas_sur_la_grille():
+    from circuit_analyzer import detecteur
+    from gui import circuit_viewer
+    g = construire_graphe([
+        Composant("Q1", "Q", {"B": "NB1", "C": "NC1", "E": "GND"}),
+        Composant("Rb1", "R", {"1": "VCC", "2": "NB1"}, "100k"),
+        Composant("Rc1", "R", {"1": "VCC", "2": "NC1"}, "4.7k"),
+        Composant("Cc", "C", {"1": "NC1", "2": "NB2"}, "1u"),
+        Composant("Q2", "Q", {"B": "NB2", "C": "NC2", "E": "GND"}),
+        Composant("Rb2", "R", {"1": "VCC", "2": "NB2"}, "100k"),
+        Composant("Rc2", "R", {"1": "VCC", "2": "NC2"}, "1k"),
+    ])
+    res = detecteur.analyser(g)
+    ci = {r: a for r, a in ((c.ref, {"type": c.type, "value": c.value, "pins": c.pins})
+                            for c in g.graph["components"].values())}
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    chaine = circuit_viewer._ordonner_montages_flux(
+        circuit_viewer._matches_for_island(ilot, res), ci)
+    assert chaine is not None and len(chaine) == 2
+
+
 # ── Plan / layout pur (unites construites directement) ────────────────────────
 
 def test_plan_drops_nc_and_classifies_stub_vs_column():
