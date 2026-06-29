@@ -51,6 +51,13 @@ BJT_SWITCH = (
         ("Rb", "R", "10k", {"1": "NIN", "2": "NB"}),
         ("L1", "L", "10mH", {"1": "VCC", "2": "NL"})),
 )
+MOSFET_SWITCH = (
+    {"circuit_type": "MOSFET en commutation",
+     "components": ["M1", "Rg", "L1"], "nodes": ["NG", "ND", "GND"]},
+    _ci(("M1", "M", "", {"G": "NG", "D": "ND", "S": "GND"}),
+        ("Rg", "R", "100", {"1": "NIN", "2": "NG"}),
+        ("L1", "L", "10mH", {"1": "VCC", "2": "ND"})),
+)
 
 
 def test_nouveaux_drawers_transistor_enregistres():
@@ -81,6 +88,16 @@ def test_resistances_affichees_en_etiquette():
 def test_bjt_commutation_affiche_charge_inductive():
     _fig, txts = _render(*BJT_SWITCH)
     assert any("L1" in t for t in txts)
+
+
+def test_bjt_commutation_titre_degage_charge_verticale():
+    res = _ancres(cv._draw_bjt_switch, *BJT_SWITCH, origin=(0, 0))
+    assert res["title"][1] - res["out"][1] >= 2.25
+
+
+def test_mosfet_commutation_titre_degage_charge_verticale():
+    res = _ancres(cv._draw_mosfet_switch, *MOSFET_SWITCH, origin=(0, 0))
+    assert res["title"][1] - res["out"][1] >= 2.25
 
 
 def test_titre_role_transistor_affiche():
@@ -130,3 +147,96 @@ def test_commande_relais_affiche_rb_satellite():
              ("Rb", "R", "10k", {"1": "NIN", "2": "NB"}))
     _fig, txts = _render(result, ci)
     assert any("Rb" in t for t in txts)
+
+
+def _render_ilot_xml(nom):
+    from circuit_analyzer import detecteur
+    from circuit_analyzer.composant import construire_graphe
+    from circuit_analyzer.xml import lire_xml
+
+    comps = lire_xml(f"circuits_industriels/{nom}")
+    g = construire_graphe(comps)
+    res = detecteur.analyser(g)
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    matches = cv._matches_for_island(ilot, res)
+    ordre = cv._ordonner_montages_flux(matches, ci)
+    if ordre:
+        fig = cv._make_chain_fig(ordre, ci, matches=matches)
+    else:
+        principal = cv._circuit_principal_ilot(ilot, g, res)
+        fig = cv._make_fig(principal, ci, cv._DRAWERS[principal["circuit_type"]],
+                           matches=matches)
+    txts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    return fig, txts
+
+
+def _hitbox_refsets(fig):
+    return [set(hb[4]) for hb in getattr(fig, "_z_hitboxes", [])]
+
+
+def _assert_texts_do_not_overlap(fig, needle_a, needle_b):
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    canvas = FigureCanvasAgg(fig)
+    canvas.draw()
+    renderer = canvas.get_renderer()
+    boxes_a = [
+        t.get_window_extent(renderer)
+        for ax in fig.axes for t in ax.texts
+        if needle_a in t.get_text()
+    ]
+    boxes_b = [
+        t.get_window_extent(renderer)
+        for ax in fig.axes for t in ax.texts
+        if needle_b in t.get_text()
+    ]
+    assert boxes_a and boxes_b
+    assert not any(a.overlaps(b) for a in boxes_a for b in boxes_b)
+
+
+def test_darlington_xml_absorbe_resistance_emetteur_simple():
+    fig, txts = _render_ilot_xml("tr_paire_darlington.xml")
+    assert not any("non disponible" in t for t in txts)
+    assert {"R1"} not in _hitbox_refsets(fig)
+
+
+def test_chaine_darlington_ce_absorbe_resistance_emetteur_simple():
+    fig, txts = _render_ilot_xml("ilot_chaine_darlington_ce.xml")
+    refs = _hitbox_refsets(fig)
+    assert not any("non disponible" in t for t in txts)
+    assert {"C1"} in refs
+    assert {"R1"} not in refs
+
+
+def test_darlington_reel_absorbe_resistance_entree_simple():
+    fig, txts = _render_ilot_xml("ilot_reel_darlington_relais_rlc.xml")
+    refs = _hitbox_refsets(fig)
+    assert not any("non disponible" in t for t in txts)
+    assert {"R1"} not in refs
+    assert {"R2", "C1"} in refs
+    assert {"L1", "R3", "C2", "R4"} in refs
+
+
+def test_bjt_commutation_xml_affiche_charge_inductive():
+    fig, txts = _render_ilot_xml("tr_bjt_commutation.xml")
+    assert not any("non disponible" in t for t in txts)
+    assert any("L1" in t for t in txts)
+    assert {"L1"} not in _hitbox_refsets(fig)
+
+
+def test_mosfet_commutation_xml_affiche_charge_inductive():
+    fig, txts = _render_ilot_xml("tr_mosfet_commutation.xml")
+    assert not any("non disponible" in t for t in txts)
+    assert any("L1" in t for t in txts)
+    assert {"L1"} not in _hitbox_refsets(fig)
+
+
+def test_commutation_bjt_vcc_ne_chevauche_pas_charge():
+    fig, _txts = _render_ilot_xml("tr_bjt_commutation.xml")
+    _assert_texts_do_not_overlap(fig, "VCC", "L1")
+
+
+def test_commutation_mosfet_vcc_ne_chevauche_pas_charge():
+    fig, _txts = _render_ilot_xml("tr_mosfet_commutation.xml")
+    _assert_texts_do_not_overlap(fig, "VCC", "L1")

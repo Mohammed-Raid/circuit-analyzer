@@ -2276,8 +2276,12 @@ def _dessiner_impedances_locales(d, stages, ancres, z_matches, z_utilises, ci):
     for z in z_matches:
         if id(z) in z_utilises:
             continue
+        zrefs = set(_refs_couplage(z))
         znets = [n for n in z.get("nodes", []) if n]
         for stage, a in zip(stages, ancres):
+            absorbees = set(a.get("absorbed_refs", ()))
+            if zrefs and zrefs.issubset(absorbees):
+                break
             net_pts = a.get("nets", {})
             communs = [n for n in znets if n in net_pts]
             if not communs:
@@ -2477,6 +2481,68 @@ def _refs_type_sur_net(ci, typ, net):
         ref for ref, info in (ci or {}).items()
         if info.get("type") == typ and net in ((info.get("pins") or {}).values())
     ]
+
+
+def _autre_net_passif(ci, ref, net):
+    """@brief Autre borne d'un passif `ref` connecte a `net`, ou None."""
+    pins = (ci.get(ref, {}) or {}).get("pins", {}) or {}
+    vals = [n for n in pins.values() if n]
+    if net not in vals:
+        return None
+    return next((n for n in vals if n != net), None)
+
+
+def _ref_passif_simple(ci, types, net, pred_autre):
+    """@brief Unique passif de `types` entre `net` et un autre net valide.
+
+    Si plusieurs passifs existent (reseau complexe), on ne choisit rien : la Z
+    locale reste dessinee et cliquable.
+    """
+    candidats = []
+    for ref, info in (ci or {}).items():
+        if info.get("type") not in types:
+            continue
+        autre = _autre_net_passif(ci, ref, net)
+        if autre and pred_autre(autre):
+            candidats.append(ref)
+    return candidats[0] if len(candidats) == 1 else None
+
+
+def _ref_passif_simple_vers_masse(ci, types, net):
+    """@brief Unique passif simple entre `net` et une masse."""
+    return _ref_passif_simple(ci, types, net, is_ground_net)
+
+
+def _ref_passif_simple_vers_alim(ci, types, net):
+    """@brief Unique passif simple entre `net` et une alimentation."""
+    return _ref_passif_simple(ci, types, net, is_power_net)
+
+
+def _ref_resistance_entree_simple(ci, net):
+    """@brief Unique resistance serie entre `net` et un net signal externe."""
+    def est_signal_entree(autre):
+        n = (autre or "").strip().upper()
+        return (not is_ground_net(autre)
+                and (not is_power_net(autre) or n in {"VIN", "VIN+", "VIN-"}))
+
+    return _ref_passif_simple(
+        ci, ("R",), net,
+        est_signal_entree,
+    )
+
+
+def _charge_verticale(d, ref, ci, longueur=1.1):
+    """@brief Dessine une charge simple verticale (L/R/C) et son libelle."""
+    typ = ci.get(ref, {}).get("type")
+    if typ in ("L", "K"):
+        elem = elm.Inductor2(nturns=4)
+    elif typ == "C":
+        elem = elm.Capacitor()
+    elif typ == "R":
+        elem = elm.Resistor()
+    else:
+        elem = elm.Line()
+    d.add(elem.up(longueur).label(_lbl(ref, ci), loc="right"))
 
 
 def _annoter_etage(d, ancres, match):
@@ -2863,7 +2929,12 @@ def _draw_bjt_switch(d, result, ci, origin=(3, 0), titre=True,
     """@brief Schéma « Transistor en commutation ». Paramétrique en origine."""
     q = _ref(result, ci, "Q"); r = _ref(result, ci, "R")
     q_pins = ci.get(q, {}).get("pins", {})
-    loads_l = _refs(result, ci, "L")
+    absorbed_refs = {r} if r in ci else set()
+    load = _ref_on_net(_refs(result, ci, "L"), ci, q_pins.get("C"))
+    if not load:
+        load = _ref_passif_simple_vers_alim(ci, ("L", "R", "C"), q_pins.get("C"))
+    if load:
+        absorbed_refs.add(load)
     t = d.add(elm.BjtNpn().at(origin))
     bx, by = t.base
     in_pt = (bx - 2.6, by)
@@ -2877,10 +2948,11 @@ def _draw_bjt_switch(d, result, ci, origin=(3, 0), titre=True,
     d.add(dot)
     cx, cy = t.collector
     out_pt = (cx, cy + 1.0)
-    if loads_l:
+    if load:
         d.add(elm.Line().at(t.collector).up(0.35))
-        d.add(elm.Inductor2(nturns=4).up(1.1).label(_lbl(loads_l[0], ci), loc="right"))
-        d.add(elm.Line().up(0.35).label("VCC", loc="top"))
+        _charge_verticale(d, load, ci)
+        d.add(elm.Line().up(0.75))
+        d.add(elm.Label().at((d.here[0] - 0.85, d.here[1])).label("VCC"))
         line = elm.Line().at(t.collector).to((cx + 1.0, cy))
         if out_label:
             line = line.label(out_label, loc="right")
@@ -2897,9 +2969,14 @@ def _draw_bjt_switch(d, result, ci, origin=(3, 0), titre=True,
         d.add(elm.Ground())
     else:
         d.add(elm.Dot().at(t.emitter))
+    title_pt = (cx, cy + (3.0 if load else 1.8))
     if titre:
-        _titre_montage(d, result, (cx, cy + 1.8))
-    return {"in": in_pt, "out": out_pt, "title": (cx, cy + 1.8)}
+        _titre_montage(d, result, title_pt)
+    return {"in": in_pt, "out": out_pt, "title": title_pt,
+            "nets": {q_pins.get("B"): in_pt,
+                     q_pins.get("C"): out_pt,
+                     q_pins.get("E"): t.emitter},
+            "absorbed_refs": absorbed_refs}
 
 
 def _draw_common_emitter(d, result, ci, origin=(3, 0), titre=True,
@@ -2950,19 +3027,47 @@ def _draw_common_emitter(d, result, ci, origin=(3, 0), titre=True,
                      q_pins.get("E"): t.emitter}}
 
 
-def _draw_mosfet_switch(d, result, ci):
+def _draw_mosfet_switch(d, result, ci, origin=(3, 0), titre=True,
+                        in_label="IN", out_label="LOAD"):
     """@brief Dessine le schéma « MOSFET en commutation »."""
     m = _ref(result, ci, "M"); r = _ref(result, ci, "R")
-    t = d.add(elm.NFet().at((3, 0)))
+    m_pins = ci.get(m, {}).get("pins", {})
+    absorbed_refs = {r} if r in ci else set()
+    load = _ref_passif_simple_vers_alim(ci, ("L", "R", "C"), m_pins.get("D"))
+    if load:
+        absorbed_refs.add(load)
+    t = d.add(elm.NFet().at(origin))
     # NFet 0.22 : grille à DROITE -> Rg en boîte Z vers la droite.
     gx, gy = t.gate
     _r_simple(d, r, ci, (gx + 0.9, gy), (gx + 2.6, gy), "Rg")
     d.add(elm.Line().at(t.gate).to((gx + 0.9, gy)))
-    d.add(elm.Dot().at((gx + 2.6, gy)).label("IN", loc="right"))
-    d.add(elm.Line().at(t.drain).up(1).label("LOAD", loc="right"))
+    in_pt = (gx + 2.6, gy)
+    dot = elm.Dot().at(in_pt)
+    if in_label:
+        dot = dot.label(in_label, loc="right")
+    d.add(dot)
+    if load:
+        d.add(elm.Line().at(t.drain).up(0.35))
+        _charge_verticale(d, load, ci)
+        d.add(elm.Line().up(0.75))
+        d.add(elm.Label().at((d.here[0] - 0.85, d.here[1])).label("VCC"))
+        out_pt = t.drain
+    else:
+        line = elm.Line().at(t.drain).up(1)
+        if out_label:
+            line = line.label(out_label, loc="right")
+        d.add(line)
+        out_pt = d.here
     d.add(elm.Line().at(t.source).down(0.5))
     d.add(elm.Ground())
-    _titre_montage(d, result, (t.drain[0], t.drain[1] + 1.8))
+    title_pt = (t.drain[0], t.drain[1] + (3.0 if load else 1.8))
+    if titre:
+        _titre_montage(d, result, title_pt)
+    return {"in": in_pt, "out": out_pt, "title": title_pt,
+            "nets": {m_pins.get("G"): in_pt,
+                     m_pins.get("D"): t.drain,
+                     m_pins.get("S"): t.source},
+            "absorbed_refs": absorbed_refs}
 
 
 def _draw_high_side_mosfet(d, result, ci):
@@ -3173,21 +3278,37 @@ def _draw_darlington(d, result, ci, origin=(3, 0), titre=True,
     emetteurs = {pins[r].get("E") for r in qs}
     q2ref = next((r for r in qs if pins[r].get("B") in emetteurs), qs[-1] if qs else None)
     q1ref = next((r for r in qs if r != q2ref), qs[0] if qs else None)
+    q1pins = pins.get(q1ref, {})
     q2pins = pins.get(q2ref, {})
     config = _darlington_config(q2pins) if q2pins else "suiveur"
+    absorbed_refs = set()
+    rin = _ref_resistance_entree_simple(ci, q1pins.get("B"))
+    if rin:
+        absorbed_refs.add(rin)
 
     q1 = d.add(elm.BjtNpn().at((ox, oy + 1.7)))
     q2 = d.add(elm.BjtNpn().at((ox + 1.8, oy - 1.4)))
-    in_pt = (q1.base[0] - 1.4, q1.base[1])
-    line = elm.Line().at(q1.base).to(in_pt)
-    if in_label:
-        line = line.label(in_label, loc="left")
-    d.add(line)
+    if rin:
+        in_pt = (q1.base[0] - 2.8, q1.base[1])
+        base_node = (q1.base[0] - 0.65, q1.base[1])
+        _r_simple(d, rin, ci, in_pt, (q1.base[0] - 1.05, q1.base[1]), "Rb")
+        d.add(elm.Line().at((q1.base[0] - 1.05, q1.base[1])).to(q1.base))
+        dot = elm.Dot().at(in_pt)
+        if in_label:
+            dot = dot.label(in_label, loc="left")
+        d.add(dot)
+    else:
+        in_pt = (q1.base[0] - 1.4, q1.base[1])
+        base_node = q1.base
+        line = elm.Line().at(q1.base).to(in_pt)
+        if in_label:
+            line = line.label(in_label, loc="left")
+        d.add(line)
     # E(Q1) -> B(Q2) : descente verticale puis horizontale (pas de diagonale)
     d.add(elm.Line().at(q1.emitter).toy(q2.base[1]))
     d.add(elm.Line().tox(q2.base[0]))
     d.add(elm.Dot().at(q2.base))
-    nets = {pins.get(q1ref, {}).get("B"): in_pt}
+    nets = {q1pins.get("B"): base_node}
 
     if config == "emetteur_commun":
         # Q1.C -> VCC ; sortie sur le COLLECTEUR de Q2 ; émetteur de Q2 -> GND.
@@ -3209,7 +3330,12 @@ def _draw_darlington(d, result, ci, origin=(3, 0), titre=True,
             nets[q2pins["E"]] = q2.emitter
     else:
         # Suiveur : collecteurs communs -> VCC, sortie sur l'émetteur de Q2 via Re.
-        re = _ref(result, ci, "R")
+        rs = _refs(result, ci, "R")
+        re = _ref_on_net(rs, ci, q2pins.get("E"))
+        if not re:
+            re = _ref_passif_simple_vers_masse(ci, ("R",), q2pins.get("E"))
+        if re:
+            absorbed_refs.add(re)
         d.add(elm.Line().at(q1.collector).up(0.9))
         top = d.here
         d.add(elm.Line().at(q2.collector).toy(top[1]))
@@ -3221,19 +3347,21 @@ def _draw_darlington(d, result, ci, origin=(3, 0), titre=True,
         if out_label:
             line = line.label(out_label, loc="right")
         d.add(line)
-        _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), None)
-        d.add(elm.Label().at((ex + 0.85, ey - 1.25))
-              .label(_texte_passif_simple(re, ci, "Re"), fontsize=9))
-        d.add(elm.Line().at(q2.emitter).to((ex, ey - 0.6)))
-        d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
-        d.add(elm.Ground())
+        if re:
+            _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), None)
+            d.add(elm.Label().at((ex + 0.85, ey - 1.25))
+                  .label(_texte_passif_simple(re, ci, "Re"), fontsize=9))
+            d.add(elm.Line().at(q2.emitter).to((ex, ey - 0.6)))
+            d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
+            d.add(elm.Ground())
         title_pt = (top[0], top[1] + 1.2)
         if q2pins.get("E"):
             nets[q2pins["E"]] = out_pt
 
     if titre:
         _titre_montage(d, result, title_pt)
-    return {"in": in_pt, "out": out_pt, "title": title_pt, "nets": nets}
+    return {"in": in_pt, "out": out_pt, "title": title_pt, "nets": nets,
+            "absorbed_refs": absorbed_refs}
 
 
 # ── Pattern registry ──────────────────────────────────────────────────────────
