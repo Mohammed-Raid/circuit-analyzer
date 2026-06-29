@@ -2832,7 +2832,9 @@ def _draw_aop_differentiel(d, imp, ci, origin=(6.0, 0),
     in2_pt = (z3_p1[0] - 0.6, z3_p1[1])
     d.add(elm.Dot().at(in2_pt).color(_WIRE).label(in2_label, loc="left", color=_WIRE))
     zg_p2 = (npn[0], npn[1] - 1.6)
-    _z_box(d, npn, zg_p2, "Zg", zg, ci, label_loc="bottom")
+    # Label a droite de la boite verticale : "bottom" percute la legende « Astuce »
+    # en bas de l'axe, "left" percute la boite Z3 au-dessus (audit visuel).
+    _z_box(d, npn, zg_p2, "Zg", zg, ci, label_loc="right")
     d.add(elm.Line().at(zg_p2).down(0.4).color(_WIRE))
     d.add(elm.Ground().color(_WIRE))
 
