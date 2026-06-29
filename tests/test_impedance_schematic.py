@@ -49,6 +49,43 @@ def test_dessiner_produit_une_figure_sans_exception():
     assert len(fig.axes) == 1
 
 
+def _all_texts(fig):
+    out = [t.get_text() for t in fig.texts]
+    for ax in fig.axes:
+        out += [t.get_text() for t in ax.texts]
+        if ax.get_title():
+            out.append(ax.get_title())
+    return out
+
+
+def test_dessiner_affiche_le_titre_de_composition():
+    comps = _comps_rlc("R2", "R3")
+    arbre = ("serie", [("feuille", "R2"), ("feuille", "R3")])
+    fig = sch.dessiner(arbre, "A", "B", comps, titre="Z = R2+R3")
+    assert any("Z = R2+R3" in t for t in _all_texts(fig))
+
+
+def test_dessiner_sans_titre_inchange():
+    comps = _comps_rlc("R2", "R3")
+    arbre = ("serie", [("feuille", "R2"), ("feuille", "R3")])
+    fig = sch.dessiner(arbre, "A", "B", comps)
+    assert not any("Z = " in t for t in _all_texts(fig))
+
+
+def test_dessiner_pont_affiche_le_titre():
+    from circuit_analyzer.composant import Composant
+    comps = {r: Composant(r, "R", {"1": "x", "2": "y"}, "1k")
+             for r in ("R1", "R2", "R3", "R4", "R5")}
+    pont = {
+        "haut": "VIN", "bas": "VOUT", "gauche": "N1", "droite": "N2",
+        "bras": {role: {"refs": [r], "composition": r} for role, r in (
+            ("haut_gauche", "R1"), ("haut_droite", "R2"), ("bas_gauche", "R3"),
+            ("bas_droite", "R4"), ("pont", "R5"))},
+    }
+    fig = sch.dessiner_pont(pont, comps, titre="Z = pont")
+    assert any("Z = pont" in t for t in _all_texts(fig))
+
+
 def test_dessiner_pont_simple_pas_de_hitbox():
     from circuit_analyzer.composant import Composant
     comps = {r: Composant(r, "R", {"1": "x", "2": "y"}, "1k")

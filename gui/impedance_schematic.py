@@ -115,7 +115,7 @@ _SYMB = {
 }
 
 
-def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes):
+def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes, titre=None):
     """@brief Cœur de rendu série/parallèle.
 
     Trace `arbre_a_tracer` (déjà mis en page par agencer). Une feuille dont la clé
@@ -123,17 +123,20 @@ def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes):
     et enregistrée comme zone cliquable ; sinon comme le composant réel.
 
     @param groupes Dict {clé → (refs, composition)} ; vide = tout détaillé.
+    @param titre Titre embarqué sur la figure (ex. « Z = (R1//C1)+R2 ») ; None = aucun.
     @return matplotlib.figure.Figure ; fig._z_hitboxes = zones cliquables des Z.
     """
     from circuit_analyzer import impedance
     symboles, fils, dims = agencer(arbre_a_tracer)
-    fig = Figure(figsize=(max(5.0, dims.largeur * 0.8 + 1.8),
-                          max(3.5, dims.hauteur * 0.8 + 1.8)))
+    fig = Figure(figsize=(max(3.6, dims.largeur * 0.8 + 1.4),
+                          max(2.4, dims.hauteur * 0.8 + 1.4)))
     ax = fig.add_subplot(111)
     fig.patch.set_facecolor(SCH_BG)
     ax.set_facecolor(SCH_BG)
     ax.axis("off")
     ax.set_aspect("equal")
+    if titre:
+        ax.set_title(titre, fontsize=12, color=_Z_EDGE, pad=8)
 
     ordre_groupes = list(groupes)
     hitboxes = []
@@ -165,23 +168,24 @@ def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes):
             b, loc="right", color=_BUS)
 
     fig._z_hitboxes = hitboxes
-    ax.margins(0.15)
+    ax.margins(0.1)
     try:
-        fig.tight_layout(pad=0.4)
+        fig.tight_layout(pad=0.3)
     except Exception:
         pass
     return fig
 
 
-def dessiner(arbre, a, b, comps):
+def dessiner(arbre, a, b, comps, titre=None):
     """@brief Schéma série/parallèle DÉTAILLÉ (tous les R/L/C). Pas de boîte Z.
 
     @param arbre Arbre série/parallèle (cf. impedance.arbre_expr).
     @param a, b Noms des bornes d'entrée/sortie (étiquettes du dessin).
     @param comps Dict {ref → Composant} pour le type (symbole) et la valeur.
+    @param titre Titre embarqué (ex. « Z = (R1//C1)+R2 ») ; None = aucun.
     @return matplotlib.figure.Figure prête à embarquer.
     """
-    return _dessiner_impl(arbre, a, b, comps, {})
+    return _dessiner_impl(arbre, a, b, comps, {}, titre=titre)
 
 
 def _refs_arbre(node):
@@ -259,11 +263,12 @@ def _elem_bras(bras, comps, p1, p2):
     return el, hit
 
 
-def dessiner_pont(pont, comps):
+def dessiner_pont(pont, comps, titre=None):
     """@brief Figure matplotlib d'un pont (type Wheatstone) en losange.
 
     @param pont Structure de impedance.detecter_pont (bras = {refs, composition}).
     @param comps Dict {ref → Composant}.
+    @param titre Titre embarqué sur la figure ; None = aucun.
     @return matplotlib.figure.Figure ; fig._z_hitboxes liste les boîtes Z composites.
     """
     haut, gauche, droite, bas = (0.0, 4.0), (-2.0, 2.0), (2.0, 2.0), (0.0, 0.0)
@@ -281,6 +286,8 @@ def dessiner_pont(pont, comps):
     ax.set_facecolor(SCH_BG)
     ax.axis("off")
     ax.set_aspect("equal")
+    if titre:
+        ax.set_title(titre, fontsize=12, color=_Z_EDGE, pad=8)
 
     hitboxes = []
     with schemdraw.Drawing(canvas=ax, show=False) as d:

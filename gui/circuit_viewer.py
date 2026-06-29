@@ -661,7 +661,7 @@ def show_dipole_detail(refs, composition, graph, comp_info, parent=None):
     arbre = impedance.arbre_expr(composition) if composition else None
     if arbre is not None:
         comps = getattr(graph, "graph", {}).get("components", {}) or {}
-        fig = impedance_schematic.dessiner(arbre, "A", "B", comps)
+        fig = impedance_schematic.dessiner(arbre, "A", "B", comps, titre=titre)
     else:
         model = _build_dipole_model(refs, graph, comp_info, label=titre)
         fig = _make_island_fig(model)
