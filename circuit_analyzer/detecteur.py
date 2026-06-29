@@ -768,6 +768,8 @@ def detecter_amplificateur_emetteur_commun(graphe):
     """
     resultats = []
     composants = graphe.graph.get('components', {})
+    collecteurs_q = {c.pins.get('C') for c in composants.values()
+                     if c.type == 'Q' and c.pins.get('C')}
 
     for ref_q, comp in composants.items():
         if comp.type != 'Q':
@@ -785,9 +787,13 @@ def detecter_amplificateur_emetteur_commun(graphe):
             continue
 
         r_collecteur = [ref for ref, _ in _voisins_de_type(graphe, collecteur, 'R')]
-        r_base       = [ref for ref, _ in _voisins_de_type(graphe, base, 'R')]
+        # Base couplée en DC au collecteur d'un autre étage : le R sur ce net est
+        # le Rc amont, pas un Rb. L'étage est alors CE sans résistance de base.
+        base_couplee_dc = base in collecteurs_q and base != collecteur
+        r_base = [] if base_couplee_dc else [
+            ref for ref, _ in _voisins_de_type(graphe, base, 'R')]
 
-        if r_collecteur and r_base:
+        if r_collecteur and (r_base or base_couplee_dc):
             resultats.append({
                 'circuit_type': 'Amplificateur émetteur commun',
                 'components': [ref_q] + r_collecteur + r_base,

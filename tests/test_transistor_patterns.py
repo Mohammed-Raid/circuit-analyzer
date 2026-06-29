@@ -156,6 +156,23 @@ def test_common_emitter_not_found_without_collector_resistor():
     assert CommonEmitterAmp().match(build_graph(comps)) == []
 
 
+def test_cascade_dc_q2_couple_directement_sans_voler_rc1():
+    # Q2.base == Q1.collecteur (couplage direct, pas de Rb2) : Q2 doit etre
+    # detecte en emetteur commun SANS recuperer Rc1 (= Rc de l'etage amont).
+    comps = [
+        Component('Q1', 'Q', {'B': 'NB1', 'C': 'N1', 'E': 'GND'}),
+        Component('Rb1', 'R', {'1': 'VIN', '2': 'NB1'}, '100k'),
+        Component('Rc1', 'R', {'1': 'VCC', '2': 'N1'}, '4.7k'),
+        Component('Q2', 'Q', {'B': 'N1', 'C': 'N2', 'E': 'GND'}),
+        Component('Rc2', 'R', {'1': 'VCC', '2': 'N2'}, '1k'),
+    ]
+    matches = CommonEmitterAmp().match(build_graph(comps))
+    par_q = {next(c for c in m['components'] if c.startswith('Q')): m
+             for m in matches}
+    assert set(par_q) == {'Q1', 'Q2'}
+    assert set(par_q['Q2']['components']) == {'Q2', 'Rc2'}
+
+
 def test_current_mirror_found():
     """@brief Verifie current mirror found.
 

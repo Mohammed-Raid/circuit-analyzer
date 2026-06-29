@@ -2989,14 +2989,18 @@ def _draw_common_emitter(d, result, ci, origin=(3, 0), titre=True,
     q_pins = ci.get(q, {}).get("pins", {})
     rc = _ref_on_net(rs, ci, q_pins.get("C"), rs[0] if rs else "Rc")
     remaining = [r for r in rs if r != rc]
-    rb = _ref_on_net(remaining, ci, q_pins.get("B"), remaining[0] if remaining else "Rb")
+    rb = _ref_on_net(remaining, ci, q_pins.get("B")) if remaining else None
     t = d.add(elm.BjtNpn().at(origin))
     bx, by = t.base
     in_pt = (bx - 2.6, by)
-    _r_simple(d, rb, ci, in_pt, (bx - 0.9, by), None)
-    d.add(elm.Label().at(((in_pt[0] + bx - 0.9) / 2, by - 0.78))
-          .label(_texte_passif_simple(rb, ci, "Rb"), fontsize=8))
-    d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
+    if rb:
+        _r_simple(d, rb, ci, in_pt, (bx - 0.9, by), None)
+        d.add(elm.Label().at(((in_pt[0] + bx - 0.9) / 2, by - 0.78))
+              .label(_texte_passif_simple(rb, ci, "Rb"), fontsize=8))
+        d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
+    else:
+        # Couplage DC (base = collecteur amont) : fil direct, pas de Rb fantôme.
+        d.add(elm.Line().at(in_pt).to((bx, by)))
     dot = elm.Dot().at(in_pt)
     if in_label:
         dot = dot.label(in_label, loc="left")

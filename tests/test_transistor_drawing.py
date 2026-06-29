@@ -100,6 +100,17 @@ def test_mosfet_commutation_titre_degage_charge_verticale():
     assert res["title"][1] - res["out"][1] >= 2.25
 
 
+def test_emetteur_commun_couple_dc_sans_rb_fantome():
+    # Etage CE couple en DC (base = collecteur amont) : pas de resistance de base,
+    # donc aucun symbole/label Rb fantome ne doit etre dessine.
+    result = {"circuit_type": "Amplificateur émetteur commun",
+              "components": ["Q2", "Rc2"], "nodes": ["N1", "N2", "GND"]}
+    ci = _ci(("Q2", "Q", "", {"B": "N1", "C": "N2", "E": "GND"}),
+             ("Rc2", "R", "1k", {"1": "VCC", "2": "N2"}))
+    _fig, txts = _render(result, ci)
+    assert not any(t.strip() == "Rb" for t in txts)
+
+
 def test_titre_role_transistor_affiche():
     _fig, txts = _render(*EMETTEUR_COMMUN)
     assert any("Émetteur commun" in t for t in txts)
