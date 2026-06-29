@@ -906,12 +906,17 @@ def detecter_darlington(graphe):
         for r2, q2 in bjts:
             if r2 == r1:
                 continue
-            if q2.pins['B'] == e1:                      # E(Q1) -> B(Q2)
-                resultats.append({
-                    'circuit_type': 'Paire Darlington',
-                    'components': [r1, r2],
-                    'nodes': [q1.pins['B'], q1.pins['C'], q2.pins['E']],
-                })
+            if q2.pins['B'] != e1:                      # E(Q1) -> B(Q2)
+                continue
+            # Collecteur de Q1 lie au collecteur composite : rail, ou commun a Q2.
+            # Sinon Q1 est un etage CE autonome (charge propre) = cascade, pas Darlington.
+            if not (est_alimentation(q1.pins['C']) or q1.pins['C'] == q2.pins['C']):
+                continue
+            resultats.append({
+                'circuit_type': 'Paire Darlington',
+                'components': [r1, r2],
+                'nodes': [q1.pins['B'], q1.pins['C'], q2.pins['E']],
+            })
     return resultats
 
 

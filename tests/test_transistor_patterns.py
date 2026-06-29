@@ -49,6 +49,17 @@ def test_darlington_not_found_when_emitter_not_to_base():
     assert Darlington().match(build_graph(comps)) == []
 
 
+def test_darlington_not_found_when_q1_is_standalone_ce_stage():
+    # Q1 a sa propre charge de collecteur (net signal != Q2.C, pas un rail) :
+    # cascade 2-etages, pas une paire Darlington.
+    comps = [
+        Component('Q1', 'Q', {'B': 'NB', 'C': 'NC1', 'E': 'NE1'}),
+        Component('Q2', 'Q', {'B': 'NE1', 'C': 'NC2', 'E': 'GND'}),
+        Component('Rc', 'R', {'1': 'VCC', '2': 'NC1'}),
+    ]
+    assert Darlington().match(build_graph(comps)) == []
+
+
 def _follower_comps():
     # Collecteur commun : collecteur sur VCC, sortie sur l'émetteur via Re vers GND,
     # base polarisée vers VCC.
