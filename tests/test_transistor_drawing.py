@@ -100,6 +100,12 @@ def test_mosfet_commutation_titre_degage_charge_verticale():
     assert res["title"][1] - res["out"][1] >= 2.25
 
 
+def test_commutation_vcc_ne_chevauche_pas_charge_inductive():
+    for result, ci in (BJT_SWITCH, MOSFET_SWITCH):
+        fig, _txts = _render(result, ci)
+        _assert_texts_do_not_overlap(fig, "L1", "VCC")
+
+
 def test_emetteur_commun_couple_dc_sans_rb_fantome():
     # Etage CE couple en DC (base = collecteur amont) : pas de resistance de base,
     # donc aucun symbole/label Rb fantome ne doit etre dessine.

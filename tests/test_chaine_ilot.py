@@ -723,6 +723,14 @@ def test_couplage_cap_simple_est_cliquable():
     assert "Cc" in refs
 
 
+def test_couplage_cap_simple_affiche_boite_zc():
+    matches, ci = _cascade_2ce()
+    ordre = cv._ordonner_montages_flux(matches, ci)
+    fig = cv._make_chain_fig(ordre, ci, matches=matches)
+    txts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    assert any(t.startswith("Zc\n") and "Cc" in t for t in txts)
+
+
 def test_make_fig_principal_dessine_les_impedances_restantes():
     # Vue "principal" (montage seul) : un reseau Z restant connecte a un net du
     # montage doit etre dessine cliquable, pas ignore. (E2)

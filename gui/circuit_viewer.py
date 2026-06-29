@@ -1570,6 +1570,9 @@ def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
 
 
 def _component_label(comp):
+    if comp.get("symbol") == "impedance":
+        composition = comp.get("composition") or comp.get("ref", "Z")
+        return f"{comp['ref']}\n{composition}" if composition != comp.get("ref") else comp["ref"]
     value = comp.get("value") or ""
     return f"{comp['ref']}\n{value}" if value else comp["ref"]
 
@@ -2260,14 +2263,12 @@ def _bloc_couplage(cc):
 
 
 def _dessiner_symbole_couplage(d, p1, p2, cc, ci):
-    """@brief Dessine un couplage : C simple (symbole + hitbox cliquable) ou
-    boîte Z pour un réseau composé. Dans les deux cas le couplage est cliquable."""
-    if _couplage_simple_cap(cc, ci):
-        bloc = _bloc_couplage(cc)
-        d.add(elm.Capacitor().at(p1).to(p2).label(bloc["composition"], loc="top"))
-        _enregistrer_hitbox(d, p1, p2, bloc["refs"], bloc["composition"])
-    else:
-        _z_box(d, p1, p2, "Zc", _bloc_couplage(cc), ci)
+    """@brief Dessine un couplage en boîte Z cliquable.
+
+    Même un condensateur de liaison seul reste une Impédance Z dans la vue îlot :
+    l'afficher en Zc garde une convention visuelle unique pour le drill-down.
+    """
+    _z_box(d, p1, p2, "Zc", _bloc_couplage(cc), ci)
 
 
 def _dessiner_impedances_locales(d, stages, ancres, z_matches, z_utilises, ci):
@@ -2951,8 +2952,8 @@ def _draw_bjt_switch(d, result, ci, origin=(3, 0), titre=True,
     if load:
         d.add(elm.Line().at(t.collector).up(0.35))
         _charge_verticale(d, load, ci)
-        d.add(elm.Line().up(0.75))
-        d.add(elm.Label().at((d.here[0] - 0.85, d.here[1])).label("VCC"))
+        d.add(elm.Line().up(1.2))
+        d.add(elm.Dot().label("VCC", loc="top"))
         line = elm.Line().at(t.collector).to((cx + 1.0, cy))
         if out_label:
             line = line.label(out_label, loc="right")
@@ -2969,7 +2970,7 @@ def _draw_bjt_switch(d, result, ci, origin=(3, 0), titre=True,
         d.add(elm.Ground())
     else:
         d.add(elm.Dot().at(t.emitter))
-    title_pt = (cx, cy + (3.0 if load else 1.8))
+    title_pt = (cx, cy + (3.8 if load else 1.8))
     if titre:
         _titre_montage(d, result, title_pt)
     return {"in": in_pt, "out": out_pt, "title": title_pt,
@@ -3053,8 +3054,8 @@ def _draw_mosfet_switch(d, result, ci, origin=(3, 0), titre=True,
     if load:
         d.add(elm.Line().at(t.drain).up(0.35))
         _charge_verticale(d, load, ci)
-        d.add(elm.Line().up(0.75))
-        d.add(elm.Label().at((d.here[0] - 0.85, d.here[1])).label("VCC"))
+        d.add(elm.Line().up(1.2))
+        d.add(elm.Dot().label("VCC", loc="top"))
         out_pt = t.drain
     else:
         line = elm.Line().at(t.drain).up(1)
@@ -3064,7 +3065,7 @@ def _draw_mosfet_switch(d, result, ci, origin=(3, 0), titre=True,
         out_pt = d.here
     d.add(elm.Line().at(t.source).down(0.5))
     d.add(elm.Ground())
-    title_pt = (t.drain[0], t.drain[1] + (3.0 if load else 1.8))
+    title_pt = (t.drain[0], t.drain[1] + (3.8 if load else 1.8))
     if titre:
         _titre_montage(d, result, title_pt)
     return {"in": in_pt, "out": out_pt, "title": title_pt,

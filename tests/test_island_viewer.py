@@ -315,6 +315,22 @@ def test_make_island_fig_draws_z_dipoles_and_caption():
     assert any("connexion" in t for t in texts)         # legende
 
 
+def test_make_island_fig_affiche_composition_des_boites_z():
+    model = {"label": "I", "components": [
+        _unit(
+            "Z1", "Z", {"1": "VCC", "2": "GND"},
+            symbol="impedance",
+            refs=["R1", "C1"],
+            composition="(R1//C1)",
+        ),
+    ]}
+
+    fig = _make_island_fig(model)
+
+    texts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    assert any("Z1" in t and "(R1//C1)" in t for t in texts)
+
+
 def test_block_with_two_stubs_stacks_labels_at_distinct_y():
     # Un composant multi-broches avec deux moignons E/S doit etiqueter chaque net
     # a une ordonnee distincte (sinon les labels se superposent au meme point).
