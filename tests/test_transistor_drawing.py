@@ -140,6 +140,14 @@ def test_drawer_ce_origine_decale_le_dessin():
     assert round(b["in"][0] - a["in"][0], 3) == 10.0
 
 
+def test_push_pull_in_out_bien_separes():
+    # Les noeuds IN (gauche) et OUT (droite) doivent etre nettement separes
+    # horizontalement : sinon ils paraissent etre le meme noeud (cf. audit ChatGPT).
+    res = _ancres(cv._draw_push_pull, *PUSH_PULL, origin=(0, 0))
+    assert "in" in res and "out" in res
+    assert res["out"][0] - res["in"][0] >= 5.5
+
+
 def test_drawer_titre_false_pas_de_titre():
     fig = cv.Figure(figsize=(4, 3))
     ax = fig.add_subplot(111)

@@ -3347,7 +3347,9 @@ def _draw_push_pull(d, result, ci, origin=(3, 0), titre=True,
     d.add(elm.Line().at(qn.base).to(qp.base))
     midb = ((qn.base[0] + qp.base[0]) / 2, (qn.base[1] + qp.base[1]) / 2)
     d.add(elm.Dot().at(midb))
-    in_pt = (midb[0] - 1.8, midb[1])
+    # Moignon d'entrée allongé : sinon les nœuds IN et OUT (proches sur un totem-pole)
+    # paraissent confondus. On éloigne nettement les bornes de part et d'autre.
+    in_pt = (midb[0] - 2.6, midb[1])
     line = elm.Line().at(midb).to(in_pt)
     if in_label:
         line = line.label(in_label, loc="left")
@@ -3360,7 +3362,7 @@ def _draw_push_pull(d, result, ci, origin=(3, 0), titre=True,
     d.add(elm.Line().at(qn.emitter).to(qp.emitter))
     mide = ((qn.emitter[0] + qp.emitter[0]) / 2, (qn.emitter[1] + qp.emitter[1]) / 2)
     d.add(elm.Dot().at(mide))
-    out_pt = (mide[0] + 2.0, mide[1])
+    out_pt = (mide[0] + 2.6, mide[1])
     line = elm.Line().at(mide).to(out_pt)
     if out_label:
         line = line.label(out_label, loc="right")
