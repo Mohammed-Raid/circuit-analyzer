@@ -12,6 +12,24 @@ def _matches_chaine():
     return [r for r in res if "(AOP)" in r["circuit_type"]]
 
 
+def test_fanout_sorties_numerotees():
+    """En fan-out (>1 sortie parallèle dans la dernière couche), les sorties doivent
+    porter des labels DISTINCTS (VOUT1, VOUT2) — pas deux fois « VOUT » (ambigu)."""
+    comps = lire_xml("circuits_industriels/ilot_branche_ce_fanout.xml")
+    g = construire_graphe(comps)
+    res = analyser(g)
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    matches = cv._matches_for_island(ilot, res)
+    layers = cv._layers_montages_flux(matches, ci)
+    assert layers is not None
+    fig = cv._make_branched_fig(layers, ci, matches=matches)
+    txts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    assert any("VOUT1" in t for t in txts)
+    assert any("VOUT2" in t for t in txts)
+    assert not any(t.strip() == "VOUT" for t in txts)   # plus de VOUT ambigu
+
+
 def test_ordonner_montages_flux_chaine_5():
     ordre = cv._ordonner_montages_flux(_matches_chaine())
     assert ordre is not None

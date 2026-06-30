@@ -2716,12 +2716,20 @@ def _draw_branched_chain(d, layers, ci, couplages=None):
     """
     ancres = {}                            # id(match) -> ancres ("out","ins",...)
     dernier = len(layers) - 1
+    # Plusieurs sorties parallèles dans la dernière couche -> labels distincts
+    # (VOUT1, VOUT2…) pour lever l'ambiguïté ; une seule sortie reste « VOUT ».
+    n_sorties = len(layers[dernier]) if layers else 0
     for lx, couche in enumerate(layers):
         m = len(couche)
         for ry, match in enumerate(couche):
             y_row = (ry - (m - 1) / 2.0) * _BRANCHE_ROW_GAP
             origin = (4.5 + lx * _BRANCHE_DX, y_row + _oy_for(match))
-            out_label = "VOUT" if lx == dernier else ""
+            if lx != dernier:
+                out_label = ""
+            elif n_sorties > 1:
+                out_label = f"VOUT{ry + 1}"
+            else:
+                out_label = "VOUT"
             ancres[id(match)] = _dessiner_montage_a(d, match, ci, origin, "", out_label)
             _annoter_etage(d, ancres[id(match)], match)
 
