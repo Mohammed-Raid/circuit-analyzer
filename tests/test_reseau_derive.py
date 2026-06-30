@@ -33,6 +33,7 @@ def test_reseau_derive_filtrage_rail_shunt_caps():
     g = build_graph(comps)
     info = cv._reseau_derive_ilot(_ilot(['R4', 'C4', 'C5']), g)
     assert info is not None
+    assert info['top'] == 'VCC_5V'
     assert info['prise'] == 'AVCC'
     assert info['serie']['refs'] == ['R4']
     assert set(info['shunt']['refs']) == {'C4', 'C5'}
