@@ -48,6 +48,45 @@ def _est_degenere(comp) -> bool:
     return len(connectees) >= 2 and len(set(connectees)) == 1
 
 
+_PASSIFS = {'R', 'L', 'C'}
+
+
+def _est_gnd(net) -> bool:
+    """@brief Vrai pour la masse (rail non-alimentation : GND, PE…)."""
+    return bool(net) and _est_rail(net) and not is_power_net(net)
+
+
+def _nets_derives(graphe) -> set:
+    """@brief Nets d'alimentation « dérivés » (prises de référence / rails filtrés).
+
+    Un net N est une prise dérivée s'il est un net d'alimentation ≠ GND qui possède
+    À LA FOIS un passif (R/L/C) vers GND ET un passif vers un autre net d'alimentation.
+    Discrimine les références (VREF, AVCC) des vrais rails sources (VCC, qui n'a pas
+    de passif vers GND dans son réseau).
+
+    @param graphe Graphe NetworkX (porte graphe.graph['components']).
+    @return set[str] Nets-prises.
+    """
+    comps = graphe.graph.get('components', {})
+    vers_gnd: set = set()        # nets alim ayant un passif vers GND
+    vers_rail: dict = {}         # net alim -> {autres nets alim relies par un passif}
+    for comp in comps.values():
+        if comp.type not in _PASSIFS:
+            continue
+        nets = [n for n in comp.pins.values() if n]
+        for i, a in enumerate(nets):
+            for b in nets[i + 1:]:
+                if a == b:
+                    continue
+                for x, y in ((a, b), (b, a)):
+                    if is_power_net(x) and not _est_gnd(x):
+                        if _est_gnd(y):
+                            vers_gnd.add(x)
+                        elif is_power_net(y) and not _est_gnd(y):
+                            vers_rail.setdefault(x, set()).add(y)
+    return {n for n in vers_gnd if vers_rail.get(n)}
+
+
 def _find(parent: dict, x: str) -> str:
     """@brief Racine Union-Find avec compression de chemin.
 

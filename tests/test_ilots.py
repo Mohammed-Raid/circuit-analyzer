@@ -148,6 +148,42 @@ def test_composant_degenere_meme_net_exclu():
 
 
 # =============================================================================
+# Nets dérivés (prises de référence)
+# =============================================================================
+
+def test_nets_derives_reconnait_diviseur():
+    # VCC -- R1 -- VREF -- R2 -- GND : VREF est une prise, VCC non.
+    comps = [
+        Component('R1', 'R', {'1': 'VCC', '2': 'VREF'}, '10k'),
+        Component('R2', 'R', {'1': 'VREF', '2': 'GND'}, '10k'),
+    ]
+    from circuit_analyzer.ilots import _nets_derives
+    derives = _nets_derives(build_graph(comps))
+    assert 'VREF' in derives
+    assert 'VCC' not in derives
+
+
+def test_nets_derives_filtrage_rail_caps_vers_gnd():
+    # VCC_5V -- R4 -- AVCC, et C4/C5 de AVCC a GND : AVCC est une prise.
+    comps = [
+        Component('R4', 'R', {'1': 'VCC_5V', '2': 'AVCC'}, '10R'),
+        Component('C4', 'C', {'1': 'AVCC', '2': 'GND'}, '100nF'),
+        Component('C5', 'C', {'1': 'AVCC', '2': 'GND'}, '10uF'),
+    ]
+    from circuit_analyzer.ilots import _nets_derives
+    derives = _nets_derives(build_graph(comps))
+    assert 'AVCC' in derives
+    assert 'VCC_5V' not in derives
+
+
+def test_nets_derives_decouplage_simple_pas_une_prise():
+    # Un simple cap VCC-GND n'a pas de passif vers un AUTRE rail : pas une prise.
+    comps = [Component('C1', 'C', {'1': 'VCC', '2': 'GND'}, '100nF')]
+    from circuit_analyzer.ilots import _nets_derives
+    assert _nets_derives(build_graph(comps)) == set()
+
+
+# =============================================================================
 # Nommage et mapping circuits
 # =============================================================================
 
