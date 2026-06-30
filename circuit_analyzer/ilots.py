@@ -33,6 +33,21 @@ def _net_signal(net) -> bool:
     return bool(net) and net.upper() not in _NETS_NON_CONNECTES and not _est_rail(net)
 
 
+def _est_degenere(comp) -> bool:
+    """@brief Vrai si toutes les broches connectées pointent vers un seul net.
+
+    Un tel composant est en court-circuit sur lui-même (ex. R14/C9 câblés GND-GND
+    dans la netlist) : aucun courant ne le traverse, il est électriquement inerte.
+    On l'exclut des îlots pour ne pas produire de boîte Z absurde.
+
+    @param comp Composant (a un dict .pins).
+    @return bool Vrai si dégénéré (≥2 broches connectées, toutes sur le même net).
+    """
+    connectees = [n for n in comp.pins.values()
+                  if n and n.upper() not in _NETS_NON_CONNECTES]
+    return len(connectees) >= 2 and len(set(connectees)) == 1
+
+
 def _find(parent: dict, x: str) -> str:
     """@brief Racine Union-Find avec compression de chemin.
 
@@ -90,6 +105,9 @@ def detecter_ilots(graphe, circuits: list) -> list[dict]:
     @return list[dict] Îlots triés par taille décroissante (label, categorie, composants, circuits, rail).
     """
     comps = graphe.graph.get('components', {})
+    # Écarter les composants dégénérés (toutes broches sur un même net) : inertes,
+    # ils n'appartiennent à aucun étage fonctionnel.
+    comps = {ref: c for ref, c in comps.items() if not _est_degenere(c)}
     if not comps:
         return []
 

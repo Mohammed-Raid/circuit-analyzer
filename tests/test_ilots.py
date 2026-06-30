@@ -129,19 +129,22 @@ def test_rail_only_groupes_par_rail():
         assert 'alimentation' in i['label']
         assert i['rail'] in i['label']
 
-def test_gnd_only_va_en_non_identifie():
-    """@brief Verifie gnd only va en non identifie.
+def test_composant_degenere_meme_net_exclu():
+    """Un composant dont toutes les broches sont sur le MÊME net (court-circuit
+    dégénéré) ne forme pas d'îlot : il est électriquement inerte.
 
-    @return None
+    Cas réel : R14 et C9 du pid_controller câblés GND-GND dans la netlist
+    s'affichaient en boîtes Z absurdes (« non identifié »). Ils doivent disparaître.
     """
     comps = [
-        Component('R1', 'R', {'1': 'GND', '2': 'GND'}, '0R'),
+        Component('R14', 'R', {'1': 'GND', '2': 'GND'}, '10k'),
+        Component('C9', 'C', {'1': 'GND', '2': 'GND'}, '100nF'),
+        # Même cas sur un net signal (court-circuit) : aussi dégénéré.
+        Component('R20', 'R', {'1': 'NET_A', '2': 'NET_A'}, '1k'),
     ]
     g = build_graph(comps)
     ilots = detecter_ilots(g, [])
-    assert len(ilots) == 1
-    assert ilots[0]['rail'] is None
-    assert 'non identifié' in ilots[0]['label']
+    assert ilots == []
 
 
 # =============================================================================
