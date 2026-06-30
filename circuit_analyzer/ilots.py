@@ -166,11 +166,16 @@ def detecter_ilots(graphe, circuits: list) -> list[dict]:
     for ref in refs_signal:
         groupes.setdefault(_find(parent, ref), []).append(ref)
 
-    # ── 2. Composants rail-only : un groupe par rail d'alimentation ──────────
+    # ── 2. Composants rail-only : un groupe par prise dérivée, sinon par rail ──
+    derives = _nets_derives(graphe)
     par_rail: dict = {}
     sans_rien: list = []
     for ref, comp in comps.items():
         if ref in refs_signal:
+            continue
+        prises = sorted({n for n in comp.pins.values() if n in derives})
+        if prises:                       # rattaché à sa prise dérivée (diviseur unifié)
+            par_rail.setdefault(prises[0], []).append(ref)
             continue
         rails = sorted({n for n in comp.pins.values() if n and is_power_net(n)})
         if rails:

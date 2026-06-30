@@ -147,6 +147,29 @@ def test_composant_degenere_meme_net_exclu():
     assert ilots == []
 
 
+def test_diviseur_reference_un_seul_ilot():
+    # R_haut (VCC->VREF) et R_bas (VREF->GND) doivent etre dans le MEME ilot.
+    comps = [
+        Component('R1', 'R', {'1': 'VCC', '2': 'VREF'}, '10k'),
+        Component('R2', 'R', {'1': 'VREF', '2': 'GND'}, '10k'),
+    ]
+    g = build_graph(comps)
+    ilots = detecter_ilots(g, [])
+    assert len(ilots) == 1
+    assert set(ilots[0]['composants']) == {'R1', 'R2'}
+
+
+def test_filtrage_rail_un_seul_ilot():
+    comps = [
+        Component('R4', 'R', {'1': 'VCC_5V', '2': 'AVCC'}, '10R'),
+        Component('C4', 'C', {'1': 'AVCC', '2': 'GND'}, '100nF'),
+        Component('C5', 'C', {'1': 'AVCC', '2': 'GND'}, '10uF'),
+    ]
+    ilots = detecter_ilots(build_graph(comps), [])
+    assert len(ilots) == 1
+    assert set(ilots[0]['composants']) == {'R4', 'C4', 'C5'}
+
+
 # =============================================================================
 # Nets dérivés (prises de référence)
 # =============================================================================
