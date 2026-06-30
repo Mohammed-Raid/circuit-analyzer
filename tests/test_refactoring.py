@@ -1,4 +1,9 @@
 """
+@file test_refactoring.py
+@brief Tests automatises pour test_refactoring.
+"""
+
+"""
 Tests for the 4 refactoring points:
   1. Lexical normalization (upper + strip spaces)
   2. Dimensional validation with exceptions
@@ -12,6 +17,7 @@ from circuit_analyzer.matcher import match_patterns
 
 
 def _write_tmp(content):
+    """@brief Helper de test pour write tmp."""
     f = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8')
     f.write(content)
     f.close()
@@ -21,6 +27,10 @@ def _write_tmp(content):
 # ── Point 1: Lexical normalization ────────────────────────────────────────────
 
 def test_lowercase_node_names_normalized():
+    """@brief Verifie lowercase node names normalized.
+
+    @return None
+    """
     path = _write_tmp("R1 vcc gnd 10k\n")
     comps = parse_file(path)
     os.unlink(path)
@@ -29,6 +39,10 @@ def test_lowercase_node_names_normalized():
 
 
 def test_mixed_case_node_names_normalized():
+    """@brief Verifie mixed case node names normalized.
+
+    @return None
+    """
     path = _write_tmp("C1 Net_Mid Gnd 100nF\n")
     comps = parse_file(path)
     os.unlink(path)
@@ -37,6 +51,10 @@ def test_mixed_case_node_names_normalized():
 
 
 def test_normalization_makes_nets_comparable():
+    """@brief Verifie normalization makes nets comparable.
+
+    @return None
+    """
     # vcc and VCC should resolve to the same net in the graph
     path = _write_tmp("R1 vcc net_a 10k\nC1 NET_A GND 10nF\n")
     comps = parse_file(path)
@@ -46,12 +64,17 @@ def test_normalization_makes_nets_comparable():
     assert 'NET_A' in graph.nodes()
     results = match_patterns(graph)
     types = [r['circuit_type'] for r in results]
-    assert 'Filtre RC passe-bas' in types
+    # Depuis le modèle Impédance Z, le passif isolé est émis comme « Impédance Z »
+    assert 'Impédance Z' in types
 
 
 # ── Point 2: Dimensional validation ───────────────────────────────────────────
 
 def test_truncated_2pin_component_raises():
+    """@brief Verifie truncated 2pin component raises.
+
+    @return None
+    """
     path = _write_tmp("R1 NET_A\n")
     with pytest.raises(ValueError, match="attend 2"):
         parse_file(path)
@@ -59,6 +82,10 @@ def test_truncated_2pin_component_raises():
 
 
 def test_truncated_transistor_raises():
+    """@brief Verifie truncated transistor raises.
+
+    @return None
+    """
     path = _write_tmp("Q1 NET_BASE NET_COLL\n")
     with pytest.raises(ValueError, match="attend 3"):
         parse_file(path)
@@ -66,6 +93,10 @@ def test_truncated_transistor_raises():
 
 
 def test_truncated_opamp_raises():
+    """@brief Verifie truncated opamp raises.
+
+    @return None
+    """
     path = _write_tmp("U1 NET_INP NET_INM NET_OUT VCC\n")
     with pytest.raises(ValueError, match="attend 5"):
         parse_file(path)
@@ -73,6 +104,10 @@ def test_truncated_opamp_raises():
 
 
 def test_error_message_contains_line_number():
+    """@brief Verifie error message contains line number.
+
+    @return None
+    """
     path = _write_tmp("R1 NET_A NET_B 10k\nC1 NET_B\n")
     with pytest.raises(ValueError, match="ligne 2"):
         parse_file(path)
@@ -82,6 +117,10 @@ def test_error_message_contains_line_number():
 # ── Point 3: Duplicate reference detection ────────────────────────────────────
 
 def test_duplicate_ref_raises():
+    """@brief Verifie duplicate ref raises.
+
+    @return None
+    """
     path = _write_tmp("R1 NET_A NET_B 10k\nR1 NET_C NET_D 4.7k\n")
     with pytest.raises(ValueError, match="R1"):
         parse_file(path)
@@ -89,6 +128,10 @@ def test_duplicate_ref_raises():
 
 
 def test_duplicate_ref_error_contains_line_number():
+    """@brief Verifie duplicate ref error contains line number.
+
+    @return None
+    """
     path = _write_tmp("C1 NET_A NET_B\nR1 A B\nC1 NET_C NET_D\n")
     with pytest.raises(ValueError, match="ligne 3"):
         parse_file(path)
@@ -96,6 +139,10 @@ def test_duplicate_ref_error_contains_line_number():
 
 
 def test_unique_refs_accepted():
+    """@brief Verifie unique refs accepted.
+
+    @return None
+    """
     path = _write_tmp("R1 A B 10k\nR2 B C 4.7k\nC1 C GND 10nF\n")
     comps = parse_file(path)
     os.unlink(path)
@@ -105,6 +152,10 @@ def test_unique_refs_accepted():
 # ── Point 4: Hierarchical resolution + component locking ──────────────────────
 
 def test_non_inverting_amp_locks_resistors_from_voltage_divider():
+    """@brief Verifie non inverting amp locks resistors from voltage divider.
+
+    @return None
+    """
     # R1 (IN-→OUT) and R2 (IN-→GND) form both a NonInvertingAmp feedback network
     # AND a voltage divider. AOP must win; VoltageDivider must not fire.
     comps = [
@@ -119,6 +170,10 @@ def test_non_inverting_amp_locks_resistors_from_voltage_divider():
 
 
 def test_summing_amp_takes_priority_over_inverting():
+    """@brief Verifie summing amp takes priority over inverting.
+
+    @return None
+    """
     # U1 with 2 input R and 1 feedback R matches SummingAmplifier (more specific).
     # InvertingAmplifier must NOT also fire on the same U1.
     comps = [
@@ -134,19 +189,28 @@ def test_summing_amp_takes_priority_over_inverting():
 
 
 def test_decoupling_cap_locks_before_rc_lowpass():
-    # C1 (VCC→GND) is a decoupling cap. Without locking it could also be claimed
-    # by RCLowPassFilter alongside R1. DecouplingCapacitor must win.
+    """@brief Verifie decoupling cap locks before rc lowpass.
+
+    Depuis le modèle Impédance Z, R1 et C1 sont des passifs isolés → Impédance Z.
+    @return None
+    """
+    # C1 (VCC→GND) et R1 (VCC→NET_SIG) sont traités par le moteur Z.
     comps = [
         Component('R1', 'R', {'1': 'VCC', '2': 'NET_SIG'}, '100'),
         Component('C1', 'C', {'1': 'VCC', '2': 'GND'}, '100nF'),
     ]
     results = match_patterns(build_graph(comps))
     types = [r['circuit_type'] for r in results]
-    assert 'Condensateur de découplage' in types
+    assert 'Impédance Z' in types
     assert 'Filtre RC passe-bas' not in types
+    assert 'Condensateur de découplage' not in types
 
 
 def test_transistor_switch_locks_base_resistor():
+    """@brief Verifie transistor switch locks base resistor.
+
+    @return None
+    """
     # R1 is the base resistor of the transistor switch.
     # It must not also appear as part of a VoltageDivider or RC filter.
     comps = [
@@ -163,6 +227,10 @@ def test_transistor_switch_locks_base_resistor():
 
 
 def test_each_component_appears_in_at_most_one_result():
+    """@brief Verifie each component appears in at most one result.
+
+    @return None
+    """
     # Global invariant: component locking guarantees no component is
     # reported in two different circuit results.
     comps = [

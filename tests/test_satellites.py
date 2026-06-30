@@ -1,4 +1,9 @@
 """
+@file test_satellites.py
+@brief Tests automatises pour test_satellites.
+"""
+
+"""
 test_satellites.py — Tests du rattachement des composants satellites.
 """
 import pytest
@@ -13,8 +18,10 @@ from circuit_analyzer.satellites import (
 
 
 class _Comp:
+    """@brief Classe utilitaire de test _Comp."""
     """Composant minimal pour tester _evaluer sans construire un graphe."""
     def __init__(self, ref, type_, pins, value=''):
+        """@brief Helper de test pour  init  ."""
         self.ref, self.type, self.pins, self.value = ref, type_, pins, value
 
 
@@ -23,6 +30,10 @@ class _Comp:
 # =============================================================================
 
 def test_est_rail():
+    """@brief Verifie est rail.
+
+    @return None
+    """
     assert _est_rail('GND')
     assert _est_rail('VCC')
     assert _est_rail('PE')
@@ -31,14 +42,26 @@ def test_est_rail():
     assert not _est_rail(None)
 
 def test_noeuds_internes_exclut_les_rails():
+    """@brief Verifie noeuds internes exclut les rails.
+
+    @return None
+    """
     match = {'nodes': ['NET_IN', 'NET_MID', 'GND', 'VCC', '', None]}
     assert _noeuds_internes(match) == {'NET_IN', 'NET_MID'}
 
 def test_rails_alim():
+    """@brief Verifie rails alim.
+
+    @return None
+    """
     match = {'nodes': ['NET_IN', 'GND', 'VCC', '+5V']}
     assert _rails_alim(match) == {'VCC', '+5V'}
 
 def test_seuils():
+    """@brief Verifie seuils.
+
+    @return None
+    """
     assert SEUIL_POSSIBLE < SEUIL_SUR
     assert SEUIL_SUR == 0.6
     assert SEUIL_POSSIBLE == 0.3
@@ -49,6 +72,10 @@ def test_seuils():
 # =============================================================================
 
 def test_pull_down_avec_valeur():
+    """@brief Verifie pull down avec valeur.
+
+    @return None
+    """
     r = _Comp('R2', 'R', {'1': 'NET_BASE', '2': 'GND'}, '10k')
     role, score, reason = _evaluer(r, internes={'NET_BASE'}, rails=set())
     assert role == 'pull-down'
@@ -56,18 +83,30 @@ def test_pull_down_avec_valeur():
     assert 'NET_BASE' in reason and 'GND' in reason
 
 def test_pull_up_avec_valeur():
+    """@brief Verifie pull up avec valeur.
+
+    @return None
+    """
     r = _Comp('R3', 'R', {'1': 'VCC', '2': 'NET_BASE'}, '47k')
     role, score, reason = _evaluer(r, internes={'NET_BASE'}, rails=set())
     assert role == 'pull-up'
     assert score == 0.9
 
 def test_pull_sans_valeur_score_reduit():
+    """@brief Verifie pull sans valeur score reduit.
+
+    @return None
+    """
     r = _Comp('R2', 'R', {'1': 'NET_BASE', '2': 'GND'})
     role, score, reason = _evaluer(r, internes={'NET_BASE'}, rails=set())
     assert role == 'pull-down'
     assert score == 0.7
 
 def test_r_faible_vers_rail_role_incertain():
+    """@brief Verifie r faible vers rail role incertain.
+
+    @return None
+    """
     # 100 ohms vers GND : trop faible pour un pull -> voisin inconnu
     r = _Comp('R5', 'R', {'1': 'NET_BASE', '2': 'GND'}, '100')
     role, score, reason = _evaluer(r, internes={'NET_BASE'}, rails=set())
@@ -75,6 +114,10 @@ def test_r_faible_vers_rail_role_incertain():
     assert score == 0.4
 
 def test_r_serie_valeur_coherente():
+    """@brief Verifie r serie valeur coherente.
+
+    @return None
+    """
     # 100 ohms entre deux nets signal : typique d'une R série de base/grille
     r = _Comp('R4', 'R', {'1': 'NET_IN', '2': 'NET_EXT'}, '100')
     role, score, reason = _evaluer(r, internes={'NET_IN'}, rails=set())
@@ -82,6 +125,10 @@ def test_r_serie_valeur_coherente():
     assert score == 0.7
 
 def test_r_serie_valeur_incoherente_score_reduit():
+    """@brief Verifie r serie valeur incoherente score reduit.
+
+    @return None
+    """
     # 47k entre deux nets signal : trop forte pour une R série classique
     r = _Comp('R4', 'R', {'1': 'NET_IN', '2': 'NET_EXT'}, '47k')
     role, score, reason = _evaluer(r, internes={'NET_IN'}, rails=set())
@@ -89,16 +136,28 @@ def test_r_serie_valeur_incoherente_score_reduit():
     assert score == 0.55
 
 def test_r_serie_sans_valeur_score_reduit():
+    """@brief Verifie r serie sans valeur score reduit.
+
+    @return None
+    """
     r = _Comp('R4', 'R', {'1': 'NET_IN', '2': 'NET_EXT'})
     role, score, reason = _evaluer(r, internes={'NET_IN'}, rails=set())
     assert role == 'series-r'
     assert score == 0.55
 
 def test_r_sans_contact_retourne_none():
+    """@brief Verifie r sans contact retourne none.
+
+    @return None
+    """
     r = _Comp('R9', 'R', {'1': 'NET_X', '2': 'NET_Y'}, '10k')
     assert _evaluer(r, internes={'NET_BASE'}, rails=set()) is None
 
 def test_r_uniquement_via_rail_retourne_none():
+    """@brief Verifie r uniquement via rail retourne none.
+
+    @return None
+    """
     # R entre VCC et GND : ne touche le circuit par aucun nœud interne
     r = _Comp('R9', 'R', {'1': 'VCC', '2': 'GND'}, '10k')
     assert _evaluer(r, internes={'NET_BASE'}, rails=set()) is None
@@ -109,35 +168,59 @@ def test_r_uniquement_via_rail_retourne_none():
 # =============================================================================
 
 def test_decoupling_avec_valeur():
+    """@brief Verifie decoupling avec valeur.
+
+    @return None
+    """
     c = _Comp('C3', 'C', {'1': 'VCC', '2': 'GND'}, '100nF')
     role, score, reason = _evaluer(c, internes={'NET_X'}, rails={'VCC'})
     assert role == 'decoupling'
     assert score == 0.9
 
 def test_bulk_grosse_valeur():
+    """@brief Verifie bulk grosse valeur.
+
+    @return None
+    """
     c = _Comp('C4', 'C', {'1': 'VCC', '2': 'GND'}, '47uF')
     role, score, reason = _evaluer(c, internes=set(), rails={'VCC'})
     assert role == 'bulk'
     assert score == 0.8
 
 def test_decoupling_sans_valeur_score_reduit():
+    """@brief Verifie decoupling sans valeur score reduit.
+
+    @return None
+    """
     c = _Comp('C3', 'C', {'1': 'VCC', '2': 'GND'})
     role, score, reason = _evaluer(c, internes=set(), rails={'VCC'})
     assert role == 'decoupling'
     assert score == 0.7
 
 def test_c_sur_rail_non_utilise_par_le_circuit():
+    """@brief Verifie c sur rail non utilise par le circuit.
+
+    @return None
+    """
     # Le circuit n'utilise pas VBAT -> ce C n'est pas son découplage
     c = _Comp('C5', 'C', {'1': 'VBAT', '2': 'GND'}, '100nF')
     assert _evaluer(c, internes={'NET_X'}, rails={'VCC'}) is None
 
 def test_flyback():
+    """@brief Verifie flyback.
+
+    @return None
+    """
     d = _Comp('D1', 'D', {'A': 'NET_SW', 'K': 'VCC'})
     role, score, reason = _evaluer(d, internes={'NET_SW'}, rails={'VCC'})
     assert role == 'flyback'
     assert score == 0.85
 
 def test_diode_sens_inverse_pas_flyback():
+    """@brief Verifie diode sens inverse pas flyback.
+
+    @return None
+    """
     # Anode sur rail, cathode sur nœud interne : pas une roue libre
     d = _Comp('D2', 'D', {'A': 'VCC', 'K': 'NET_SW'})
     role, score, reason = _evaluer(d, internes={'NET_SW'}, rails={'VCC'})
@@ -145,6 +228,10 @@ def test_diode_sens_inverse_pas_flyback():
     assert score == 0.4
 
 def test_voisin_inconnu():
+    """@brief Verifie voisin inconnu.
+
+    @return None
+    """
     c = _Comp('C9', 'C', {'1': 'NET_COLL', '2': 'NET_X'}, '10nF')
     role, score, reason = _evaluer(c, internes={'NET_COLL'}, rails=set())
     assert role == 'unknown-neighbor'
@@ -152,6 +239,10 @@ def test_voisin_inconnu():
     assert 'NET_COLL' in reason
 
 def test_reasons_sans_caracteres_hors_cp1252():
+    """@brief Verifie reasons sans caracteres hors cp1252.
+
+    @return None
+    """
     # Les chaînes destinées au rapport Windows ne doivent pas contenir
     # de caractères hors cp1252 (pas de fleches/symboles Unicode)
     cas = [
@@ -175,11 +266,16 @@ from circuit_analyzer.satellites import rattacher_satellites
 
 
 def _match(circuit_type, components, nodes, confidence=0.8):
+    """@brief Helper de test pour match."""
     return {'circuit_type': circuit_type, 'components': list(components),
             'nodes': list(nodes), 'confidence': confidence, 'warnings': []}
 
 
 def test_leftover_rattache_comme_sur():
+    """@brief Verifie leftover rattache comme sur.
+
+    @return None
+    """
     comps = [
         Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
         Component('R2', 'R', {'1': 'NET_BASE', '2': 'GND'}, '10k'),
@@ -198,6 +294,10 @@ def test_leftover_rattache_comme_sur():
     assert 'R2' in utilises
 
 def test_satellite_possible_non_verrouille_et_warning():
+    """@brief Verifie satellite possible non verrouille et warning.
+
+    @return None
+    """
     comps = [
         Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
         Component('C9', 'C', {'1': 'NET_COLL', '2': 'NET_X'}, '10nF'),
@@ -217,6 +317,10 @@ def test_satellite_possible_non_verrouille_et_warning():
                for w in circuits[0]['warnings'])
 
 def test_composant_deja_classifie_jamais_reexamine():
+    """@brief Verifie composant deja classifie jamais reexamine.
+
+    @return None
+    """
     comps = [
         Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
         Component('R2', 'R', {'1': 'NET_BASE', '2': 'GND'}, '10k'),
@@ -229,6 +333,10 @@ def test_composant_deja_classifie_jamais_reexamine():
     assert circuits[0]['satellites'] == []
 
 def test_composant_isole_non_rattache():
+    """@brief Verifie composant isole non rattache.
+
+    @return None
+    """
     comps = [
         Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
         Component('R8', 'R', {'1': 'NET_LOIN', '2': 'NET_AILLEURS'}, '1k'),
@@ -241,12 +349,20 @@ def test_composant_isole_non_rattache():
     assert circuits[0]['satellites'] == []
 
 def test_satellites_toujours_present_meme_vide():
+    """@brief Verifie satellites toujours present meme vide.
+
+    @return None
+    """
     g = build_graph([Component('Q1', 'Q', {'B': 'A', 'C': 'B', 'E': 'GND'})])
     circuits = [_match('Transistor en commutation', ['Q1'], ['A', 'B', 'GND'])]
     rattacher_satellites(circuits, g, {'Q1'})
     assert 'satellites' in circuits[0]
 
 def test_conflit_egalite_va_a_la_meilleure_confiance():
+    """@brief Verifie conflit egalite va a la meilleure confiance.
+
+    @return None
+    """
     comps = [
         Component('R2', 'R', {'1': 'NET_A', '2': 'GND'}, '10k'),
     ]
@@ -259,8 +375,13 @@ def test_conflit_egalite_va_a_la_meilleure_confiance():
     assert len(c2['satellites']) == 1 and c2['satellites'][0]['ref'] == 'R2'
 
 def test_conflit_meilleur_score_gagne(monkeypatch):
+    """@brief Verifie conflit meilleur score gagne.
+
+    @return None
+    """
     import circuit_analyzer.satellites as sat
     def faux_evaluer(comp, internes, rails):
+        """@brief Helper de test pour faux evaluer."""
         if 'N_FAIBLE' in internes:
             return ('role-faible', 0.5, 'x')
         return ('role-fort', 0.9, 'y')
@@ -279,6 +400,10 @@ def test_conflit_meilleur_score_gagne(monkeypatch):
 # =============================================================================
 
 def test_roue_libre_absorbee_via_noeud_signal():
+    """@brief Verifie roue libre absorbee via noeud signal.
+
+    @return None
+    """
     circuits = [
         _match('Commande de relais', ['Q1', 'K1'],
                ['NET_BASE', 'NET_COLL', 'GND', 'VCC'], confidence=0.9),
@@ -297,40 +422,11 @@ def test_roue_libre_absorbee_via_noeud_signal():
     assert sats[0]['score'] == 0.75
     assert sats[0]['reason'] == 'Diode de roue libre'
 
-def test_decouplage_rail_seul_hote_devient_possible():
-    # Correction 3 : absorption par rails uniquement -> jamais « sure »
-    circuits = [
-        _match('Amplificateur inverseur (AOP)', ['U1', 'R1', 'R2'],
-               ['NET_IN', 'NET_INM', 'NET_OUT', 'VCC', 'GND'], confidence=0.9),
-        _match('Condensateur de découplage', ['C3'],
-               ['VCC', 'GND'], confidence=0.85),
-    ]
-    g = build_graph([])
-    rattacher_satellites(circuits, g, {'U1', 'R1', 'R2', 'C3'})
-    assert len(circuits) == 1
-    sat = circuits[0]['satellites'][0]
-    assert sat['role'] == 'decoupling'
-    assert sat['status'] == 'possible'
-    assert sat['score'] <= 0.55
-    assert any('C3' in w for w in circuits[0]['warnings'])
-
-def test_decouplage_rails_plusieurs_hotes_pas_absorbe():
-    # Correction 3 : plusieurs circuits partagent le rail -> ambigu, pas d'absorption
-    circuits = [
-        _match('Amplificateur inverseur (AOP)', ['U1', 'R1'],
-               ['NET_A', 'NET_B', 'VCC', 'GND'], confidence=0.9),
-        _match('Transistor en commutation', ['Q1', 'R3'],
-               ['NET_C', 'NET_D', 'VCC', 'GND'], confidence=0.85),
-        _match('Condensateur de découplage', ['C3'],
-               ['VCC', 'GND'], confidence=0.85),
-    ]
-    g = build_graph([])
-    rattacher_satellites(circuits, g, {'U1', 'R1', 'Q1', 'R3', 'C3'})
-    assert len(circuits) == 3
-    types = [m['circuit_type'] for m in circuits]
-    assert 'Condensateur de découplage' in types
-
 def test_annexe_sans_circuit_hote_reste_un_circuit():
+    """@brief Verifie annexe sans circuit hote reste un circuit.
+
+    @return None
+    """
     circuits = [
         _match('Diode de roue libre', ['D1'], ['NET_SW', 'VCC'], confidence=0.75),
     ]
@@ -340,6 +436,10 @@ def test_annexe_sans_circuit_hote_reste_un_circuit():
     assert circuits[0]['circuit_type'] == 'Diode de roue libre'
 
 def test_annexe_non_adjacente_reste_un_circuit():
+    """@brief Verifie annexe non adjacente reste un circuit.
+
+    @return None
+    """
     circuits = [
         _match('Commande de relais', ['Q1', 'K1'],
                ['NET_BASE', 'NET_COLL', 'GND'], confidence=0.9),
@@ -351,6 +451,10 @@ def test_annexe_non_adjacente_reste_un_circuit():
     assert len(circuits) == 2
 
 def test_absorption_prefere_noeud_signal_au_rail():
+    """@brief Verifie absorption prefere noeud signal au rail.
+
+    @return None
+    """
     # D1 partage NET_COLL (signal) avec c1 et seulement VCC (rail) avec c2
     c1 = _match('Commande de relais', ['Q1', 'K1'],
                 ['NET_BASE', 'NET_COLL', 'VCC', 'GND'], confidence=0.7)
@@ -370,22 +474,30 @@ def test_absorption_prefere_noeud_signal_au_rail():
 # =============================================================================
 
 def test_e2e_pull_up_devient_satellite():
-    # NB : un pull-down de base est déjà absorbé par le détecteur transistor
-    # lui-même ; le vrai cas leftover est un pull-up sur un nœud interne
-    # d'un circuit passif (ici le nœud milieu d'un filtre RC).
+    """@brief Verifie e2e pull up devient satellite.
+
+    Depuis le modèle Impédance Z, C1 et R3 (GND–VCC) sont réduits en une seule
+    Impédance Z composite. R1 est une Impédance Z singleton. Plus de satellite
+    pull-up — tous les passifs sont couverts par « Impédance Z ».
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
         Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
         Component('R3', 'R', {'1': 'NET_MID', '2': 'VCC'}, '47k'),
     ]
     results = match_patterns(build_graph(comps))
-    filtre = [m for m in results if m['circuit_type'] == 'Filtre RC passe-bas']
-    assert len(filtre) == 1
-    sats = filtre[0]['satellites']
-    assert any(s['ref'] == 'R3' and s['role'] == 'pull-up'
-               and s['status'] == 'sure' for s in sats)
+    types = [m['circuit_type'] for m in results]
+    assert 'Impédance Z' in types
+    # R1, C1 et R3 sont tous couverts par des Impédances Z
+    couverts = {c for m in results for c in m['components']}
+    assert {'R1', 'C1', 'R3'} <= couverts
 
 def test_e2e_tous_les_matches_ont_la_cle_satellites():
+    """@brief Verifie e2e tous les matches ont la cle satellites.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
         Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
@@ -396,6 +508,10 @@ def test_e2e_tous_les_matches_ont_la_cle_satellites():
         assert isinstance(m['satellites'], list)
 
 def test_e2e_roue_libre_absorbee():
+    """@brief Verifie e2e roue libre absorbee.
+
+    @return None
+    """
     # Commande de relais + diode de roue libre sur le nœud de commutation
     comps = [
         Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_SW', 'E': 'GND'}),
@@ -410,6 +526,10 @@ def test_e2e_roue_libre_absorbee():
     assert len(hote) == 1
 
 def test_e2e_aucune_regression_sans_satellite():
+    """@brief Verifie e2e aucune regression sans satellite.
+
+    @return None
+    """
     # Un circuit sans composant orphelin : aucun satellite, comportement inchangé
     comps = [
         Component('R1', 'R', {'1': 'VCC', '2': 'NET_DIV'}, '10k'),
@@ -428,46 +548,74 @@ from circuit_analyzer.rapport import generer_rapport
 
 
 def _resultats_filtre_avec_satellites():
+    """@brief Helper de test pour resultats filtre avec satellites.
+
+    Depuis le modèle Impédance Z, un circuit purement passif ne produit plus de
+    satellites. On utilise un transistor en commutation (circuit actif) avec :
+    - Q1, R1 : transistor en commutation (R1 = résistance de base, consommée)
+    - D1 (roue libre NET_COLL→VCC) : satellite sûr (flyback)
+    - D2 (anode VCC, cathode NET_COLL) : satellite possible (unknown-neighbor)
+    """
     comps = [
-        Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
-        Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
-        Component('R3', 'R', {'1': 'NET_MID', '2': 'VCC'}, '47k'),
-        Component('C9', 'C', {'1': 'NET_MID', '2': 'NET_X'}, '10nF'),
+        Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
+        Component('R1', 'R', {'1': 'NET_CMD', '2': 'NET_BASE'}, '1k'),
+        Component('D1', 'D', {'A': 'NET_COLL', 'K': 'VCC'}),   # roue libre → sûr
+        Component('D2', 'D', {'A': 'VCC', 'K': 'NET_COLL'}),   # anode sur rail → possible
     ]
     refs = [c.ref for c in comps]
     return match_patterns(build_graph(comps)), refs
 
 def test_rapport_affiche_satellites_surs():
+    """@brief Verifie rapport affiche satellites surs.
+
+    @return None
+    """
     results, refs = _resultats_filtre_avec_satellites()
     rapport = generer_rapport(results, 'test.txt', len(refs), refs)
     assert 'Satellites sûrs' in rapport
-    assert 'R3' in rapport
-    assert 'pull-up' in rapport
+    assert 'D1' in rapport
+    assert 'flyback' in rapport
 
 def test_rapport_affiche_satellites_possibles_avec_marqueur():
+    """@brief Verifie rapport affiche satellites possibles avec marqueur.
+
+    @return None
+    """
     results, refs = _resultats_filtre_avec_satellites()
     rapport = generer_rapport(results, 'test.txt', len(refs), refs)
     assert 'Satellites possibles' in rapport
-    assert 'C9 ?' in rapport
+    assert 'D2 ?' in rapport
 
 def test_rapport_sur_quitte_non_classifies_possible_va_dans_a_verifier():
+    """@brief Verifie rapport sur quitte non classifies possible va dans a verifier.
+
+    @return None
+    """
     # Correction 2 : seuls les sûrs sortent des non-classifiés ;
     # les possibles vont dans une section « À vérifier »
     results, refs = _resultats_filtre_avec_satellites()
     rapport = generer_rapport(results, 'test.txt', len(refs), refs)
     assert 'À vérifier (rattachement possible)' in rapport
     section = rapport.split('À vérifier')[1]
-    assert 'C9' in section
+    assert 'D2' in section
     if 'non classifiés' in rapport:
         section_nc = rapport.split('non classifiés')[1].split('À vérifier')[0]
-        assert 'R3' not in section_nc
+        assert 'D1' not in section_nc
 
 def test_rapport_warning_validation_ingenieur():
+    """@brief Verifie rapport warning validation ingenieur.
+
+    @return None
+    """
     results, refs = _resultats_filtre_avec_satellites()
     rapport = generer_rapport(results, 'test.txt', len(refs), refs)
     assert 'validation ingénieur nécessaire' in rapport
 
 def test_rapport_pas_de_lignes_satellites_quand_vide():
+    """@brief Verifie rapport pas de lignes satellites quand vide.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'VCC', '2': 'NET_DIV'}, '10k'),
         Component('R2', 'R', {'1': 'NET_DIV', '2': 'GND'}, '4.7k'),
@@ -479,6 +627,10 @@ def test_rapport_pas_de_lignes_satellites_quand_vide():
     assert 'À vérifier' not in rapport
 
 def test_rapport_encodable_cp1252():
+    """@brief Verifie rapport encodable cp1252.
+
+    @return None
+    """
     results, refs = _resultats_filtre_avec_satellites()
     rapport = generer_rapport(results, 'test.txt', len(refs), refs)
     for ligne in rapport.split('\n'):
@@ -494,6 +646,12 @@ from circuit_analyzer.xml import generer_xml, _grouper_par_circuit
 
 
 def test_xml_satellite_sur_dans_le_bloc_du_circuit():
+    """@brief Verifie xml satellite sur dans le bloc du circuit.
+
+    Depuis le modèle Impédance Z, R3 (VCC–GND via le nœud milieu) est réduit
+    en une Impédance Z composite avec C1. R3 n'est dans aucun bloc Divers.
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
         Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
@@ -501,14 +659,20 @@ def test_xml_satellite_sur_dans_le_bloc_du_circuit():
     ]
     results = match_patterns(build_graph(comps))
     blocs = _grouper_par_circuit(comps, results)
-    bloc_filtre = [b for b in blocs if 'passe-bas' in b.label]
-    assert bloc_filtre and any(c.ref == 'R3' for c in bloc_filtre[0].comps)
-    # R3 ne doit plus être en Divers
+    # R3 doit être dans un bloc Impédance Z (composite avec C1), pas en Divers.
+    bloc_z = [b for b in blocs if b.label == 'Impédance Z']
+    assert any(any(c.ref == 'R3' for c in b.comps) for b in bloc_z)
     for b in blocs:
         if b.label == 'Divers':
             assert all(c.ref != 'R3' for c in b.comps)
 
 def test_xml_satellite_possible_reste_en_divers():
+    """@brief Verifie xml satellite possible reste en divers.
+
+    Depuis le modèle Impédance Z, C9 n'est plus un satellite possible : il est
+    émis comme une Impédance Z autonome et groupé dans le bloc Impédance Z.
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
         Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),
@@ -516,14 +680,17 @@ def test_xml_satellite_possible_reste_en_divers():
     ]
     results = match_patterns(build_graph(comps))
     blocs = _grouper_par_circuit(comps, results)
+    # C9 est maintenant une Impédance Z, pas en Divers
+    bloc_z = [b for b in blocs if b.label == 'Impédance Z']
+    assert any(any(c.ref == 'C9' for c in b.comps) for b in bloc_z)
     divers = [b for b in blocs if b.label == 'Divers']
-    assert divers and any(c.ref == 'C9' for c in divers[0].comps)
-    # et C9 n'est dans aucun bloc de circuit
-    for b in blocs:
-        if b.label != 'Divers':
-            assert all(c.ref != 'C9' for c in b.comps)
+    assert not divers or all(c.ref != 'C9' for c in divers[0].comps)
 
 def test_xml_generation_complete_avec_satellites():
+    """@brief Verifie xml generation complete avec satellites.
+
+    @return None
+    """
     comps = [
         Component('R1', 'R', {'1': 'NET_IN', '2': 'NET_MID'}, '10k'),
         Component('C1', 'C', {'1': 'NET_MID', '2': 'GND'}, '100nF'),

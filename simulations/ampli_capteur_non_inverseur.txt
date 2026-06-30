@@ -1,0 +1,12 @@
+# Ampli non-inverseur pour capteur haute impedance (pont de jauge / photodiode).
+# Le signal capteur attaque directement IN+ (impedance d'entree tres elevee, pas
+# de charge du capteur). Gain = 1 + Rf/Rg = 1 + 10k/1k = 11.
+# Pont de contre-reaction Rf/Rg sur IN-, reductible en impedances Z.
+
+U1   /VSENS  /FB     /VOUT   /VCC   /GND
+
+# Contre-reaction vers IN-
+Rf   /FB     /VOUT   10k
+
+# Resistance de gain vers la masse
+Rg   /FB     /GND    1k

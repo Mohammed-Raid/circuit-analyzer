@@ -1,5 +1,6 @@
 """
-chemins.py — Résolution des chemins de l'application.
+@file chemins.py
+@brief Résolution des chemins de l'application.
 
 Gelée par PyInstaller, l'application vit dans un dossier portable : les
 fichiers modifiables par l'utilisateur (config/net_aliases.json,
@@ -11,9 +12,12 @@ from pathlib import Path
 
 def racine_application() -> Path:
     """
-    Racine de l'application :
+    @brief Racine de l'application (selon mode normal ou gelé PyInstaller).
+
       - gelée (PyInstaller pose sys.frozen) -> dossier contenant l'exe ;
       - sinon -> racine du projet (parent de circuit_analyzer/).
+
+    @return Path Chemin racine de l'application.
     """
     if getattr(sys, 'frozen', False):
         return Path(sys.executable).parent

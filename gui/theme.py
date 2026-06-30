@@ -1,4 +1,7 @@
-"""Centralized design tokens — import with: from gui.theme import *"""
+"""
+@file theme.py
+@brief Jetons de design centralisés (couleurs) — import avec : from gui.theme import *
+"""
 
 BG      = "#070d1a"
 SURFACE = "#0f172a"

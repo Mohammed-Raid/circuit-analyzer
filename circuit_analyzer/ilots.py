@@ -1,5 +1,6 @@
 """
-ilots.py — Détection d'îlots fonctionnels (structure en étages du schéma).
+@file ilots.py
+@brief Détection d'îlots fonctionnels (structure en étages du schéma).
 
 Principe : deux composants appartiennent au même îlot s'ils partagent un net
 signal (non-rail). GND/VCC/PE connectent électriquement tout le schéma mais ne
@@ -21,9 +22,78 @@ from collections import Counter
 from circuit_analyzer.patterns.base import is_power_net
 from circuit_analyzer.satellites import _est_rail
 
+# Nets « non connectés » : ne relient électriquement aucun composant. L'export
+# XML force les broches d'alim d'AOP à 'NC' ; les compter comme un net signal
+# fusionnerait à tort tous ces composants dans un même îlot.
+_NETS_NON_CONNECTES = {"NC", "N/C", "NRELIEE", ""}
+
+
+def _net_signal(net) -> bool:
+    """@brief Vrai si le net relie réellement des composants (ni rail, ni non-connecté)."""
+    return bool(net) and net.upper() not in _NETS_NON_CONNECTES and not _est_rail(net)
+
+
+def _est_degenere(comp) -> bool:
+    """@brief Vrai si toutes les broches connectées pointent vers un seul net.
+
+    Un tel composant est en court-circuit sur lui-même (ex. R14/C9 câblés GND-GND
+    dans la netlist) : aucun courant ne le traverse, il est électriquement inerte.
+    On l'exclut des îlots pour ne pas produire de boîte Z absurde.
+
+    @param comp Composant (a un dict .pins).
+    @return bool Vrai si dégénéré (≥2 broches connectées, toutes sur le même net).
+    """
+    connectees = [n for n in comp.pins.values()
+                  if n and n.upper() not in _NETS_NON_CONNECTES]
+    return len(connectees) >= 2 and len(set(connectees)) == 1
+
+
+_PASSIFS = {'R', 'L', 'C'}
+
+
+def _est_gnd(net) -> bool:
+    """@brief Vrai pour la masse (rail non-alimentation : GND, PE…)."""
+    return bool(net) and _est_rail(net) and not is_power_net(net)
+
+
+def _nets_derives(graphe) -> set:
+    """@brief Nets d'alimentation « dérivés » (prises de référence / rails filtrés).
+
+    Un net N est une prise dérivée s'il est un net d'alimentation ≠ GND qui possède
+    À LA FOIS un passif (R/L/C) vers GND ET un passif vers un autre net d'alimentation.
+    Discrimine les références (VREF, AVCC) des vrais rails sources (VCC, qui n'a pas
+    de passif vers GND dans son réseau).
+
+    @param graphe Graphe NetworkX (porte graphe.graph['components']).
+    @return set[str] Nets-prises.
+    """
+    comps = graphe.graph.get('components', {})
+    vers_gnd: set = set()        # nets alim ayant un passif vers GND
+    vers_rail: dict = {}         # net alim -> {autres nets alim relies par un passif}
+    for comp in comps.values():
+        if comp.type not in _PASSIFS:
+            continue
+        nets = [n for n in comp.pins.values() if n]
+        for i, a in enumerate(nets):
+            for b in nets[i + 1:]:
+                if a == b:
+                    continue
+                for x, y in ((a, b), (b, a)):
+                    if is_power_net(x) and not _est_gnd(x):
+                        if _est_gnd(y):
+                            vers_gnd.add(x)
+                        elif is_power_net(y) and not _est_gnd(y):
+                            vers_rail.setdefault(x, set()).add(y)
+    return {n for n in vers_gnd if vers_rail.get(n)}
+
 
 def _find(parent: dict, x: str) -> str:
-    """Racine Union-Find avec compression de chemin."""
+    """@brief Racine Union-Find avec compression de chemin.
+
+    @param parent Dict parent de l'Union-Find.
+    @param x Élément dont on cherche la racine.
+    @return str Racine de la classe d'équivalence de x.
+    """
     while parent[x] != x:
         parent[x] = parent[parent[x]]
         x = parent[x]
@@ -31,18 +101,35 @@ def _find(parent: dict, x: str) -> str:
 
 
 def _union(parent: dict, a: str, b: str) -> None:
+    """@brief Fusionne les classes d'équivalence de a et b.
+
+    @param parent Dict parent de l'Union-Find (muté en place).
+    @param a Premier élément.
+    @param b Second élément.
+    @return None
+    """
     ra, rb = _find(parent, a), _find(parent, b)
     if ra != rb:
         parent[rb] = ra
 
 
 def _categorie_dominante(circuits: list, indices: list) -> str:
-    """Catégorie fonctionnelle majoritaire des circuits d'un îlot."""
+    """@brief Catégorie fonctionnelle majoritaire des circuits d'un îlot.
+
+    @param circuits Liste de tous les circuits détectés.
+    @param indices Indices (dans circuits) des circuits de l'îlot.
+    @return str Catégorie dominante (ou catégories à égalité, jointes par ' + ').
+    """
     compteur = Counter(
         circuits[i].get('functional_category', 'divers') for i in indices
     )
     if not compteur:
         return 'non identifié'
+    # Les « Impédance Z » sont des briques passives, pas la fonction d'un étage :
+    # depuis la refonte Z elles sont nombreuses et noieraient les montages actifs
+    # dans le vote. On ne les retient que si l'îlot est purement passif.
+    if len(compteur) > 1:
+        compteur.pop('impedance', None)
     maxi = max(compteur.values())
     gagnantes = sorted(cat for cat, nb in compteur.items() if nb == maxi)
     return ' + '.join(gagnantes)
@@ -50,15 +137,16 @@ def _categorie_dominante(circuits: list, indices: list) -> str:
 
 def detecter_ilots(graphe, circuits: list) -> list[dict]:
     """
-    Découpe le circuit en îlots fonctionnels.
+    @brief Découpe le circuit en îlots fonctionnels (connexité hors rails).
 
-    Arguments :
-        graphe   : graphe NetworkX construit par construire_graphe()
-        circuits : liste des matches d'analyser() (peut être vide)
-
-    Retourne la liste des îlots triés par taille décroissante.
+    @param graphe Graphe NetworkX construit par construire_graphe().
+    @param circuits Liste des matches d'analyser() (peut être vide).
+    @return list[dict] Îlots triés par taille décroissante (label, categorie, composants, circuits, rail).
     """
     comps = graphe.graph.get('components', {})
+    # Écarter les composants dégénérés (toutes broches sur un même net) : inertes,
+    # ils n'appartiennent à aucun étage fonctionnel.
+    comps = {ref: c for ref, c in comps.items() if not _est_degenere(c)}
     if not comps:
         return []
 
@@ -67,7 +155,7 @@ def detecter_ilots(graphe, circuits: list) -> list[dict]:
     net_vers_refs: dict = {}
     for ref, comp in comps.items():
         for net in comp.pins.values():
-            if net and not _est_rail(net):
+            if _net_signal(net):
                 net_vers_refs.setdefault(net, []).append(ref)
     for refs in net_vers_refs.values():
         for autre in refs[1:]:
@@ -78,11 +166,16 @@ def detecter_ilots(graphe, circuits: list) -> list[dict]:
     for ref in refs_signal:
         groupes.setdefault(_find(parent, ref), []).append(ref)
 
-    # ── 2. Composants rail-only : un groupe par rail d'alimentation ──────────
+    # ── 2. Composants rail-only : un groupe par prise dérivée, sinon par rail ──
+    derives = _nets_derives(graphe)
     par_rail: dict = {}
     sans_rien: list = []
     for ref, comp in comps.items():
         if ref in refs_signal:
+            continue
+        prises = sorted({n for n in comp.pins.values() if n in derives})
+        if prises:                       # rattaché à sa prise dérivée (diviseur unifié)
+            par_rail.setdefault(prises[0], []).append(ref)
             continue
         rails = sorted({n for n in comp.pins.values() if n and is_power_net(n)})
         if rails:

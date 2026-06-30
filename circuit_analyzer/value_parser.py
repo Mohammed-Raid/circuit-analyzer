@@ -1,5 +1,6 @@
 """
-value_parser.py — Parse les valeurs électriques des composants.
+@file value_parser.py
+@brief Parse les valeurs électriques des composants.
 
 Comprend :
   Résistances : 0R, 10R, 10Ω, 1k, 4.7k, 1M, 0.01R, 4K7 (notation EIA)
@@ -23,8 +24,10 @@ _MULT: dict[str, float] = {
 
 def parse_valeur(valeur: str) -> float | None:
     """
-    Parse une valeur électrique et retourne un float en unité SI de base.
-    Retourne None si la valeur est absente, vide ou invalide.
+    @brief Parse une valeur électrique et retourne un float en unité SI de base.
+
+    @param valeur Chaîne de valeur du composant (ex. '10k', '100nF', '4K7').
+    @return float|None La valeur en unité SI de base, ou None si absente/invalide.
 
     Exemples :
         '10k'    → 10000.0
@@ -71,9 +74,10 @@ def parse_valeur(valeur: str) -> float | None:
 
 def classifier_resistance(valeur: str) -> str:
     """
-    Classifie une résistance selon sa valeur.
+    @brief Classifie une résistance selon sa valeur.
 
-    Retours :
+    @param valeur Chaîne de valeur de la résistance.
+    @return str Une catégorie :
         'jumper'   — 0Ω, pont direct
         'shunt'    — < 1Ω, mesure de courant
         'standard' — valeur normale
@@ -94,9 +98,11 @@ def classifier_resistance(valeur: str) -> str:
 
 def classifier_condensateur(valeur: str, entre_power_gnd: bool = False) -> str:
     """
-    Classifie un condensateur selon sa valeur et son emplacement.
+    @brief Classifie un condensateur selon sa valeur et son emplacement.
 
-    Retours :
+    @param valeur Chaîne de valeur du condensateur.
+    @param entre_power_gnd True si le condensateur est placé entre alimentation et GND.
+    @return str Une catégorie :
         'decoupling'   — ≤ 1µF entre alim/GND (découplage HF)
         'bulk_filter'  — > 1µF entre alim/GND (filtrage alimentation)
         'standard'     — emplacement non significatif

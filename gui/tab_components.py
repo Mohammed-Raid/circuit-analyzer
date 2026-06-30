@@ -1,3 +1,7 @@
+"""
+@file tab_components.py
+@brief Onglet « Composants » : consultation des types intégrés et édition des types personnalisés.
+"""
 import json
 import tkinter as tk
 import customtkinter as ctk
@@ -12,7 +16,7 @@ from gui.widgets import ListeSectionnee, BandeauEtat, ligne_aide, lier_molette
 
 class TabComponents:
     """
-    Onglet « Composants » : bibliothèque des types (R, C, Q…).
+    @brief Onglet « Composants » : bibliothèque des types (R, C, Q…).
 
     Gauche : liste sectionnée (types intégrés consultables / personnalisés
     modifiables). Droite : formulaire scrollable avec bandeau d'état
@@ -20,6 +24,11 @@ class TabComponents:
     """
 
     def __init__(self, parent, on_save=None):
+        """@brief Construit l'onglet, charge la bibliothèque et affiche le mode « nouveau ».
+
+        @param parent Widget parent (zone de contenu).
+        @param on_save Callback appelé après sauvegarde/suppression (rafraîchit l'onglet Circuits).
+        """
         self.frame = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
         self._on_save = on_save
         self._custom: dict = {}
@@ -34,6 +43,7 @@ class TabComponents:
     # ── Construction ─────────────────────────────────────────────────────────
 
     def _build(self):
+        """@brief Construit l'en-tête, la liste sectionnée et le formulaire d'édition."""
         header = ctk.CTkFrame(self.frame, fg_color=CARD,
                               corner_radius=0, height=70)
         header.pack(fill="x")
@@ -160,6 +170,12 @@ class TabComponents:
     # ── Modes du formulaire ──────────────────────────────────────────────────
 
     def _definir_mode(self, mode: str, texte: str):
+        """@brief Bascule le formulaire en mode nouveau / édition / lecture seule.
+
+        @param mode Mode cible ('nouveau', 'edition', 'lecture').
+        @param texte Texte du bandeau d'état.
+        @return None
+        """
         self._mode = mode
         self._bandeau.definir(mode if mode != 'edition' else 'edition', texte)
         lecture = (mode == 'lecture')
@@ -178,12 +194,18 @@ class TabComponents:
             self._btn_save.pack(fill="x")
 
     def _afficher_nouveau(self):
+        """@brief Affiche un formulaire vierge en mode « nouveau »."""
         self._current_key = None
         self._remplir_formulaire('', '', [''])
         self._definir_mode('nouveau', "➕  Nouveau type de composant")
         self._prendre_snapshot()
 
     def _afficher_perso(self, key: str):
+        """@brief Affiche un type personnalisé en mode édition.
+
+        @param key Préfixe du type personnalisé.
+        @return None
+        """
         self._current_key = key
         v = self._custom[key]
         self._remplir_formulaire(key, v.get("name", ""), v.get("pins", []))
@@ -191,6 +213,11 @@ class TabComponents:
         self._prendre_snapshot()
 
     def _afficher_integre(self, key: str):
+        """@brief Affiche un type intégré en lecture seule.
+
+        @param key Préfixe du type intégré.
+        @return None
+        """
         self._current_key = None
         v = COMPONENT_TYPES[key]
         self._remplir_formulaire(key, v["name"], v["pins"])
@@ -199,6 +226,13 @@ class TabComponents:
         self._prendre_snapshot()
 
     def _remplir_formulaire(self, prefixe: str, nom: str, broches: list):
+        """@brief Remplit les champs du formulaire (préfixe, nom, broches).
+
+        @param prefixe Préfixe du type.
+        @param nom Nom complet du type.
+        @param broches Liste des noms de broches.
+        @return None
+        """
         # Réactiver avant d'écrire : un Entry disabled ignore les set()
         self._prefix_entry.configure(state="normal")
         self._name_entry.configure(state="normal")
@@ -213,15 +247,21 @@ class TabComponents:
     # ── Anti-perte de saisie ─────────────────────────────────────────────────
 
     def _etat_courant(self) -> tuple:
+        """@brief Instantané (préfixe, nom, broches) de l'état courant du formulaire.
+        @return tuple État courant, pour détecter les modifications non sauvegardées.
+        """
         return (self._prefix_var.get().strip(),
                 self._name_var.get().strip(),
                 tuple(v.get().strip() for v, _ in self._pin_lignes))
 
     def _prendre_snapshot(self):
+        """@brief Mémorise l'état courant comme référence anti-perte de saisie."""
         self._etat_initial = self._etat_courant()
 
     def _confirmer_abandon(self) -> bool:
-        """Vrai si on peut quitter le formulaire (rien à perdre, ou confirmé)."""
+        """@brief Vrai si on peut quitter le formulaire (rien à perdre, ou confirmé).
+        @return bool True si l'abandon est autorisé.
+        """
         if self._mode == 'lecture' or self._etat_courant() == self._etat_initial:
             return True
         return messagebox.askyesno(
@@ -232,6 +272,11 @@ class TabComponents:
     # ── Broches ──────────────────────────────────────────────────────────────
 
     def _ajouter_broche(self, valeur=""):
+        """@brief Ajoute une ligne de saisie de broche au formulaire.
+
+        @param valeur Valeur initiale de la broche (vide par défaut).
+        @return None
+        """
         n = len(self._pin_lignes) + 1
         row = ctk.CTkFrame(self._pins_inner, fg_color="transparent")
         row.pack(anchor="w", pady=2)
@@ -251,6 +296,7 @@ class TabComponents:
         lier_molette(self._form)
 
     def _retirer_broche(self):
+        """@brief Retire la dernière ligne de broche du formulaire."""
         if self._pin_lignes:
             self._pin_lignes.pop()
             children = self._pins_inner.winfo_children()
@@ -260,6 +306,7 @@ class TabComponents:
     # ── Validation ───────────────────────────────────────────────────────────
 
     def _valider_prefixe(self, *_):
+        """@brief Affiche un avertissement si le préfixe saisi est réservé ou déjà utilisé."""
         p = self._prefix_var.get().strip().upper()
         if self._mode == 'lecture':
             self._pfx_warn.configure(text="")
@@ -273,6 +320,7 @@ class TabComponents:
     # ── Données ──────────────────────────────────────────────────────────────
 
     def _load(self):
+        """@brief Charge la bibliothèque (types intégrés + personnalisés) et peuple la liste."""
         self._custom = {}
         chemin = chemin_bibliotheque()
         if chemin.exists():
@@ -288,12 +336,19 @@ class TabComponents:
         )
 
     def _ecrire(self):
+        """@brief Écrit les types personnalisés dans le fichier de bibliothèque (JSON UTF-8)."""
         with open(chemin_bibliotheque(), "w", encoding="utf-8") as f:
             json.dump(self._custom, f, ensure_ascii=False, indent=2)
 
     # ── Actions ──────────────────────────────────────────────────────────────
 
     def _sur_selection(self, section: str, index: int):
+        """@brief Gère la sélection d'un type dans la liste (intégré ou personnalisé).
+
+        @param section Section sélectionnée ('integre' ou 'perso').
+        @param index Index dans la section.
+        @return None
+        """
         if not self._confirmer_abandon():
             self._liste.deselectionner()
             return
@@ -303,13 +358,14 @@ class TabComponents:
             self._afficher_perso(list(self._custom.keys())[index])
 
     def _nouveau(self):
+        """@brief Démarre la création d'un nouveau type (après confirmation d'abandon)."""
         if not self._confirmer_abandon():
             return
         self._liste.deselectionner()
         self._afficher_nouveau()
 
     def _dupliquer(self):
-        """Préremplit un nouveau personnalisé à partir du type affiché."""
+        """@brief Préremplit un nouveau type personnalisé à partir du type affiché."""
         nom = self._name_var.get()
         broches = [v.get() for v, _ in self._pin_lignes]
         self._liste.deselectionner()
@@ -320,6 +376,7 @@ class TabComponents:
         self._prendre_snapshot()
 
     def _supprimer(self):
+        """@brief Supprime le type personnalisé en cours d'édition (avec confirmation)."""
         if self._mode != 'edition' or not self._current_key:
             messagebox.showinfo(
                 "Info", "Sélectionnez d'abord un composant personnalisé (★).\n"
@@ -337,6 +394,7 @@ class TabComponents:
                 self._on_save()
 
     def _sauvegarder(self):
+        """@brief Valide et enregistre le type personnalisé saisi (préfixe, nom, broches)."""
         prefix = self._prefix_var.get().strip().upper()
         name   = self._name_var.get().strip()
         pins   = [v.get().strip()
@@ -362,4 +420,5 @@ class TabComponents:
         messagebox.showinfo("Succès", f"'{prefix}' sauvegardé.")
 
     def refresh_component_list(self):
+        """@brief Recharge la bibliothèque (appelé quand un autre onglet la modifie)."""
         self._load()

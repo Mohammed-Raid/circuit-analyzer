@@ -1,6 +1,7 @@
 """
-descriptions.py — Description courte de chaque circuit intégré, affichée dans
-la fiche lecture seule de l'onglet Circuits.
+@file descriptions.py
+@brief Description courte de chaque circuit intégré, affichée dans la fiche
+       lecture seule de l'onglet Circuits.
 
 Le test tests/test_descriptions.py vérifie que chaque nom de NOMS_CIRCUITS
 a sa description : ajouter un détecteur impose d'ajouter une entrée ici.
@@ -28,6 +29,12 @@ DESCRIPTIONS_CIRCUITS = {
     "Amplificateur inverseur (AOP)":
         "Amplifie en inversant le signal. Résistance d'entrée et résistance "
         "de contre-réaction sur IN-.",
+    "Ampli inverseur + boost HF (AOP)":
+        "Variante inverseuse avec Zin = R//C. Le gain reste fini en continu "
+        "et augmente aux hautes frÃ©quences.",
+    "Ampli inverseur + action intégrale (AOP)":
+        "Variante inverseuse avec Zf = R+C en sÃ©rie. Le comportement ajoute "
+        "une action intÃ©grale aux basses frÃ©quences.",
     "Suiveur de tension (AOP)":
         "Recopie la tension d'entrée (gain 1) en isolant la source. "
         "Sortie directement reliée à IN-.",
@@ -67,25 +74,7 @@ DESCRIPTIONS_CIRCUITS = {
     "Détecteur de crête":
         "Mémorise la tension maximale du signal. Diode en série + "
         "condensateur vers GND.",
-    "Condensateur de découplage":
-        "Stabilise l'alimentation près d'un composant. Condensateur "
-        "directement entre alimentation et GND.",
-    "Filtre RC passe-bas":
-        "Atténue les hautes fréquences. Résistance en série + condensateur "
-        "vers GND.",
-    "Filtre RC passe-haut":
-        "Atténue les basses fréquences. Condensateur en série + résistance "
-        "vers GND.",
-    "Filtre LC":
-        "Filtre de puissance (alimentations à découpage). Inductance en "
-        "série + condensateur vers GND.",
-    "Absorbeur RC":
-        "Snubber : absorbe les surtensions transitoires. Résistance et "
-        "condensateur en parallèle.",
-    "Pont diviseur de tension":
-        "Crée une tension intermédiaire. Deux résistances en série, point "
-        "milieu sur un nœud signal.",
-    "Protection par fusible":
-        "Coupe le circuit en cas de surintensité. Composant de type F en "
-        "série.",
+    "Impédance Z":
+        "Dipôle passif équivalent : R/L/C combinés en série puis en "
+        "parallèle (la composition détaille les éléments d'origine).",
 }

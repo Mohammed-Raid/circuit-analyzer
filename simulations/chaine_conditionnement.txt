@@ -1,0 +1,19 @@
+# Chaine de conditionnement capteur (vue ILOT) - assemblage industriel plausible :
+#   capteur -> amplification -> filtrage actif (integrateur reel) -> comparateur de seuil
+# Pas de doublon Schmitt+comparateur : un seul etage de decision en bout de chaine.
+
+# Etage 1 : amplification non-inverseuse du capteur (VSENS -> A)
+U1   /VSENS  /N1     /A      /VCC   /GND
+Rf1  /N1     /A      100k
+Rg1  /N1     /GND    10k
+
+# Etage 2 : integrateur reel = filtre passe-bas actif (A -> B), Zf = Rf2 // Cf2
+U2   /GND    /M      /B      /VCC   /GND
+Rin  /A      /M      10k
+Rf2  /M      /B      1M
+Cf2  /M      /B      10n
+
+# Etage 3 : comparateur de seuil (B vs reference -> FLAG)
+U3   /B      /VREF   /FLAG   /VCC   /GND
+Rr1  /VCC    /VREF   10k
+Rr2  /VREF   /GND    10k

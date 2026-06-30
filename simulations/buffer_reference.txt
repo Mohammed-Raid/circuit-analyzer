@@ -1,0 +1,11 @@
+# Suiveur de tension (buffer d'impedance d'une reference avant l'ADC).
+# Un pont diviseur haute impedance (Rd1/Rd2, 100k) genere une reference de
+# tension ; le suiveur la recopie sous basse impedance pour ne pas charger le
+# pont et attaquer proprement l'entree de l'ADC. Gain unitaire, OUT reboucle
+# directement sur IN-.
+
+U1   /VREF_IN  /VOUT    /VOUT   /VCC   /GND
+
+# Pont diviseur de reference (haute impedance) sur IN+
+Rd1  /VCC      /VREF_IN  100k
+Rd2  /VREF_IN  /GND      100k

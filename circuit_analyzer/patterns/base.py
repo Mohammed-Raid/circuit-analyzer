@@ -1,3 +1,13 @@
+"""
+@file base.py
+@brief Classification des nets (masse / alimentation / terre de protection) et
+       classe de base des patterns personnalisés.
+
+Les alias de nets sont chargés une fois à l'import depuis
+config/net_aliases.json, puis figés : la classification d'un net est donc
+mémoïsable (lru_cache), ce qui évite des milliers de reclassements sur une
+grosse netlist.
+"""
 from abc import ABC, abstractmethod
 from functools import lru_cache
 import json
@@ -11,7 +21,10 @@ import networkx as nx
 # =============================================================================
 
 def _charger_alias() -> dict:
-    """Charge config/net_aliases.json depuis la racine du projet. Retourne les défauts si absent."""
+    """@brief Charge config/net_aliases.json depuis la racine du projet.
+
+    @return dict Alias fusionnés avec les défauts ; les défauts seuls si le fichier est absent/illisible.
+    """
     _defaut = {
         "ground": ["GND", "AGND", "DGND", "PGND", "0", "0V", "COM", "VSS", "V-"],
         "power":  ["VCC", "VDD", "VIN", "VBAT", "VBUS", "VMOT", "+5V", "+3V3",
@@ -43,7 +56,11 @@ _PE_EXACTS   = {a.upper() for a in _ALIASES.get('protective_earth', [])}
 
 
 def _compiler_prefixes(exacts: set):
-    """Compile UNE regex pour les préfixes composés (GND_AOP, VDD1…) d'une catégorie."""
+    """@brief Compile UNE regex pour les préfixes composés (GND_AOP, VDD1…) d'une catégorie.
+
+    @param exacts Ensemble des noms exacts (en majuscules) de la catégorie.
+    @return re.Pattern|None Regex de préfixe, ou None si aucun alias d'au moins 2 caractères.
+    """
     alternatives = sorted(re.escape(a) for a in exacts if len(a) >= 2)
     if not alternatives:
         return None
@@ -64,7 +81,11 @@ _PE_PREFIXES  = _compiler_prefixes(_PE_EXACTS)
 
 @lru_cache(maxsize=None)
 def is_ground_net(net: str) -> bool:
-    """Retourne True si le net est une masse (GND, AGND, 0V, VSS…)."""
+    """@brief Indique si le net est une masse (GND, AGND, 0V, VSS…).
+
+    @param net Nom du net à classer.
+    @return bool True si le net est une masse.
+    """
     if not net:
         return False
     n = net.lstrip('/').upper().replace(' ', '')
@@ -76,7 +97,11 @@ def is_ground_net(net: str) -> bool:
 
 @lru_cache(maxsize=None)
 def is_power_net(net: str) -> bool:
-    """Retourne True si le net est un rail d'alimentation (VCC, VDD, +5V…)."""
+    """@brief Indique si le net est un rail d'alimentation (VCC, VDD, +5V…).
+
+    @param net Nom du net à classer.
+    @return bool True si le net est une alimentation.
+    """
     if not net:
         return False
     n = net.lstrip('/').upper().replace(' ', '')
@@ -88,8 +113,13 @@ def is_power_net(net: str) -> bool:
 
 @lru_cache(maxsize=None)
 def is_protective_earth_net(net: str) -> bool:
-    """Retourne True si le net est une terre de protection (PE, EARTH, CHASSIS…).
-    Ne doit PAS être traité comme GND dans les détecteurs de circuits."""
+    """@brief Indique si le net est une terre de protection (PE, EARTH, CHASSIS…).
+
+    Ne doit PAS être traité comme GND dans les détecteurs de circuits.
+
+    @param net Nom du net à classer.
+    @return bool True si le net est une terre de protection.
+    """
     if not net:
         return False
     n = net.lstrip('/').upper().replace(' ', '')
@@ -99,7 +129,11 @@ def is_protective_earth_net(net: str) -> bool:
 
 
 def classify_net(net: str) -> str:
-    """Classifie un net : 'ground', 'power', 'pe' (terre de protection) ou 'signal'."""
+    """@brief Classifie un net en une catégorie unique.
+
+    @param net Nom du net à classer.
+    @return str 'ground', 'power', 'pe' (terre de protection) ou 'signal'.
+    """
     if is_ground_net(net):
         return 'ground'
     if is_power_net(net):
@@ -119,15 +153,24 @@ is_power = is_power_net
 # =============================================================================
 
 class Pattern(ABC):
+    """@brief Interface de base des patterns de circuits personnalisés."""
+
     @property
     @abstractmethod
     def name(self) -> str:
+        """@brief Nom affiché du pattern.
+
+        @return str Nom du circuit détecté.
+        """
         pass
 
     @abstractmethod
     def match(self, graph: nx.MultiGraph) -> list[dict]:
         """
-        Returns list of matches.
-        Each match: {'components': [ref, ...], 'nodes': [net, ...]}
+        @brief Recherche les occurrences du pattern dans le graphe.
+
+        @param graph Le MultiGraph NetworkX du circuit.
+        @return list[dict] Liste de matches, chacun de la forme
+                {'components': [ref, ...], 'nodes': [net, ...]}.
         """
         pass

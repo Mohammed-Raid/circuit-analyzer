@@ -1,5 +1,6 @@
 """
-satellites.py — Rattachement des composants satellites aux circuits détectés.
+@file satellites.py
+@brief Rattachement des composants satellites aux circuits détectés.
 
 Après la détection des 27 patterns, deux phases :
   Phase 1 : les circuits annexes mono-composant (roue libre, découplage, ESD)
@@ -27,32 +28,43 @@ SEUIL_POSSIBLE = 0.3
 
 
 def _est_rail(net) -> bool:
-    """Vrai si le net est une masse, une alimentation ou une terre de protection."""
+    """@brief Vrai si le net est une masse, une alimentation ou une terre de protection.
+
+    @param net Nom du net à tester.
+    @return bool True si le net est un rail (GND / alimentation / terre de protection).
+    """
     if not net:
         return False
     return is_ground_net(net) or is_power_net(net) or is_protective_earth_net(net)
 
 
 def _noeuds_internes(match: dict) -> set:
-    """Nœuds du circuit qui ne sont ni GND, ni alim, ni PE (= nœuds signal)."""
+    """@brief Nœuds du circuit qui ne sont ni GND, ni alim, ni PE (= nœuds signal).
+
+    @param match Match d'un circuit détecté (clé 'nodes').
+    @return set Ensemble des nœuds signal du circuit.
+    """
     return {n for n in match.get('nodes', []) if n and not _est_rail(n)}
 
 
 def _rails_alim(match: dict) -> set:
-    """Rails d'alimentation effectivement présents dans les nœuds du circuit."""
+    """@brief Rails d'alimentation effectivement présents dans les nœuds du circuit.
+
+    @param match Match d'un circuit détecté (clé 'nodes').
+    @return set Ensemble des rails d'alimentation du circuit.
+    """
     return {n for n in match.get('nodes', []) if n and is_power_net(n)}
 
 
 def _evaluer(comp, internes: set, rails: set):
     """
-    Évalue le rôle d'un composant candidat vis-à-vis d'un circuit.
+    @brief Évalue le rôle d'un composant candidat vis-à-vis d'un circuit.
 
-    Arguments :
-        comp     : Composant (.type, .pins, .value)
-        internes : nœuds signal du circuit
-        rails    : rails d'alimentation du circuit
+    @param comp Composant candidat (.type, .pins, .value).
+    @param internes Nœuds signal du circuit.
+    @param rails Rails d'alimentation du circuit.
+    @return tuple|None (role, score, reason), ou None si le composant ne touche pas le circuit.
 
-    Retourne (role, score, reason) ou None si le composant ne touche pas le circuit.
     Les chaînes reason restent compatibles cp1252 (console Windows).
     """
     nets = [n for n in comp.pins.values() if n]
@@ -106,7 +118,15 @@ def _evaluer(comp, internes: set, rails: set):
 
 
 def _ajouter_satellite(match: dict, ref: str, role: str, score: float, reason: str) -> None:
-    """Ajoute un satellite au match avec son statut, et le warning si « possible »."""
+    """@brief Ajoute un satellite au match avec son statut, et le warning si « possible ».
+
+    @param match Match du circuit hôte (muté en place, clé 'satellites').
+    @param ref Référence du composant satellite.
+    @param role Rôle attribué (pull-up, decoupling, flyback…).
+    @param score Score de rattachement.
+    @param reason Justification lisible.
+    @return None
+    """
     status = 'sure' if score >= SEUIL_SUR else 'possible'
     match['satellites'].append(
         {'ref': ref, 'role': role, 'score': score, 'status': status, 'reason': reason}
@@ -118,9 +138,10 @@ def _ajouter_satellite(match: dict, ref: str, role: str, score: float, reason: s
 
 
 # Circuits annexes mono-composant absorbables par un circuit multi-composants.
+# Les condensateurs de découplage ne sont plus un circuit nommé (ils deviennent
+# des « Impédance Z ») : seules les annexes à diode restent absorbables ici.
 _ANNEXES: dict[str, str] = {
     'Diode de roue libre':        'flyback',
-    'Condensateur de découplage': 'decoupling',
     'Diode de protection ESD':    'esd',
 }
 
@@ -131,9 +152,14 @@ _SCORE_RAIL_SEULEMENT = 0.55
 
 def _absorber_annexes(circuits: list) -> None:
     """
+    @brief Absorbe les circuits annexes mono-composant dans un circuit multi-composants adjacent.
+
     Les circuits annexes mono-composant (roue libre, découplage, ESD) adjacents
     à un circuit multi-composants sont retirés de la liste et convertis en
     satellite de celui-ci (reason = leur type de circuit).
+
+    @param circuits Liste des circuits détectés (mutée en place).
+    @return None
 
     Règles :
       - partage d'un nœud signal  -> absorbé, score = confidence de l'annexe ;
@@ -178,7 +204,7 @@ def _absorber_annexes(circuits: list) -> None:
 
 def rattacher_satellites(circuits: list, graphe, composants_utilises: set) -> None:
     """
-    Rattache les composants non classifiés aux circuits détectés.
+    @brief Rattache les composants non classifiés aux circuits détectés.
 
     Mute les matches en place : chaque match reçoit une clé 'satellites'
     (liste, toujours présente). Les satellites sûrs (status 'sure') sont
@@ -186,6 +212,11 @@ def rattacher_satellites(circuits: list, graphe, composants_utilises: set) -> No
 
     Conflit (un candidat éligible pour plusieurs circuits) : rattaché au
     meilleur score de rôle ; à égalité, au circuit avec la meilleure confidence.
+
+    @param circuits Liste des circuits détectés (mutée en place).
+    @param graphe Graphe NetworkX d'origine (dict 'components').
+    @param composants_utilises Ensemble des refs déjà prises (mis à jour pour les satellites sûrs).
+    @return None
     """
     for m in circuits:
         m.setdefault('satellites', [])

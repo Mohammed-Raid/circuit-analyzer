@@ -1,10 +1,11 @@
 """
-Détection des circuits électroniques dans un graphe de connexions.
+@file detecteur.py
+@brief Détection des circuits électroniques dans un graphe de connexions.
 
 Chaque fonction de ce fichier détecte un type de circuit précis.
 Elles prennent toutes le graphe NetworkX en entrée et retournent
 une liste de dictionnaires avec les clés :
-  - 'circuit_type' : nom du circuit trouvé (ex: "Filtre RC passe-bas")
+  - 'circuit_type' : nom du circuit trouvé (ex: "Amplificateur inverseur (AOP)")
   - 'components'   : liste des références des composants (ex: ['R1', 'C2'])
   - 'nodes'        : liste des nœuds électriques impliqués (ex: ['VCC', 'NET1', 'GND'])
 
@@ -23,6 +24,8 @@ from circuit_analyzer.patterns.base import (
 from circuit_analyzer.value_parser import parse_valeur
 from circuit_analyzer.satellites import rattacher_satellites
 from circuit_analyzer.ilots import detecter_ilots
+from circuit_analyzer import impedance
+from circuit_analyzer.impedance import expandre_composites
 
 # Alias français (= les nouvelles fonctions enrichies par le fichier de config)
 est_masse        = is_ground_net
@@ -33,26 +36,57 @@ is_power = is_power_net
 
 
 def _est_rail(noeud) -> bool:
-    """Vrai si le nœud est une masse, une alimentation ou une terre de protection."""
+    """@brief Vrai si le nœud est une masse, une alimentation ou une terre de protection.
+
+    @param noeud Nom du nœud à tester.
+    @return bool True si le nœud est un rail (GND / alimentation / terre de protection).
+    """
     return bool(noeud) and (
         est_masse(noeud) or est_alimentation(noeud) or is_protective_earth_net(noeud)
     )
 
 
-def _voisins_de_type(graphe, noeud, type_composant):
+def _type_correspond(data, type_composant, inclure_z=False):
+    """Retourne True si l'arete correspond au type attendu."""
+    type_arete = data.get('type')
+    if type_arete == type_composant:
+        return True
+    return inclure_z and type_composant == 'R' and type_arete == 'Z'
+
+
+def _voisins_de_type(graphe, noeud, type_composant, inclure_z=False):
     """
-    Retourne la liste de (ref_composant, autre_noeud) pour tous les composants
-    d'un type donné connectés au nœud indiqué.
+    @brief Composants d'un type donné connectés à un nœud, avec leur autre extrémité.
+
+    @param graphe Graphe NetworkX du circuit.
+    @param noeud Nœud autour duquel chercher.
+    @param type_composant Type recherché ('R', 'C', 'L', 'D'…).
+    @return list[tuple] Liste de (ref_composant, autre_noeud).
 
     Exemple : _voisins_de_type(graphe, 'NET1', 'R') retourne toutes les
     résistances connectées au nœud NET1, avec l'autre extrémité de chaque R.
     """
     resultats = []
     for u, v, data in graphe.edges(noeud, data=True):
-        if data['type'] == type_composant:
+        if _type_correspond(data, type_composant, inclure_z=inclure_z):
             autre = v if u == noeud else u
             resultats.append((data['ref'], autre))
     return resultats
+
+
+def _bloc_impedance(noeud, data, autre):
+    """@brief Construit un bloc d'impédance à partir d'une arête du graphe.
+
+    @param noeud Nœud de référence (une extrémité de l'arête).
+    @param data Attributs de l'arête (ref/refs/composition).
+    @param autre Autre extrémité de l'arête.
+    @return dict {'refs','composition','nodes'}.
+    """
+    return {
+        'refs': list(data.get('refs', [data['ref']])),
+        'composition': data.get('composition', data['ref']),
+        'nodes': (noeud, autre),
+    }
 
 
 # =============================================================================
@@ -61,14 +95,19 @@ def _voisins_de_type(graphe, noeud, type_composant):
 
 def detecter_amplificateur_inverseur(graphe):
     """
-    Amplificateur inverseur : AOP avec une R d'entrée sur IN- et une R de feedback (OUT → IN-).
+    @brief Amplificateur inverseur : AOP avec une Z d'entrée sur IN- et une Z de feedback (OUT → IN-).
+
+    @param graphe Graphe NetworkX (réduit) du circuit.
+    @return list[dict] Circuits détectés, enrichis de 'impedances' (Zin/Zf) et 'gain'.
 
     Schéma :
-        IN ──[R_entree]── IN- ──[R_feedback]── OUT
-                           └────── AOP ──────┘
+        IN ──[Zin]── IN- ──[Zf]── OUT
+                      └──── AOP ──┘
 
-    Comment le reconnaître : 2 résistances sur IN-, l'une vient de l'entrée,
-    l'autre relie la sortie à l'entrée négative (= contre-réaction).
+    Comment le reconnaître : 2 impédances sur IN-, l'une vient de l'entrée,
+    l'autre relie la sortie à l'entrée négative (= contre-réaction). Le détecteur
+    tourne sur le graphe réduit : chaque arête porte 'refs' + 'composition' (un
+    composite Zf = R1+R2 est déjà une seule arête Z).
     """
     resultats = []
     composants = graphe.graph.get('components', {})
@@ -82,18 +121,29 @@ def detecter_amplificateur_inverseur(graphe):
         if not entree_neg or not sortie:
             continue
 
-        resistances_sur_inm = _voisins_de_type(graphe, entree_neg, 'R')
+        feedback = None      # {'refs','composition','nodes'}
+        entree = None
+        for u, v, data in graphe.edges(entree_neg, data=True):
+            if not _type_correspond(data, 'R', inclure_z=True):
+                continue
+            autre = v if u == entree_neg else u
+            bloc = {
+                'refs': list(data.get('refs', [data['ref']])),
+                'composition': data.get('composition', data['ref']),
+                'nodes': (entree_neg, autre),
+            }
+            if autre == sortie:
+                feedback = bloc
+            elif entree is None:
+                entree = bloc
 
-        # La R de feedback relie la sortie à IN- (contre-réaction négative)
-        r_feedback = [ref for ref, autre in resistances_sur_inm if autre == sortie]
-        # Les autres R sur IN- sont les résistances d'entrée
-        r_entree   = [ref for ref, autre in resistances_sur_inm if autre != sortie]
-
-        if r_feedback and r_entree:
+        if feedback and entree:
             resultats.append({
                 'circuit_type': 'Amplificateur inverseur (AOP)',
-                'components': [ref_aop] + r_feedback + r_entree,
+                'components': [ref_aop] + feedback['refs'] + entree['refs'],
                 'nodes': [comp.pins.get('IN+', ''), entree_neg, sortie],
+                'impedances': {'Zin': entree, 'Zf': feedback},
+                'gain': '−Zf/Zin',
             })
 
     return resultats
@@ -101,13 +151,17 @@ def detecter_amplificateur_inverseur(graphe):
 
 def detecter_amplificateur_non_inverseur(graphe):
     """
-    Amplificateur non-inverseur : AOP avec R de feedback (OUT → IN-) et R vers GND sur IN-.
+    @brief Amplificateur non-inverseur : AOP avec R de feedback (OUT → IN-) et R vers GND sur IN-.
 
-    Schéma :
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
+
+    Schéma (Zf et Zg peuvent être composites — pont Zf/Zg sur IN-) :
         IN ──── IN+
-                AOP ──── OUT ──[R_feedback]──┐
-                IN- ──[R_gnd]── GND          │
-                  └──────────────────────────┘
+                AOP ──── OUT ──[Zf]──┐
+                IN- ──[Zg]── GND     │
+                  └──────────────────┘
+    Gain = 1 + Zf/Zg.
     """
     resultats = []
     composants = graphe.graph.get('components', {})
@@ -121,16 +175,29 @@ def detecter_amplificateur_non_inverseur(graphe):
         if not entree_neg or not sortie:
             continue
 
-        resistances_sur_inm = _voisins_de_type(graphe, entree_neg, 'R')
+        feedback = None
+        vers_gnd = None
+        for u, v, data in graphe.edges(entree_neg, data=True):
+            autre = v if u == entree_neg else u
+            if not _type_correspond(data, 'R', inclure_z=True):
+                continue
+            bloc = {
+                'refs': list(data.get('refs', [data['ref']])),
+                'composition': data.get('composition', data['ref']),
+                'nodes': (entree_neg, autre),
+            }
+            if autre == sortie:
+                feedback = bloc                       # Zf : contre-réaction
+            elif est_masse(autre):
+                vers_gnd = bloc                       # Zg : vers la masse
 
-        r_feedback = [ref for ref, autre in resistances_sur_inm if autre == sortie]
-        r_vers_gnd = [ref for ref, autre in resistances_sur_inm if est_masse(autre)]
-
-        if r_feedback and r_vers_gnd:
+        if feedback and vers_gnd:
             resultats.append({
                 'circuit_type': 'Amplificateur non-inverseur (AOP)',
-                'components': [ref_aop] + r_feedback + r_vers_gnd,
+                'components': [ref_aop] + feedback['refs'] + vers_gnd['refs'],
                 'nodes': [comp.pins.get('IN+', ''), entree_neg, sortie],
+                'impedances': {'Zf': feedback, 'Zg': vers_gnd},
+                'gain': '1 + Zf/Zg',
             })
 
     return resultats
@@ -138,7 +205,10 @@ def detecter_amplificateur_non_inverseur(graphe):
 
 def detecter_suiveur_tension(graphe):
     """
-    Suiveur de tension (buffer) : la sortie est directement reliée à IN-.
+    @brief Suiveur de tension (buffer) : la sortie est directement reliée à IN-.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Le gain est exactement 1 (pas de composants autour de l'AOP).
 
     Schéma :
@@ -166,14 +236,63 @@ def detecter_suiveur_tension(graphe):
     return resultats
 
 
+def _est_rc_serie(bloc, composants) -> bool:
+    """@brief Vrai si le bloc est une serie de 2 feuilles {une R, une C}."""
+    if len(bloc.get("refs", [])) != 2:
+        return False
+    arbre = impedance.arbre_expr(bloc["composition"])
+    if arbre and arbre[0] == "serie" and all(c[0] == "feuille" for c in arbre[1]):
+        tset = sorted(composants[c[1]].type for c in arbre[1] if c[1] in composants)
+        return tset == ["C", "R"]
+    return False
+
+
+def _est_rc_parallele(bloc, composants) -> bool:
+    """@brief Vrai si le bloc est un parallele de 2 feuilles {une R, une C}."""
+    if len(bloc.get("refs", [])) != 2:
+        return False
+    arbre = impedance.arbre_expr(bloc["composition"])
+    if arbre and arbre[0] == "parallele" and all(c[0] == "feuille" for c in arbre[1]):
+        tset = sorted(composants[c[1]].type for c in arbre[1] if c[1] in composants)
+        return tset == ["C", "R"]
+    return False
+
+
+def _feedback_capacitif(bloc, composants) -> bool:
+    """
+    @brief Vrai si le bloc de contre-réaction est capacitif (intégrateur idéal ou réel).
+
+    Deux formes acceptées :
+      - condensateur seul (intégrateur idéal) ;
+      - Rf // Cf (intégrateur réel « leaky » : une R en parallèle d'une C).
+    Un feedback résistif pur, ou résonant (L et C), n'est PAS capacitif → ce n'est
+    pas un intégrateur (reste un ampli inverseur / filtre).
+
+    @param bloc Bloc de contre-réaction ({'refs', 'composition'}).
+    @param composants Dict {ref → Composant} (pour les types).
+    @return bool
+    """
+    refs = bloc['refs']
+    types = [composants[r].type for r in refs if r in composants]
+    if not any(t == 'C' for t in types):
+        return False
+    if len(refs) == 1:
+        return types == ['C']                      # condensateur seul (idéal)
+    # leaky : la composition doit être un parallèle de feuilles {une R, une C}
+    return _est_rc_parallele(bloc, composants)
+
+
 def detecter_integrateur(graphe):
     """
-    Intégrateur : AOP avec R d'entrée sur IN- et condensateur de feedback (OUT → IN-).
+    @brief Intégrateur : AOP avec Z d'entrée sur IN- et feedback capacitif (OUT → IN-).
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     La sortie est proportionnelle à l'intégrale du signal d'entrée.
 
-    Schéma :
-        IN ──[R]── IN- ──[C]── OUT
-                    └── AOP ───┘
+    Schéma (Zf = condensateur seul, ou Rf // Cf pour l'intégrateur réel) :
+        IN ──[Zin]── IN- ──[Zf]── OUT
+                      └── AOP ────┘
     """
     resultats = []
     composants = graphe.graph.get('components', {})
@@ -187,33 +306,68 @@ def detecter_integrateur(graphe):
         if not entree_neg or not sortie:
             continue
 
-        r_entree = []
-        c_feedback = []
+        entree = None
+        feedback = None
         for u, v, data in graphe.edges(entree_neg, data=True):
             autre = v if u == entree_neg else u
-            if data['type'] == 'R' and autre != sortie:
-                r_entree.append(data['ref'])
-            elif data['type'] == 'C' and autre == sortie:
-                c_feedback.append(data['ref'])
+            bloc = {
+                'refs': list(data.get('refs', [data['ref']])),
+                'composition': data.get('composition', data['ref']),
+                'nodes': (entree_neg, autre),
+            }
+            if autre == sortie and _feedback_capacitif(bloc, composants):
+                feedback = bloc                       # contre-réaction capacitive
+            elif _type_correspond(data, 'R', inclure_z=True) and autre != sortie:
+                entree = bloc
 
-        if r_entree and c_feedback:
+        if entree and feedback:
             resultats.append({
                 'circuit_type': 'Intégrateur (AOP)',
-                'components': [ref_aop] + r_entree + c_feedback,
+                'components': [ref_aop] + entree['refs'] + feedback['refs'],
                 'nodes': [comp.pins.get('IN+', ''), entree_neg, sortie],
+                'impedances': {'Zin': entree, 'Zf': feedback},
+                'gain': '−Zf/Zin',
             })
 
     return resultats
 
 
+def _entree_capacitive(bloc, composants) -> bool:
+    """
+    @brief Vrai si le bloc d'entrée est capacitif (dérivateur idéal ou réel).
+
+    Dual de _feedback_capacitif. Deux formes acceptées :
+      - condensateur seul (dérivateur idéal) ;
+      - Rin + Cin (dérivateur réel : une R en série du condensateur, qui borne le
+        gain en haute fréquence et stabilise le montage).
+    Une entrée résistive pure n'est PAS capacitive → ce n'est pas un dérivateur
+    (reste un ampli inverseur).
+
+    @param bloc Bloc d'entrée ({'refs', 'composition'}).
+    @param composants Dict {ref → Composant} (pour les types).
+    @return bool
+    """
+    refs = bloc['refs']
+    types = [composants[r].type for r in refs if r in composants]
+    if not any(t == 'C' for t in types):
+        return False
+    if len(refs) == 1:
+        return types == ['C']                      # condensateur seul (idéal)
+    # réel : la composition doit être une série de feuilles {une R, une C}
+    return _est_rc_serie(bloc, composants)
+
+
 def detecter_derivateur(graphe):
     """
-    Dérivateur : AOP avec condensateur d'entrée sur IN- et R de feedback (OUT → IN-).
+    @brief Dérivateur : AOP avec Z d'entrée capacitive sur IN- et feedback résistif (OUT → IN-).
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     La sortie est proportionnelle à la dérivée du signal d'entrée.
 
-    Schéma :
-        IN ──[C]── IN- ──[R]── OUT
-                    └── AOP ───┘
+    Schéma (Zin = condensateur seul, ou Rin + Cin pour le dérivateur réel) :
+        IN ──[Zin]── IN- ──[Zf]── OUT
+                      └── AOP ────┘
     """
     resultats = []
     composants = graphe.graph.get('components', {})
@@ -227,28 +381,122 @@ def detecter_derivateur(graphe):
         if not entree_neg or not sortie:
             continue
 
-        c_entree = []
-        r_feedback = []
+        entree = None
+        feedback = None
         for u, v, data in graphe.edges(entree_neg, data=True):
             autre = v if u == entree_neg else u
-            if data['type'] == 'C' and autre != sortie:
-                c_entree.append(data['ref'])
-            elif data['type'] == 'R' and autre == sortie:
-                r_feedback.append(data['ref'])
+            bloc = {
+                'refs': list(data.get('refs', [data['ref']])),
+                'composition': data.get('composition', data['ref']),
+                'nodes': (entree_neg, autre),
+            }
+            if autre != sortie and _entree_capacitive(bloc, composants):
+                entree = bloc                         # entrée capacitive
+            elif _type_correspond(data, 'R', inclure_z=True) and autre == sortie:
+                feedback = bloc                       # contre-réaction résistive
 
-        if c_entree and r_feedback:
+        if entree and feedback:
             resultats.append({
                 'circuit_type': 'Dérivateur (AOP)',
-                'components': [ref_aop] + c_entree + r_feedback,
+                'components': [ref_aop] + entree['refs'] + feedback['refs'],
                 'nodes': [comp.pins.get('IN+', ''), entree_neg, sortie],
+                'impedances': {'Zin': entree, 'Zf': feedback},
+                'gain': '−Zf/Zin',
             })
 
+    return resultats
+
+
+def detecter_derivateur_partiel(graphe):
+    """@brief Ampli inverseur a entree R//C : gain DC fini + boost HF.
+
+    Zin = R // C (parallele), Zf resistive. Distinct du derivateur ideal
+    (C seul en entree) et de l'inverseur pur (R seule). @return list[dict].
+    """
+    resultats = []
+    composants = graphe.graph.get('components', {})
+    for ref_aop, comp in composants.items():
+        if comp.type != 'U':
+            continue
+        entree_neg = comp.pins.get('IN-')
+        sortie = comp.pins.get('OUT')
+        if not entree_neg or not sortie:
+            continue
+        feedback = entree = None
+        for u, v, data in graphe.edges(entree_neg, data=True):
+            if not _type_correspond(data, 'R', inclure_z=True):
+                continue
+            autre = v if u == entree_neg else u
+            bloc = {
+                'refs': list(data.get('refs', [data['ref']])),
+                'composition': data.get('composition', data['ref']),
+                'nodes': (entree_neg, autre),
+            }
+            if autre == sortie:
+                feedback = bloc
+            elif entree is None:
+                entree = bloc
+        if (feedback and entree
+                and _est_rc_parallele(entree, composants)
+                and not _feedback_capacitif(feedback, composants)):
+            resultats.append({
+                'circuit_type': 'Ampli inverseur + boost HF (AOP)',
+                'components': [ref_aop] + feedback['refs'] + entree['refs'],
+                'nodes': [comp.pins.get('IN+', ''), entree_neg, sortie],
+                'impedances': {'Zin': entree, 'Zf': feedback},
+                'gain': '−Zf/Zin',
+            })
+    return resultats
+
+
+def detecter_correcteur_pi(graphe):
+    """@brief Ampli inverseur a feedback R+C serie : action integrale en BF.
+
+    Zin resistive, Zf = R + C (serie). Distinct de l'integrateur ideal/leaky
+    (C seul / R//C) et de l'inverseur pur. @return list[dict].
+    """
+    resultats = []
+    composants = graphe.graph.get('components', {})
+    for ref_aop, comp in composants.items():
+        if comp.type != 'U':
+            continue
+        entree_neg = comp.pins.get('IN-')
+        sortie = comp.pins.get('OUT')
+        if not entree_neg or not sortie:
+            continue
+        feedback = entree = None
+        for u, v, data in graphe.edges(entree_neg, data=True):
+            if not _type_correspond(data, 'R', inclure_z=True):
+                continue
+            autre = v if u == entree_neg else u
+            bloc = {
+                'refs': list(data.get('refs', [data['ref']])),
+                'composition': data.get('composition', data['ref']),
+                'nodes': (entree_neg, autre),
+            }
+            if autre == sortie:
+                feedback = bloc
+            elif entree is None:
+                entree = bloc
+        if (feedback and entree
+                and _est_rc_serie(feedback, composants)
+                and not _entree_capacitive(entree, composants)):
+            resultats.append({
+                'circuit_type': 'Ampli inverseur + action intégrale (AOP)',
+                'components': [ref_aop] + feedback['refs'] + entree['refs'],
+                'nodes': [comp.pins.get('IN+', ''), entree_neg, sortie],
+                'impedances': {'Zin': entree, 'Zf': feedback},
+                'gain': '−Zf/Zin',
+            })
     return resultats
 
 
 def detecter_bascule_schmitt(graphe):
     """
-    Bascule de Schmitt : AOP avec contre-réaction POSITIVE (R de OUT vers IN+).
+    @brief Bascule de Schmitt : AOP avec contre-réaction POSITIVE (R de OUT vers IN+).
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Crée une hystérésis qui évite les oscillations sur les seuils.
 
     Schéma :
@@ -272,14 +520,36 @@ def detecter_bascule_schmitt(graphe):
             continue  # C'est un suiveur, pas une bascule
 
         # Chercher une R qui relie la sortie à IN+ (contre-réaction positive)
-        r_positive = [ref for ref, autre in _voisins_de_type(graphe, entree_pos, 'R')
+        r_positive = [ref for ref, autre in _voisins_de_type(graphe, entree_pos, 'R', inclure_z=True)
                       if autre == sortie]
 
-        if r_positive:
+        if not r_positive:
+            continue
+
+        zf = None
+        zin = None
+        for u, v, data in graphe.edges(entree_pos, data=True):
+            if not _type_correspond(data, 'R', inclure_z=True):
+                continue
+            autre = v if u == entree_pos else u
+            bloc = _bloc_impedance(entree_pos, data, autre)
+            if autre == sortie:
+                zf = bloc
+            elif zin is None:
+                zin = bloc
+
+        if zf:
+            imp = {'Zf': zf}
+            comps = [ref_aop] + zf['refs']
+            if zin:
+                imp['Zin'] = zin
+                comps += zin['refs']
             resultats.append({
                 'circuit_type': 'Bascule de Schmitt (AOP)',
-                'components': [ref_aop] + r_positive,
+                'components': comps,
                 'nodes': [entree_pos, entree_neg, sortie],
+                'impedances': imp,
+                'gain': 'hystérésis ±Vsat·Zin/(Zin+Zf)',
             })
 
     return resultats
@@ -287,7 +557,10 @@ def detecter_bascule_schmitt(graphe):
 
 def detecter_comparateur(graphe):
     """
-    Comparateur : AOP sans aucune contre-réaction.
+    @brief Comparateur : AOP sans aucune contre-réaction.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     La sortie bascule selon quel seuil est le plus grand (IN+ ou IN-).
     C'est le mode le plus basique : l'AOP est utilisé "en boucle ouverte".
     """
@@ -309,11 +582,11 @@ def detecter_comparateur(graphe):
         # Vérifier qu'il n'y a AUCUN composant entre la sortie et les entrées
         feedback_negatif = [
             d for u, v, d in graphe.edges(entree_neg, data=True)
-            if d['type'] in ('R', 'C') and (v if u == entree_neg else u) == sortie
+            if d['type'] in ('R', 'C', 'Z') and (v if u == entree_neg else u) == sortie
         ]
         feedback_positif = [
             d for u, v, d in graphe.edges(entree_pos, data=True)
-            if d['type'] == 'R' and (v if u == entree_pos else u) == sortie
+            if d['type'] in ('R', 'Z') and (v if u == entree_pos else u) == sortie
         ]
 
         if not feedback_negatif and not feedback_positif:
@@ -328,7 +601,10 @@ def detecter_comparateur(graphe):
 
 def detecter_amplificateur_differentiel(graphe):
     """
-    Amplificateur différentiel : AOP avec 4 résistances formant un pont.
+    @brief Amplificateur différentiel : AOP avec 4 résistances formant un pont.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Mesure la DIFFÉRENCE entre deux tensions d'entrée.
 
     Schéma :
@@ -350,18 +626,31 @@ def detecter_amplificateur_differentiel(graphe):
         if entree_neg == sortie:
             continue
 
-        # Résistances sur IN+
-        r_inp_vers_gnd   = [ref for ref, autre in _voisins_de_type(graphe, entree_pos, 'R') if est_masse(autre)]
-        r_inp_depuis_src = [ref for ref, autre in _voisins_de_type(graphe, entree_pos, 'R') if not est_masse(autre)]
-        # Résistances sur IN-
-        r_inm_feedback   = [ref for ref, autre in _voisins_de_type(graphe, entree_neg, 'R') if autre == sortie]
-        r_inm_depuis_src = [ref for ref, autre in _voisins_de_type(graphe, entree_neg, 'R') if autre != sortie]
+        z1 = zf = z3 = zg = None
+        for u, v, data in graphe.edges(entree_neg, data=True):
+            if not _type_correspond(data, 'R', inclure_z=True):
+                continue
+            autre = v if u == entree_neg else u
+            if autre == sortie:
+                zf = _bloc_impedance(entree_neg, data, autre)
+            elif z1 is None:
+                z1 = _bloc_impedance(entree_neg, data, autre)
+        for u, v, data in graphe.edges(entree_pos, data=True):
+            if not _type_correspond(data, 'R', inclure_z=True):
+                continue
+            autre = v if u == entree_pos else u
+            if est_masse(autre):
+                zg = _bloc_impedance(entree_pos, data, autre)
+            elif z3 is None:
+                z3 = _bloc_impedance(entree_pos, data, autre)
 
-        if r_inp_vers_gnd and r_inp_depuis_src and r_inm_feedback and r_inm_depuis_src:
+        if z1 and zf and z3 and zg:
             resultats.append({
                 'circuit_type': 'Amplificateur différentiel (AOP)',
-                'components': [ref_aop] + r_inp_vers_gnd + r_inp_depuis_src + r_inm_feedback + r_inm_depuis_src,
+                'components': [ref_aop] + z1['refs'] + zf['refs'] + z3['refs'] + zg['refs'],
                 'nodes': [entree_pos, entree_neg, sortie],
+                'impedances': {'Z1': z1, 'Zf': zf, 'Z3': z3, 'Zg': zg},
+                'gain': 'Zf/Z1 · (V2−V1)',
             })
 
     return resultats
@@ -369,7 +658,10 @@ def detecter_amplificateur_differentiel(graphe):
 
 def detecter_amplificateur_sommateur(graphe):
     """
-    Amplificateur sommateur : AOP avec plusieurs R d'entrée sur IN-.
+    @brief Amplificateur sommateur : AOP avec plusieurs R d'entrée sur IN-.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Calcule la somme (pondérée) de plusieurs signaux.
 
     Schéma :
@@ -389,16 +681,26 @@ def detecter_amplificateur_sommateur(graphe):
         if not entree_neg or not sortie:
             continue
 
-        resistances_sur_inm = _voisins_de_type(graphe, entree_neg, 'R')
-        r_feedback = [ref for ref, autre in resistances_sur_inm if autre == sortie]
-        r_entrees  = [ref for ref, autre in resistances_sur_inm if autre != sortie]
+        zf = None
+        zin = []
+        for u, v, data in graphe.edges(entree_neg, data=True):
+            if not _type_correspond(data, 'R', inclure_z=True):
+                continue
+            autre = v if u == entree_neg else u
+            bloc = _bloc_impedance(entree_neg, data, autre)
+            if autre == sortie:
+                zf = bloc
+            else:
+                zin.append(bloc)
 
-        # Un sommateur a AU MOINS 2 entrées distinctes
-        if r_feedback and len(r_entrees) >= 2:
+        if zf and len(zin) >= 2:
+            refs_entrees = [r for b in zin for r in b['refs']]
             resultats.append({
                 'circuit_type': 'Amplificateur sommateur (AOP)',
-                'components': [ref_aop] + r_feedback + r_entrees,
+                'components': [ref_aop] + zf['refs'] + refs_entrees,
                 'nodes': [comp.pins.get('IN+', ''), entree_neg, sortie],
+                'impedances': {'Zf': zf, 'Zin': zin},
+                'gain': '−Σ Zf/Zk',
             })
 
     return resultats
@@ -410,7 +712,10 @@ def detecter_amplificateur_sommateur(graphe):
 
 def detecter_transistor_commutation(graphe):
     """
-    Transistor BJT en commutation : émetteur à la masse, R sur la base.
+    @brief Transistor BJT en commutation : émetteur à la masse, R sur la base.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Le transistor sert d'interrupteur commandé par la base.
 
     Schéma :
@@ -449,7 +754,10 @@ def detecter_transistor_commutation(graphe):
 
 def detecter_amplificateur_emetteur_commun(graphe):
     """
-    Amplificateur émetteur commun : BJT avec R au collecteur ET R à la base.
+    @brief Amplificateur émetteur commun : BJT avec R au collecteur ET R à la base.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Configuration d'amplification la plus courante avec les BJT.
 
     Schéma :
@@ -457,6 +765,59 @@ def detecter_amplificateur_emetteur_commun(graphe):
                      Transistor BJT
         IN ──[Rb]─── Base
                      Emetteur ── GND (ou dégenération)
+    """
+    resultats = []
+    composants = graphe.graph.get('components', {})
+    collecteurs_q = {c.pins.get('C') for c in composants.values()
+                     if c.type == 'Q' and c.pins.get('C')}
+
+    for ref_q, comp in composants.items():
+        if comp.type != 'Q':
+            continue
+
+        base       = comp.pins.get('B')
+        collecteur = comp.pins.get('C')
+        emetteur   = comp.pins.get('E')
+        if not all([base, collecteur, emetteur]):
+            continue
+
+        # Collecteur directement sur le rail = collecteur commun (suiveur d'émetteur),
+        # pas un émetteur commun (dont le Rc est ENTRE le rail et le collecteur).
+        if est_alimentation(collecteur):
+            continue
+
+        r_collecteur = [ref for ref, _ in _voisins_de_type(graphe, collecteur, 'R')]
+        # Base couplée en DC au collecteur d'un autre étage : le R sur ce net est
+        # le Rc amont, pas un Rb. L'étage est alors CE sans résistance de base.
+        base_couplee_dc = base in collecteurs_q and base != collecteur
+        r_base = [] if base_couplee_dc else [
+            ref for ref, _ in _voisins_de_type(graphe, base, 'R')]
+
+        if r_collecteur and (r_base or base_couplee_dc):
+            resultats.append({
+                'circuit_type': 'Amplificateur émetteur commun',
+                'components': [ref_q] + r_collecteur + r_base,
+                'nodes': [base, collecteur, emetteur],
+            })
+
+    return resultats
+
+
+def detecter_suiveur_emetteur(graphe):
+    """
+    @brief Collecteur commun (suiveur d'émetteur) : collecteur sur le rail, sortie
+    sur l'émetteur via une résistance Re vers la masse.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
+
+    Schéma :
+        VCC ──── Collecteur
+                 Transistor BJT
+        IN ──[Rb]── Base
+                 Emetteur ──┬── sortie
+                          [Re]
+                            └── GND
     """
     resultats = []
     composants = graphe.graph.get('components', {})
@@ -471,22 +832,106 @@ def detecter_amplificateur_emetteur_commun(graphe):
         if not all([base, collecteur, emetteur]):
             continue
 
-        r_collecteur = [ref for ref, _ in _voisins_de_type(graphe, collecteur, 'R')]
-        r_base       = [ref for ref, _ in _voisins_de_type(graphe, base, 'R')]
+        # Collecteur sur le rail, émetteur non masse (sinon c'est une commutation).
+        if not est_alimentation(collecteur) or est_masse(emetteur):
+            continue
 
-        if r_collecteur and r_base:
+        # Re : résistance de l'émetteur vers la masse (= sortie chargée).
+        re_refs = []
+        for ref_r, _ in _voisins_de_type(graphe, emetteur, 'R'):
+            rc = composants.get(ref_r)
+            if rc and any(est_masse(n) for n in rc.pins.values()):
+                re_refs.append(ref_r)
+        if not re_refs:
+            continue
+
+        r_base = [ref for ref, _ in _voisins_de_type(graphe, base, 'R')]
+        resultats.append({
+            'circuit_type': "Collecteur commun (suiveur d'émetteur)",
+            'components': [ref_q] + re_refs + r_base,
+            'nodes': [base, collecteur, emetteur],
+        })
+
+    return resultats
+
+
+def detecter_push_pull(graphe):
+    """
+    @brief Étage push-pull (classe B/AB) : NPN + PNP, émetteurs communs (sortie),
+    un collecteur sur l'alim, l'autre sur la masse.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
+    """
+    resultats = []
+    composants = graphe.graph.get('components', {})
+    bjts = [(r, c) for r, c in composants.items()
+            if c.type == 'Q' and all(c.pins.get(p) for p in ('B', 'C', 'E'))]
+
+    vus = set()
+    for i in range(len(bjts)):
+        for j in range(i + 1, len(bjts)):
+            r1, q1 = bjts[i]
+            r2, q2 = bjts[j]
+            if q1.pins['E'] != q2.pins['E']:           # émetteurs communs = sortie
+                continue
+            c1, c2 = q1.pins['C'], q2.pins['C']
+            # un collecteur sur l'alim, l'autre sur la masse (étage complémentaire).
+            haut_bas = (est_alimentation(c1) and est_masse(c2)) or \
+                       (est_alimentation(c2) and est_masse(c1))
+            if not haut_bas:
+                continue
+            cle = frozenset((r1, r2))
+            if cle in vus:
+                continue
+            vus.add(cle)
             resultats.append({
-                'circuit_type': 'Amplificateur émetteur commun',
-                'components': [ref_q] + r_collecteur + r_base,
-                'nodes': [base, collecteur, emetteur],
+                'circuit_type': 'Étage push-pull',
+                'components': [r1, r2],
+                'nodes': [q1.pins['B'], q2.pins['B'], q1.pins['E']],
             })
+    return resultats
 
+
+def detecter_darlington(graphe):
+    """
+    @brief Paire Darlington : l'émetteur de Q1 attaque la base de Q2 (gain composé).
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
+    """
+    resultats = []
+    composants = graphe.graph.get('components', {})
+    bjts = [(r, c) for r, c in composants.items()
+            if c.type == 'Q' and all(c.pins.get(p) for p in ('B', 'C', 'E'))]
+
+    for r1, q1 in bjts:
+        e1 = q1.pins['E']
+        if est_masse(e1) or est_alimentation(e1):
+            continue                                   # liaison interne, pas un rail
+        for r2, q2 in bjts:
+            if r2 == r1:
+                continue
+            if q2.pins['B'] != e1:                      # E(Q1) -> B(Q2)
+                continue
+            # Collecteur de Q1 lie au collecteur composite : rail, ou commun a Q2.
+            # Sinon Q1 est un etage CE autonome (charge propre) = cascade, pas Darlington.
+            if not (est_alimentation(q1.pins['C']) or q1.pins['C'] == q2.pins['C']):
+                continue
+            resultats.append({
+                'circuit_type': 'Paire Darlington',
+                'components': [r1, r2],
+                'nodes': [q1.pins['B'], q1.pins['C'], q2.pins['E']],
+            })
     return resultats
 
 
 def detecter_miroir_courant(graphe):
     """
-    Miroir de courant BJT : deux transistors avec la base commune et les émetteurs à GND.
+    @brief Miroir de courant BJT : deux transistors avec la base commune et les émetteurs à GND.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Copie un courant de référence vers une charge.
 
     Schéma :
@@ -528,7 +973,10 @@ def detecter_miroir_courant(graphe):
 
 def detecter_mosfet_commutation(graphe):
     """
-    MOSFET en commutation (côté bas) : source à la masse, R sur la grille.
+    @brief MOSFET en commutation (côté bas) : source à la masse, R sur la grille.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Fonctionne comme un interrupteur commandé par la tension de grille.
     """
     resultats = []
@@ -560,7 +1008,10 @@ def detecter_mosfet_commutation(graphe):
 
 def detecter_mosfet_cote_haut(graphe):
     """
-    MOSFET côté haut : drain sur rail d'alimentation, source NON à la masse.
+    @brief MOSFET côté haut : drain sur rail d'alimentation, source NON à la masse.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Utilisé pour commuter la puissance vers la charge depuis le haut.
     """
     resultats = []
@@ -594,7 +1045,10 @@ def detecter_mosfet_cote_haut(graphe):
 
 def detecter_commande_relais(graphe):
     """
-    Commande de relais : bobine de relais K alimentée par un transistor (BJT ou MOSFET).
+    @brief Commande de relais : bobine de relais K alimentée par un transistor (BJT ou MOSFET).
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Le transistor commute la bobine du relais.
 
     Schéma :
@@ -658,7 +1112,10 @@ def detecter_commande_relais(graphe):
 
 def detecter_pont_redresseur(graphe):
     """
-    Pont redresseur de Graetz : 4 diodes formant un cycle fermé (pont en H).
+    @brief Pont redresseur de Graetz : 4 diodes formant un cycle fermé (pont en H).
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Convertit une tension alternative en tension continue.
 
     Schéma (en forme de losange) :
@@ -715,7 +1172,10 @@ def detecter_pont_redresseur(graphe):
 
 def detecter_diode_roue_libre(graphe):
     """
-    Diode de roue libre : cathode sur l'alimentation, anode sur le nœud de commutation.
+    @brief Diode de roue libre : cathode sur l'alimentation, anode sur le nœud de commutation.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Protège le transistor contre les surtensions des charges inductives (moteurs, relais).
 
     Schéma :
@@ -746,7 +1206,10 @@ def detecter_diode_roue_libre(graphe):
 
 def detecter_diode_protection_esd(graphe):
     """
-    Diode de protection ESD / TVS / Zener.
+    @brief Diode de protection ESD / TVS / Zener.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Protège les entrées/sorties contre les décharges électrostatiques.
 
     Reconnaissance : une broche de la diode est à la masse (anode OU cathode).
@@ -775,7 +1238,10 @@ def detecter_diode_protection_esd(graphe):
 
 def detecter_redresseur_simple(graphe):
     """
-    Redresseur simple alternance : diode + résistance de charge vers GND.
+    @brief Redresseur simple alternance : diode + résistance de charge vers GND.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     La forme la plus simple de redressement.
 
     Schéma :
@@ -821,7 +1287,10 @@ def detecter_redresseur_simple(graphe):
 
 def detecter_detecteur_crete(graphe):
     """
-    Détecteur de crête : diode + condensateur vers GND.
+    @brief Détecteur de crête : diode + condensateur vers GND.
+
+    @param graphe Graphe NetworkX du circuit.
+    @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Le condensateur se charge au pic du signal et le mémorise.
 
     Schéma :
@@ -858,241 +1327,28 @@ def detecter_detecteur_crete(graphe):
     return resultats
 
 
-def detecter_condensateur_decouplage(graphe):
+def detecter_impedances(graphe):
     """
-    Condensateur de découplage : C directement entre une alimentation et la masse.
-    Filtre les parasites haute fréquence sur les rails d'alimentation.
-    Placé juste à côté des circuits intégrés.
+    @brief Émet chaque arête Z (passive réduite) comme une « Impédance Z ».
 
-    Schéma :
-        VCC ──[C]── GND
+    @param graphe Graphe RÉDUIT (sortie de impedance.reduire()).
+    @return list[dict] Un match par arête passive, {'circuit_type', 'components',
+            'nodes', 'composition'}.
+
+    Placé en dernier dans la chaîne de détection : l'anti-vol d'analyser() saute
+    les Z dont les composants sont déjà pris par un montage actif. Ce qui reste
+    devient une impédance nommée — plus aucun passif « non classifié ».
     """
     resultats = []
-
     for u, v, data in graphe.edges(data=True):
-        if data['type'] != 'C':
-            continue
-
-        # Le C doit être directement entre alim et masse (pas de R en parallèle)
-        if not ((est_alimentation(u) and est_masse(v)) or (est_masse(u) and est_alimentation(v))):
-            continue
-
-        # Vérifier qu'il n'y a pas une R en parallèle (sinon c'est un absorbeur RC)
-        edges_paralleles = graphe[u][v]
-        a_r_en_parallele = any(
-            d['type'] == 'R'
-            for k, d in edges_paralleles.items()
-            if d['ref'] != data['ref']
-        )
-        if not a_r_en_parallele:
-            resultats.append({
-                'circuit_type': 'Condensateur de découplage',
-                'components': [data['ref']],
-                'nodes': [u, v],
-            })
-
-    return resultats
-
-
-def detecter_filtre_rc_passe_bas(graphe):
-    """
-    Filtre RC passe-bas : R en série + C vers GND.
-    Laisse passer les basses fréquences, atténue les hautes.
-
-    Schéma :
-        IN ──[R]── MID ──[C]── GND
-    """
-    resultats = []
-    deja_vus = set()
-
-    for noeud in graphe.nodes():
-        # La jonction R-C d'un filtre est un nœud signal, jamais un rail
-        # (R série depuis VCC + C de découplage ne forment pas un filtre).
-        if _est_rail(noeud):
-            continue
-        resistances   = _voisins_de_type(graphe, noeud, 'R')
-        condensateurs = _voisins_de_type(graphe, noeud, 'C')
-
-        for ref_r, autre_r in resistances:
-            if est_masse(autre_r):
-                continue  # La R va à la masse → pas une R série
-
-            for ref_c, autre_c in condensateurs:
-                if est_masse(autre_c):
-                    cle = frozenset([ref_r, ref_c])
-                    if cle not in deja_vus:
-                        deja_vus.add(cle)
-                        resultats.append({
-                            'circuit_type': 'Filtre RC passe-bas',
-                            'components': [ref_r, ref_c],
-                            'nodes': [autre_r, noeud, autre_c],
-                        })
-
-    return resultats
-
-
-def detecter_filtre_rc_passe_haut(graphe):
-    """
-    Filtre RC passe-haut : C en série + R vers GND.
-    Laisse passer les hautes fréquences, atténue les basses.
-
-    Schéma :
-        IN ──[C]── MID ──[R]── GND
-    """
-    resultats = []
-    deja_vus = set()
-
-    for noeud in graphe.nodes():
-        # Même règle que le passe-bas : la jonction C-R est un nœud signal.
-        if _est_rail(noeud):
-            continue
-        resistances   = _voisins_de_type(graphe, noeud, 'R')
-        condensateurs = _voisins_de_type(graphe, noeud, 'C')
-
-        for ref_r, autre_r in resistances:
-            if not est_masse(autre_r):
-                continue  # La R doit aller à la masse pour le passe-haut
-
-            for ref_c, autre_c in condensateurs:
-                if est_masse(autre_c):
-                    continue  # Le C ne doit pas aller à la masse (ce serait un passe-bas)
-
-                cle = frozenset([ref_r, ref_c])
-                if cle not in deja_vus:
-                    deja_vus.add(cle)
-                    resultats.append({
-                        'circuit_type': 'Filtre RC passe-haut',
-                        'components': [ref_r, ref_c],
-                        'nodes': [autre_c, noeud, autre_r],
-                    })
-
-    return resultats
-
-
-def detecter_filtre_lc(graphe):
-    """
-    Filtre LC : inductance en série + condensateur vers GND.
-    Utilisé dans les alimentations à découpage pour filtrer le courant.
-
-    Schéma :
-        IN ──[L]── MID ──[C]── GND
-    """
-    resultats = []
-    deja_vus = set()
-
-    for noeud in graphe.nodes():
-        # La jonction L-C d'un filtre est un nœud signal, jamais un rail.
-        if _est_rail(noeud):
-            continue
-        inductances    = _voisins_de_type(graphe, noeud, 'L')
-        condensateurs  = _voisins_de_type(graphe, noeud, 'C')
-
-        for ref_l, autre_l in inductances:
-            for ref_c, autre_c in condensateurs:
-                if est_masse(autre_c):
-                    cle = frozenset([ref_l, ref_c])
-                    if cle not in deja_vus:
-                        deja_vus.add(cle)
-                        resultats.append({
-                            'circuit_type': 'Filtre LC',
-                            'components': [ref_l, ref_c],
-                            'nodes': [autre_l, noeud, autre_c],
-                        })
-
-    return resultats
-
-
-def detecter_pont_diviseur(graphe):
-    """
-    Pont diviseur de tension : deux résistances en série entre deux points.
-    Crée une tension intermédiaire à partir d'une tension plus élevée.
-
-    Schéma :
-        VCC ──[R1]── MID ──[R2]── GND
-    """
-    resultats = []
-    deja_vus = set()
-
-    for noeud in graphe.nodes():
-        # Le nœud milieu d'un diviseur est toujours un nœud signal — énumérer
-        # les paires de R sur GND/VCC serait à la fois faux et quadratique.
-        if _est_rail(noeud):
-            continue
-        resistances = _voisins_de_type(graphe, noeud, 'R')
-
-        # Chercher deux R connectées au même nœud mais vers des points différents
-        for i in range(len(resistances)):
-            for j in range(i + 1, len(resistances)):
-                ref1, autre1 = resistances[i]
-                ref2, autre2 = resistances[j]
-
-                if autre1 == autre2:
-                    continue  # Les deux R vont au même endroit → pas un diviseur
-
-                cle = frozenset([ref1, ref2])
-                if cle not in deja_vus:
-                    deja_vus.add(cle)
-                    resultats.append({
-                        'circuit_type': 'Pont diviseur de tension',
-                        'components': [ref1, ref2],
-                        'nodes': [autre1, noeud, autre2],
-                    })
-
-    return resultats
-
-
-def detecter_absorbeur_rc(graphe):
-    """
-    Absorbeur RC (snubber) : résistance et condensateur en PARALLÈLE.
-    Absorbe les surtensions transitoires, protège les interrupteurs.
-
-    Schéma :
-        A ──[R]── B    (R et C entre les mêmes nœuds A et B)
-        A ──[C]── B
-    """
-    resultats = []
-    deja_vus = set()
-
-    for noeud in graphe.nodes():
-        for voisin in graphe.neighbors(noeud):
-            # R parallèle C entre deux rails = bleeder + découplage, pas un snubber.
-            if _est_rail(noeud) and _est_rail(voisin):
-                continue
-            paire = tuple(sorted([noeud, voisin]))
-            if paire in deja_vus:
-                continue
-            deja_vus.add(paire)
-
-            # Récupérer tous les composants entre ces deux nœuds
-            composants_entre = list(graphe[noeud][voisin].values())
-            refs_r = [d['ref'] for d in composants_entre if d['type'] == 'R']
-            refs_c = [d['ref'] for d in composants_entre if d['type'] == 'C']
-
-            if refs_r and refs_c:
-                resultats.append({
-                    'circuit_type': 'Absorbeur RC',
-                    'components': refs_r + refs_c,
-                    'nodes': list(paire),
-                })
-
-    return resultats
-
-
-def detecter_fusible(graphe):
-    """
-    Protection par fusible : composant F seul dans le circuit.
-    Se coupe en cas de surintensité pour protéger le reste du circuit.
-    """
-    resultats = []
-
-    for u, v, data in graphe.edges(data=True):
-        if data['type'] == 'F':
-            resultats.append({
-                'circuit_type': 'Protection par fusible',
-                'components': [data['ref']],
-                'nodes': [u, v],
-            })
-
+        if data.get('type') not in ('R', 'C', 'L', 'Z'):
+            continue  # diodes, etc. : pas des impédances passives
+        resultats.append({
+            'circuit_type': 'Impédance Z',
+            'components': [data['ref']],
+            'nodes': [u, v],
+            'composition': data.get('composition', data['ref']),
+        })
     return resultats
 
 
@@ -1106,20 +1362,30 @@ def detecter_fusible(graphe):
 
 class ResultatsAnalyse(list):
     """
-    Liste de circuits détectés. Entièrement compatible avec list.
+    @brief Liste de circuits détectés, compatible avec list, enrichie de métadonnées.
+
     Attributs supplémentaires :
-        .supprimes : matches ignorés car leurs composants étaient déjà pris
-        .ilots     : îlots fonctionnels (structure en étages du schéma)
+        .supprimes    : matches ignorés car leurs composants étaient déjà pris
+        .ilots        : îlots fonctionnels (structure en étages du schéma)
+        .transparents : refs des fusibles neutralisés (retirés du graphe réduit)
     """
     def __init__(self, matches=None):
+        """@brief Initialise la liste de résultats et ses métadonnées.
+
+        @param matches Matches initiaux à placer dans la liste (optionnel).
+        @return None
+        """
         super().__init__(matches or [])
         self.supprimes: list[dict] = []
         self.ilots: list[dict] = []
+        self.transparents: list[str] = []
 
 
 # Catégorie fonctionnelle par type de circuit
 _CATEGORIES: dict[str, str] = {
     'Amplificateur inverseur (AOP)':       'amplification',
+    'Ampli inverseur + boost HF (AOP)':    'traitement_signal',
+    'Ampli inverseur + action intégrale (AOP)': 'traitement_signal',
     'Amplificateur non-inverseur (AOP)':   'amplification',
     'Suiveur de tension (AOP)':            'amplification',
     'Intégrateur (AOP)':                   'traitement_signal',
@@ -1139,18 +1405,19 @@ _CATEGORIES: dict[str, str] = {
     'Diode de protection ESD':             'protection',
     'Redresseur simple alternance':        'alimentation',
     'Détecteur de crête':                  'traitement_signal',
-    'Condensateur de découplage':          'alimentation',
-    'Filtre RC passe-bas':                 'filtrage',
-    'Filtre RC passe-haut':                'filtrage',
-    'Filtre LC':                           'filtrage',
-    'Absorbeur RC':                        'protection',
-    'Pont diviseur de tension':            'polarisation',
-    'Protection par fusible':              'protection',
+    'Impédance Z':                         'impedance',
 }
 
 
 def _valeur(graphe, ref: str) -> str:
-    """Retourne la valeur d'un composant (cherche dans le dict multi-broches et dans les arêtes)."""
+    """@brief Retourne la valeur d'un composant.
+
+    Cherche dans le dict des composants multi-broches puis dans les arêtes.
+
+    @param graphe Graphe NetworkX du circuit.
+    @param ref Référence du composant recherché.
+    @return str Valeur du composant, ou '' si absente/introuvable.
+    """
     if not ref:
         return ''
     comp = graphe.graph.get('components', {}).get(ref)
@@ -1164,10 +1431,14 @@ def _valeur(graphe, ref: str) -> str:
 
 def _enrichir(match: dict, graphe) -> dict:
     """
-    Ajoute confidence, confidence_level, reasons, warnings, functional_category
-    et locked_components à un match de détection.
+    @brief Enrichit un match de détection avec confiance, raisons et avertissements.
 
-    Ne modifie pas le dict original (retourne une copie enrichie).
+    Ajoute confidence, confidence_level, reasons, warnings, functional_category
+    et locked_components.
+
+    @param match Match brut ({'circuit_type', 'components', 'nodes'}).
+    @param graphe Graphe NetworkX d'origine (pour lire les valeurs des composants).
+    @return dict Copie enrichie du match ; le dict original n'est pas modifié.
     """
     ct     = match['circuit_type']
     comps  = match['components']
@@ -1190,7 +1461,9 @@ def _enrichir(match: dict, graphe) -> dict:
         confidence = 0.95
         reasons.append("IN- directement relié à OUT (même nœud électrique)")
 
-    elif ct in ('Amplificateur inverseur (AOP)', 'Amplificateur non-inverseur (AOP)'):
+    elif ct in ('Amplificateur inverseur (AOP)', 'Amplificateur non-inverseur (AOP)',
+                'Ampli inverseur + boost HF (AOP)',
+                'Ampli inverseur + action intégrale (AOP)'):
         confidence = 0.90
         reasons.append("Contre-réaction négative via résistance entre OUT et IN-")
 
@@ -1255,107 +1528,13 @@ def _enrichir(match: dict, graphe) -> dict:
         confidence = 0.75
         reasons.append("Diode en série + condensateur vers GND")
 
-    elif ct == 'Condensateur de découplage':
-        n0 = nodes[0] if len(nodes) > 0 else ''
-        n1 = nodes[1] if len(nodes) > 1 else ''
-        val = _valeur(graphe, comps[0]) if comps else ''
-        vraiment_entre_rails = (
-            (is_ground_net(n0) or is_power_net(n0)) and
-            (is_ground_net(n1) or is_power_net(n1))
-        )
-        if vraiment_entre_rails:
-            confidence = 0.90
-            reasons.append("Condensateur directement entre alimentation et GND")
+    elif ct == 'Impédance Z':
+        confidence = 0.80
+        compo = match.get('composition', '')
+        if compo:
+            reasons.append(f"Impédance équivalente : {compo}")
         else:
-            confidence = 0.50
-            warnings.append(
-                "Condensateur entre nœuds non identifiés comme alimentation/GND — "
-                "vérifier les alias de nets"
-            )
-        if val:
-            v = parse_valeur(val)
-            if v is not None and v > 1e-6:
-                reasons.append(f"Valeur {val} — filtrage bulk (> 1µF), pas du découplage HF")
-            elif v is not None:
-                reasons.append(f"Valeur {val} — découplage HF typique")
-        else:
-            warnings.append("Valeur absente — type de découplage (HF vs bulk) non confirmé")
-
-    elif ct in ('Filtre RC passe-bas', 'Filtre RC passe-haut'):
-        r_ref = next((c for c in comps if c.upper().startswith('R')), None)
-        c_ref = next((c for c in comps if c.upper().startswith('C')), None)
-        r_val = _valeur(graphe, r_ref) if r_ref else ''
-        c_val = _valeur(graphe, c_ref) if c_ref else ''
-        direction = "série + condensateur vers GND" if 'bas' in ct else "en série + résistance vers GND"
-        reasons.append(f"Résistance {direction}")
-        if r_val and c_val:
-            rv, cv = parse_valeur(r_val), parse_valeur(c_val)
-            if rv is not None and cv is not None and rv > 0 and cv > 0:
-                import math
-                fc = 1.0 / (2.0 * math.pi * rv * cv)
-                reasons.append(f"Fréquence de coupure ~ {fc:.1f} Hz (R={r_val}, C={c_val})")
-                confidence = 0.90
-                if rv == 0.0:
-                    warnings.append(f"{r_ref} = 0Ω (jumper) — pas vraiment un filtre RC")
-                    confidence = 0.30
-            else:
-                confidence = 0.70
-                warnings.append("Valeurs invalides — fréquence de coupure non calculable")
-        else:
-            confidence = 0.65
-            warnings.append("Valeurs absentes — fréquence de coupure non vérifiable")
-
-    elif ct == 'Filtre LC':
-        l_ref = next((c for c in comps if c.upper().startswith('L')), None)
-        c_ref = next((c for c in comps if c.upper().startswith('C')), None)
-        reasons.append("Inductance en série + condensateur vers GND")
-        l_val = _valeur(graphe, l_ref) if l_ref else ''
-        c_val = _valeur(graphe, c_ref) if c_ref else ''
-        if l_val and c_val:
-            lv, cv = parse_valeur(l_val), parse_valeur(c_val)
-            if lv is not None and cv is not None and lv > 0 and cv > 0:
-                import math
-                f0 = 1.0 / (2.0 * math.pi * math.sqrt(lv * cv))
-                reasons.append(f"Fréquence de résonance ~ {f0:.1f} Hz")
-                confidence = 0.90
-            else:
-                confidence = 0.70
-        else:
-            confidence = 0.65
-            warnings.append("Valeurs absentes — fréquence de résonance non vérifiable")
-
-    elif ct == 'Absorbeur RC':
-        reasons.append("Résistance et condensateur en parallèle entre les mêmes nœuds")
-        warnings.append(
-            "Topologie compatible avec un filtre ou une compensation de stabilité selon le contexte"
-        )
-        confidence = 0.70
-
-    elif ct == 'Pont diviseur de tension':
-        has_power = any(is_power_net(n) for n in nodes if n)
-        has_gnd   = any(is_ground_net(n) for n in nodes if n)
-        reasons.append("Deux résistances sur un nœud commun, chacune vers un point différent")
-        if has_power and has_gnd:
-            confidence = 0.90
-            reasons.append("Entre alimentation et GND — pont de polarisation confirmé")
-        else:
-            confidence = 0.60
-            warnings.append(
-                "Nœuds d'alimentation et masse non clairement identifiés — "
-                "peut être un pont résistif quelconque"
-            )
-        # Vérifier si une R est un jumper (0Ω)
-        for ref in comps:
-            val = _valeur(graphe, ref)
-            if val and parse_valeur(val) == 0.0:
-                warnings.append(
-                    f"{ref} = 0Ω (jumper) — le rapport de division peut être court-circuité"
-                )
-                confidence = min(confidence, 0.50)
-
-    elif ct == 'Protection par fusible':
-        confidence = 0.95
-        reasons.append("Composant de type F (fusible) en série dans le circuit")
+            reasons.append("Impédance passive réduite")
 
     # ── Niveau de confiance ───────────────────────────────────────────────────
     if confidence >= 0.80:
@@ -1385,11 +1564,16 @@ _DETECTEURS_COMPLEXES = [
     detecter_derivateur,                   # C entrée + R feedback
     detecter_bascule_schmitt,              # R de feedback positif
     detecter_amplificateur_non_inverseur,  # R feedback + R vers GND
+    detecter_derivateur_partiel,           # Zin R//C : inverseur + boost HF
+    detecter_correcteur_pi,                # Zf R+C serie : inverseur + action integrale
     detecter_amplificateur_inverseur,      # R entrée + R feedback
     detecter_suiveur_tension,              # IN- = OUT (court-circuit)
     detecter_comparateur,                  # AOP sans feedback
+    detecter_push_pull,                    # NPN+PNP, émetteurs communs, collecteurs rail/masse
+    detecter_darlington,                   # E(Q1) -> B(Q2)
     detecter_miroir_courant,               # 2 BJT, bases communes
     detecter_commande_relais,              # Relais + transistor
+    detecter_suiveur_emetteur,             # collecteur sur rail, Re émetteur->GND (avant émetteur commun)
     detecter_amplificateur_emetteur_commun,
     detecter_transistor_commutation,
     detecter_mosfet_commutation,
@@ -1401,16 +1585,12 @@ _DETECTEURS_COMPLEXES = [
     detecter_detecteur_crete,
 ]
 
-# Détecteurs simples (circuits passifs — appelés EN DERNIER)
+# Détecteurs simples (passifs réduits — appelés EN DERNIER)
 # Les patterns personnalisés (créés via l'interface) s'insèrent entre les deux.
+# Tout passif R/L/C résiduel est émis comme « Impédance Z » par detecter_impedances :
+# il n'existe plus de détecteur passif nommé (filtre RC, pont diviseur, etc.).
 _DETECTEURS_SIMPLES = [
-    detecter_condensateur_decouplage,     # C direct alim/GND (avant filtres RC !)
-    detecter_filtre_rc_passe_bas,
-    detecter_filtre_rc_passe_haut,
-    detecter_filtre_lc,
-    detecter_absorbeur_rc,
-    detecter_pont_diviseur,
-    detecter_fusible,
+    detecter_impedances,
 ]
 
 # Noms de tous les circuits intégrés, dans l'ordre d'affichage de l'interface
@@ -1418,14 +1598,14 @@ NOMS_CIRCUITS = [
     "Amplificateur différentiel (AOP)", "Amplificateur sommateur (AOP)",
     "Intégrateur (AOP)", "Dérivateur (AOP)", "Bascule de Schmitt (AOP)",
     "Amplificateur non-inverseur (AOP)", "Amplificateur inverseur (AOP)",
+    "Ampli inverseur + boost HF (AOP)", "Ampli inverseur + action intégrale (AOP)",
     "Suiveur de tension (AOP)", "Comparateur (AOP)",
     "Miroir de courant BJT", "Commande de relais",
     "Amplificateur émetteur commun", "Transistor en commutation",
     "MOSFET en commutation", "MOSFET haute-tension (côté haut)",
     "Pont redresseur (Graetz)", "Diode de roue libre",
     "Diode de protection ESD", "Redresseur simple alternance", "Détecteur de crête",
-    "Condensateur de découplage", "Filtre RC passe-bas", "Filtre RC passe-haut",
-    "Filtre LC", "Absorbeur RC", "Pont diviseur de tension", "Protection par fusible",
+    "Impédance Z",
 ]
 
 # Alias pour compatibilité
@@ -1434,17 +1614,15 @@ match_patterns = None  # défini après analyser()
 
 def analyser(graphe, patterns_personnalises=None):
     """
-    Analyse le graphe et retourne tous les circuits détectés.
+    @brief Analyse le graphe et retourne tous les circuits détectés.
 
     Chaque composant ne peut appartenir qu'à UN SEUL circuit.
     Les circuits complexes sont prioritaires sur les circuits simples.
 
-    Arguments :
-        graphe               : le graphe NetworkX construit par graph_builder.py
-        patterns_personnalises : liste optionnelle de fonctions de détection supplémentaires
-
-    Retourne :
-        liste de dicts {'circuit_type': str, 'components': list, 'nodes': list}
+    @param graphe Le graphe NetworkX construit par graph_builder.py.
+    @param patterns_personnalises Liste optionnelle de fonctions de détection supplémentaires.
+    @return ResultatsAnalyse Liste enrichie de dicts {'circuit_type', 'components', 'nodes', …},
+            avec les attributs .supprimes (matches ignorés) et .ilots (structure en étages).
     """
     # Charger les patterns personnalisés depuis l'interface graphique (si présents)
     # Ils s'insèrent entre les circuits complexes et les circuits simples.
@@ -1455,7 +1633,17 @@ def analyser(graphe, patterns_personnalises=None):
             # Les patterns custom retournent {'components': ..., 'nodes': ...} sans 'circuit_type'.
             # On crée une fonction wrapper qui ajoute le nom du circuit.
             def _envelopper(pattern):
+                """@brief Adapte un objet Pattern personnalisé en fonction détecteur.
+
+                @param pattern Instance de Pattern personnalisé chargée depuis le JSON.
+                @return callable Détecteur qui ajoute la clé 'circuit_type' aux matches.
+                """
                 def detecter(graphe):
+                    """@brief Exécute le pattern personnalisé sur un graphe.
+
+                    @param graphe Graphe NetworkX à analyser.
+                    @return generator Matches enrichis avec le nom du circuit personnalisé.
+                    """
                     for match in pattern.match(graphe):
                         yield {**match, 'circuit_type': pattern.name}
                 return detecter
@@ -1466,12 +1654,23 @@ def analyser(graphe, patterns_personnalises=None):
     # Ordre final : complexes → personnalisés → simples
     tous_les_detecteurs = _DETECTEURS_COMPLEXES + list(patterns_personnalises) + _DETECTEURS_SIMPLES
 
+    # Réduction préalable (directive métier en rouge du document de référence) :
+    # les sous-réseaux passifs série/parallèle sont collapsés en dipôles
+    # équivalents, pour que les détecteurs reconnaissent un montage dont la
+    # contre-réaction (ou l'entrée) est un composite « Rf = R1+R2 ». La détection
+    # tourne sur le graphe réduit ; les refs synthétiques (Z#k) sont ré-expansées
+    # juste après, pour que enrichissement, satellites et îlots travaillent sur
+    # les vraies refs et le graphe original.
+    graphe_reduit = impedance.reduire(graphe)
+    expansion = impedance.expansion_depuis_graphe(graphe_reduit)
+
     composants_utilises: set = set()
     circuits_trouves: list  = []
     supprimes: list         = []
 
     for detecter in tous_les_detecteurs:
-        for match in detecter(graphe):
+        for match in detecter(graphe_reduit):
+            match = expandre_composites(match, expansion)
             # Test anti-vol AVANT enrichissement : inutile de calculer la
             # confiance des matches supprimés (ils peuvent être très nombreux).
             if any(c in composants_utilises for c in match['components']):
@@ -1486,6 +1685,9 @@ def analyser(graphe, patterns_personnalises=None):
 
     resultats = ResultatsAnalyse(circuits_trouves)
     resultats.supprimes = supprimes
+    # Fusibles neutralisés par la réduction : remontés pour que le rapport ne les
+    # liste pas comme « non classifiés ».
+    resultats.transparents = list(graphe_reduit.graph.get('fusibles_transparents', []))
     # Structure en étages : îlots de connexité hors rails
     resultats.ilots = detecter_ilots(graphe, circuits_trouves)
     return resultats

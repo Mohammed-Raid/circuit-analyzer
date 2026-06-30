@@ -1,5 +1,13 @@
+"""
+@file test_integration.py
+@brief Tests automatises pour test_integration.
+"""
+
 import subprocess, sys, os, tempfile
 from pathlib import Path
+
+from circuit_analyzer.composant import Composant, construire_graphe
+from circuit_analyzer.detecteur import detecter_impedances, analyser
 
 
 SAMPLE_NETLIST = """\
@@ -36,7 +44,70 @@ U1  NET_SIG  NET_OUT  NET_OUT  VCC  GND
 """
 
 
+def test_detecter_impedances_emet_chaque_z():
+    # IN ─R1─ MID ─R2─ GND : un seul composite Z1 = R1+R2 entre IN et GND.
+    from circuit_analyzer import impedance
+    g = construire_graphe([
+        Composant('R1', 'R', {'1': 'IN', '2': 'MID'}, '1k'),
+        Composant('R2', 'R', {'1': 'MID', '2': 'GND'}, '2k'),
+    ])
+    reduit = impedance.reduire(g)
+    matches = list(detecter_impedances(reduit))
+    assert len(matches) == 1
+    m = matches[0]
+    assert m['circuit_type'] == 'Impédance Z'
+    assert m['components'] == ['Z1']           # ref synthétique, expansée par analyser()
+    assert set(m['nodes']) == {'IN', 'GND'}
+    assert m['composition'] == 'R1+R2'
+
+
+def test_analyser_filtre_rc_isole_devient_impedance():
+    # Filtre RC isolé : plus de "Filtre RC passe-bas", mais une Impédance Z.
+    g = construire_graphe([
+        Composant('R1', 'R', {'1': 'IN', '2': 'MID'}, '10k'),
+        Composant('C1', 'C', {'1': 'MID', '2': 'GND'}, '100n'),
+    ])
+    res = analyser(g)
+    types = [m['circuit_type'] for m in res]
+    assert 'Filtre RC passe-bas' not in types
+    assert 'Impédance Z' in types
+    z = next(m for m in res if m['circuit_type'] == 'Impédance Z')
+    assert sorted(z['components']) == ['C1', 'R1']   # vraies refs après expansion
+
+
+def test_analyser_inverseur_avec_feedback_composite():
+    # Rf = R1+R2 (composite homogène) : l'inverseur reste détecté, refs réelles.
+    g = construire_graphe([
+        Composant('U1', 'U', {'IN+': 'GND', 'IN-': 'INM', 'OUT': 'OUT'}),
+        Composant('Re', 'R', {'1': 'IN', '2': 'INM'}, '1k'),
+        Composant('R1', 'R', {'1': 'INM', '2': 'MID'}, '4k7'),
+        Composant('R2', 'R', {'1': 'MID', '2': 'OUT'}, '4k7'),
+    ])
+    res = analyser(g)
+    inv = next((m for m in res if m['circuit_type'] == 'Amplificateur inverseur (AOP)'), None)
+    assert inv is not None
+    # Le feedback composite R1+R2 est expansé en vraies refs dans le montage.
+    assert {'U1', 'Re', 'R1', 'R2'} <= set(inv['components'])
+
+
+def test_enrichissement_impedance_z():
+    g = construire_graphe([
+        Composant('R1', 'R', {'1': 'IN', '2': 'MID'}, '10k'),
+        Composant('C1', 'C', {'1': 'MID', '2': 'GND'}, '100n'),
+    ])
+    res = analyser(g)
+    z = next(m for m in res if m['circuit_type'] == 'Impédance Z')
+    assert z['functional_category'] == 'impedance'
+    assert z['confidence_level'] in ('high', 'medium', 'low')
+    # La composition est mentionnée dans les raisons.
+    assert any('R1+C1' in r for r in z['reasons'])
+
+
 def test_full_pipeline():
+    """@brief Verifie full pipeline.
+
+    @return None
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
         netlist_path = Path(tmpdir) / 'circuit.txt'
         report_path = Path(tmpdir) / 'report.txt'
@@ -50,11 +121,8 @@ def test_full_pipeline():
         assert result.returncode == 0, result.stderr
         report = report_path.read_text(encoding='utf-8')
 
-        assert 'Filtre RC passe-bas' in report
-        assert 'Pont diviseur de tension' in report
-        assert 'Condensateur de découplage' in report
-        assert 'Protection par fusible' in report
-        assert 'Snubber RC' in report
+        # Les passifs isolés sont désormais classifiés comme "Impédance Z"
+        assert 'Impédance Z' in report
         assert 'Pont redresseur (Graetz)' in report
         assert 'Transistor en commutation' in report
         assert 'Suiveur de tension (AOP)' in report

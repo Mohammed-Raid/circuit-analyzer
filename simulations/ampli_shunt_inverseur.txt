@@ -1,0 +1,12 @@
+# Ampli inverseur de mesure de courant (mise en forme d'un shunt).
+# La chute de tension aux bornes d'un shunt de courant (VSHUNT, faible) est
+# amplifiee et inversee avant numerisation par l'ADC. Gain = -Rf/Rin = -10.
+# IN+ a la masse (reference), reseau Rin/Rf reductible en impedances Z.
+
+U1   /GND    /SUM    /VOUT   /VCC   /GND
+
+# Entree shunt -> noeud de sommation
+Rin  /VSHUNT /SUM    10k
+
+# Contre-reaction (fixe le gain)
+Rf   /SUM    /VOUT   100k

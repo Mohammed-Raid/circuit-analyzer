@@ -1,5 +1,6 @@
 """
-widgets.py — Briques d'interface partagées par les onglets Composants et Circuits.
+@file widgets.py
+@brief Briques d'interface partagées par les onglets Composants et Circuits.
 
   - ListeSectionnee : listbox à deux sections (intégrés / personnalisés) avec
     en-têtes non sélectionnables, scrollbar et boutons Nouveau/Supprimer.
@@ -21,7 +22,7 @@ _GRIS_ENTETE  = "#475569"   # en-têtes de section
 
 class ListeSectionnee:
     """
-    Panneau de liste à sections pour le côté gauche des onglets.
+    @brief Panneau de liste à deux sections (intégrés / personnalisés) pour les onglets.
 
     Usage :
         panneau = ListeSectionnee(parent, titre="Liste des circuits",
@@ -34,6 +35,14 @@ class ListeSectionnee:
     """
 
     def __init__(self, parent, titre: str, on_select, on_new, on_delete):
+        """@brief Construit le panneau de liste sectionné.
+
+        @param parent Widget parent.
+        @param titre Titre affiché au-dessus de la liste.
+        @param on_select Callback (section, index) à la sélection d'un élément.
+        @param on_new Callback du bouton « Nouveau ».
+        @param on_delete Callback du bouton « Supprimer ».
+        """
         self._on_select_cb = on_select
         # rangée listbox -> ('entete', None) | ('integre', i) | ('perso', i)
         self._lignes: list[tuple] = []
@@ -77,7 +86,12 @@ class ListeSectionnee:
                       command=on_delete).pack(side="left", expand=True)
 
     def remplir(self, integres: list[str], personnalises: list[str]) -> None:
-        """(Re)peuple la liste : section intégrés puis section personnalisés."""
+        """@brief (Re)peuple la liste : section intégrés puis section personnalisés.
+
+        @param integres Libellés des éléments intégrés (consultables).
+        @param personnalises Libellés des éléments personnalisés (modifiables).
+        @return None
+        """
         self._listbox.delete(0, "end")
         self._lignes = []
 
@@ -98,17 +112,33 @@ class ListeSectionnee:
             self._lignes.append(('perso', len(self._lignes_de('perso'))))
 
     def deselectionner(self) -> None:
+        """@brief Efface la sélection courante de la liste."""
         self._listbox.selection_clear(0, "end")
 
     def _lignes_de(self, section: str) -> list:
+        """@brief Lignes appartenant à une section donnée.
+
+        @param section Nom de section ('integre', 'perso', 'entete').
+        @return list Lignes (tuples) de cette section.
+        """
         return [l for l in self._lignes if l[0] == section]
 
     def _entete(self, texte: str) -> None:
+        """@brief Insère une ligne d'en-tête non sélectionnable.
+
+        @param texte Libellé de l'en-tête.
+        @return None
+        """
         self._listbox.insert("end", f" — {texte} —")
         self._listbox.itemconfig("end", foreground=_GRIS_ENTETE)
         self._lignes.append(('entete', None))
 
     def _sur_selection(self, _=None):
+        """@brief Gestionnaire d'événement de sélection : route vers le callback.
+
+        @param _ Événement Tk (ignoré).
+        @return None
+        """
         sel = self._listbox.curselection()
         if not sel:
             return
@@ -120,7 +150,7 @@ class ListeSectionnee:
 
 
 class BandeauEtat:
-    """Bandeau de mode du formulaire : nouveau / édition / lecture seule."""
+    """@brief Bandeau de mode du formulaire : nouveau / édition / lecture seule."""
 
     _STYLES = {
         'nouveau':  ("#14532d", "#4ade80"),   # fond vert sombre, texte vert
@@ -129,6 +159,11 @@ class BandeauEtat:
     }
 
     def __init__(self, parent):
+        """@brief Construit le bandeau d'état dans son widget parent.
+
+        @param parent Widget parent.
+        @return None
+        """
         self._frame = ctk.CTkFrame(parent, corner_radius=8, height=34)
         self._frame.pack_propagate(False)
         self._label = ctk.CTkLabel(self._frame, text="",
@@ -136,19 +171,35 @@ class BandeauEtat:
         self._label.pack(side="left", padx=12, pady=6)
 
     def pack(self, **kwargs):
+        """@brief Délègue le placement pack() au frame interne.
+
+        @param kwargs Options passées à CTkFrame.pack().
+        @return None
+        """
         self._frame.pack(**kwargs)
 
     def grid(self, **kwargs):
         self._frame.grid(**kwargs)
 
     def definir(self, mode: str, texte: str) -> None:
+        """@brief Fixe le mode et le texte du bandeau.
+
+        @param mode Mode d'affichage ('nouveau', 'edition', 'lecture').
+        @param texte Texte à afficher.
+        @return None
+        """
         fond, couleur = self._STYLES[mode]
         self._frame.configure(fg_color=fond)
         self._label.configure(text=texte, text_color=couleur)
 
 
 def ligne_aide(parent, texte: str) -> ctk.CTkLabel:
-    """Petite ligne d'aide grise sous un champ de formulaire."""
+    """@brief Petite ligne d'aide grise sous un champ de formulaire.
+
+    @param parent Widget parent.
+    @param texte Texte d'aide à afficher.
+    @return ctk.CTkLabel Le label créé.
+    """
     label = ctk.CTkLabel(parent, text=texte,
                          font=ctk.CTkFont("Segoe UI", 10),
                          text_color=MUTED, justify="left", anchor="w")
@@ -157,8 +208,13 @@ def ligne_aide(parent, texte: str) -> ctk.CTkLabel:
 
 
 def lier_molette(zone_scrollable) -> None:
-    """Rend `zone_scrollable` (un CTkScrollableFrame) défilable à la molette
+    """@brief Rend une zone défilable à la molette partout, enfants dynamiques compris.
+
+    Rend `zone_scrollable` (un CTkScrollableFrame) défilable à la molette
     où que soit le curseur — y compris au-dessus d'enfants ajoutés après coup.
+
+    @param zone_scrollable Le CTkScrollableFrame à rendre défilable.
+    @return None
 
     CTkScrollableFrame ne lie la molette qu'au canvas et aux enfants présents à
     la construction ; les widgets ajoutés ensuite (lignes de broches, cases à
@@ -173,6 +229,11 @@ def lier_molette(zone_scrollable) -> None:
         return
 
     def _defiler(event):
+        """@brief Traduit l'événement de molette en défilement vertical du canvas.
+
+        @param event Événement Tk de molette.
+        @return None
+        """
         if getattr(event, "num", 0) == 4:        # Linux : molette haut
             canvas.yview_scroll(-1, "units")
         elif getattr(event, "num", 0) == 5:      # Linux : molette bas
@@ -181,6 +242,11 @@ def lier_molette(zone_scrollable) -> None:
             canvas.yview_scroll(int(-event.delta / 120), "units")
 
     def _relier(widget):
+        """@brief Lie récursivement la molette sur un widget et ses enfants.
+
+        @param widget Widget Tk/CTk à relier.
+        @return None
+        """
         widget.bind("<MouseWheel>", _defiler)    # Windows / macOS
         widget.bind("<Button-4>", _defiler)      # Linux
         widget.bind("<Button-5>", _defiler)      # Linux

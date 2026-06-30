@@ -1,5 +1,6 @@
 """
-benchmark.py — Mesure le temps d'analyse sur des netlists synthétiques.
+@file benchmark.py
+@brief Mesure le temps d'analyse sur des netlists synthétiques.
 
 Usage : python tools/benchmark.py [tailles...]
         python tools/benchmark.py            # 100 500 1000 2000 5000
@@ -22,7 +23,11 @@ from circuit_analyzer.detecteur import analyser
 
 
 def bloc(i: int) -> list:
-    """Un étage de commande de relais (8 composants, nets propres au bloc)."""
+    """@brief Construit un étage de commande de relais (8 composants, nets propres au bloc).
+
+    @param i Indice du bloc (sert de préfixe de net B{i}_).
+    @return list Les 8 composants du bloc.
+    """
     p = f'B{i}_'
     return [
         Component(p + 'Q1', 'Q', {'B': p + 'NB', 'C': p + 'NC', 'E': 'GND'}),
@@ -38,6 +43,11 @@ def bloc(i: int) -> list:
 
 
 def netlist_synthetique(nb_composants: int) -> list:
+    """@brief Construit une netlist synthétique d'environ nb_composants composants.
+
+    @param nb_composants Nombre de composants visé.
+    @return list Composants (tronqués exactement à nb_composants).
+    """
     composants = []
     i = 0
     while len(composants) < nb_composants:
@@ -47,6 +57,11 @@ def netlist_synthetique(nb_composants: int) -> list:
 
 
 def mesurer(nb_composants: int) -> None:
+    """@brief Mesure et affiche les temps de construction du graphe et d'analyse.
+
+    @param nb_composants Taille de la netlist synthétique à mesurer.
+    @return None
+    """
     composants = netlist_synthetique(nb_composants)
 
     debut = time.perf_counter()

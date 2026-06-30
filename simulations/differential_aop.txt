@@ -1,0 +1,6 @@
+# Amplificateur differentiel AOP : Vout = Rf/R1 (V2 - V1)
+U1  /INP   /INM   /OUT   /VCC   /GND
+R1  /IN1   /INM   10k
+Rf  /INM   /OUT   100k
+R3  /IN2   /INP   10k
+Rg  /INP   /GND   100k
