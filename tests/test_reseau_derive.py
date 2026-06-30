@@ -47,3 +47,31 @@ def test_reseau_derive_non_reconnu_renvoie_none():
     ]
     g = build_graph(comps)
     assert cv._reseau_derive_ilot(_ilot(['R1', 'C1']), g) is None
+
+
+def test_draw_reseau_derive_figure_et_hitboxes():
+    comps = [
+        Component('R1', 'R', {'1': 'VCC', '2': 'VREF'}, '10k'),
+        Component('R2', 'R', {'1': 'VREF', '2': 'GND'}, '4.7k'),
+    ]
+    g = build_graph(comps)
+    info = cv._reseau_derive_ilot(_ilot(['R1', 'R2']), g)
+    ci = {c.ref: {'type': c.type, 'value': c.value, 'pins': c.pins} for c in comps}
+    fig = cv._make_fig(info, ci, cv._draw_reseau_derive)
+    assert fig is not None
+    # une boite Z cliquable pour la serie, une pour le shunt
+    assert len(getattr(fig, '_z_hitboxes', [])) == 2
+    refs_hit = {tuple(sorted(h[4])) for h in fig._z_hitboxes}
+    assert ('R1',) in refs_hit and ('R2',) in refs_hit
+
+
+def test_show_island_route_vers_reseau_derive():
+    # Le routage de show_island choisit le reseau derive avant la grille generique.
+    comps = [
+        Component('R1', 'R', {'1': 'VCC', '2': 'VREF'}, '10k'),
+        Component('R2', 'R', {'1': 'VREF', '2': 'GND'}, '4.7k'),
+    ]
+    g = build_graph(comps)
+    ilot = _ilot(['R1', 'R2'])
+    assert cv._reseau_derive_ilot(ilot, g) is not None
+    assert cv._circuit_principal_ilot(ilot, g, None) is None

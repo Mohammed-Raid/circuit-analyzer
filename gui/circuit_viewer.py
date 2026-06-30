@@ -541,8 +541,10 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     principal = _circuit_principal_ilot(ilot, graph, results)
     _sp = _arbre_serie_parallele_ilot(ilot, graph) if principal is None else None
     _pont = _pont_ilot(ilot, graph) if (principal is None and _sp is None) else None
+    _derive = (_reseau_derive_ilot(ilot, graph)
+               if (principal is None and _sp is None and _pont is None) else None)
     _chaine = _branches = None
-    if principal is None and _sp is None and _pont is None:
+    if principal is None and _sp is None and _pont is None and _derive is None:
         _chaine = _ordonner_montages_flux(_matches_for_island(ilot, results), comp_info)
         if _chaine is None:                # pas linéaire -> essai DAG en couches (PID…)
             _branches = _layers_montages_flux(_matches_for_island(ilot, results), comp_info)
@@ -561,6 +563,8 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         from gui import impedance_schematic
         _pont_struct, _comps = _pont
         fig = impedance_schematic.dessiner_pont(_pont_struct, _comps)
+    elif _derive is not None:
+        fig = _make_fig(_derive, comp_info, _draw_reseau_derive)
     elif _chaine is not None:
         # Îlot multi-AOP en chaîne : un seul grand schéma, étages reliés OUT->IN.
         fig = _make_chain_fig(_chaine, comp_info, matches=_matches_for_island(ilot, results))
@@ -1957,6 +1961,29 @@ def _enregistrer_hitbox(d, p1, p2, refs, composition, pad=0.5):
         hb.append((min(p1[0], p2[0]) - pad, max(p1[0], p2[0]) + pad,
                    min(p1[1], p2[1]) - pad, max(p1[1], p2[1]) + pad,
                    list(refs), composition))
+
+
+def _draw_reseau_derive(d, info, ci):
+    """@brief Dessine un reseau derive : rail haut -[Z serie]- prise -[Z shunt]- GND.
+
+    @param d Dessin schemdraw. @param info Dict de _reseau_derive_ilot.
+    @param ci Dict {ref -> {type, value, pins}}.
+    @return dict (ancres ; vide ici).
+    """
+    p_top, p_prise, p_gnd = (0, 5), (0, 3), (0, 1)
+    d.add(elm.Line().at(p_top).up(0.5).color(_WIRE))
+    d.add(elm.Label().at((0, 5.8)).label(info["top"], color=_WIRE))
+    _z_box(d, p_top, p_prise, "Z", info["serie"], ci, label_loc="left")
+    d.add(elm.Dot().at(p_prise).color(_WIRE))
+    d.add(elm.Line().at(p_prise).right(1.8).color(_WIRE))
+    d.add(elm.Label().at((1.9, 3)).label(f"{info['prise']}  ->",
+                                         halign="left", color=_WIRE))
+    if info["shunt"]:
+        _z_box(d, p_prise, p_gnd, "Z", info["shunt"], ci, label_loc="left")
+        d.add(elm.Ground().at(p_gnd).color(_WIRE))
+    else:
+        d.add(elm.Ground().at(p_prise).color(_WIRE))
+    return {}
 
 
 def _draw_aop_inverseur_zin_zf(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT"):
