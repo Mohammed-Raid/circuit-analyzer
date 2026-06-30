@@ -2417,11 +2417,21 @@ def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0):
         d.add(elm.Ground())
     else:
         # Couplage vers un net non-rail : stub vertical vers le BAS (hors du fil
-        # d'entrée/sortie horizontal de l'étage). Pas de ré-étiquetage du net :
-        # le port (VIN/VOUT) est déjà nommé par le drawer -> évite les doublons.
+        # d'entrée/sortie horizontal de l'étage), TERMINÉ par le second nœud réel
+        # étiqueté -> pas de borne flottante qui paraît coupée. L'étiquette de la Z
+        # passe à droite pour laisser la place au nom du nœud sous la boîte.
         p1, p2 = (ax + dx, ay - 0.55), (ax + dx, ay - 1.75)
         d.add(elm.Line().at(anchor).to(p1).color(_WIRE))
-        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="bottom")
+        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right")
+        # Terminer le moignon par un nœud : sinon la boîte paraît avoir une borne
+        # flottante coupée. Le second nœud n'est étiqueté que s'il est informatif
+        # (un port VIN/VOUT est déjà nommé par le drawer -> on évite le doublon).
+        d.add(elm.Line().at(p2).down(0.3).color(_WIRE))
+        fin = (p2[0], p2[1] - 0.3)
+        d.add(elm.Dot().at(fin).color(_WIRE))
+        if other_net and other_net.upper() not in {"VIN", "VOUT", "IN", "OUT"}:
+            d.add(elm.Label().at((fin[0], fin[1] - 0.25))
+                  .label(other_net, halign="center", valign="top", color=_WIRE))
 
 
 def _draw_island_chain(d, ordered, ci, couplages=None):

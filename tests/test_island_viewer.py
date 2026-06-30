@@ -15,6 +15,27 @@ def _comp_info(composants):
     }
 
 
+def test_z_locale_net_non_rail_termine_par_label():
+    """Une Z locale vers un net non-rail (ex. charge de sortie L1//R8 sur VOUT)
+    doit terminer son moignon par un nœud étiqueté du second nœud réel, pas une
+    borne flottante qui paraît coupée (cf. audit ChatGPT round 2)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import schemdraw
+    from gui import circuit_viewer as cv
+    fig = cv.Figure(figsize=(4, 4))
+    ax = fig.add_subplot(111)
+    z = {"circuit_type": "Impédance Z", "components": ["L1", "R8"],
+         "refs": ["L1", "R8"], "composition": "(L1//R8)", "nodes": ["NET6", "VOUT"]}
+    ci = {"L1": {"type": "L", "value": "", "pins": {}},
+          "R8": {"type": "R", "value": "", "pins": {}}}
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d._z_hitboxes = []
+        cv._dessiner_z_locale(d, (0, 0), "NET6", z, ci)
+    txts = [t.get_text() for t in ax.texts]
+    assert any("NET6" in t for t in txts)
+
+
 def _unit(ref, typ, pins, value="", symbol=None, refs=None, composition=None):
     """Fabrique une unite de modele (bypass la reduction) pour tester le layout pur."""
     return {
