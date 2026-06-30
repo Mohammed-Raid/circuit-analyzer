@@ -71,7 +71,9 @@ def test_make_fig_affiche_astuce_clic_si_hitbox():
     def _faux_drawer(d, result, ci):
         d._z_hitboxes.append((0.0, 1.0, 0.0, 1.0, ["R1"], "R1"))
     fig = cv._make_fig({"circuit_type": "X", "components": []}, {}, _faux_drawer)
-    textes = " ".join(t.get_text() for t in fig.axes[0].texts)
+    # L'astuce est posee en coords figure (sous le trace) pour ne pas chevaucher
+    # un label bas du dessin -> elle vit dans fig.texts, pas dans l'axe.
+    textes = " ".join(t.get_text() for t in (*fig.texts, *fig.axes[0].texts))
     assert "cliquez" in textes.lower()
 
 

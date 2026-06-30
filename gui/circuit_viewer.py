@@ -888,15 +888,19 @@ def _make_fig(result, comp_info, drawer_fn, matches=None):
 
     # Astuce de découvrabilité : si le schéma comporte des boîtes Z cliquables,
     # on l'indique (sinon l'utilisateur ne sait pas qu'il peut déplier les Z).
+    # Placée en coords FIGURE sous le tracé, avec une marge basse réservée par
+    # tight_layout(rect) : sinon elle chevauche un label bas du dessin (ex. Z2
+    # du diviseur dans le suiveur, cf. buffer_reference ilot0).
+    rect = (0, 0, 1, 1)
     if fig._z_hitboxes:
-        ax.text(0.01, 0.01, "Astuce : cliquez une boîte Z pour voir le détail R/L/C",
-                transform=ax.transAxes, fontsize=9, color="#64748b",
-                va="bottom", ha="left")
+        fig.text(0.01, 0.012, "Astuce : cliquez une boîte Z pour voir le détail R/L/C",
+                 fontsize=9, color="#64748b", va="bottom", ha="left")
+        rect = (0, 0.05, 1, 1)
 
     # Marge réduite : le tracé occupe presque toute la figure (lisibilité).
     ax.margins(0.06)
     try:
-        fig.tight_layout(pad=0.4)
+        fig.tight_layout(rect=rect, pad=0.4)
     except Exception:
         pass
     return fig

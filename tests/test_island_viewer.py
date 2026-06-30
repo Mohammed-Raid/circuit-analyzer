@@ -188,8 +188,9 @@ def test_differentiel_zg_label_ne_chevauche_pas_astuce():
     fig.canvas.draw()
 
     def boxes(pred):
-        return [t.get_window_extent() for ax in fig.axes for t in ax.texts
-                if pred(t.get_text())]
+        # L'astuce est en coords figure (fig.texts) ; les labels Z dans l'axe.
+        textes = [*fig.texts, *(t for ax in fig.axes for t in ax.texts)]
+        return [t.get_window_extent() for t in textes if pred(t.get_text())]
     zg = boxes(lambda s: "Zg" in s)
     astuce = boxes(lambda s: "Astuce" in s)
     assert zg and astuce
