@@ -437,6 +437,70 @@ def _pont_ilot(ilot, graph):
     return pont, sous.graph["components"]
 
 
+def _compo_2bornes(refs, a, b, raw):
+    """@brief Composition symbolique (serie/parallele) des passifs entre a et b.
+
+    @param refs Liste de refs du sous-reseau. @param a/b Nets bornes.
+    @param raw Dict {ref -> Composant} original.
+    @return str Expression reparsable (ex. 'R7//C7'), ou la ref unique.
+    """
+    from circuit_analyzer import impedance
+    from circuit_analyzer.composant import construire_graphe
+    if len(refs) == 1:
+        return refs[0]
+    sous = construire_graphe([raw[r] for r in refs])
+    expr = impedance.impedance_equivalente(sous, a, b)
+    return expr if expr else "//".join(refs)
+
+
+def _reseau_derive_ilot(ilot, graph):
+    """@brief Reseau passif derive sur prise (diviseur de reference / filtrage rail).
+
+    Forme : <rail source> -[Z serie]- (prise) -[Z shunt]- GND. Couvre le diviseur
+    pur, le diviseur + cap de bypass, et le filtrage de rail.
+
+    @param ilot Ilot detecte (cle 'composants' = refs brutes).
+    @param graph Graphe original (porte graph['components']).
+    @return dict {top, prise, serie, shunt} ou None si la forme ne s'applique pas.
+    """
+    from circuit_analyzer.ilots import _nets_derives, _est_gnd, _PASSIFS
+    from circuit_analyzer.patterns.base import is_power_net
+
+    raw = getattr(graph, "graph", {}).get("components", {}) or {}
+    refs = [r for r in ilot.get("composants", []) if r in raw]
+    if not refs or any(raw[r].type not in _PASSIFS for r in refs):
+        return None
+    prises = _nets_derives(graph) & {
+        n for r in refs for n in raw[r].pins.values() if n}
+    if len(prises) != 1:
+        return None
+    prise = next(iter(prises))
+
+    serie_refs, shunt_refs, tops = [], [], set()
+    for r in refs:
+        nets = {n for n in raw[r].pins.values() if n}
+        if prise not in nets:
+            return None                       # tout composant doit toucher la prise
+        autre = nets - {prise}
+        if any(_est_gnd(n) for n in autre):
+            shunt_refs.append(r)
+        else:
+            rails = [n for n in autre if is_power_net(n)]
+            if not rails:
+                return None
+            serie_refs.append(r)
+            tops.update(rails)
+    if not serie_refs or len(tops) != 1:
+        return None
+    top = next(iter(tops))
+    serie = {"refs": serie_refs,
+             "composition": _compo_2bornes(serie_refs, top, prise, raw)}
+    shunt = ({"refs": shunt_refs,
+              "composition": _compo_2bornes(shunt_refs, prise, "GND", raw)}
+             if shunt_refs else None)
+    return {"top": top, "prise": prise, "serie": serie, "shunt": shunt}
+
+
 def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     """Ouvre une fenetre affichant le schema reel d'un ilot."""
     model = _build_island_model(ilot, graph, comp_info)
