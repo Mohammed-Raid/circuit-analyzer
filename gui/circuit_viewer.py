@@ -509,6 +509,40 @@ def _reseau_derive_ilot(ilot, graph):
     return {"top": top, "prise": prise, "serie": serie, "shunt": shunt}
 
 
+def _reseau_deux_bornes_ilot(ilot, graph):
+    """@brief Reseau passif compact entre exactement 2 nets-bornes (rails/ports).
+
+    Repli propre de la grille generique : charges de sortie, decouplages,
+    filtres se reduisant a UNE impedance entre deux rails (GND/VOUT, GND/VCC,
+    AVCC/GND...). Les nœuds NETxx internes sont tolere (ex. R-NET10-C en serie).
+
+    @param ilot Ilot detecte (cle 'composants' = refs brutes).
+    @param graph Graphe original (porte graph['components']).
+    @return (arbre, a, b, comps) | None : arbre serie/parallele reductible,
+            les deux nets-bornes, et le dict {ref -> Composant} du sous-graphe.
+    """
+    from circuit_analyzer import impedance
+    from circuit_analyzer.composant import construire_graphe
+    from circuit_analyzer.satellites import _est_rail
+
+    raw = getattr(graph, "graph", {}).get("components", {}) or {}
+    refs = [r for r in ilot.get("composants", []) if r in raw]
+    if not refs or _ilot_a_composant_actif(refs, raw):
+        return None
+    sous = construire_graphe([raw[r] for r in refs])
+    bornes = [n for n in impedance.bornes_possibles(sous) if _est_rail(n)]
+    if len(bornes) != 2:
+        return None
+    a, b = bornes
+    expr = impedance.impedance_equivalente(sous, a, b)
+    if expr is None:
+        return None
+    arbre = impedance.arbre_expr(expr)
+    if arbre is None:
+        return None
+    return arbre, a, b, sous.graph["components"]
+
+
 def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     """Ouvre une fenetre affichant le schema reel d'un ilot."""
     model = _build_island_model(ilot, graph, comp_info)
@@ -551,8 +585,12 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     _pont = _pont_ilot(ilot, graph) if (principal is None and _sp is None) else None
     _derive = (_reseau_derive_ilot(ilot, graph)
                if (principal is None and _sp is None and _pont is None) else None)
+    _deux = (_reseau_deux_bornes_ilot(ilot, graph)
+             if (principal is None and _sp is None and _pont is None
+                 and _derive is None) else None)
     _chaine = _branches = None
-    if principal is None and _sp is None and _pont is None and _derive is None:
+    if (principal is None and _sp is None and _pont is None and _derive is None
+            and _deux is None):
         _chaine = _ordonner_montages_flux(_matches_for_island(ilot, results), comp_info)
         if _chaine is None:                # pas linéaire -> essai DAG en couches (PID…)
             _branches = _layers_montages_flux(_matches_for_island(ilot, results), comp_info)
@@ -573,6 +611,12 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         fig = impedance_schematic.dessiner_pont(_pont_struct, _comps)
     elif _derive is not None:
         fig = _make_fig(_derive, comp_info, _draw_reseau_derive)
+    elif _deux is not None:
+        # Reseau passif compact a 2 bornes : une boite Z entre deux rails
+        # etiquetes (cliquable), au lieu de la grille generique encombree.
+        from gui import impedance_schematic
+        _arbre, _a, _b, _comps = _deux
+        fig = impedance_schematic.dessiner_bloc(_arbre, _a, _b, _comps)
     elif _chaine is not None:
         # Îlot multi-AOP en chaîne : un seul grand schéma, étages reliés OUT->IN.
         fig = _make_chain_fig(_chaine, comp_info, matches=_matches_for_island(ilot, results))
