@@ -6,7 +6,6 @@ report.txt
 custom_report.txt
 .claude/
 # docs/superpowers/ intentionally tracked
-skidl_REPL.*
 
 # Sorties PyInstaller (packaging/analyseur.spec est versionné)
 build/
@@ -15,6 +14,7 @@ dist/
 # ── Artefacts de travail (scratch) — ignorés, jamais versionnés ──────────────
 # Rendus PNG de vérification visuelle
 chk_*/
+tools/_renders/
 # Circuits générés par generate_test_circuits.py
 circuits_test/
 # Bibliothèque de formes externe (non lue par le code, posée à la main)
