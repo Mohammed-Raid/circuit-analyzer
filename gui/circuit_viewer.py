@@ -470,8 +470,14 @@ def _reseau_derive_ilot(ilot, graph):
     refs = [r for r in ilot.get("composants", []) if r in raw]
     if not refs or any(raw[r].type not in _PASSIFS for r in refs):
         return None
-    prises = _nets_derives(graph) & {
-        n for r in refs for n in raw[r].pins.values() if n}
+    island_nets = {n for r in refs for n in raw[r].pins.values() if n}
+    # La prise est le net derive qui possede, DANS cet ilot, un passif vers GND.
+    # Un rail source decouple ailleurs peut etre globalement « derive » mais n'a
+    # pas de shunt-vers-GND ici -> on l'ecarte (evite len(prises)!=1 a tort).
+    prises = {n for n in (_nets_derives(graph) & island_nets)
+              if any(n in raw[r].pins.values()
+                     and any(_est_gnd(m) for m in raw[r].pins.values() if m != n)
+                     for r in refs)}
     if len(prises) != 1:
         return None
     prise = next(iter(prises))
@@ -495,8 +501,10 @@ def _reseau_derive_ilot(ilot, graph):
     top = next(iter(tops))
     serie = {"refs": serie_refs,
              "composition": _compo_2bornes(serie_refs, top, prise, raw)}
+    gnd_net = next((m for r in shunt_refs for m in raw[r].pins.values()
+                    if _est_gnd(m)), "GND")
     shunt = ({"refs": shunt_refs,
-              "composition": _compo_2bornes(shunt_refs, prise, "GND", raw)}
+              "composition": _compo_2bornes(shunt_refs, prise, gnd_net, raw)}
              if shunt_refs else None)
     return {"top": top, "prise": prise, "serie": serie, "shunt": shunt}
 

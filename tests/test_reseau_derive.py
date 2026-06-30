@@ -75,3 +75,24 @@ def test_show_island_route_vers_reseau_derive():
     ilot = _ilot(['R1', 'R2'])
     assert cv._reseau_derive_ilot(ilot, g) is not None
     assert cv._circuit_principal_ilot(ilot, g, None) is None
+    assert cv._arbre_serie_parallele_ilot(ilot, g) is None
+    assert cv._pont_ilot(ilot, g) is None
+
+
+def test_reseau_derive_rail_filtre_quand_source_aussi_decouplee():
+    # Cas mixte : VCC decouple (C1,C2 vers GND) ET alimente AVCC via R4.
+    # VCC devient globalement "derive", mais l'ilot AVCC doit quand meme etre
+    # reconnu (prise = AVCC, le seul a avoir un shunt-vers-GND dans l'ilot).
+    comps = [
+        Component('C1', 'C', {'1': 'VCC', '2': 'GND'}, '100nF'),
+        Component('C2', 'C', {'1': 'VCC', '2': 'GND'}, '10uF'),
+        Component('R4', 'R', {'1': 'VCC', '2': 'AVCC'}, '10R'),
+        Component('C4', 'C', {'1': 'AVCC', '2': 'GND'}, '100nF'),
+        Component('C5', 'C', {'1': 'AVCC', '2': 'GND'}, '10uF'),
+    ]
+    g = build_graph(comps)
+    info = cv._reseau_derive_ilot(_ilot(['R4', 'C4', 'C5']), g)
+    assert info is not None
+    assert info['prise'] == 'AVCC'
+    assert info['top'] == 'VCC'
+    assert set(info['shunt']['refs']) == {'C4', 'C5'}
