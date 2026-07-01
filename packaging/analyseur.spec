@@ -52,13 +52,19 @@ _TK_DATAS = [
 # Assets requis au runtime (thèmes customtkinter, polices schemdraw).
 _DONNEES_GUI = collect_data_files('customtkinter') + collect_data_files('schemdraw') + _TK_DATAS
 
+# Assets : polices et icônes pour la vague 2 (Dark Premium).
+_ASSETS = [
+    (os.path.join(RACINE, 'assets', 'fonts'), 'assets/fonts'),
+    (os.path.join(RACINE, 'assets', 'icons'), 'assets/icons'),
+]
+
 _EXCLUSIONS = ['PyQt5', 'PyQt6', 'PySide2', 'PySide6', 'IPython', 'jupyter']
 
 
 a_gui = Analysis(
     [os.path.join(RACINE, 'app.py')],
     pathex=[RACINE],
-    datas=_DONNEES_GUI,
+    datas=_DONNEES_GUI + _ASSETS,
     binaries=_TK_BINARIES,
     hiddenimports=_CACHES + _TK_HIDDEN,
     excludes=_EXCLUSIONS,
