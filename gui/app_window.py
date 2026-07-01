@@ -4,11 +4,12 @@
 """
 import customtkinter as ctk
 from circuit_analyzer import __version__
-from gui.fonts import register_fonts
+from gui.fonts import register_fonts, FONT_FAMILY
 from gui.tab_analyze import TabAnalyze
 from gui.tab_circuits import TabCircuits
 from gui.tab_components import TabComponents
 from gui.tab_draw import TabDraw
+import gui.ui_kit as ui_kit
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -48,15 +49,15 @@ class AppWindow:
         # Logo block
         logo = ctk.CTkFrame(sidebar, fg_color="transparent")
         logo.grid(row=0, column=0, sticky="ew", padx=18, pady=(26, 20))
-        ctk.CTkLabel(logo, text="⚡", font=ctk.CTkFont(size=28),
+        ctk.CTkLabel(logo, text="Z", font=ctk.CTkFont(FONT_FAMILY, 26, "bold"),
                      text_color=BLUE).pack(side="left", padx=(0, 8))
         name_col = ctk.CTkFrame(logo, fg_color="transparent")
         name_col.pack(side="left")
         ctk.CTkLabel(name_col, text="Circuit",
-                     font=ctk.CTkFont("Segoe UI", 16, "bold"),
+                     font=ui_kit.font("title"),
                      text_color=TEXT).pack(anchor="w")
         ctk.CTkLabel(name_col, text="Analyzer",
-                     font=ctk.CTkFont("Segoe UI", 16, "bold"),
+                     font=ui_kit.font("title"),
                      text_color=BLUE).pack(anchor="w")
 
         # Divider
@@ -64,7 +65,7 @@ class AppWindow:
             row=1, column=0, sticky="ew", padx=18, pady=(0, 14))
 
         ctk.CTkLabel(sidebar, text="MENU",
-                     font=ctk.CTkFont("Segoe UI", 9, "bold"),
+                     font=ui_kit.font("overline"),
                      text_color=MUTED).grid(
                          row=2, column=0, sticky="w", padx=22, pady=(0, 6))
 
@@ -74,10 +75,10 @@ class AppWindow:
         nav_frame.grid(row=3, column=0, sticky="nsew", padx=6)
 
         items = [
-            ("🔍", "Analyser",    "Lire et analyser"),
-            ("✏",  "Schéma",     "Dessiner un circuit"),
-            ("⚡", "Circuits",    "Patterns personnalisés"),
-            ("🔧", "Composants",  "Bibliothèque"),
+            ("search",   "Analyser",   "Lire et analyser"),
+            ("pen-tool", "Schéma",     "Dessiner un circuit"),
+            ("zap",      "Circuits",   "Patterns personnalisés"),
+            ("wrench",   "Composants", "Bibliothèque"),
         ]
         for i, (icon, label, sub) in enumerate(items):
             btn = _NavButton(nav_frame, icon, label, sub,
@@ -89,7 +90,7 @@ class AppWindow:
         ctk.CTkFrame(sidebar, height=1, fg_color=BORDER).grid(
             row=4, column=0, sticky="ew", padx=18, pady=10)
         ctk.CTkLabel(sidebar, text=f"v{__version__}",
-                     font=ctk.CTkFont("Segoe UI", 10),
+                     font=ui_kit.font("caption"),
                      text_color=MUTED).grid(
                          row=5, column=0, pady=(0, 18))
 
@@ -154,7 +155,7 @@ class _NavButton(ctk.CTkFrame):
         """@brief Construit le bouton de navigation.
 
         @param parent Widget parent.
-        @param icon Icône (emoji) affichée.
+        @param icon Nom d'icône Lucide (ex. "search") rendu via ui_kit.icon.
         @param label Libellé principal.
         @param subtitle Sous-titre descriptif.
         @param command Callback appelé au clic.
@@ -175,22 +176,22 @@ class _NavButton(ctk.CTkFrame):
         inner.pack(side="left", fill="both", expand=True,
                    padx=(4, 6), pady=4)
 
-        ctk.CTkLabel(inner, text=icon,
-                     font=ctk.CTkFont(size=18),
-                     text_color=MUTED, width=28).pack(side="left")
+        self._icon_lbl = ctk.CTkLabel(inner, image=ui_kit.icon(icon, 18),
+                                      text="", width=28)
+        self._icon_lbl.pack(side="left")
 
         texts = ctk.CTkFrame(inner, fg_color="transparent")
         texts.pack(side="left", padx=8)
         self._lbl = ctk.CTkLabel(texts, text=label,
-                                  font=ctk.CTkFont("Segoe UI", 13),
+                                  font=ui_kit.font("body"),
                                   text_color="#94a3b8", anchor="w")
         self._lbl.pack(anchor="w")
         self._sub = ctk.CTkLabel(texts, text=subtitle,
-                                  font=ctk.CTkFont("Segoe UI", 9),
+                                  font=ui_kit.font("caption"),
                                   text_color=MUTED, anchor="w")
         self._sub.pack(anchor="w")
 
-        for w in (self, inner, texts, self._lbl, self._sub):
+        for w in (self, inner, texts, self._lbl, self._sub, self._icon_lbl):
             w.bind("<Button-1>", lambda _: command())
             w.bind("<Enter>", self._on_enter)
             w.bind("<Leave>", self._on_leave)
@@ -206,13 +207,13 @@ class _NavButton(ctk.CTkFrame):
             self._accent.configure(fg_color=BLUE)
             self.configure(fg_color=CARD)
             self._lbl.configure(text_color=TEXT,
-                                font=ctk.CTkFont("Segoe UI", 13, "bold"))
+                                font=ui_kit.font("body", "bold"))
             self._sub.configure(text_color=MUTED)
         else:
             self._accent.configure(fg_color="transparent")
             self.configure(fg_color="transparent")
             self._lbl.configure(text_color="#94a3b8",
-                                font=ctk.CTkFont("Segoe UI", 13))
+                                font=ui_kit.font("body"))
             self._sub.configure(text_color=MUTED)
 
     def _on_enter(self, _=None):
