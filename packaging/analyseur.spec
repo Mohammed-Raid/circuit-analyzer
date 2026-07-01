@@ -16,6 +16,9 @@ from PyInstaller.utils.hooks import collect_data_files
 RACINE = os.path.abspath(os.path.join(SPECPATH, '..'))
 PY_BASE = sys.base_prefix
 
+# Icône de l'exe (Explorateur / barre des tâches) : boîte Z impédance.
+_ICONE = os.path.join(SPECPATH, 'app_icon.ico')
+
 # custom_circuits.loader est importé paresseusement dans analyser() :
 # PyInstaller ne le voit pas en scannant les imports de main.py.
 _CACHES = ['custom_circuits', 'custom_circuits.loader']
@@ -80,6 +83,7 @@ exe_gui = EXE(
     exclude_binaries=True,
     name='AnalyseurCircuits',
     console=False,
+    icon=_ICONE,
 )
 
 exe_cli = EXE(
@@ -89,6 +93,7 @@ exe_cli = EXE(
     exclude_binaries=True,
     name='analyseur-cli',
     console=True,
+    icon=_ICONE,
 )
 
 coll = COLLECT(

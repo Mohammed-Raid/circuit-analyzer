@@ -2438,15 +2438,25 @@ def _dessiner_impedances_locales(d, stages, ancres, z_matches, z_utilises, ci):
             other = next((n for n in znets if n != net), "")
             key = (id(stage), net)
             offsets[key] = offsets.get(key, 0) + 1
-            _dessiner_z_locale(d, net_pts[net], other, z, ci, offsets[key] - 1)
+            # Un stub vertical percute un élément de l'étage aligné SOUS l'ancre
+            # (cas collecteur au-dessus de l'émetteur) -> boîte en ligne.
+            ax0, ay0 = net_pts[net]
+            bloque_bas = any(abs(p[0] - ax0) < 0.3 and p[1] < ay0 - 0.3
+                             for m, p in net_pts.items() if m != net)
+            _dessiner_z_locale(d, net_pts[net], other, z, ci,
+                               offsets[key] - 1, bloque_bas=bloque_bas)
             break
 
 
-def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0):
+def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0, bloque_bas=False):
     """@brief Dessine une Z locale depuis `anchor` vers un rail ou une etiquette.
 
     Plusieurs Z sur un même nœud sont étalées horizontalement (`index`) et leur
     étiquette passe dessous pour ne pas se chevaucher.
+
+    @param bloque_bas True si un élément de l'étage occupe l'espace directement
+        sous l'ancre (collecteur aligné au-dessus de l'émetteur) : le stub
+        vertical le traverserait, on dessine alors la boîte EN LIGNE.
     """
     ax, ay = anchor
     # Étalement horizontal large quand plusieurs Z partagent le même nœud
@@ -2463,6 +2473,11 @@ def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0):
         _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right")
         d.add(elm.Line().at(p2).down(0.25).color(_WIRE))
         d.add(elm.Ground())
+    elif bloque_bas:
+        # Un élément (l'émetteur) occupe l'espace sous l'ancre (collecteur) : un
+        # stub vertical le traverserait -> boîte EN LIGNE sur le fil de sortie.
+        p1, p2 = (ax + 0.4 + dx, ay), (ax + 1.4 + dx, ay)
+        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci)
     else:
         # Couplage vers un net non-rail : stub vertical vers le BAS (hors du fil
         # d'entrée/sortie horizontal de l'étage), TERMINÉ par le second nœud réel
@@ -2700,7 +2715,12 @@ def _charge_verticale(d, ref, ci, longueur=1.1):
         elem = elm.Resistor()
     else:
         elem = elm.Line()
-    d.add(elem.up(longueur).label(_lbl(ref, ci), loc="right"))
+    e = d.add(elem.up(longueur))
+    # Label cale a DROITE du symbole : loc="right" retombe centre sur le fil
+    # vertical (les spires de l'inductance rendent la bbox symetrique), d'ou un
+    # chevauchement label/fil a l'audit visuel.
+    d.add(elm.Label().at((e.center[0] + 0.45, e.center[1]))
+          .label(_lbl(ref, ci), fontsize=9, halign="left"))
 
 
 def _annoter_etage(d, ancres, match):
@@ -3158,7 +3178,11 @@ def _draw_common_emitter(d, result, ci, origin=(3, 0), titre=True,
     rc = _ref_on_net(rs, ci, q_pins.get("C"), rs[0] if rs else "Rc")
     remaining = [r for r in rs if r != rc]
     rb = _ref_on_net(remaining, ci, q_pins.get("B")) if remaining else None
-    t = d.add(elm.BjtNpn().at(origin))
+    # .right() force une orientation DETERMINISTE : sans direction explicite, le
+    # BjtNpn herite de la direction courante du dessin, qu'un drawer amont (ex.
+    # Darlington en vue chaine) peut laisser inversee -> transistor mirroir dont
+    # l'emetteur percute l'etiquette Rb (cf. ilot_chaine_darlington_ce).
+    t = d.add(elm.BjtNpn().at(origin).right())
     bx, by = t.base
     in_pt = (bx - 2.6, by)
     if rb:
@@ -3389,7 +3413,9 @@ def _draw_suiveur_emetteur(d, result, ci, origin=(3, 0), titre=True,
         line = line.label(out_label, loc="right")
     d.add(line)
     _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), None)
-    d.add(elm.Label().at((ex + 0.9, ey - 1.25))
+    # Label a GAUCHE de Re : a droite du noeud emetteur/OUT, la chaine peut poser
+    # une boite Z de sortie (ex. L1//R8) qui percuterait "Re = ..." (audit visuel).
+    d.add(elm.Label().at((ex - 0.9, ey - 1.25))
           .label(_texte_passif_simple(re, ci, "Re"), fontsize=9))
     d.add(elm.Line().at(t.emitter).to((ex, ey - 0.6)))
     d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))

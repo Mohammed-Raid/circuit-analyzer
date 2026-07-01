@@ -270,19 +270,19 @@ class SchematicEditor(tk.Frame):
         # Palette défilable : conteneur fixe (largeur 152) + canvas interne, pour
         # que tous les composants/boutons restent accessibles même fenêtre courte
         # ou avec la mise à l'échelle Windows (125/150 %).
-        palette_outer = tk.Frame(self, bg="#1e293b", width=152)
+        palette_outer = tk.Frame(self, bg="#1e293b", width=174)
         palette_outer.pack(side="left", fill="y")
         palette_outer.pack_propagate(False)
 
         pcanvas = tk.Canvas(palette_outer, bg="#1e293b", highlightthickness=0,
-                            bd=0, width=136)
+                            bd=0, width=158)
         psb = tk.Scrollbar(palette_outer, orient="vertical", command=pcanvas.yview)
         pcanvas.configure(yscrollcommand=psb.set)
         psb.pack(side="right", fill="y")
         pcanvas.pack(side="left", fill="both", expand=True)
 
         palette = tk.Frame(pcanvas, bg="#1e293b")
-        pcanvas.create_window((0, 0), window=palette, anchor="nw", width=136)
+        pcanvas.create_window((0, 0), window=palette, anchor="nw", width=158)
         palette.bind("<Configure>",
                      lambda _e: pcanvas.configure(scrollregion=pcanvas.bbox("all")))
         # Molette active seulement quand le curseur est sur la palette (sinon
@@ -321,7 +321,7 @@ class SchematicEditor(tk.Frame):
             color = defn["color"]
             b = tk.Button(
                 parent,
-                text=f"{ct}  {defn['label'][:11]}",
+                text=f"{ct}  {defn['label']}",
                 bg="#1e293b", fg=color,
                 activebackground="#263347", activeforeground=color,
                 relief="flat", anchor="w",
@@ -354,7 +354,7 @@ class SchematicEditor(tk.Frame):
         self._status_lbl = tk.Label(
             parent,
             text="Clic = placer\nEspace/R = rotation\nCtrl+C/V = copier/coller\nCtrl+D = dupliquer\n"
-                 "Ctrl+Z/Y = annuler/rétablir\nF = ajuster · Ctrl+molette = zoom",
+                 "Ctrl+Z/Y = annuler/rétablir\nClic droit = menu\nF = ajuster · Ctrl+molette = zoom",
             fg="#475569", bg="#1e293b",
             font=("Segoe UI", 7), justify="center",
         )

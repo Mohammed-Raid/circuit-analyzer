@@ -157,7 +157,10 @@ class _NavButton(ctk.CTkFrame):
         @param subtitle Sous-titre descriptif.
         @param command Callback appelé au clic.
         """
-        super().__init__(parent, fg_color="transparent", corner_radius=10)
+        # Hauteur fixe : sans elle un CTkFrame garde sa hauteur par défaut (200 px)
+        # et seuls 2 des 4 onglets tenaient à l'écran (Circuits/Composants cachés).
+        super().__init__(parent, fg_color="transparent", corner_radius=10, height=52)
+        self.pack_propagate(False)
         self._cmd = command
         self._active = False
 
@@ -178,11 +181,11 @@ class _NavButton(ctk.CTkFrame):
         texts.pack(side="left", padx=8)
         self._lbl = ctk.CTkLabel(texts, text=label,
                                   font=ctk.CTkFont("Segoe UI", 13),
-                                  text_color=MUTED, anchor="w")
+                                  text_color="#94a3b8", anchor="w")
         self._lbl.pack(anchor="w")
         self._sub = ctk.CTkLabel(texts, text=subtitle,
                                   font=ctk.CTkFont("Segoe UI", 9),
-                                  text_color="#334155", anchor="w")
+                                  text_color=MUTED, anchor="w")
         self._sub.pack(anchor="w")
 
         for w in (self, inner, texts, self._lbl, self._sub):
@@ -206,9 +209,9 @@ class _NavButton(ctk.CTkFrame):
         else:
             self._accent.configure(fg_color="transparent")
             self.configure(fg_color="transparent")
-            self._lbl.configure(text_color=MUTED,
+            self._lbl.configure(text_color="#94a3b8",
                                 font=ctk.CTkFont("Segoe UI", 13))
-            self._sub.configure(text_color="#334155")
+            self._sub.configure(text_color=MUTED)
 
     def _on_enter(self, _=None):
         """@brief Survol : applique une couleur de fond si le bouton est inactif."""

@@ -82,10 +82,8 @@ class TabDraw:
             command=self._save_circuit,
         ).pack(side="left", padx=(0, 14), pady=8)
 
-        ctk.CTkLabel(bar_inner,
-                     text="Espace/R rotation  ·  Ctrl+Z/Y annuler·rétablir  ·  Ctrl+C/V/D copier·coller·dupliquer  ·  F ajuster  ·  Clic droit = menu",
-                     font=ctk.CTkFont("Segoe UI", 10),
-                     text_color=MUTED).pack(side="left", pady=10)
+        # Légende raccourcis retirée ici : déjà affichée dans la palette (status_lbl).
+        # Elle débordait et masquait le bouton bleu « Enregistrer comme pattern ».
 
         ctk.CTkButton(
             bar_inner,

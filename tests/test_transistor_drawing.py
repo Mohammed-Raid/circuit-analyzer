@@ -106,6 +106,25 @@ def test_commutation_vcc_ne_chevauche_pas_charge_inductive():
         _assert_texts_do_not_overlap(fig, "L1", "VCC")
 
 
+def test_commutation_label_charge_degage_du_fil_vertical():
+    # Audit visuel : le label de la charge (L1) etait centre SUR le fil vertical
+    # VCC -> collecteur. Il doit vivre entierement a droite du fil (VCC est
+    # centre sur le fil via loc="top", donc son centre x = x du fil).
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    for result, ci in (BJT_SWITCH, MOSFET_SWITCH):
+        fig, _txts = _render(result, ci)
+        canvas = FigureCanvasAgg(fig)
+        canvas.draw()
+        renderer = canvas.get_renderer()
+        l1 = [t.get_window_extent(renderer)
+              for ax in fig.axes for t in ax.texts if "L1" in t.get_text()]
+        vcc = [t.get_window_extent(renderer)
+               for ax in fig.axes for t in ax.texts if "VCC" in t.get_text()]
+        assert l1 and vcc, result["circuit_type"]
+        wire_x = (vcc[0].x0 + vcc[0].x1) / 2
+        assert l1[0].x0 >= wire_x, result["circuit_type"]
+
+
 def test_emetteur_commun_couple_dc_sans_rb_fantome():
     # Etage CE couple en DC (base = collecteur amont) : pas de resistance de base,
     # donc aucun symbole/label Rb fantome ne doit etre dessine.
@@ -218,6 +237,71 @@ def _assert_texts_do_not_overlap(fig, needle_a, needle_b):
     ]
     assert boxes_a and boxes_b
     assert not any(a.overlaps(b) for a in boxes_a for b in boxes_b)
+
+
+def _assert_label_hors_boites_z(fig, needle):
+    """Le label `needle` (texte) ne doit chevaucher aucune boite Z (hitbox)."""
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.transforms import Bbox
+    ax = fig.axes[0]
+    canvas = FigureCanvasAgg(fig)
+    canvas.draw()
+    renderer = canvas.get_renderer()
+    labels = [t.get_window_extent(renderer)
+              for t in ax.texts if needle in t.get_text()]
+    assert labels, needle
+    for hb in getattr(fig, "_z_hitboxes", []):
+        # hitbox = boite reelle + pad 0.5 (zone cliquable) ; on teste la boite
+        # DESSINEE (depadée) pour ne juger que le chevauchement visuel.
+        (px0, py0), (px1, py1) = ax.transData.transform(
+            [(hb[0] + 0.5, hb[2] + 0.5), (hb[1] - 0.5, hb[3] - 0.5)])
+        box = Bbox.from_extents(px0, py0, px1, py1)
+        assert not any(b.overlaps(box) for b in labels), (needle, hb[5])
+
+
+def test_reel_suiveur_re_label_hors_boite_z_sortie():
+    # Audit visuel : le label "Re = ..." de l'emetteur chevauchait la boite Z de
+    # sortie (L1//R8) posee sur le noeud OUT. Il doit s'en degager.
+    fig, _txts = _render_ilot_xml("ilot_reel_ce_suiveur_sortie_rlc.xml")
+    _assert_label_hors_boites_z(fig, "Re")
+
+
+def test_common_emitter_emetteur_a_droite_malgre_direction_inverse():
+    # Un drawer amont (ex. Darlington) peut laisser la direction courante du
+    # dessin pointee vers la gauche. Le BjtNpn du CE doit garder une orientation
+    # DETERMINISTE (emetteur a droite de la base) sinon il est mirroir et percute
+    # l'etiquette Rb (cf. ilot_chaine_darlington_ce).
+    import schemdraw
+    from schemdraw import elements as elm
+    fig = cv.Figure()
+    ax = fig.add_subplot(111)
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d._z_hitboxes = []
+        d.add(elm.Line().at((0, 0)).left(1))   # direction ambiante -> gauche
+        res = cv._draw_common_emitter(d, *EMETTEUR_COMMUN, origin=(5, 0),
+                                      titre=False)
+    emitter = res["nets"]["GND"]   # ancre emetteur (E -> GND)
+    assert emitter[0] > 5, "emetteur du CE mirroir a gauche (percute Rb)"
+
+
+def test_reel_2ce_coupling_sortie_dessine_en_ligne():
+    # Audit visuel : le coupling de sortie (collecteur -> VOUT, ici C4) etait
+    # dessine en stub VERTICAL descendant, or le collecteur est aligne au-dessus
+    # de l'emetteur -> la boite traversait le transistor. Il doit etre EN LIGNE
+    # (horizontal) sur le fil de sortie.
+    fig, _txts = _render_ilot_xml("ilot_reel_2ce_bias_rlc.xml")
+    c4 = [hb for hb in fig._z_hitboxes if hb[5] == "C4"]
+    assert c4, "boite C4 absente"
+    x0, x1, y0, y1 = c4[0][:4]
+    assert (x1 - x0) > (y1 - y0), "le coupling de sortie doit etre horizontal"
+
+
+def test_reel_suiveur_vout_label_hors_boite_z():
+    # La boite Z de sortie du suiveur (L1//R8, ancree sur VOUT) ne doit pas
+    # chevaucher le label VOUT : elle reste en stub vertical (rien ne la bloque
+    # en dessous), contrairement au collecteur du CE (element aligne dessous).
+    fig, _txts = _render_ilot_xml("ilot_reel_ce_suiveur_sortie_rlc.xml")
+    _assert_label_hors_boites_z(fig, "VOUT")
 
 
 def test_darlington_xml_absorbe_resistance_emetteur_simple():
