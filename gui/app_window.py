@@ -4,6 +4,7 @@
 """
 import customtkinter as ctk
 from circuit_analyzer import __version__
+from gui.fonts import register_fonts
 from gui.tab_analyze import TabAnalyze
 from gui.tab_circuits import TabCircuits
 from gui.tab_components import TabComponents
@@ -20,6 +21,7 @@ class AppWindow:
 
     def __init__(self):
         """@brief Construit la fenêtre, ses dimensions et son contenu."""
+        register_fonts()  # Enregistre Inter avant toute création de widget
         self.root = ctk.CTk()
         self.root.title("Circuit Analyzer")
         self.root.geometry("1160x740")
