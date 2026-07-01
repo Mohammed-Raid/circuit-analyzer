@@ -21,7 +21,9 @@ def _coeur_analyse():
 # gui.circuit_viewer importe matplotlib + schemdraw (~2 s). On le charge à la
 # demande (ouverture d'un schéma), pas au démarrage : la fenêtre s'affiche vite.
 
-from gui.theme import BG, CARD, CARD2, BORDER, TEXT, MUTED, BLUE
+from gui.theme import (BG, CARD, CARD2, BORDER, TEXT, MUTED, BLUE,
+                       TEXT_MUTED, SUCCESS, CYAN, ERROR)
+from gui import ui_kit
 
 # Circuit type → (bg, text, icon)
 TYPE_COLORS = {
@@ -88,11 +90,11 @@ class TabAnalyze:
         hinner.pack(fill="both", expand=True, padx=28)
 
         ctk.CTkLabel(hinner, text="Analyser un circuit",
-                     font=ctk.CTkFont("Segoe UI", 18, "bold"),
+                     font=ui_kit.font("display"),
                      text_color=TEXT).pack(side="left", pady=18)
         ctk.CTkLabel(hinner, text="Chargez un fichier netlist (.txt .cir .sp .net) ou schéma .xml",
-                     font=ctk.CTkFont("Segoe UI", 12),
-                     text_color=MUTED).pack(side="left", padx=14, pady=18)
+                     font=ui_kit.font("body"),
+                     text_color=TEXT_MUTED).pack(side="left", padx=14, pady=18)
 
         # ── File picker bar ──────────────────────────────────────────────────
         picker = ctk.CTkFrame(self.frame, fg_color=CARD2,
@@ -103,49 +105,36 @@ class TabAnalyze:
         pin = ctk.CTkFrame(picker, fg_color="transparent")
         pin.pack(fill="both", expand=True, padx=28)
 
-        self._entry = ctk.CTkEntry(
+        self._entry = ui_kit.Field(
             pin,
             textvariable=self._file_path,
-            placeholder_text="  Choisir un fichier .txt / .cir / .sp / .net / .xml …",
+            placeholder="  Choisir un fichier .txt / .cir / .sp / .net / .xml …",
             height=38, corner_radius=8,
-            font=ctk.CTkFont("Segoe UI", 12),
-            fg_color="#111827", border_color=BORDER,
-            text_color=TEXT,
         )
         self._entry.pack(side="left", expand=True, fill="x",
                          padx=(0, 10), pady=12)
         self._entry.bind("<Double-Button-1>", lambda _: self._browse())
 
-        ctk.CTkButton(pin, text="📂  Parcourir",
-                      width=130, height=38, corner_radius=8,
-                      font=ctk.CTkFont("Segoe UI", 12),
-                      fg_color="#1e293b", hover_color="#263347",
-                      border_width=1, border_color=BORDER,
-                      command=self._browse).pack(side="left", padx=(0, 8))
+        ui_kit.SecondaryButton(pin, "Parcourir", self._browse,
+                               icon_name="folder-open",
+                               width=130, height=38).pack(side="left", padx=(0, 8))
 
-        ctk.CTkButton(pin, text="Charger demo",
-                      width=130, height=38, corner_radius=8,
-                      font=ctk.CTkFont("Segoe UI", 12),
-                      fg_color="#0f766e", hover_color="#115e59",
-                      border_width=1, border_color=BORDER,
-                      command=self._load_demo).pack(side="left", padx=(0, 8))
+        ui_kit.GhostButton(pin, "Charger demo", self._load_demo,
+                           width=130, height=38).pack(side="left", padx=(0, 8))
 
-        self._analyze_btn = ctk.CTkButton(
-            pin, text="▶  Analyser",
-            width=130, height=38, corner_radius=8,
-            font=ctk.CTkFont("Segoe UI", 12, "bold"),
-            fg_color="#16a34a", hover_color="#15803d",
-            command=self._analyze,
+        self._analyze_btn = ui_kit.PrimaryButton(
+            pin, "Analyser", self._analyze, icon_name="play",
+            width=130, height=38,
         )
         self._analyze_btn.pack(side="left")
 
         # ── Stats row (hidden until first run) ───────────────────────────────
         self._stats_row = ctk.CTkFrame(self.frame, fg_color=BG,
                                        corner_radius=0)
-        self._s_total  = _StatCard(self._stats_row, "—", "Composants", "#3b82f6", "📦")
-        self._s_groups = _StatCard(self._stats_row, "—", "Circuits identifiés", "#10b981", "✅")
-        self._s_pct    = _StatCard(self._stats_row, "—", "Taux de classification", "#8b5cf6", "📈")
-        self._s_unc    = _StatCard(self._stats_row, "—", "Non classifiés", "#ef4444", "⚠")
+        self._s_total  = _StatRef(ui_kit.StatCard(self._stats_row, "—", "Composants",             "cpu",            BLUE))
+        self._s_groups = _StatRef(ui_kit.StatCard(self._stats_row, "—", "Circuits identifiés",    "check",          SUCCESS))
+        self._s_pct    = _StatRef(ui_kit.StatCard(self._stats_row, "—", "Taux de classification", "activity",       CYAN))
+        self._s_unc    = _StatRef(ui_kit.StatCard(self._stats_row, "—", "Non classifiés",         "alert-triangle", ERROR))
         for sc in (self._s_total, self._s_groups, self._s_pct, self._s_unc):
             sc.pack(side="left", expand=True, padx=8, pady=12)
 
@@ -345,7 +334,7 @@ class TabAnalyze:
             self._graph = None
             self._drc_violations = []
         finally:
-            self._analyze_btn.configure(state="normal", text="▶  Analyser")
+            self._analyze_btn.configure(state="normal", text="Analyser")
 
     def _save(self):
         """@brief Sauvegarde le rapport texte courant dans un fichier choisi par l'utilisateur."""
@@ -730,39 +719,27 @@ class TabAnalyze:
 
 # ── Helper widgets ────────────────────────────────────────────────────────────
 
-class _StatCard(ctk.CTkFrame):
-    """@brief Carte de statistique (icône, valeur, libellé) de la barre de résultats."""
+class _StatRef:
+    """@brief Adaptateur ui_kit.StatCard → pack() + update() compatibles avec TabAnalyze."""
 
-    def __init__(self, parent, value, label, color, icon):
-        """@brief Construit la carte de statistique.
+    def __init__(self, frame: ctk.CTkFrame):
+        """@brief Construit le wrapper autour d'un frame StatCard.
 
-        @param parent Widget parent.
-        @param value Valeur initiale affichée.
-        @param label Libellé sous la valeur.
-        @param color Couleur d'accent.
-        @param icon Icône affichée.
+        @param frame Frame retourné par ui_kit.StatCard (possède frame.value_label).
         """
-        super().__init__(parent, corner_radius=12,
-                         fg_color=CARD,
-                         border_width=1, border_color=BORDER)
-        ctk.CTkLabel(self, text=icon,
-                     font=ctk.CTkFont(size=20),
-                     text_color=color).pack(pady=(12, 2))
-        self._val = ctk.CTkLabel(self, text=value,
-                                  font=ctk.CTkFont("Segoe UI", 26, "bold"),
-                                  text_color=color)
-        self._val.pack()
-        ctk.CTkLabel(self, text=label,
-                     font=ctk.CTkFont("Segoe UI", 10),
-                     text_color=MUTED).pack(pady=(2, 12))
+        self._f = frame
+
+    def pack(self, **kw):
+        """@brief Délègue pack() au frame sous-jacent."""
+        self._f.pack(**kw)
 
     def update(self, value: str):
-        """@brief Met à jour la valeur affichée.
+        """@brief Met à jour la valeur affichée dans le StatCard.
 
         @param value Nouvelle valeur (chaîne).
         @return None
         """
-        self._val.configure(text=value)
+        self._f.value_label.configure(text=value)
 
 
 class _EmptyState(ctk.CTkFrame):

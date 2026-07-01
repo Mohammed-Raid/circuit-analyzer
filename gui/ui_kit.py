@@ -96,8 +96,10 @@ def StatCard(parent, value: str, label: str,
 
     ctk.CTkLabel(top, image=icon(icon_name, 20), text="",
                  width=20).pack(side="left")
-    ctk.CTkLabel(top, text=value,
-                 font=font("display"), text_color=accent).pack(side="right")
+    val_lbl = ctk.CTkLabel(top, text=value,
+                           font=font("display"), text_color=accent)
+    val_lbl.pack(side="right")
+    frame.value_label = val_lbl  # exposed for live updates
 
     # Libellé
     ctk.CTkLabel(frame, text=label,
