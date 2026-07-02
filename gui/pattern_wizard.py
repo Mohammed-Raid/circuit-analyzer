@@ -9,6 +9,7 @@ Ouvre une fenêtre modale 860×540 avec :
   Étape 4 — Prévisualisation & confirmation
 """
 import json
+import logging
 import tkinter as tk
 import customtkinter as ctk
 
@@ -21,6 +22,8 @@ from custom_circuits.loader import (
     suggest_conditions,
 )
 from gui.theme import CARD, CARD2, BORDER, TEXT, MUTED, BLUE, BLUE_D
+
+_log = logging.getLogger(__name__)
 
 # ── Constantes de design ──────────────────────────────────────────────────────
 _BG        = "#0f172a"
@@ -414,6 +417,8 @@ class PatternWizard(ctk.CTkToplevel):
         try:
             self._suggested = set(suggest_conditions(self._graph, refs))
         except Exception:
+            _log.warning("suggestion de conditions échouée — aucune case "
+                         "pré-cochée", exc_info=True)
             self._suggested = set()
 
         for label, var in self._cond_vars.items():

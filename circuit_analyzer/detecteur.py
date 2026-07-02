@@ -1603,6 +1603,8 @@ NOMS_CIRCUITS = [
     "Miroir de courant BJT", "Commande de relais",
     "Amplificateur émetteur commun", "Transistor en commutation",
     "MOSFET en commutation", "MOSFET haute-tension (côté haut)",
+    "Collecteur commun (suiveur d'émetteur)", "Étage push-pull",
+    "Paire Darlington",
     "Pont redresseur (Graetz)", "Diode de roue libre",
     "Diode de protection ESD", "Redresseur simple alternance", "Détecteur de crête",
     "Impédance Z",

@@ -8,6 +8,8 @@ dans _DRAWERS. Les fonctions _draw_* reçoivent toutes (d, result, ci) :
   @param result Match du circuit détecté.
   @param ci Dict {ref -> infos composant} (comp_info).
 """
+import logging
+
 import customtkinter as ctk
 import tkinter as tk
 import matplotlib
@@ -21,6 +23,8 @@ from circuit_analyzer.patterns.base import (
     is_power_net,
     is_protective_earth_net,
 )
+
+_log = logging.getLogger(__name__)
 
 UI_BG   = "#0f172a"
 UI_CARD = "#1e293b"
@@ -871,8 +875,9 @@ def _make_fig(result, comp_info, drawer_fn, matches=None):
                         haut = 4.2
                         fig.set_size_inches(haut * asp, haut)
                 except Exception:
-                    pass
+                    _log.debug("ajustement de taille de figure ignoré", exc_info=True)
         except Exception as e:
+            _log.warning("rendu du schéma échoué", exc_info=True)
             ax.text(0.5, 0.5, f"Schéma non disponible\n{e}",
                     ha="center", va="center",
                     transform=ax.transAxes,
@@ -902,7 +907,7 @@ def _make_fig(result, comp_info, drawer_fn, matches=None):
     try:
         fig.tight_layout(rect=rect, pad=0.4)
     except Exception:
-        pass
+        _log.debug("tight_layout ignoré", exc_info=True)
     return fig
 
 
@@ -945,8 +950,9 @@ def _make_chain_fig(ordered, comp_info, matches=None):
                     haut = 4.2
                     fig.set_size_inches(haut * (w / h), haut)   # PAS de plafond : large -> scroll
             except Exception:
-                pass
+                _log.debug("ajustement de taille de figure ignoré", exc_info=True)
     except Exception as e:
+        _log.warning("rendu du schéma échoué", exc_info=True)
         ax.text(0.5, 0.5, f"Schéma non disponible\n{e}", ha="center", va="center",
                 transform=ax.transAxes, fontsize=12, color="#64748b")
     if fig._z_hitboxes:
@@ -956,7 +962,7 @@ def _make_chain_fig(ordered, comp_info, matches=None):
     try:
         fig.tight_layout(pad=0.4)
     except Exception:
-        pass
+        _log.debug("tight_layout ignoré", exc_info=True)
     return fig
 
 
@@ -993,8 +999,9 @@ def _make_branched_fig(layers, comp_info, matches=None):
                     scale = 0.45                     # ~0.45"/unité, sans écraser l'aspect
                     fig.set_size_inches(min(40.0, w * scale), min(20.0, h * scale))
             except Exception:
-                pass
+                _log.debug("ajustement de taille de figure ignoré", exc_info=True)
     except Exception as e:
+        _log.warning("rendu du schéma échoué", exc_info=True)
         ax.text(0.5, 0.5, f"Schéma non disponible\n{e}", ha="center", va="center",
                 transform=ax.transAxes, fontsize=12, color="#64748b")
     if fig._z_hitboxes:
@@ -1004,7 +1011,7 @@ def _make_branched_fig(layers, comp_info, matches=None):
     try:
         fig.tight_layout(pad=0.4)
     except Exception:
-        pass
+        _log.debug("tight_layout ignoré", exc_info=True)
     return fig
 
 
@@ -1048,6 +1055,7 @@ def _make_island_fig(model, matches=None):
             d.config(fontsize=10, inches_per_unit=0.5)
             _draw_island_schematic(d, plan, hitboxes)
     except Exception as exc:
+        _log.warning("schéma automatique de l'îlot indisponible", exc_info=True)
         ax.text(0.5, 0.56, model.get("label", "Ilot"),
                 ha="center", va="center", transform=ax.transAxes,
                 fontsize=14, fontweight="bold", color="#1e293b")

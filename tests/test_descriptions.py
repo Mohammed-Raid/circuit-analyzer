@@ -26,6 +26,19 @@ def test_pas_de_description_orpheline():
     assert not orphelines, f'Descriptions sans circuit : {orphelines}'
 
 
+def test_chaque_drawer_est_un_circuit_declare():
+    """@brief Tout circuit dessinable (_DRAWERS) doit figurer dans NOMS_CIRCUITS.
+
+    NOMS_CIRCUITS alimente la liste de l'onglet Circuits : un détecteur avec
+    drawer mais absent de la liste serait détecté/dessiné mais invisible GUI.
+
+    @return None
+    """
+    from gui.circuit_viewer import _DRAWERS
+    inconnus = [n for n in _DRAWERS if n not in NOMS_CIRCUITS]
+    assert not inconnus, f'Drawers sans circuit déclaré : {inconnus}'
+
+
 def test_descriptions_non_vides():
     """@brief Verifie descriptions non vides.
 

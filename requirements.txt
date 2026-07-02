@@ -1,10 +1,13 @@
-# Runtime
-networkx>=3.0
-customtkinter>=5.2
-matplotlib>=3.8
-schemdraw>=0.18
+# ── Runtime (analyse + interface graphique) ─────────────────────────────────
+networkx>=3.0        # graphe du circuit
+customtkinter>=5.2   # interface graphique
+matplotlib>=3.8      # rendu des schémas (backend TkAgg)
+schemdraw>=0.18      # symboles électroniques
+Pillow>=10.0         # icônes de l'interface (gui/ui_kit.py, CTkImage)
 
-# Développement
+# ── Développement ────────────────────────────────────────────────────────────
 pytest>=7.0
 
-# Build .exe (optionnel) : pip install pyinstaller
+# ── Build .exe (optionnel, voir tools/build_exe.py) ─────────────────────────
+# pip install pyinstaller   — requis pour construire dist/ (packaging/analyseur.spec)
+# pip install psutil        — optionnel : détecte les exes encore ouverts avant build

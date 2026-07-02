@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
 report.txt
 custom_report.txt
 .claude/
@@ -30,3 +31,5 @@ circuits_industriels/titit.xml
 # Fichiers temporaires de l'outillage (messages de commit, notes de release, bench)
 *.tmp
 _bench_*.py
+# Logs/rapports laissés par des sessions SKiDL (REPL externe)
+skidl_REPL.*

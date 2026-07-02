@@ -59,6 +59,15 @@ DESCRIPTIONS_CIRCUITS = {
     "MOSFET haute-tension (côté haut)":
         "MOSFET commutant le rail d'alimentation (côté haut). Drain sur "
         "l'alimentation, source vers la charge.",
+    "Collecteur commun (suiveur d'émetteur)":
+        "Recopie la tension de base sur l'émetteur (gain ~1, forte "
+        "impédance d'entrée). Collecteur sur le rail, charge sur l'émetteur.",
+    "Étage push-pull":
+        "Étage de sortie classe B/AB : un NPN et un PNP aux émetteurs "
+        "communs se partagent les alternances du signal.",
+    "Paire Darlington":
+        "Deux BJT en cascade (émetteur de Q1 sur la base de Q2) : gain en "
+        "courant composé, se comporte comme un seul transistor.",
     "Pont redresseur (Graetz)":
         "Redresse les deux alternances du secteur. Cycle fermé de "
         "4 diodes.",

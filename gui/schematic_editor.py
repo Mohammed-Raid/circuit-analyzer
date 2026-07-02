@@ -3,6 +3,7 @@
 @brief Éditeur de schéma interactif : palette, canvas zoomable, placement, rotation, câblage.
 """
 import copy
+import logging
 import math
 import tkinter as tk
 from dataclasses import dataclass, field
@@ -10,6 +11,8 @@ from typing import Optional
 
 from circuit_analyzer.composant import charger_bibliotheque
 from gui.schematic_io import editor_to_dict
+
+_log = logging.getLogger(__name__)
 
 GRID = 20  # pas de la grille en coordonnées monde
 
@@ -97,6 +100,8 @@ def _compute_defs() -> dict:
     try:
         lib = charger_bibliotheque()
     except Exception:
+        _log.warning("bibliothèque de composants illisible — types personnalisés "
+                     "ignorés dans la palette", exc_info=True)
         lib = {}
     for key, val in lib.items():
         if key in defs:

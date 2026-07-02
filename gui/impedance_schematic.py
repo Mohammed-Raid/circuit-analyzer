@@ -8,10 +8,13 @@ ligne, parallèle = branches empilées entre deux rails. Module isolé : la vue
 îlot (circuit_viewer.py) n'est pas concernée.
 """
 import collections
+import logging
 
 import schemdraw
 import schemdraw.elements as elm
 from matplotlib.figure import Figure
+
+_log = logging.getLogger(__name__)
 
 Dims = collections.namedtuple("Dims", "largeur hauteur y_borne")
 
@@ -172,7 +175,7 @@ def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes, titre=None):
     try:
         fig.tight_layout(pad=0.3)
     except Exception:
-        pass
+        _log.debug("tight_layout ignoré", exc_info=True)
     return fig
 
 
@@ -305,5 +308,5 @@ def dessiner_pont(pont, comps, titre=None):
     try:
         fig.tight_layout(pad=0.4)
     except Exception:
-        pass
+        _log.debug("tight_layout ignoré", exc_info=True)
     return fig

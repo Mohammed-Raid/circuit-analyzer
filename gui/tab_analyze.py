@@ -2,6 +2,7 @@
 @file tab_analyze.py
 @brief Onglet « Analyser » : chargement d'un fichier, analyse, cartes de résultats et exports.
 """
+import logging
 import tkinter as tk
 import customtkinter as ctk
 from pathlib import Path
@@ -22,8 +23,10 @@ def _coeur_analyse():
 # demande (ouverture d'un schéma), pas au démarrage : la fenêtre s'affiche vite.
 
 from gui.theme import (BG, CARD, CARD2, BORDER, TEXT, MUTED, BLUE,
-                       TEXT_MUTED, SUCCESS, CYAN, ERROR)
+                       TEXT_MUTED, TEXT_DIM, SUCCESS, CYAN, ERROR)
 from gui import ui_kit
+
+_log = logging.getLogger(__name__)
 
 # Circuit type → (bg, text, icon)
 TYPE_COLORS = {
@@ -327,6 +330,7 @@ class TabAnalyze:
             self._graph = None
             self._drc_violations = []
         except Exception as e:
+            _log.exception("analyse échouée")
             messagebox.showerror("Erreur", str(e))
             self._stats_row.pack_forget()
             self._scroll_outer.grid_remove()
@@ -374,6 +378,7 @@ class TabAnalyze:
                 f"Schéma XML exporté :\n{path}\n\n"
                 "Ouvrable dans le logiciel de design.")
         except Exception as e:
+            _log.exception("export XML échoué")
             messagebox.showerror("Erreur export XML", str(e))
 
     def _on_scroll_configure(self, _=None):
