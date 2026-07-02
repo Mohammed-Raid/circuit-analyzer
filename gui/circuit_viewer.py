@@ -23,6 +23,7 @@ from circuit_analyzer.patterns.base import (
     is_power_net,
     is_protective_earth_net,
 )
+from gui.theme import BLUE_HOVER, OVERLAY
 
 _log = logging.getLogger(__name__)
 
@@ -35,6 +36,25 @@ _COMP_COLORS = {
     "D": "#dc2626", "Q": "#7c3aed", "M": "#6d28d9",
     "U": "#b45309", "F": "#374151",
 }
+
+# --- Couleurs de rendu du schéma — alignées tokens --------------------------
+# Directive boss : le canvas des schémas reste CLAIR (fond SCH_BG #fafafa,
+# standard pour les schémas électroniques). On aligne uniquement les ACCENTS
+# qui coïncident exactement avec un token du thème (traçabilité) ; les fonds
+# clairs et l'encre (_WIRE, _Z_FILL, _OPAMP_FILL) restent des hex en dur —
+# ce sont des couleurs de canvas clair, pas des tokens de surface sombre.
+_BUS = "#475569"           # bus/nets — gris ardoise moyen, lisible sur clair
+_WIRE = "#1e293b"          # fils/encre — slate foncé, lisible sur SCH_BG
+_LBL_OFST = 0.25           # décalage des labels de net pour les décoller des symboles
+
+# Boîtes Z : remplissage bleu clair + contour bleu. Double rôle — rend le
+# schéma plus lisible ET signale visuellement que la boîte est cliquable.
+_Z_FILL = "#dbeafe"        # remplissage clair (canvas clair, non touché)
+_Z_EDGE = BLUE_HOVER       # alignée tokens = theme.BLUE_HOVER (#2563eb)
+_OPAMP_FILL = "#eef2ff"    # triangle AOP légèrement teinté (canvas clair, non touché)
+
+_TITRE_COLOR = OVERLAY     # rôle de l'étage — alignée tokens = theme.OVERLAY (#1e293b, slate foncé lisible sur clair)
+_GAIN_COLOR = "#0f766e"    # gain de l'étage (teal) — inchangé, déjà lisible
 
 
 def _figure_pixel_size(fig):
@@ -1559,16 +1579,6 @@ _SYMBOL_ELM = {
     "switch": elm.Switch,
 }
 
-_BUS = "#475569"
-_WIRE = "#1e293b"
-_LBL_OFST = 0.25   # decalage des labels de net pour les decoller des symboles
-
-# Accent des boîtes Z : remplissage bleu clair + contour bleu. Double rôle —
-# rend le schéma plus lisible ET signale visuellement que la boîte est cliquable.
-_Z_FILL = "#dbeafe"
-_Z_EDGE = "#2563eb"
-_OPAMP_FILL = "#eef2ff"   # triangle AOP légèrement teinté
-
 
 def _draw_island_schematic(d, plan, hitboxes=None):
     """@brief Dessine le schema assaini a partir du plan (colonnes + lignes + stubs).
@@ -2589,8 +2599,6 @@ def _fil_canal(d, out_pt, in_pt, channel_x):
 _BRANCHE_ROW_GAP = 9.0     # écart vertical entre étages parallèles d'une même couche
 _BRANCHE_DX = 13.0         # pas horizontal entre couches (large : place pour les canaux)
 
-_TITRE_COLOR = "#1e293b"   # rôle de l'étage (slate foncé)
-_GAIN_COLOR = "#0f766e"    # gain de l'étage (teal)
 _ROLE_ETAGE = {
     "Amplificateur différentiel (AOP)":  "Différentiel",
     "Amplificateur sommateur (AOP)":     "Sommateur",

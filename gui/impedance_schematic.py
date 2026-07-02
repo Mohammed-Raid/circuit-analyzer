@@ -14,6 +14,8 @@ import schemdraw
 import schemdraw.elements as elm
 from matplotlib.figure import Figure
 
+from gui.theme import BLUE_HOVER
+
 _log = logging.getLogger(__name__)
 
 Dims = collections.namedtuple("Dims", "largeur hauteur y_borne")
@@ -100,13 +102,18 @@ def agencer(arbre):
     return symboles, fils, dims
 
 
+# --- Couleurs de rendu — alignées tokens (canvas clair préservé, cf. brief) -
+# Directive boss : le canvas reste CLAIR (fond #fafafa, standard de schéma).
+# Seul l'accent qui coïncide exactement avec un token du thème (_Z_EDGE)
+# pointe vers ce token ; le reste (fonds clairs, encre) reste en hex, ce sont
+# des couleurs de canvas clair et non des tokens de surface sombre.
 SCH_BG = "#fafafa"   # fond clair standard de schéma (idem circuit_viewer)
-_WIRE = "#1e293b"
-_BUS = "#475569"
+_WIRE = "#1e293b"    # fils/encre — slate foncé, lisible sur SCH_BG
+_BUS = "#475569"     # bus/nets — gris ardoise moyen, lisible sur clair
 
 # Boîtes Z : bleu rempli (idem circuit_viewer) — lisibilité + affordance du clic.
-_Z_FILL = "#dbeafe"
-_Z_EDGE = "#2563eb"
+_Z_FILL = "#dbeafe"        # remplissage clair (canvas clair, non touché)
+_Z_EDGE = BLUE_HOVER       # alignée tokens = theme.BLUE_HOVER (#2563eb)
 # Couleur des symboles par type (idem palette _COMP_COLORS de l'app).
 _COMP_COLORS = {"R": "#1d4ed8", "C": "#0891b2", "L": "#059669"}
 
