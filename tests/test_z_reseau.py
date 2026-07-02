@@ -35,3 +35,14 @@ def test_segment_vertical_pivote():
 
 def test_composition_pont_non_depliable():
     assert arbre_expr("(R1)*(R2)/((R1)+(R2)+(R3))") is None
+
+
+def test_make_fig_detaille_sans_hitboxes():
+    import gui.circuit_viewer as cv
+    match = {"circuit_type": "Impédance Z", "components": ["R1", "R2"],
+             "nodes": ["A", "B"], "composition": "(R1)+(R2)"}
+    ci = {"R1": {"type": "R", "value": "10k"}, "R2": {"type": "R", "value": "4.7k"}}
+    fig_z = cv._make_fig(match, ci, cv._DRAWERS["Impédance Z"])
+    fig_d = cv._make_fig(match, ci, cv._DRAWERS["Impédance Z"], detaille=True)
+    assert fig_z._z_hitboxes, "vue Z : la boîte reste cliquable"
+    assert fig_d._z_hitboxes == [], "vue détaillée : aucune hitbox"

@@ -619,65 +619,91 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         _chaine = _ordonner_montages_flux(_matches_for_island(ilot, results), comp_info)
         if _chaine is None:                # pas linéaire -> essai DAG en couches (PID…)
             _branches = _layers_montages_flux(_matches_for_island(ilot, results), comp_info)
-    if principal is not None:
-        # Îlot = montage actif détecté : on réutilise son drawer dédié (schéma
-        # propre « AOP + Zin/Zf », hitboxes Z cliquables), pas le layout générique.
-        # On passe les matches pour que les réseaux Z restants (charges/couplages)
-        # soient dessinés cliquables au lieu d'être ignorés.
-        fig = _make_fig(principal, comp_info, _DRAWERS[principal["circuit_type"]],
-                        matches=_matches_for_island(ilot, results))
-    elif _sp is not None:
-        from gui import impedance_schematic
-        _arbre, _comps = _sp
-        fig = impedance_schematic.dessiner_bloc(_arbre, "VIN", "VOUT", _comps)
-    elif _pont is not None:
-        from gui import impedance_schematic
-        _pont_struct, _comps = _pont
-        fig = impedance_schematic.dessiner_pont(_pont_struct, _comps)
-    elif _derive is not None:
-        fig = _make_fig(_derive, comp_info, _draw_reseau_derive)
-    elif _deux is not None:
-        # Reseau passif compact a 2 bornes : une boite Z entre deux rails
-        # etiquetes (cliquable), au lieu de la grille generique encombree.
-        from gui import impedance_schematic
-        _arbre, _a, _b, _comps = _deux
-        fig = impedance_schematic.dessiner_bloc(_arbre, _a, _b, _comps)
-    elif _chaine is not None:
-        # Îlot multi-AOP en chaîne : un seul grand schéma, étages reliés OUT->IN.
-        fig = _make_chain_fig(_chaine, comp_info, matches=_matches_for_island(ilot, results))
-    elif _branches is not None:
-        # Îlot multi-AOP branché (P/I/D parallèles -> sommateur…) : schéma en couches.
-        fig = _make_branched_fig(_branches, comp_info, matches=_matches_for_island(ilot, results))
-    else:
+    def construire_fig(detaille):
+        """@brief Construit la figure du schéma selon la stratégie de rendu de
+        l'îlot (montage actif, arbre série/parallèle, pont, chaîne...).
+
+        @param detaille Vue détaillée R/L/C (True) ou boîtes Z classiques (False).
+            Les chemins `impedance_schematic.dessiner_bloc/dessiner_pont`
+            ignorent encore ce drapeau (câblage prévu dans une tâche suivante) ;
+            il s'applique aux chemins `_make_*fig`.
+        """
+        if principal is not None:
+            # Îlot = montage actif détecté : on réutilise son drawer dédié (schéma
+            # propre « AOP + Zin/Zf », hitboxes Z cliquables), pas le layout générique.
+            # On passe les matches pour que les réseaux Z restants (charges/couplages)
+            # soient dessinés cliquables au lieu d'être ignorés.
+            return _make_fig(principal, comp_info, _DRAWERS[principal["circuit_type"]],
+                             matches=_matches_for_island(ilot, results), detaille=detaille)
+        if _sp is not None:
+            from gui import impedance_schematic
+            _arbre, _comps = _sp
+            return impedance_schematic.dessiner_bloc(_arbre, "VIN", "VOUT", _comps)
+        if _pont is not None:
+            from gui import impedance_schematic
+            _pont_struct, _comps = _pont
+            return impedance_schematic.dessiner_pont(_pont_struct, _comps)
+        if _derive is not None:
+            return _make_fig(_derive, comp_info, _draw_reseau_derive, detaille=detaille)
+        if _deux is not None:
+            # Reseau passif compact a 2 bornes : une boite Z entre deux rails
+            # etiquetes (cliquable), au lieu de la grille generique encombree.
+            from gui import impedance_schematic
+            _arbre, _a, _b, _comps = _deux
+            return impedance_schematic.dessiner_bloc(_arbre, _a, _b, _comps)
+        if _chaine is not None:
+            # Îlot multi-AOP en chaîne : un seul grand schéma, étages reliés OUT->IN.
+            return _make_chain_fig(_chaine, comp_info,
+                                   matches=_matches_for_island(ilot, results), detaille=detaille)
+        if _branches is not None:
+            # Îlot multi-AOP branché (P/I/D parallèles -> sommateur…) : schéma en couches.
+            return _make_branched_fig(_branches, comp_info,
+                                      matches=_matches_for_island(ilot, results), detaille=detaille)
         matches = _matches_for_island(ilot, results)
-        fig = _make_island_fig(model, matches=matches)
+        return _make_island_fig(model, matches=matches, detaille=detaille)
+
+    fig = construire_fig(False)
+    etat = {"fig": fig}
+    mode = {"detaille": False}
+
     canvas_frame = ctk.CTkFrame(popup, fg_color=SCH_BG, corner_radius=10)
     canvas_frame.pack(fill="both", expand=True, padx=14, pady=(4, 0))
 
-    # Vues larges (chaîne OU gros îlot-grille) : défilement horizontal à taille
-    # native pour ne pas écraser le schéma dans le popup. Les petites vues
-    # remplissent simplement le cadre.
-    _defile = (_chaine is not None or _branches is not None
-               or fig.get_size_inches()[0] > 11.0)
-    if _defile:
-        canvas = _pack_scrollable_figure(canvas_frame, fig)
-    else:
-        canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
-        canvas.draw()
-        canvas.get_tk_widget().configure(bg=SCH_BG, highlightthickness=0)
-        canvas.get_tk_widget().pack(fill="both", expand=True, padx=4, pady=4)
+    def monter_canvas(fig):
+        """@brief Empaquette `fig` dans `canvas_frame` (détruit l'ancien contenu),
+        reconnecte le clic drill-down et le curseur « main » sur les Z.
 
-    def _on_click(event):
-        # Clic dans une zone de Z -> ouvre le sous-schema des R/L/C qui le composent.
-        if event.xdata is None or event.ydata is None:
-            return
-        for x0, x1, y0, y1, refs, composition in getattr(fig, "_z_hitboxes", []):
-            if x0 <= event.xdata <= x1 and y0 <= event.ydata <= y1:
-                show_dipole_detail(refs, composition, graph, comp_info, popup)
+        Vues larges (chaîne OU gros îlot-grille) : défilement horizontal à taille
+        native pour ne pas écraser le schéma dans le popup. Les petites vues
+        remplissent simplement le cadre.
+        """
+        for enfant in canvas_frame.winfo_children():
+            enfant.destroy()
+
+        _defile = (_chaine is not None or _branches is not None
+                   or fig.get_size_inches()[0] > 11.0)
+        if _defile:
+            canvas = _pack_scrollable_figure(canvas_frame, fig)
+        else:
+            canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
+            canvas.draw()
+            canvas.get_tk_widget().configure(bg=SCH_BG, highlightthickness=0)
+            canvas.get_tk_widget().pack(fill="both", expand=True, padx=4, pady=4)
+
+        def _on_click(event):
+            # Clic dans une zone de Z -> ouvre le sous-schema des R/L/C qui le composent.
+            if event.xdata is None or event.ydata is None:
                 return
+            for x0, x1, y0, y1, refs, composition in getattr(fig, "_z_hitboxes", []):
+                if x0 <= event.xdata <= x1 and y0 <= event.ydata <= y1:
+                    show_dipole_detail(refs, composition, graph, comp_info, popup)
+                    return
 
-    canvas.mpl_connect("button_press_event", _on_click)
-    _suivre_curseur_z(canvas, fig)
+        canvas.mpl_connect("button_press_event", _on_click)
+        _suivre_curseur_z(canvas, fig)
+        return canvas
+
+    monter_canvas(fig)
 
     bar = ctk.CTkFrame(popup, fg_color=UI_CARD, corner_radius=0, height=44)
     bar.pack(fill="x", side="bottom")
@@ -686,8 +712,23 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                   width=140, height=30, corner_radius=6,
                   font=ctk.CTkFont("Segoe UI", 11),
                   fg_color="#1d4ed8", hover_color="#2563eb",
-                  command=lambda: _export(fig, name, popup)).pack(
+                  command=lambda: _export(etat["fig"], name, popup)).pack(
                       side="left", padx=12, pady=7)
+
+    def _toggle_detaille():
+        mode["detaille"] = not mode["detaille"]
+        nouvelle_fig = construire_fig(mode["detaille"])
+        etat["fig"] = nouvelle_fig
+        monter_canvas(nouvelle_fig)
+        toggle_btn.configure(
+            text="Vue simplifiée Z" if mode["detaille"] else "Vue détaillée R/L/C")
+
+    toggle_btn = ctk.CTkButton(bar, text="Vue détaillée R/L/C",
+                  width=170, height=30, corner_radius=6,
+                  font=ctk.CTkFont("Segoe UI", 11),
+                  fg_color="#374151", hover_color="#4b5563",
+                  command=_toggle_detaille)
+    toggle_btn.pack(side="left", padx=(0, 12), pady=7)
     ctk.CTkButton(bar, text="Fermer",
                   width=90, height=30, corner_radius=6,
                   font=ctk.CTkFont("Segoe UI", 11),
@@ -847,7 +888,7 @@ def show_dipole_detail(refs, composition, graph, comp_info, parent=None):
                   command=popup.destroy).pack(side="right", padx=12, pady=7)
 
 
-def _make_fig(result, comp_info, drawer_fn, matches=None):
+def _make_fig(result, comp_info, drawer_fn, matches=None, detaille: bool = False):
     """@brief Construit la figure matplotlib du schéma (ou un texte de repli).
 
     @param result Match du circuit détecté.
@@ -856,6 +897,8 @@ def _make_fig(result, comp_info, drawer_fn, matches=None):
     @param matches Matches de l'îlot : si fournis, les réseaux d'impédance Z
         restants (couplages/charges non dessinés par le montage) sont ajoutés en
         boîtes Z cliquables autour du montage, au lieu d'être ignorés.
+    @param detaille Si True, les boîtes Z sont remplacées par le réseau R/L/C
+        réel (cf. `_z_box`) et n'ont plus de zone cliquable.
     @return matplotlib.figure.Figure La figure prête à afficher.
     """
     fig = Figure(figsize=(8, 4.5))
@@ -873,6 +916,7 @@ def _make_fig(result, comp_info, drawer_fn, matches=None):
             with schemdraw.Drawing(canvas=ax, show=False) as d:
                 d.config(fontsize=14, inches_per_unit=0.62)
                 d._z_hitboxes = []
+                d._mode_detaille = detaille
                 ancres = drawer_fn(d, result, comp_info)
                 # Réseaux d'impédance Z restants de l'îlot (charges/couplages que le
                 # montage seul ne dessine pas) -> boîtes Z cliquables, pas ignorés.
@@ -932,7 +976,7 @@ def _make_fig(result, comp_info, drawer_fn, matches=None):
     return fig
 
 
-def _make_chain_fig(ordered, comp_info, matches=None):
+def _make_chain_fig(ordered, comp_info, matches=None, detaille: bool = False):
     """@brief Figure d'une chaîne de montages connectés (vue îlot multi-AOP).
 
     Large par construction (un bloc par étage) : destinée à un conteneur à
@@ -940,6 +984,7 @@ def _make_chain_fig(ordered, comp_info, matches=None):
 
     @param ordered Montages triés par flux (cf. _ordonner_montages_flux).
     @param comp_info Dict {ref -> {type, value}}.
+    @param detaille Si True, les boîtes Z sont remplacées par le réseau R/L/C réel.
     @return matplotlib.figure.Figure (porte fig._z_hitboxes).
     """
     fig = Figure(figsize=(8, 4.5))
@@ -953,6 +998,7 @@ def _make_chain_fig(ordered, comp_info, matches=None):
         with schemdraw.Drawing(canvas=ax, show=False) as d:
             d.config(fontsize=12, inches_per_unit=0.5)
             d._z_hitboxes = []
+            d._mode_detaille = detaille
             _draw_island_chain(d, ordered, ci=comp_info,
                                couplages=(matches or ordered))
             fig._z_hitboxes = list(d._z_hitboxes)
@@ -987,12 +1033,13 @@ def _make_chain_fig(ordered, comp_info, matches=None):
     return fig
 
 
-def _make_branched_fig(layers, comp_info, matches=None):
+def _make_branched_fig(layers, comp_info, matches=None, detaille: bool = False):
     """@brief Figure d'un îlot multi-AOP branché (DAG en couches, cf.
     _layers_montages_flux). Large et haute -> conteneur à défilement.
 
     @param layers list[list[match]] couches ordonnées.
     @param comp_info Dict {ref -> {type, value}}.
+    @param detaille Si True, les boîtes Z sont remplacées par le réseau R/L/C réel.
     @return matplotlib.figure.Figure (porte fig._z_hitboxes).
     """
     fig = Figure(figsize=(8, 6))
@@ -1006,6 +1053,7 @@ def _make_branched_fig(layers, comp_info, matches=None):
         with schemdraw.Drawing(canvas=ax, show=False) as d:
             d.config(fontsize=12, inches_per_unit=0.5)
             d._z_hitboxes = []
+            d._mode_detaille = detaille
             _draw_branched_chain(d, layers, ci=comp_info,
                                  couplages=(matches or [m for L in layers for m in L]))
             fig._z_hitboxes = list(d._z_hitboxes)
@@ -1036,7 +1084,7 @@ def _make_branched_fig(layers, comp_info, matches=None):
     return fig
 
 
-def _make_island_fig(model, matches=None):
+def _make_island_fig(model, matches=None, detaille: bool = False):
     """@brief Construit un vrai rendu schematique d'un ilot.
 
     Le rendu n'utilise plus des bulles composant/net. Il fabrique un petit
@@ -1044,6 +1092,9 @@ def _make_island_fig(model, matches=None):
     symboles generiques pour les composants multi-broches.
 
     @param model Modele d'ilot (cf. _build_island_model).
+    @param detaille Drapeau pose sur le Drawing (`d._mode_detaille`) ; le
+        rendu générique de secours (`_draw_island_schematic`) ne le consomme
+        pas encore (posé pour cohérence d'interface avec les autres fabriques).
     @return matplotlib.figure.Figure Figure prete a afficher/exporter.
     """
     components = model["components"]
@@ -1074,6 +1125,7 @@ def _make_island_fig(model, matches=None):
     try:
         with schemdraw.Drawing(canvas=ax, show=False) as d:
             d.config(fontsize=10, inches_per_unit=0.5)
+            d._mode_detaille = detaille
             _draw_island_schematic(d, plan, hitboxes)
     except Exception as exc:
         _log.warning("schéma automatique de l'îlot indisponible", exc_info=True)
@@ -1846,17 +1898,22 @@ def _draw_impedance(d, result, ci):
     """@brief Dessine une « Impédance Z » : boîte Z entre ses deux bornes.
 
     Le libellé est la composition (ex. « (R1+R2)//C1 »), sinon la liste des
-    composants. Les nets sont annotés à gauche et à droite.
+    composants. Les nets sont annotés à gauche et à droite. Passe par
+    `_z_box` (point d'entrée unique de la bascule Z/détaillé) au lieu de
+    dessiner la boîte à la main : cliquable en vue Z, réseau réel déplié en
+    vue détaillée.
     """
     nets = [n for n in result.get("nodes", []) if n]
     gauche = nets[0] if nets else ""
     droite = nets[1] if len(nets) > 1 else ""
     compo = result.get("composition") or " // ".join(result.get("components", []))
-    d += elm.Dot().label(gauche, loc="left")
-    d += elm.Line().right(0.6)
-    d += elm.ResistorIEC().right().label("Z", loc="top").label(compo, loc="bottom")
-    d += elm.Line().right(0.6)
-    d += elm.Dot().label(droite, loc="right")
+    bloc = {"refs": result.get("components", []), "composition": compo}
+    p0, p1, p2, p3 = (0.0, 0.0), (0.6, 0.0), (2.6, 0.0), (3.2, 0.0)
+    d.add(elm.Dot().at(p0).label(gauche, loc="left"))
+    d.add(elm.Line().at(p0).to(p1))
+    _z_box(d, p1, p2, "Z", bloc, ci)
+    d.add(elm.Line().at(p2).to(p3))
+    d.add(elm.Dot().at(p3).label(droite, loc="right"))
 
 
 def _draw_half_wave(d, result, ci):
@@ -2073,6 +2130,13 @@ def _z_box(d, p1, p2, name, bloc, ci, label_loc="top"):
     """@brief Dessine une boîte Z cliquable (ResistorIEC bleue) de p1 à p2 et
     enregistre sa hitbox sur d._z_hitboxes.
 
+    En vue détaillée (`d._mode_detaille`), dessine à la place le réseau R/L/C
+    réel : un bloc à une seule ref est tracé directement avec son symbole/sa
+    couleur/son étiquette (comme `_z_reseau`) ; un bloc composite passe par
+    `_z_reseau`. Si aucun des deux n'est possible (pont non dépliable), la
+    boîte Z classique reste le repli. Dans tous les cas, `_enregistrer_hitbox`
+    est appelé mais devient un no-op en vue détaillée : aucune zone cliquable.
+
     @param d Dessin schemdraw.
     @param p1/p2 Extrémités de la boîte (x, y).
     @param name Préfixe d'étiquette (« Zin », « Zf »…).
@@ -2081,14 +2145,32 @@ def _z_box(d, p1, p2, name, bloc, ci, label_loc="top"):
     @param label_loc Position de l'étiquette schemdraw.
     @return None
     """
-    d.add(elm.ResistorIEC().at(p1).to(p2).color(_Z_EDGE).fill(_Z_FILL))
-    label = _z_label_anchor(p1, p2, label_loc)
-    d.add(elm.Label().at(label["pos"]).label(
-        _z_label(name, bloc, ci),
-        halign=label["ha"],
-        valign=label["va"],
-        color=_Z_EDGE,
-    ))
+    dessine = False
+    if getattr(d, "_mode_detaille", False):
+        refs = bloc.get("refs", [])
+        if len(refs) == 1:
+            from circuit_analyzer import impedance
+            from gui import impedance_schematic
+            ref = refs[0]
+            info = ci.get(ref, {})
+            typ = info.get("type", "")
+            cls = impedance_schematic._SYMB.get(typ, elm.ResistorIEC)
+            coul = _COMP_COLORS.get(typ, _WIRE)
+            vfmt = impedance.formater_valeur(info.get("value", ""), typ)
+            label = f"{ref}\n{vfmt}" if vfmt else ref
+            d.add(cls().at(p1).to(p2).color(coul).label(label, fontsize=9, color=coul))
+            dessine = True
+        elif _z_reseau(d, p1, p2, bloc, ci):
+            dessine = True
+    if not dessine:
+        d.add(elm.ResistorIEC().at(p1).to(p2).color(_Z_EDGE).fill(_Z_FILL))
+        label = _z_label_anchor(p1, p2, label_loc)
+        d.add(elm.Label().at(label["pos"]).label(
+            _z_label(name, bloc, ci),
+            halign=label["ha"],
+            valign=label["va"],
+            color=_Z_EDGE,
+        ))
     _enregistrer_hitbox(d, p1, p2, bloc["refs"], bloc["composition"])
 
 
@@ -2097,9 +2179,13 @@ def _enregistrer_hitbox(d, p1, p2, refs, composition, pad=0.5):
 
     Permet de rendre n'importe quel symbole cliquable (boîte Z OU symbole réel
     comme un condensateur de liaison), pas seulement les ResistorIEC bleues.
+    No-op en vue détaillée (`d._mode_detaille`) : plus aucune zone cliquable,
+    les réfs/valeurs étant déjà visibles sur les composants réels.
     @param p1/p2 Extrémités du symbole. @param refs Composants bruts du dipôle.
     @param composition Expression symbolique pour le sous-schéma.
     """
+    if getattr(d, "_mode_detaille", False):
+        return
     hb = getattr(d, "_z_hitboxes", None)
     if hb is not None:
         hb.append((min(p1[0], p2[0]) - pad, max(p1[0], p2[0]) + pad,
