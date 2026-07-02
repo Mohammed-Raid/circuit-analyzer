@@ -10,7 +10,8 @@ from typing import Callable, Optional
 import customtkinter as ctk
 from tkinter import messagebox, filedialog
 
-from gui.theme import BG, CARD, CARD2, BORDER, TEXT, MUTED
+from gui.theme import BG, CARD, CARD2, TEXT, TEXT_MUTED
+from gui import ui_kit
 from gui.schematic_editor import SchematicEditor
 from gui.schematic_io import build_from_components
 from circuit_analyzer.composant import lire_netlist, construire_graphe
@@ -45,12 +46,12 @@ class TabDraw:
         hinner.pack(fill="both", expand=True, padx=28)
 
         ctk.CTkLabel(hinner, text="Éditeur de schéma",
-                     font=ctk.CTkFont("Segoe UI", 18, "bold"),
+                     font=ui_kit.font("display"),
                      text_color=TEXT).pack(side="left", pady=18)
         ctk.CTkLabel(hinner,
                      text="Palette → clic pour placer  ·  Clic sur un pin → fil  ·  Broche rouge = non câblée  ·  Double-clic → modifier",
-                     font=ctk.CTkFont("Segoe UI", 11),
-                     text_color=MUTED).pack(side="left", padx=14, pady=18)
+                     font=ui_kit.font("body"),
+                     text_color=TEXT_MUTED).pack(side="left", padx=14, pady=18)
 
         # ── Éditeur (zone centrale) ───────────────────────────────────────────
         self._editor = SchematicEditor(self.frame)
@@ -64,43 +65,27 @@ class TabDraw:
         bar_inner = ctk.CTkFrame(bar, fg_color="transparent")
         bar_inner.pack(fill="both", padx=28)
 
-        ctk.CTkButton(
-            bar_inner, text="📂  Ouvrir",
-            width=96, height=34, corner_radius=8,
-            font=ctk.CTkFont("Segoe UI", 12, "bold"),
-            fg_color=CARD, hover_color="#263347",
-            border_width=1, border_color=BORDER,
-            command=self._open_circuit,
+        ui_kit.SecondaryButton(
+            bar_inner, "Ouvrir", self._open_circuit,
+            icon_name="folder-open", width=110, height=34,
         ).pack(side="left", padx=(0, 8), pady=8)
 
-        ctk.CTkButton(
-            bar_inner, text="💾  Enregistrer",
-            width=120, height=34, corner_radius=8,
-            font=ctk.CTkFont("Segoe UI", 12, "bold"),
-            fg_color=CARD, hover_color="#263347",
-            border_width=1, border_color=BORDER,
-            command=self._save_circuit,
+        ui_kit.SecondaryButton(
+            bar_inner, "Enregistrer", self._save_circuit,
+            icon_name="save", width=140, height=34,
         ).pack(side="left", padx=(0, 14), pady=8)
 
         # Légende raccourcis retirée ici : déjà affichée dans la palette (status_lbl).
         # Elle débordait et masquait le bouton bleu « Enregistrer comme pattern ».
 
-        ctk.CTkButton(
-            bar_inner,
-            text="▶  Analyser ce circuit",
-            width=190, height=34, corner_radius=8,
-            font=ctk.CTkFont("Segoe UI", 12, "bold"),
-            fg_color="#16a34a", hover_color="#15803d",
-            command=self._launch_analyze,
+        ui_kit.PrimaryButton(
+            bar_inner, "Analyser ce circuit", self._launch_analyze,
+            icon_name="play", width=200, height=34,
         ).pack(side="right", pady=8)
 
-        ctk.CTkButton(
-            bar_inner,
-            text="💾  Enregistrer comme pattern",
-            width=210, height=34, corner_radius=8,
-            font=ctk.CTkFont("Segoe UI", 12, "bold"),
-            fg_color="#2563eb", hover_color="#1d4ed8",
-            command=self._save_as_pattern,
+        ui_kit.PrimaryButton(
+            bar_inner, "Enregistrer comme pattern", self._save_as_pattern,
+            width=220, height=34,
         ).pack(side="right", padx=(0, 10), pady=8)
 
     # ── Synchronisation bibliothèque ──────────────────────────────────────────
