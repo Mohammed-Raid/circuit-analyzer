@@ -13,10 +13,24 @@ from custom_circuits.loader import (
     CONDITION_GROUPS, condition_display,
 )
 
-from gui.theme import BG, CARD, CARD2, BORDER, TEXT, MUTED, BLUE, BLUE_D
-from gui.widgets import ListeSectionnee, BandeauEtat, lier_molette
+from gui.theme import (BG, CARD, CARD2, BORDER, TEXT, TEXT_MUTED, TEXT_DIM,
+                       BLUE, BLUE_PRESS, SUCCESS, R)
+from gui import ui_kit
+from gui.widgets import lier_molette
 
 _BASE_NAMES = NOMS_CIRCUITS
+
+# Styles du bandeau d'état du formulaire (fond, couleur du texte)
+_BANDEAU_STYLES = {
+    'nouveau':  ("#14532d", "#4ade80"),
+    'edition':  ("#1e3a8a", "#93c5fd"),
+    'lecture':  (CARD2, TEXT_MUTED),
+}
+
+# Couleurs des lignes de la liste sectionnée
+_GRIS_INTEGRE = TEXT_MUTED   # éléments intégrés : consultables, non modifiables
+_BLEU_PERSO   = BLUE         # éléments personnalisés (étoile)
+_GRIS_ENTETE  = TEXT_DIM     # en-têtes de section
 
 
 class TabCircuits:
@@ -44,6 +58,7 @@ class TabCircuits:
         self._comp_boxes: list = []                 # CTkCheckBox composants
         self._cond_vars: dict[str, tk.BooleanVar] = {}
         self._cond_boxes: list = []                 # CTkCheckBox conditions
+        self._lignes: list[tuple] = []               # rangées listbox (section, index)
         self._etat_initial: tuple = ('', frozenset(), frozenset())
         self._build()
         self._load()
@@ -60,49 +75,41 @@ class TabCircuits:
         h = ctk.CTkFrame(header, fg_color="transparent")
         h.pack(fill="both", expand=True, padx=28)
         ctk.CTkLabel(h, text="Circuits reconnus",
-                     font=ctk.CTkFont("Segoe UI", 18, "bold"),
+                     font=ui_kit.font("display"),
                      text_color=TEXT).pack(side="left", pady=18)
         ctk.CTkLabel(h, text="Consulter les patterns intégrés, créer les vôtres",
-                     font=ctk.CTkFont("Segoe UI", 12),
-                     text_color=MUTED).pack(side="left", padx=14)
+                     font=ui_kit.font("body"),
+                     text_color=TEXT_MUTED).pack(side="left", padx=14, pady=18)
 
         body = ctk.CTkFrame(self.frame, fg_color="transparent")
         body.pack(fill="both", expand=True, padx=20, pady=16)
         body.grid_columnconfigure(1, weight=1)
         body.grid_rowconfigure(0, weight=1)
 
-        self._liste = ListeSectionnee(
-            body, titre="Circuits reconnus",
-            on_select=self._sur_selection,
-            on_new=self._nouveau,
-            on_delete=self._supprimer,
-        )
-        self._liste.frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        self._build_liste(body)
 
         # ── Droite : bandeau + formulaire + pied épinglé
-        right = ctk.CTkFrame(body, corner_radius=14, fg_color=CARD,
-                             border_width=1, border_color=BORDER)
+        right = ui_kit.Card(body)
         right.grid(row=0, column=1, sticky="nsew")
         right.grid_columnconfigure(0, weight=1)
         right.grid_rowconfigure(2, weight=1)
 
-        self._bandeau = BandeauEtat(right)
-        self._bandeau.grid(row=0, column=0, sticky="ew",
-                           padx=14, pady=(14, 8))
+        self._bandeau_frame = ctk.CTkFrame(right, corner_radius=R["md"], height=34)
+        self._bandeau_frame.pack_propagate(False)
+        self._bandeau_frame.grid(row=0, column=0, sticky="ew",
+                                 padx=14, pady=(14, 8))
+        self._bandeau_label = ctk.CTkLabel(
+            self._bandeau_frame, text="", font=ui_kit.font("body", "bold"))
+        self._bandeau_label.pack(side="left", padx=12, pady=6)
 
         # Nom du circuit
         name_row = ctk.CTkFrame(right, fg_color="transparent")
         name_row.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 8))
-        ctk.CTkLabel(name_row, text="Nom du circuit",
-                     font=ctk.CTkFont("Segoe UI", 11),
-                     text_color=MUTED).pack(anchor="w")
+        ui_kit.SectionHeader(name_row, "Nom du circuit").pack(anchor="w")
         self._name_var = tk.StringVar()
-        self._name_entry = ctk.CTkEntry(
+        self._name_entry = ui_kit.Field(
             name_row, textvariable=self._name_var,
-            height=40, corner_radius=8,
-            font=ctk.CTkFont("Segoe UI", 13),
-            fg_color=CARD2, border_color=BORDER, text_color=TEXT,
-            placeholder_text="Ex: Filtre RLC série")
+            placeholder="Ex: Filtre RLC série")
         self._name_entry.pack(fill="x", pady=(4, 0))
 
         # Note affichée pour les circuits intégrés (lecture seule)
@@ -110,8 +117,8 @@ class TabCircuits:
             right,
             text="Ce circuit est reconnu automatiquement par l'analyseur.\n"
                  "Sa définition est dans le code — rien à paramétrer ici.",
-            font=ctk.CTkFont("Segoe UI", 12),
-            text_color=MUTED, justify="left")
+            font=ui_kit.font("body"),
+            text_color=TEXT_MUTED, justify="left")
 
         # Deux colonnes : composants requis | conditions
         cols = ctk.CTkFrame(right, fg_color="transparent")
@@ -120,22 +127,24 @@ class TabCircuits:
         cols.grid_rowconfigure(0, weight=1)
         self._cols = cols
 
-        comp_col = ctk.CTkFrame(cols, corner_radius=10, fg_color=CARD2,
-                                border_width=1, border_color=BORDER)
+        comp_col = ui_kit.Card(cols, fg_color=CARD2)
         comp_col.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
-        ctk.CTkLabel(comp_col, text="⚙  Composants requis",
-                     font=ctk.CTkFont("Segoe UI", 11, "bold"),
-                     text_color=BLUE).pack(anchor="w", padx=12, pady=(10, 6))
+        comp_head = ctk.CTkFrame(comp_col, fg_color="transparent")
+        comp_head.pack(fill="x", padx=12, pady=(10, 6))
+        ctk.CTkLabel(comp_head, image=ui_kit.icon("cpu", 16),
+                     text="").pack(side="left", padx=(0, 6))
+        ui_kit.SectionHeader(comp_head, "Composants requis").pack(side="left")
         self._comp_scroll = ctk.CTkScrollableFrame(
             comp_col, fg_color="transparent")
         self._comp_scroll.pack(fill="both", expand=True, padx=6, pady=(0, 8))
 
-        cond_col = ctk.CTkFrame(cols, corner_radius=10, fg_color=CARD2,
-                                border_width=1, border_color=BORDER)
+        cond_col = ui_kit.Card(cols, fg_color=CARD2)
         cond_col.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
-        ctk.CTkLabel(cond_col, text="✅  Conditions",
-                     font=ctk.CTkFont("Segoe UI", 11, "bold"),
-                     text_color="#10b981").pack(anchor="w", padx=12, pady=(10, 6))
+        cond_head = ctk.CTkFrame(cond_col, fg_color="transparent")
+        cond_head.pack(fill="x", padx=12, pady=(10, 6))
+        ctk.CTkLabel(cond_head, image=ui_kit.icon("check", 16),
+                     text="").pack(side="left", padx=(0, 6))
+        ui_kit.SectionHeader(cond_head, "Conditions").pack(side="left")
         self._cond_scroll = ctk.CTkScrollableFrame(
             cond_col, fg_color="transparent")
         self._cond_scroll.pack(fill="both", expand=True, padx=6, pady=(0, 8))
@@ -146,13 +155,49 @@ class TabCircuits:
         pied.grid(row=3, column=0, sticky="ew", padx=14, pady=(0, 14))
         pied.grid_columnconfigure(0, weight=1)
         self._pied = pied
-        self._btn_save = ctk.CTkButton(
-            pied, text="💾  Sauvegarder ce circuit",
-            height=42, corner_radius=10,
-            font=ctk.CTkFont("Segoe UI", 13, "bold"),
-            fg_color="#15803d", hover_color="#16a34a",
-            command=self._sauvegarder)
+        self._btn_save = ui_kit.PrimaryButton(
+            pied, "Sauvegarder ce circuit", self._sauvegarder,
+            icon_name="save", height=42)
         self._btn_save.grid(row=0, column=0, sticky="ew")
+
+    def _build_liste(self, body):
+        """@brief Construit la carte de liste sectionnée (intégrés / personnalisés).
+
+        @param body Conteneur parent (grille de l'onglet).
+        @return None
+        """
+        liste_card = ui_kit.Card(body)
+        liste_card.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        liste_card.grid_rowconfigure(1, weight=1)
+        liste_card.grid_columnconfigure(0, weight=1)
+
+        ui_kit.SectionHeader(liste_card, "Circuits reconnus").grid(
+            row=0, column=0, sticky="w", padx=14, pady=(14, 6))
+
+        lb_f = ctk.CTkFrame(liste_card, fg_color=CARD2, corner_radius=R["md"])
+        lb_f.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 8))
+        self._listbox = tk.Listbox(
+            lb_f, width=32, height=24,
+            bg=CARD2, fg=TEXT_MUTED,
+            selectbackground=BLUE_PRESS, selectforeground=TEXT,
+            font=ui_kit.font("body"), relief="flat", bd=0,
+            activestyle="none", highlightthickness=0,
+        )
+        sb = tk.Scrollbar(lb_f, command=self._listbox.yview,
+                          bg=CARD, troughcolor=CARD2)
+        self._listbox.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self._listbox.pack(fill="both", expand=True, padx=6, pady=6)
+        self._listbox.bind("<<ListboxSelect>>", self._sur_selection_liste)
+
+        br = ctk.CTkFrame(liste_card, fg_color="transparent")
+        br.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 12))
+        ui_kit.PrimaryButton(
+            br, "Nouveau", self._nouveau, icon_name="plus",
+            height=36).pack(side="left", expand=True, fill="x", padx=(0, 4))
+        ui_kit.DangerButton(
+            br, "Supprimer", self._supprimer, icon_name="trash-2",
+            height=36).pack(side="left", expand=True, fill="x")
 
     def _build_conditions(self):
         """@brief Cases à cocher des conditions, regroupées par famille, libellés clairs.
@@ -161,24 +206,22 @@ class TabCircuits:
         pour que la sauvegarde du pattern soit inchangée.
         """
         for titre, cles in CONDITION_GROUPS:
-            ctk.CTkLabel(self._cond_scroll, text=titre.upper(),
-                         font=ctk.CTkFont("Segoe UI", 10, "bold"),
-                         text_color=BLUE, anchor="w").pack(
-                             anchor="w", padx=4, pady=(12, 2))
+            ui_kit.SectionHeader(self._cond_scroll, titre).pack(
+                anchor="w", padx=4, pady=(12, 2))
             for cle in cles:
                 var = tk.BooleanVar()
                 self._cond_vars[cle] = var
                 box = ctk.CTkCheckBox(
                     self._cond_scroll, text=condition_display(cle), variable=var,
-                    font=ctk.CTkFont("Segoe UI", 11), text_color=TEXT,
-                    fg_color=BLUE_D, hover_color=BLUE, checkmark_color=TEXT)
+                    font=ui_kit.font("body"), text_color=TEXT,
+                    fg_color=BLUE_PRESS, hover_color=BLUE, checkmark_color=TEXT)
                 box.pack(anchor="w", padx=10, pady=(6, 0))
                 self._cond_boxes.append(box)
                 desc = CONDITION_DESCRIPTIONS.get(cle, "")
                 if desc:
                     ctk.CTkLabel(self._cond_scroll, text=desc,
-                                 font=ctk.CTkFont("Segoe UI", 10),
-                                 text_color=MUTED, justify="left",
+                                 font=ui_kit.font("caption"),
+                                 text_color=TEXT_DIM, justify="left",
                                  anchor="w").pack(anchor="w", padx=34, pady=(0, 4))
         lier_molette(self._cond_scroll)
 
@@ -193,8 +236,8 @@ class TabCircuits:
             self._comp_vars[key] = var
             box = ctk.CTkCheckBox(
                 self._comp_scroll, text=f"{key}  —  {val['name']}",
-                variable=var, font=ctk.CTkFont("Segoe UI", 11),
-                text_color=TEXT, fg_color=BLUE_D, hover_color=BLUE,
+                variable=var, font=ui_kit.font("body"),
+                text_color=TEXT, fg_color=BLUE_PRESS, hover_color=BLUE,
                 checkmark_color=TEXT)
             box.pack(anchor="w", padx=4, pady=3)
             self._comp_boxes.append(box)
@@ -210,7 +253,9 @@ class TabCircuits:
         @return None
         """
         self._mode = mode
-        self._bandeau.definir(mode, texte)
+        fond, couleur = _BANDEAU_STYLES[mode]
+        self._bandeau_frame.configure(fg_color=fond)
+        self._bandeau_label.configure(text=texte, text_color=couleur)
         lecture = (mode == 'lecture')
         etat = "disabled" if lecture else "normal"
         self._name_entry.configure(state=etat)
@@ -306,13 +351,74 @@ class TabCircuits:
             "Le formulaire contient des modifications non sauvegardées.\n"
             "Les abandonner ?")
 
+    # ── Liste sectionnée ─────────────────────────────────────────────────────
+
+    def _remplir_liste(self, integres: list[str], personnalises: list[str]) -> None:
+        """@brief (Re)peuple la liste : section intégrés puis section personnalisés.
+
+        @param integres Libellés des éléments intégrés (consultables).
+        @param personnalises Libellés des éléments personnalisés (modifiables).
+        @return None
+        """
+        self._listbox.delete(0, "end")
+        self._lignes = []
+
+        self._ajouter_entete(f"INTÉGRÉS ({len(integres)}) — consultables")
+        for texte in integres:
+            self._listbox.insert("end", f"   {texte}")
+            self._listbox.itemconfig("end", foreground=_GRIS_INTEGRE)
+            self._lignes.append(('integre', len(self._lignes_section('integre'))))
+
+        self._ajouter_entete(f"PERSONNALISÉS ({len(personnalises)}) — modifiables")
+        if not personnalises:
+            self._listbox.insert("end", "   (aucun — bouton ＋ Nouveau)")
+            self._listbox.itemconfig("end", foreground=_GRIS_ENTETE)
+            self._lignes.append(('entete', None))
+        for texte in personnalises:
+            self._listbox.insert("end", f"   ★  {texte}")
+            self._listbox.itemconfig("end", foreground=_BLEU_PERSO)
+            self._lignes.append(('perso', len(self._lignes_section('perso'))))
+
+    def _lignes_section(self, section: str) -> list:
+        """@brief Lignes appartenant à une section donnée.
+
+        @param section Nom de section ('integre', 'perso', 'entete').
+        @return list Lignes (tuples) de cette section.
+        """
+        return [l for l in self._lignes if l[0] == section]
+
+    def _ajouter_entete(self, texte: str) -> None:
+        """@brief Insère une ligne d'en-tête non sélectionnable.
+
+        @param texte Libellé de l'en-tête.
+        @return None
+        """
+        self._listbox.insert("end", f" — {texte} —")
+        self._listbox.itemconfig("end", foreground=_GRIS_ENTETE)
+        self._lignes.append(('entete', None))
+
+    def _sur_selection_liste(self, _=None):
+        """@brief Gestionnaire d'événement de sélection de la liste : route vers le callback.
+
+        @param _ Événement Tk (ignoré).
+        @return None
+        """
+        sel = self._listbox.curselection()
+        if not sel:
+            return
+        section, index = self._lignes[sel[0]]
+        if section == 'entete':
+            self._listbox.selection_clear(0, "end")
+            return
+        self._sur_selection(section, index)
+
     # ── Données ──────────────────────────────────────────────────────────────
 
     def _load(self):
         """@brief Reconstruit les cases composants, charge les circuits personnalisés et peuple la liste."""
         self._build_comp_checkboxes()
         self._custom = load_custom_circuits()
-        self._liste.remplir(
+        self._remplir_liste(
             integres=list(_BASE_NAMES),
             personnalises=[c.get("name", "") for c in self._custom],
         )
@@ -325,7 +431,7 @@ class TabCircuits:
         prochain démarrage. Ne touche pas au formulaire en cours d'édition.
         """
         self._custom = load_custom_circuits()
-        self._liste.remplir(
+        self._remplir_liste(
             integres=list(_BASE_NAMES),
             personnalises=[c.get("name", "") for c in self._custom],
         )
@@ -352,7 +458,7 @@ class TabCircuits:
         @return None
         """
         if not self._confirmer_abandon():
-            self._liste.deselectionner()
+            self._listbox.selection_clear(0, "end")
             return
         if section == 'integre':
             self._afficher_integre(list(_BASE_NAMES)[index])
@@ -363,7 +469,7 @@ class TabCircuits:
         """@brief Démarre la création d'un nouveau circuit (après confirmation d'abandon)."""
         if not self._confirmer_abandon():
             return
-        self._liste.deselectionner()
+        self._listbox.selection_clear(0, "end")
         self._afficher_nouveau()
 
     def _supprimer(self):

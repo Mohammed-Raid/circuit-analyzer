@@ -5,6 +5,7 @@ Toutes les fabriques retournent des widgets CTk configurés avec les jetons de d
 aucune hiérarchie de classes — factories fines sur CTk (cf. contrainte PONYTAIL)."""
 import os
 import sys
+import tkinter as tk
 
 import customtkinter as ctk
 
@@ -46,11 +47,17 @@ def icon(name: str, size: int = 20, color: str | None = None) -> ctk.CTkImage:
     @param name  Nom du fichier sans extension (ex. "search").
     @param size  Côté carré en pixels logiques (défaut 20).
     @param color Accepté pour compatibilité future, ignoré (YAGNI — PNGs déjà teintés).
-    @return ctk.CTkImage mis en cache par (name, size).
+    @return ctk.CTkImage mis en cache par (name, size, fenêtre Tk courante).
+
+    La fenêtre Tk courante entre dans la clé : un CTkImage garde en interne des
+    ImageTk.PhotoImage liés à l'interpréteur Tcl qui les a créés ; les réutiliser
+    après destruction de cette fenêtre (ex. tests créant/détruisant plusieurs
+    root CTk) lève "image ... doesn't exist". Dans l'app réelle, une seule
+    fenêtre existe : le cache se comporte comme avant (une entrée par icône).
     """
     from PIL import Image  # import local : PIL non obligatoire pour les tests sans GUI
 
-    key = (name, size)
+    key = (name, size, id(getattr(tk, "_default_root", None)))
     if key not in _ICON_CACHE:
         d = _icons_dir()
         p1 = os.path.join(d, f"{name}.png")
