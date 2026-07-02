@@ -10,7 +10,10 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from circuit_analyzer.composant import charger_bibliotheque
+from gui.fonts import FONT_FAMILY
 from gui.schematic_io import editor_to_dict
+from gui.theme import (SURFACE, RAISED, OVERLAY, BORDER, TEXT, TEXT_MUTED,
+                        TEXT_DIM, BLUE, ERROR)
 
 _log = logging.getLogger(__name__)
 
@@ -158,7 +161,7 @@ class SchematicEditor(tk.Frame):
     """@brief Canvas interactif pour dessiner un schéma — zoom, rotation, câblage."""
 
     def __init__(self, parent):
-        super().__init__(parent, bg="#0f172a")
+        super().__init__(parent, bg=SURFACE)
         self._comps:    dict[int, CompInst] = {}
         self._wires:    list[WireInst]      = []
         self._next_id:  int                 = 1
@@ -275,18 +278,18 @@ class SchematicEditor(tk.Frame):
         # Palette défilable : conteneur fixe (largeur 152) + canvas interne, pour
         # que tous les composants/boutons restent accessibles même fenêtre courte
         # ou avec la mise à l'échelle Windows (125/150 %).
-        palette_outer = tk.Frame(self, bg="#1e293b", width=174)
+        palette_outer = tk.Frame(self, bg=OVERLAY, width=174)
         palette_outer.pack(side="left", fill="y")
         palette_outer.pack_propagate(False)
 
-        pcanvas = tk.Canvas(palette_outer, bg="#1e293b", highlightthickness=0,
+        pcanvas = tk.Canvas(palette_outer, bg=OVERLAY, highlightthickness=0,
                             bd=0, width=158)
         psb = tk.Scrollbar(palette_outer, orient="vertical", command=pcanvas.yview)
         pcanvas.configure(yscrollcommand=psb.set)
         psb.pack(side="right", fill="y")
         pcanvas.pack(side="left", fill="both", expand=True)
 
-        palette = tk.Frame(pcanvas, bg="#1e293b")
+        palette = tk.Frame(pcanvas, bg=OVERLAY)
         pcanvas.create_window((0, 0), window=palette, anchor="nw", width=158)
         palette.bind("<Configure>",
                      lambda _e: pcanvas.configure(scrollregion=pcanvas.bbox("all")))
@@ -299,12 +302,12 @@ class SchematicEditor(tk.Frame):
 
         self._build_palette(palette)
 
-        wrap = tk.Frame(self, bg="#0f172a")
+        wrap = tk.Frame(self, bg=SURFACE)
         wrap.pack(side="left", fill="both", expand=True)
         wrap.grid_columnconfigure(0, weight=1)
         wrap.grid_rowconfigure(0, weight=1)
 
-        self._canvas = tk.Canvas(wrap, bg="#0f172a", highlightthickness=0,
+        self._canvas = tk.Canvas(wrap, bg=SURFACE, highlightthickness=0,
                                   scrollregion=(0, 0, 2400, 1800))
         vsb = tk.Scrollbar(wrap, orient="vertical",   command=self._canvas.yview)
         hsb = tk.Scrollbar(wrap, orient="horizontal", command=self._canvas.xview)
@@ -319,49 +322,49 @@ class SchematicEditor(tk.Frame):
     def _build_palette(self, parent):
         self._palette_parent = parent
         self._palette_btns = {}
-        tk.Label(parent, text="COMPOSANTS", fg="#64748b", bg="#1e293b",
-                 font=("Segoe UI", 8, "bold")).pack(pady=(14, 4), padx=8, anchor="w")
+        tk.Label(parent, text="COMPOSANTS", fg=TEXT_DIM, bg=OVERLAY,
+                 font=(FONT_FAMILY, 8, "bold")).pack(pady=(14, 4), padx=8, anchor="w")
 
         for ct, defn in self._defs.items():
             color = defn["color"]
             b = tk.Button(
                 parent,
                 text=f"{ct}  {defn['label']}",
-                bg="#1e293b", fg=color,
-                activebackground="#263347", activeforeground=color,
+                bg=OVERLAY, fg=color,
+                activebackground=BORDER, activeforeground=color,
                 relief="flat", anchor="w",
-                font=("Segoe UI", 9, "bold"), cursor="hand2", padx=10,
+                font=(FONT_FAMILY, 9, "bold"), cursor="hand2", padx=10,
                 command=lambda t=ct: self._start_placing(t),
             )
             b.pack(fill="x", padx=4, pady=2)
             self._palette_btns[ct] = b
 
-        tk.Frame(parent, bg="#334155", height=1).pack(fill="x", padx=8, pady=8)
+        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=8, pady=8)
 
         tk.Button(parent, text="🗑  Supprimer",
-                  bg="#1e293b", fg="#ef4444", activebackground="#263347",
-                  activeforeground="#ef4444", relief="flat", anchor="w",
-                  font=("Segoe UI", 9), cursor="hand2", padx=10,
+                  bg=OVERLAY, fg=ERROR, activebackground=BORDER,
+                  activeforeground=ERROR, relief="flat", anchor="w",
+                  font=(FONT_FAMILY, 9), cursor="hand2", padx=10,
                   command=self._delete_selected).pack(fill="x", padx=4, pady=2)
         tk.Button(parent, text="⬜  Effacer tout",
-                  bg="#1e293b", fg="#94a3b8", activebackground="#263347",
-                  activeforeground="#94a3b8", relief="flat", anchor="w",
-                  font=("Segoe UI", 9), cursor="hand2", padx=10,
+                  bg=OVERLAY, fg=TEXT_MUTED, activebackground=BORDER,
+                  activeforeground=TEXT_MUTED, relief="flat", anchor="w",
+                  font=(FONT_FAMILY, 9), cursor="hand2", padx=10,
                   command=self.clear_all).pack(fill="x", padx=4, pady=2)
         tk.Button(parent, text="⊡  Ajuster (F)",
-                  bg="#1e293b", fg="#60a5fa", activebackground="#263347",
-                  activeforeground="#60a5fa", relief="flat", anchor="w",
-                  font=("Segoe UI", 9), cursor="hand2", padx=10,
+                  bg=OVERLAY, fg=BLUE, activebackground=BORDER,
+                  activeforeground=BLUE, relief="flat", anchor="w",
+                  font=(FONT_FAMILY, 9), cursor="hand2", padx=10,
                   command=self.fit_to_view).pack(fill="x", padx=4, pady=2)
 
-        tk.Frame(parent, bg="#334155", height=1).pack(fill="x", padx=8, pady=8)
+        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=8, pady=8)
 
         self._status_lbl = tk.Label(
             parent,
             text="Clic = placer\nEspace/R = rotation\nCtrl+C/V = copier/coller\nCtrl+D = dupliquer\n"
                  "Ctrl+Z/Y = annuler/rétablir\nClic droit = menu\nF = ajuster · Ctrl+molette = zoom",
-            fg="#475569", bg="#1e293b",
-            font=("Segoe UI", 7), justify="center",
+            fg=TEXT_DIM, bg=OVERLAY,
+            font=(FONT_FAMILY, 7), justify="center",
         )
         self._status_lbl.pack(padx=8, pady=4)
 
@@ -410,12 +413,12 @@ class SchematicEditor(tk.Frame):
         x = 0.0
         while x <= W + 1:
             ix = int(x)
-            self._canvas.create_line(ix, 0, ix, H, fill="#141e2e", width=1, tags="grid")
+            self._canvas.create_line(ix, 0, ix, H, fill=RAISED, width=1, tags="grid")
             x += step
         y = 0.0
         while y <= H + 1:
             iy = int(y)
-            self._canvas.create_line(0, iy, W, iy, fill="#141e2e", width=1, tags="grid")
+            self._canvas.create_line(0, iy, W, iy, fill=RAISED, width=1, tags="grid")
             y += step
         self._canvas.configure(scrollregion=(0, 0, W, H))
         self._canvas.tag_lower("grid")
@@ -481,8 +484,8 @@ class SchematicEditor(tk.Frame):
         self._canvas.configure(cursor="crosshair")
         # Feedback visuel dans la palette
         for t, btn in self._palette_btns.items():
-            btn.configure(bg="#1e293b", relief="flat")
-        self._palette_btns[comp_type].configure(bg="#263347", relief="groove")
+            btn.configure(bg=OVERLAY, relief="flat")
+        self._palette_btns[comp_type].configure(bg=BORDER, relief="groove")
         self._set_status(f"Clic pour\nplacer {comp_type}\nÉchap = annuler")
 
     def _place_comp(self, wx: int, wy: int):
@@ -777,8 +780,8 @@ class SchematicEditor(tk.Frame):
         # Priorité 1 : fil
         wire_id = self._find_wire_at(wx, wy)
         if wire_id is not None:
-            m = tk.Menu(self._canvas, tearoff=0, bg="#1e293b", fg="white",
-                        activebackground="#3b82f6", activeforeground="white")
+            m = tk.Menu(self._canvas, tearoff=0, bg=OVERLAY, fg=TEXT,
+                        activebackground=BLUE, activeforeground=TEXT)
             m.add_command(label="🗑  Supprimer ce fil",
                           command=lambda: self._delete_wire(wire_id))
             m.post(event.x_root, event.y_root)
@@ -789,8 +792,8 @@ class SchematicEditor(tk.Frame):
         if not comp_id:
             return
         self._select(comp_id)
-        m = tk.Menu(self._canvas, tearoff=0, bg="#1e293b", fg="white",
-                    activebackground="#3b82f6", activeforeground="white")
+        m = tk.Menu(self._canvas, tearoff=0, bg=OVERLAY, fg=TEXT,
+                    activebackground=BLUE, activeforeground=TEXT)
         m.add_command(label="✏  Modifier…",  command=lambda: self._edit_comp(comp_id))
         m.add_command(label="↻  Rotation",   command=lambda: self._rotate_comp(comp_id))
         m.add_separator()
@@ -808,7 +811,7 @@ class SchematicEditor(tk.Frame):
             self._place_type = None
             self._canvas.configure(cursor="")
             for btn in self._palette_btns.values():
-                btn.configure(bg="#1e293b", relief="flat")
+                btn.configure(bg=OVERLAY, relief="flat")
             self._set_status("Prêt")
         else:
             self._deselect()
@@ -997,7 +1000,7 @@ class SchematicEditor(tk.Frame):
             return
         dlg = tk.Toplevel(self)
         dlg.title(f"Modifier {comp.ref}")
-        dlg.configure(bg="#1e293b")
+        dlg.configure(bg=OVERLAY)
         dlg.resizable(False, False)
         dlg.transient(self)
         dlg.grab_set()
@@ -1006,14 +1009,14 @@ class SchematicEditor(tk.Frame):
         fields = [("Référence :", comp.ref), ("Valeur :", comp.value)]
         vars_list = []
         for row, (lbl, val) in enumerate(fields):
-            tk.Label(dlg, text=lbl, fg="#94a3b8", bg="#1e293b",
-                     font=("Segoe UI", 10)).grid(row=row, column=0, padx=14,
+            tk.Label(dlg, text=lbl, fg=TEXT_MUTED, bg=OVERLAY,
+                     font=(FONT_FAMILY, 10)).grid(row=row, column=0, padx=14,
                                                   pady=(14 if row == 0 else 6, 4),
                                                   sticky="w")
             v = tk.StringVar(value=val)
-            tk.Entry(dlg, textvariable=v, bg="#0f172a", fg="white",
-                     font=("Segoe UI", 11), relief="flat", width=16,
-                     insertbackground="white").grid(row=row, column=1,
+            tk.Entry(dlg, textvariable=v, bg=SURFACE, fg=TEXT,
+                     font=(FONT_FAMILY, 11), relief="flat", width=16,
+                     insertbackground=TEXT).grid(row=row, column=1,
                                                      padx=(0, 14),
                                                      pady=(14 if row == 0 else 6, 4))
             vars_list.append(v)
@@ -1031,8 +1034,8 @@ class SchematicEditor(tk.Frame):
             dlg.destroy()
 
         tk.Button(dlg, text="  OK  ", command=_save,
-                  bg="#3b82f6", fg="white", relief="flat",
-                  font=("Segoe UI", 10, "bold"), padx=16, pady=5,
+                  bg=BLUE, fg=TEXT, relief="flat",
+                  font=(FONT_FAMILY, 10, "bold"), padx=16, pady=5,
                   cursor="hand2").grid(row=2, column=0, columnspan=2, pady=12)
         dlg.bind("<Return>", lambda _: _save())
 
@@ -1092,7 +1095,7 @@ class SchematicEditor(tk.Frame):
         self._rubber_band  = None
         self._drag_comp_id = None
         for btn in self._palette_btns.values():
-            btn.configure(bg="#1e293b", relief="flat")
+            btn.configure(bg=OVERLAY, relief="flat")
         self._draw_grid()
         self._set_status("Prêt")
 
