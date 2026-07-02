@@ -9,6 +9,7 @@ dans _DRAWERS. Les fonctions _draw_* reçoivent toutes (d, result, ci) :
   @param ci Dict {ref -> infos composant} (comp_info).
 """
 import logging
+import math
 
 import customtkinter as ctk
 import tkinter as tk
@@ -1997,6 +1998,75 @@ def _sum_input_label_anchor(dot_pt):
         "ha": "right",
         "va": "bottom",
     }
+
+
+def _agencement_entre(p1, p2, arbre):
+    """@brief Place le réseau R/L/C de `arbre` entre p1 et p2 (coordonnées globales).
+
+    Réutilise impedance_schematic.agencer(arbre) (mise en page locale ; borne
+    gauche (0, dims.y_borne), borne droite (dims.largeur, dims.y_borne)) puis
+    applique translation p1 + rotation (angle p1->p2) + échelle uniforme
+    (dist(p1,p2) / dims.largeur), pour amener les deux bornes locales sur p1/p2.
+    Le perpendiculaire local (écart à l'axe des bornes) utilise
+    (y_local - dims.y_borne) * échelle.
+
+    @param p1, p2 Bornes globales (x, y) entre lesquelles agencer le réseau.
+    @param arbre Arbre série/parallèle (cf. circuit_analyzer.impedance.arbre_expr).
+    @return (symboles, fils) en coordonnées globales :
+        symboles = [(ref, (xa,ya), (xb,yb))] ; fils = [((xa,ya),(xb,yb))].
+    """
+    from gui import impedance_schematic
+    symboles_loc, fils_loc, dims = impedance_schematic.agencer(arbre)
+    dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+    dist = math.hypot(dx, dy)
+    echelle = dist / dims.largeur if dims.largeur else 0.0
+    theta = math.atan2(dy, dx)
+    cos_t, sin_t = math.cos(theta), math.sin(theta)
+
+    def _vers_global(lx, ly):
+        along = lx * echelle
+        perp = (ly - dims.y_borne) * echelle
+        return (p1[0] + along * cos_t - perp * sin_t,
+                p1[1] + along * sin_t + perp * cos_t)
+
+    symboles = [(ref, _vers_global(x1, y), _vers_global(x2, y))
+                for ref, x1, x2, y in symboles_loc]
+    fils = [(_vers_global(xa, ya), _vers_global(xb, yb))
+            for (xa, ya), (xb, yb) in fils_loc]
+    return symboles, fils
+
+
+def _z_reseau(d, p1, p2, bloc, ci) -> bool:
+    """@brief Dessine le réseau R/L/C réel de `bloc` entre p1 et p2 (vue détaillée).
+
+    Déplie la composition (`bloc["composition"]`) en son arbre série/parallèle
+    et dessine chaque composant avec son symbole/couleur réels (au lieu de la
+    boîte Z générique). Si la composition n'est pas dépliable (pont Y-Δ),
+    ne dessine rien : l'appelant garde alors la boîte Z (cf. _z_box).
+
+    @param d Dessin schemdraw.
+    @param p1, p2 Extrémités globales du bloc Z remplacé.
+    @param bloc Bloc d'impédance {'refs','composition',...}.
+    @param ci Dict {ref → {type, value}} pour l'étiquette de chaque composant.
+    @return bool True si le réseau a été dessiné, False sinon.
+    """
+    from circuit_analyzer import impedance
+    from gui import impedance_schematic
+    arbre = impedance.arbre_expr(bloc["composition"])
+    if arbre is None:
+        return False
+    symboles, fils = _agencement_entre(p1, p2, arbre)
+    for ref, pa, pb in symboles:
+        info = ci.get(ref, {})
+        typ = info.get("type", "")
+        cls = impedance_schematic._SYMB.get(typ, elm.ResistorIEC)
+        coul = _COMP_COLORS.get(typ, _WIRE)
+        vfmt = impedance.formater_valeur(info.get("value", ""), typ)
+        label = f"{ref}\n{vfmt}" if vfmt else ref
+        d.add(cls().at(pa).to(pb).color(coul).label(label, fontsize=9, color=coul))
+    for pa, pb in fils:
+        d.add(elm.Line().at(pa).to(pb).color(_WIRE))
+    return True
 
 
 def _z_box(d, p1, p2, name, bloc, ci, label_loc="top"):
