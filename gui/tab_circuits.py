@@ -13,8 +13,8 @@ from custom_circuits.loader import (
     CONDITION_GROUPS, condition_display,
 )
 
-from gui.theme import (BG, CARD, CARD2, BORDER, TEXT, TEXT_MUTED, TEXT_DIM,
-                       BLUE, BLUE_PRESS, SUCCESS, R)
+from gui.theme import (BG, CARD, CARD2, TEXT, TEXT_MUTED, TEXT_DIM,
+                       BLUE, BLUE_PRESS, R)
 from gui import ui_kit
 from gui.widgets import lier_molette
 
@@ -26,11 +26,6 @@ _BANDEAU_STYLES = {
     'edition':  ("#1e3a8a", "#93c5fd"),
     'lecture':  (CARD2, TEXT_MUTED),
 }
-
-# Couleurs des lignes de la liste sectionnée
-_GRIS_INTEGRE = TEXT_MUTED   # éléments intégrés : consultables, non modifiables
-_BLEU_PERSO   = BLUE         # éléments personnalisés (étoile)
-_GRIS_ENTETE  = TEXT_DIM     # en-têtes de section
 
 
 class TabCircuits:
@@ -366,17 +361,17 @@ class TabCircuits:
         self._ajouter_entete(f"INTÉGRÉS ({len(integres)}) — consultables")
         for texte in integres:
             self._listbox.insert("end", f"   {texte}")
-            self._listbox.itemconfig("end", foreground=_GRIS_INTEGRE)
+            self._listbox.itemconfig("end", foreground=TEXT_MUTED)
             self._lignes.append(('integre', len(self._lignes_section('integre'))))
 
         self._ajouter_entete(f"PERSONNALISÉS ({len(personnalises)}) — modifiables")
         if not personnalises:
             self._listbox.insert("end", "   (aucun — bouton ＋ Nouveau)")
-            self._listbox.itemconfig("end", foreground=_GRIS_ENTETE)
+            self._listbox.itemconfig("end", foreground=TEXT_DIM)
             self._lignes.append(('entete', None))
         for texte in personnalises:
             self._listbox.insert("end", f"   ★  {texte}")
-            self._listbox.itemconfig("end", foreground=_BLEU_PERSO)
+            self._listbox.itemconfig("end", foreground=BLUE)
             self._lignes.append(('perso', len(self._lignes_section('perso'))))
 
     def _lignes_section(self, section: str) -> list:
@@ -394,7 +389,7 @@ class TabCircuits:
         @return None
         """
         self._listbox.insert("end", f" — {texte} —")
-        self._listbox.itemconfig("end", foreground=_GRIS_ENTETE)
+        self._listbox.itemconfig("end", foreground=TEXT_DIM)
         self._lignes.append(('entete', None))
 
     def _sur_selection_liste(self, _=None):

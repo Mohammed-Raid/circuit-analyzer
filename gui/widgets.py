@@ -16,10 +16,6 @@ import customtkinter as ctk
 from gui import theme
 from gui import ui_kit
 
-_GRIS_INTEGRE = theme.TEXT_MUTED   # éléments intégrés : consultables, non modifiables
-_BLEU_PERSO   = theme.BLUE         # éléments personnalisés (étoile)
-_GRIS_ENTETE  = theme.TEXT_DIM     # en-têtes de section
-
 
 class ListeSectionnee:
     """
@@ -94,17 +90,17 @@ class ListeSectionnee:
         self._entete(f"INTÉGRÉS ({len(integres)}) — consultables")
         for texte in integres:
             self._listbox.insert("end", f"   {texte}")
-            self._listbox.itemconfig("end", foreground=_GRIS_INTEGRE)
+            self._listbox.itemconfig("end", foreground=theme.TEXT_MUTED)
             self._lignes.append(('integre', len(self._lignes_de('integre'))))
 
         self._entete(f"PERSONNALISÉS ({len(personnalises)}) — modifiables")
         if not personnalises:
             self._listbox.insert("end", "   (aucun — bouton ＋ Nouveau)")
-            self._listbox.itemconfig("end", foreground=_GRIS_ENTETE)
+            self._listbox.itemconfig("end", foreground=theme.TEXT_DIM)
             self._lignes.append(('entete', None))
         for texte in personnalises:
             self._listbox.insert("end", f"   ★  {texte}")
-            self._listbox.itemconfig("end", foreground=_BLEU_PERSO)
+            self._listbox.itemconfig("end", foreground=theme.BLUE)
             self._lignes.append(('perso', len(self._lignes_de('perso'))))
 
     def deselectionner(self) -> None:
@@ -126,7 +122,7 @@ class ListeSectionnee:
         @return None
         """
         self._listbox.insert("end", f" — {texte} —")
-        self._listbox.itemconfig("end", foreground=_GRIS_ENTETE)
+        self._listbox.itemconfig("end", foreground=theme.TEXT_DIM)
         self._lignes.append(('entete', None))
 
     def _sur_selection(self, _=None):

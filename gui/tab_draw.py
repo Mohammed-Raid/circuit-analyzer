@@ -76,14 +76,15 @@ class TabDraw:
         ).pack(side="left", padx=(0, 14), pady=8)
 
         # Légende raccourcis retirée ici : déjà affichée dans la palette (status_lbl).
-        # Elle débordait et masquait le bouton bleu « Enregistrer comme pattern ».
+        # Elle débordait et masquait le bouton « Enregistrer comme pattern ».
 
         ui_kit.PrimaryButton(
             bar_inner, "Analyser ce circuit", self._launch_analyze,
             icon_name="play", width=200, height=34,
         ).pack(side="right", pady=8)
 
-        ui_kit.PrimaryButton(
+        # Secondary : seule l'action de flux principal (Analyser) reste primaire.
+        ui_kit.SecondaryButton(
             bar_inner, "Enregistrer comme pattern", self._save_as_pattern,
             width=220, height=34,
         ).pack(side="right", padx=(0, 10), pady=8)

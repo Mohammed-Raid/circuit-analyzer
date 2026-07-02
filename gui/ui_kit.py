@@ -95,7 +95,6 @@ def StatCard(parent, value: str, label: str,
     @return ctk.CTkFrame composé.
     """
     frame = Card(parent, fg_color=theme.RAISED)
-    frame.grid_columnconfigure(0, weight=1)
 
     # Icône + valeur
     top = ctk.CTkFrame(frame, fg_color="transparent")

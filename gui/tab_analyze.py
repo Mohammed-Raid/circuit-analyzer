@@ -134,10 +134,10 @@ class TabAnalyze:
         # ── Stats row (hidden until first run) ───────────────────────────────
         self._stats_row = ctk.CTkFrame(self.frame, fg_color=BG,
                                        corner_radius=0)
-        self._s_total  = _StatRef(ui_kit.StatCard(self._stats_row, "—", "Composants",             "cpu",            BLUE))
-        self._s_groups = _StatRef(ui_kit.StatCard(self._stats_row, "—", "Circuits identifiés",    "check",          SUCCESS))
-        self._s_pct    = _StatRef(ui_kit.StatCard(self._stats_row, "—", "Taux de classification", "activity",       CYAN))
-        self._s_unc    = _StatRef(ui_kit.StatCard(self._stats_row, "—", "Non classifiés",         "alert-triangle", ERROR))
+        self._s_total  = ui_kit.StatCard(self._stats_row, "—", "Composants",             "cpu",            BLUE)
+        self._s_groups = ui_kit.StatCard(self._stats_row, "—", "Circuits identifiés",    "check",          SUCCESS)
+        self._s_pct    = ui_kit.StatCard(self._stats_row, "—", "Taux de classification", "activity",       CYAN)
+        self._s_unc    = ui_kit.StatCard(self._stats_row, "—", "Non classifiés",         "alert-triangle", ERROR)
         for sc in (self._s_total, self._s_groups, self._s_pct, self._s_unc):
             sc.pack(side="left", expand=True, padx=8, pady=12)
 
@@ -285,10 +285,10 @@ class TabAnalyze:
             total = len(comps)
             pct   = int(100 * len(classified) / total) if total else 0
 
-            self._s_total.update(str(total))
-            self._s_groups.update(str(len(results)))
-            self._s_pct.update(f"{pct}%")
-            self._s_unc.update(str(len(unclassified)))
+            self._s_total.value_label.configure(text=str(total))
+            self._s_groups.value_label.configure(text=str(len(results)))
+            self._s_pct.value_label.configure(text=f"{pct}%")
+            self._s_unc.value_label.configure(text=str(len(unclassified)))
 
             self._stats_row.pack(fill="x", padx=20, before=self._body)
             self._scroll_outer.grid()
@@ -701,29 +701,6 @@ class TabAnalyze:
 
 
 # ── Helper widgets ────────────────────────────────────────────────────────────
-
-class _StatRef:
-    """@brief Adaptateur ui_kit.StatCard → pack() + update() compatibles avec TabAnalyze."""
-
-    def __init__(self, frame: ctk.CTkFrame):
-        """@brief Construit le wrapper autour d'un frame StatCard.
-
-        @param frame Frame retourné par ui_kit.StatCard (possède frame.value_label).
-        """
-        self._f = frame
-
-    def pack(self, **kw):
-        """@brief Délègue pack() au frame sous-jacent."""
-        self._f.pack(**kw)
-
-    def update(self, value: str):
-        """@brief Met à jour la valeur affichée dans le StatCard.
-
-        @param value Nouvelle valeur (chaîne).
-        @return None
-        """
-        self._f.value_label.configure(text=value)
-
 
 class _EmptyState(ctk.CTkFrame):
     """@brief Écran d'accueil affiché tant qu'aucun circuit n'a été chargé."""
