@@ -22,8 +22,8 @@ def _coeur_analyse():
 # gui.circuit_viewer importe matplotlib + schemdraw (~2 s). On le charge à la
 # demande (ouverture d'un schéma), pas au démarrage : la fenêtre s'affiche vite.
 
-from gui.theme import (BG, CARD, CARD2, BORDER, TEXT, MUTED, BLUE,
-                       TEXT_MUTED, TEXT_DIM, SUCCESS, CYAN, ERROR)
+from gui.theme import (BG, CARD, CARD2, BORDER, BORDER_SOFT, TEXT, MUTED, BLUE,
+                       TEXT_MUTED, TEXT_DIM, SUCCESS, CYAN, ERROR, WARN, SP, R)
 from gui import ui_kit
 
 _log = logging.getLogger(__name__)
@@ -167,8 +167,11 @@ class TabAnalyze:
         self._canvas.grid(row=0, column=0, sticky="nsew")
 
         self._results_view = tk.Frame(self._canvas, bg=BG)
+        # Défaut #4 (audit) : le haut des cartes était rogné contre le bord du
+        # canvas. On décale le contenu et on épingle le scrollregion à (0, 0)
+        # pour que ce vide reste visible tout en haut du défilement.
         self._canvas_win = self._canvas.create_window(
-            (0, 0), window=self._results_view, anchor="nw")
+            (0, SP["lg"]), window=self._results_view, anchor="nw")
 
         self._results_view.bind("<Configure>", self._on_scroll_configure)
         self._canvas.bind("<Configure>", self._on_canvas_resize)
@@ -189,41 +192,24 @@ class TabAnalyze:
         bar.pack_propagate(False)
         bar_inner = ctk.CTkFrame(bar, fg_color="transparent")
         bar_inner.pack(fill="both", padx=28)
-        ctk.CTkButton(bar_inner, text="💾  Sauvegarder",
-                      width=140, height=34, corner_radius=8,
-                      font=ctk.CTkFont("Segoe UI", 11),
-                      fg_color="#1e293b", hover_color="#263347",
-                      border_width=1, border_color=BORDER,
-                      command=self._save).pack(side="left", pady=8)
-        ctk.CTkButton(bar_inner, text="📋  Copier rapport",
-                      width=140, height=34, corner_radius=8,
-                      font=ctk.CTkFont("Segoe UI", 11),
-                      fg_color="#1e293b", hover_color="#263347",
-                      border_width=1, border_color=BORDER,
-                      command=self._copy).pack(side="left", padx=8, pady=8)
-        ctk.CTkButton(bar_inner, text="🔧  Exporter XML (design)",
-                      width=190, height=34, corner_radius=8,
-                      font=ctk.CTkFont("Segoe UI", 11),
-                      fg_color="#1e293b", hover_color="#263347",
-                      border_width=1, border_color=BORDER,
-                      command=self._export_xml).pack(side="left", padx=8, pady=8)
-        self._btn_reseau = ctk.CTkButton(
-            bar_inner, text="🕸  Vue réseau",
-            width=140, height=34, corner_radius=8,
-            font=ctk.CTkFont("Segoe UI", 11),
-            fg_color="#1e293b", hover_color="#263347",
-            border_width=1, border_color=BORDER,
-            state="disabled",
-            command=self._open_network_viewer)
+        ui_kit.SecondaryButton(bar_inner, "Sauvegarder", self._save,
+                               icon_name="save",
+                               width=140, height=34).pack(side="left", pady=8)
+        ui_kit.SecondaryButton(bar_inner, "Copier rapport", self._copy,
+                               icon_name="copy",
+                               width=150, height=34).pack(side="left", padx=8, pady=8)
+        ui_kit.SecondaryButton(bar_inner, "Exporter XML (design)", self._export_xml,
+                               icon_name="download",
+                               width=200, height=34).pack(side="left", padx=8, pady=8)
+        self._btn_reseau = ui_kit.SecondaryButton(
+            bar_inner, "Vue réseau", self._open_network_viewer,
+            icon_name="layers",
+            width=140, height=34, state="disabled")
         self._btn_reseau.pack(side="left", padx=8, pady=8)
-        self._btn_imped = ctk.CTkButton(
-            bar_inner, text="Ω  Impédance équiv.",
-            width=170, height=34, corner_radius=8,
-            font=ctk.CTkFont("Segoe UI", 11),
-            fg_color="#1e293b", hover_color="#263347",
-            border_width=1, border_color=BORDER,
-            state="disabled",
-            command=self._open_impedance)
+        self._btn_imped = ui_kit.SecondaryButton(
+            bar_inner, "Impédance équiv.", self._open_impedance,
+            icon_name="sigma",
+            width=170, height=34, state="disabled")
         self._btn_imped.pack(side="left", padx=8, pady=8)
 
     # ── Actions ──────────────────────────────────────────────────────────────
@@ -383,8 +369,11 @@ class TabAnalyze:
 
     def _on_scroll_configure(self, _=None):
         """@brief Met à jour la zone défilable du canvas après reconfiguration du contenu."""
-        self._canvas.configure(
-            scrollregion=self._canvas.bbox("all"))
+        bbox = self._canvas.bbox("all")
+        if not bbox:
+            return
+        _, _, x1, y1 = bbox
+        self._canvas.configure(scrollregion=(0, 0, x1, y1))
 
     def _on_canvas_resize(self, event):
         """@brief Ajuste la largeur de la fenêtre interne au redimensionnement du canvas.
@@ -441,9 +430,7 @@ class TabAnalyze:
             ch = ctk.CTkFrame(self._results_view,
                               fg_color="transparent")
             ch.pack(fill="x", padx=16, pady=(12, 2))
-            ctk.CTkLabel(ch, text=cat,
-                         font=ctk.CTkFont("Segoe UI", 10, "bold"),
-                         text_color=MUTED).pack(side="left")
+            ui_kit.SectionHeader(ch, cat).pack(side="left")
             ctk.CTkFrame(ch, height=1, fg_color=BORDER).pack(
                 side="left", fill="x", expand=True, padx=10)
 
@@ -479,38 +466,34 @@ class TabAnalyze:
             unclassified=unclassified,
         )
 
-        card = ctk.CTkFrame(self._results_view,
-                            fg_color=CARD,
-                            corner_radius=8,
-                            border_width=1,
-                            border_color=BORDER)
+        card = ui_kit.Card(self._results_view)
         card.pack(fill="x", padx=16, pady=(14, 8))
 
         header = ctk.CTkFrame(card, fg_color="transparent")
         header.pack(fill="x", padx=16, pady=(14, 8))
         ctk.CTkLabel(header, text="Résumé exécutif",
-                     font=ctk.CTkFont("Segoe UI", 15, "bold"),
+                     font=ui_kit.font("title"),
                      text_color=TEXT).pack(side="left")
         ctk.CTkLabel(header, text="Vue rapide pour la présentation",
-                     font=ctk.CTkFont("Segoe UI", 11),
-                     text_color=MUTED).pack(side="left", padx=12)
+                     font=ui_kit.font("caption"),
+                     text_color=TEXT_MUTED).pack(side="left", padx=12)
 
         lines = (
             ("Analyse", summary["headline"], BLUE),
-            ("Classification", summary["classification"], "#10b981"),
+            ("Classification", summary["classification"], SUCCESS),
             ("Lecture rapide", summary["reading"], TEXT),
-            ("À vérifier", summary["review"], "#f59e0b"),
+            ("À vérifier", summary["review"], WARN),
         )
         for label, value, color in lines:
             row = ctk.CTkFrame(card, fg_color="transparent")
             row.pack(fill="x", padx=16, pady=(0, 8))
             ctk.CTkLabel(row, text=label,
-                         font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                         font=ui_kit.font("caption", "bold"),
                          text_color=color,
                          width=110,
                          anchor="w").pack(side="left")
             ctk.CTkLabel(row, text=value,
-                         font=ctk.CTkFont("Segoe UI", 11),
+                         font=ui_kit.font("caption"),
                          text_color=TEXT,
                          anchor="w",
                          justify="left",
@@ -528,8 +511,8 @@ class TabAnalyze:
 
         hdr = ctk.CTkFrame(self._results_view, fg_color="transparent")
         hdr.pack(fill="x", padx=16, pady=(12, 2))
-        ctk.CTkLabel(hdr, text="APERCU DES GROUPES",
-                     font=ctk.CTkFont("Segoe UI", 10, "bold"),
+        ctk.CTkLabel(hdr, text="APERÇU DES GROUPES",
+                     font=ui_kit.font("overline"),
                      text_color=BLUE).pack(side="left")
         ctk.CTkFrame(hdr, height=1, fg_color=BORDER).pack(
             side="left", fill="x", expand=True, padx=10)
@@ -539,7 +522,7 @@ class TabAnalyze:
         grid.grid_columnconfigure((0, 1, 2), weight=1)
         for i, group in enumerate(groups):
             bg, fg, icon = _type_style(group["title"])
-            card = ctk.CTkFrame(grid, fg_color=bg, corner_radius=8,
+            card = ctk.CTkFrame(grid, fg_color=bg, corner_radius=R["lg"],
                                 border_width=1, border_color=_darken(bg))
             card.grid(row=i // 3, column=i % 3, sticky="ew", padx=4, pady=4)
 
@@ -549,12 +532,12 @@ class TabAnalyze:
                          font=ctk.CTkFont(size=14),
                          text_color=fg).pack(side="left", padx=(0, 5))
             ctk.CTkLabel(top, text=group["title"],
-                         font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                         font=ui_kit.font("caption", "bold"),
                          text_color=fg,
                          wraplength=190,
                          justify="left").pack(side="left", fill="x", expand=True)
             ctk.CTkLabel(top, text=group["confidence"],
-                         font=ctk.CTkFont("Segoe UI", 9, "bold"),
+                         font=ui_kit.font("overline"),
                          text_color=fg).pack(side="right")
 
             ctk.CTkLabel(card, text="  ".join(group["refs"]),
@@ -576,9 +559,7 @@ class TabAnalyze:
 
         hdr = ctk.CTkFrame(self._results_view, fg_color="transparent")
         hdr.pack(fill="x", padx=16, pady=(14, 2))
-        ctk.CTkLabel(hdr, text="STRUCTURE EN ÉTAGES",
-                     font=ctk.CTkFont("Segoe UI", 10, "bold"),
-                     text_color=BLUE).pack(side="left")
+        ui_kit.SectionHeader(hdr, "Structure en étages").pack(side="left")
         ctk.CTkFrame(hdr, height=1, fg_color=BORDER).pack(
             side="left", fill="x", expand=True, padx=10)
 
@@ -604,14 +585,14 @@ class TabAnalyze:
                                fg_color="transparent")
             uch.pack(fill="x", padx=16, pady=(16, 2))
             ctk.CTkLabel(uch, text="NON CLASSIFIÉS",
-                         font=ctk.CTkFont("Segoe UI", 10, "bold"),
-                         text_color="#ef4444").pack(side="left")
+                         font=ui_kit.font("overline"),
+                         text_color=ERROR).pack(side="left")
             ctk.CTkFrame(uch, height=1, fg_color="#4d1515").pack(
                 side="left", fill="x", expand=True, padx=10)
 
             uc_card = ctk.CTkFrame(self._results_view,
                                    fg_color="#1c0a0a",
-                                   corner_radius=12,
+                                   corner_radius=R["lg"],
                                    border_width=1,
                                    border_color="#7f1d1d")
             uc_card.pack(fill="x", padx=16, pady=(4, 16))
@@ -628,14 +609,11 @@ class TabAnalyze:
                                  corner_radius=4).pack(
                                      side="left", padx=3)
             if len(unclassified) >= 2:
-                ctk.CTkButton(
-                    uc_card,
-                    text="✨  Suggérer un pattern",
-                    width=200, height=32, corner_radius=8,
-                    font=ctk.CTkFont("Segoe UI", 11),
-                    fg_color="#1e3a5f", hover_color="#1e4a7f",
-                    border_width=1, border_color="#3b82f6",
-                    command=self._ouvrir_wizard_pattern
+                ui_kit.PrimaryButton(
+                    uc_card, "Suggérer un pattern",
+                    self._ouvrir_wizard_pattern,
+                    icon_name="zap",
+                    width=200, height=32,
                 ).pack(anchor="w", padx=14, pady=(4, 10))
 
     def _render_drc(self, violations: list):
@@ -650,7 +628,7 @@ class TabAnalyze:
         hdr = ctk.CTkFrame(self._results_view, fg_color="transparent")
         hdr.pack(fill="x", padx=16, pady=(16, 2))
         ctk.CTkLabel(hdr, text="RÈGLES DE CONCEPTION",
-                     font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                     font=ui_kit.font("overline"),
                      text_color="#f97316").pack(side="left")
         ctk.CTkFrame(hdr, height=1, fg_color="#7c2d12").pack(
             side="left", fill="x", expand=True, padx=10)
@@ -659,12 +637,12 @@ class TabAnalyze:
             is_warn = v.get("severity") == "warning"
             bg      = "#1c0f06" if is_warn else "#06101c"
             border  = "#7c2d12" if is_warn else "#1e3a5f"
-            badge   = "#f97316" if is_warn else "#60a5fa"
+            badge   = "#f97316" if is_warn else CYAN
             label   = "⚠ AVERTISSEMENT" if is_warn else "ℹ INFO"
 
             card = ctk.CTkFrame(self._results_view,
                                 fg_color=bg,
-                                corner_radius=10,
+                                corner_radius=R["lg"],
                                 border_width=1,
                                 border_color=border)
             card.pack(fill="x", padx=16, pady=3)
@@ -672,15 +650,15 @@ class TabAnalyze:
             top = ctk.CTkFrame(card, fg_color="transparent")
             top.pack(fill="x", padx=12, pady=(8, 2))
             ctk.CTkLabel(top, text=label,
-                         font=ctk.CTkFont("Segoe UI", 9, "bold"),
+                         font=ui_kit.font("overline"),
                          text_color=badge).pack(side="left")
             ctk.CTkLabel(top, text=v.get("rule", ""),
-                         font=ctk.CTkFont("Segoe UI", 10, "bold"),
-                         text_color="#e2e8f0").pack(side="left", padx=8)
+                         font=ui_kit.font("caption", "bold"),
+                         text_color=TEXT).pack(side="left", padx=8)
 
             ctk.CTkLabel(card, text=v.get("message", ""),
-                         font=ctk.CTkFont("Segoe UI", 10),
-                         text_color="#94a3b8",
+                         font=ui_kit.font("caption"),
+                         text_color=TEXT_MUTED,
                          wraplength=640,
                          justify="left").pack(
                              anchor="w", padx=12, pady=(2, 8))
@@ -756,16 +734,15 @@ class _EmptyState(ctk.CTkFrame):
         @param parent Widget parent.
         """
         super().__init__(parent, fg_color="transparent")
-        ctk.CTkLabel(self, text="📂",
-                     font=ctk.CTkFont(size=56),
-                     text_color="#1e293b").pack(pady=(60, 8))
+        ctk.CTkLabel(self, image=ui_kit.icon("file-text", 48), text="",
+                     ).pack(pady=(60, 12))
         ctk.CTkLabel(self, text="Aucun circuit chargé",
-                     font=ctk.CTkFont("Segoe UI", 18, "bold"),
-                     text_color="#334155").pack()
+                     font=ui_kit.font("title"),
+                     text_color=TEXT_MUTED).pack()
         ctk.CTkLabel(self,
                      text="Cliquez sur Parcourir pour charger\nun fichier netlist .txt / .cir / .sp / .net / .xml",
-                     font=ctk.CTkFont("Segoe UI", 13),
-                     text_color=MUTED, justify="center").pack(pady=8)
+                     font=ui_kit.font("body"),
+                     text_color=TEXT_DIM, justify="center").pack(pady=8)
 
 
 class _IslandSection(ctk.CTkFrame):
@@ -779,9 +756,9 @@ class _IslandSection(ctk.CTkFrame):
         @param ilot Dict décrivant l'îlot (label, composants, circuits).
         @param results Résultats d'analyse (pour résoudre les circuits par indice).
         """
-        super().__init__(parent, corner_radius=10,
+        super().__init__(parent, corner_radius=R["lg"],
                          fg_color=CARD,
-                         border_width=1, border_color=BORDER)
+                         border_width=1, border_color=BORDER_SOFT)
         self._ouvert = True
         self._ilot = ilot
         self._results = results
@@ -794,28 +771,19 @@ class _IslandSection(ctk.CTkFrame):
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.pack(fill="x", padx=6, pady=(4, 0))
         self._btn = ctk.CTkButton(
-            header, text=f"▼  {titre}",
-            anchor="w", height=32, corner_radius=8,
-            font=ctk.CTkFont("Segoe UI", 12, "bold"),
+            header, text=titre,
+            image=ui_kit.icon("chevron-down", 16),
+            anchor="w", height=32, corner_radius=R["md"],
+            font=ui_kit.font("subtitle", "bold"),
             fg_color="transparent", hover_color=CARD2,
             text_color=TEXT,
             command=self._toggle,
         )
         self._btn.pack(side="left", fill="x", expand=True)
-        ctk.CTkButton(
-            header,
-            text="Schema ilot",
-            width=105,
-            height=28,
-            corner_radius=7,
-            font=ctk.CTkFont("Segoe UI", 10, "bold"),
-            fg_color="#1e293b",
-            hover_color="#263347",
-            border_width=1,
-            border_color=BORDER,
-            command=self._open_island_schema,
+        ui_kit.SecondaryButton(
+            header, "Schéma îlot", self._open_island_schema,
+            width=105, height=28,
         ).pack(side="right", padx=(8, 0))
-        self._titre = titre
 
         self._contenu = ctk.CTkFrame(self, fg_color="transparent")
         self._contenu.pack(fill="x", padx=20, pady=(0, 8))
@@ -848,10 +816,10 @@ class _IslandSection(ctk.CTkFrame):
         self._ouvert = not self._ouvert
         if self._ouvert:
             self._contenu.pack(fill="x", padx=20, pady=(0, 8))
-            self._btn.configure(text=f"▼  {self._titre}")
+            self._btn.configure(image=ui_kit.icon("chevron-down", 16))
         else:
             self._contenu.pack_forget()
-            self._btn.configure(text=f"▶  {self._titre}")
+            self._btn.configure(image=ui_kit.icon("chevron-right", 16))
 
     def _open_island_schema(self):
         """@brief Ouvre le schema reel de l'ilot."""
@@ -879,7 +847,7 @@ class _CircuitCard(ctk.CTkFrame):
         @param graph Graphe du circuit (pour le clic drill-down sur les boîtes Z).
         """
         bg, fg, icon = _type_style(result["circuit_type"])
-        super().__init__(parent, corner_radius=12,
+        super().__init__(parent, corner_radius=R["lg"],
                          fg_color=bg,
                          border_width=1,
                          border_color=_darken(bg))
@@ -893,14 +861,13 @@ class _CircuitCard(ctk.CTkFrame):
         ctk.CTkLabel(hdr, text=icon,
                      font=ctk.CTkFont(size=16)).pack(side="left", padx=(0, 6))
         ctk.CTkLabel(hdr, text=result["circuit_type"],
-                     font=ctk.CTkFont("Segoe UI", 12, "bold"),
+                     font=ui_kit.font("subtitle", "bold"),
                      text_color=fg, wraplength=220,
                      justify="left", anchor="w").pack(side="left")
-        ctk.CTkButton(hdr, text="🔬",
-                      width=30, height=24, corner_radius=6,
-                      font=ctk.CTkFont(size=14),
-                      fg_color=_darken(bg), hover_color=_brighten(_darken(bg)),
-                      command=self._open_schema).pack(side="right")
+        ui_kit.IconButton(hdr, "maximize", self._open_schema,
+                          width=30, height=24, corner_radius=6,
+                          fg_color=_darken(bg),
+                          hover_color=_brighten(_darken(bg))).pack(side="right")
 
         # Divider
         ctk.CTkFrame(self, height=1,
@@ -911,7 +878,7 @@ class _CircuitCard(ctk.CTkFrame):
         c_row = ctk.CTkFrame(self, fg_color="transparent")
         c_row.pack(fill="x", padx=12, pady=(4, 2))
         ctk.CTkLabel(c_row, text="Composants",
-                     font=ctk.CTkFont("Segoe UI", 9),
+                     font=ui_kit.font("caption"),
                      text_color=MUTED, width=75,
                      anchor="w").pack(side="left")
         refs_text = "  ".join(result["components"])
@@ -926,7 +893,7 @@ class _CircuitCard(ctk.CTkFrame):
             n_row = ctk.CTkFrame(self, fg_color="transparent")
             n_row.pack(fill="x", padx=12, pady=(0, 10))
             ctk.CTkLabel(n_row, text="Nœuds",
-                         font=ctk.CTkFont("Segoe UI", 9),
+                         font=ui_kit.font("caption"),
                          text_color=MUTED, width=75,
                          anchor="w").pack(side="left")
             nodes = [n for n in result["nodes"] if n]
