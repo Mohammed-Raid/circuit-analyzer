@@ -10,7 +10,8 @@ from tkinter import messagebox
 from circuit_analyzer.composant import (
     TYPES_COMPOSANTS as COMPONENT_TYPES, chemin_bibliotheque,
 )
-from gui.theme import BG, CARD, CARD2, BORDER, TEXT, MUTED
+from gui.theme import BG, CARD, CARD2, TEXT, TEXT_MUTED, BLUE, ERROR
+from gui import ui_kit
 from gui.widgets import ListeSectionnee, BandeauEtat, ligne_aide, lier_molette
 
 
@@ -51,11 +52,11 @@ class TabComponents:
         h = ctk.CTkFrame(header, fg_color="transparent")
         h.pack(fill="both", expand=True, padx=28)
         ctk.CTkLabel(h, text="Bibliothèque de composants",
-                     font=ctk.CTkFont("Segoe UI", 18, "bold"),
+                     font=ui_kit.font("display"),
                      text_color=TEXT).pack(side="left", pady=18)
         ctk.CTkLabel(h, text="Consulter les types intégrés, créer les vôtres",
-                     font=ctk.CTkFont("Segoe UI", 12),
-                     text_color=MUTED).pack(side="left", padx=14)
+                     font=ui_kit.font("body"),
+                     text_color=TEXT_MUTED).pack(side="left", padx=14, pady=18)
 
         body = ctk.CTkFrame(self.frame, fg_color="transparent")
         body.pack(fill="both", expand=True, padx=20, pady=16)
@@ -71,8 +72,7 @@ class TabComponents:
         self._liste.frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
 
         # ── Droite : bandeau + formulaire scrollable + pied épinglé
-        right = ctk.CTkFrame(body, corner_radius=14, fg_color=CARD,
-                             border_width=1, border_color=BORDER)
+        right = ui_kit.Card(body)
         right.grid(row=0, column=1, sticky="nsew")
 
         self._bandeau = BandeauEtat(right)
@@ -84,64 +84,47 @@ class TabComponents:
         form.pack(fill="both", expand=True, padx=14, pady=(0, 4))
         self._form = form
 
-        ctk.CTkLabel(form, text="Préfixe",
-                     font=ctk.CTkFont("Segoe UI", 11),
-                     text_color=MUTED).pack(anchor="w")
+        ui_kit.SectionHeader(form, "Préfixe").pack(anchor="w")
         pfx_row = ctk.CTkFrame(form, fg_color="transparent")
         pfx_row.pack(fill="x", pady=(4, 2))
         self._prefix_var = tk.StringVar()
         self._prefix_var.trace_add("write", self._valider_prefixe)
-        self._prefix_entry = ctk.CTkEntry(
+        self._prefix_entry = ui_kit.Field(
             pfx_row, textvariable=self._prefix_var,
-            width=110, height=40, corner_radius=8,
-            font=ctk.CTkFont("Segoe UI", 14, "bold"),
-            fg_color=CARD2, border_color=BORDER,
-            text_color="#60a5fa", placeholder_text="IC")
+            placeholder="IC", width=110, height=40,
+            font=ui_kit.font("subtitle", "bold"),
+            text_color=BLUE)
         self._prefix_entry.pack(side="left")
         self._pfx_warn = ctk.CTkLabel(pfx_row, text="",
-                                      font=ctk.CTkFont("Segoe UI", 11),
-                                      text_color="#f87171")
+                                      font=ui_kit.font("caption"),
+                                      text_color=ERROR)
         self._pfx_warn.pack(side="left", padx=10)
         ligne_aide(form, "Lettres en début de référence dans la netlist : "
                          "R1 -> préfixe R, IC3 -> préfixe IC.")
 
-        ctk.CTkLabel(form, text="Nom complet",
-                     font=ctk.CTkFont("Segoe UI", 11),
-                     text_color=MUTED).pack(anchor="w")
+        ui_kit.SectionHeader(form, "Nom complet").pack(anchor="w")
         self._name_var = tk.StringVar()
-        self._name_entry = ctk.CTkEntry(
+        self._name_entry = ui_kit.Field(
             form, textvariable=self._name_var,
-            height=40, corner_radius=8,
-            font=ctk.CTkFont("Segoe UI", 12),
-            fg_color=CARD2, border_color=BORDER,
-            text_color=TEXT, placeholder_text="Ex: Circuit intégré")
+            placeholder="Ex: Circuit intégré", height=40)
         self._name_entry.pack(fill="x", pady=(4, 2))
         ligne_aide(form, "Nom lisible affiché dans les listes et le rapport.")
 
-        ctk.CTkLabel(form, text="Broches",
-                     font=ctk.CTkFont("Segoe UI", 11),
-                     text_color=MUTED).pack(anchor="w")
-        pins_card = ctk.CTkFrame(form, corner_radius=10, fg_color=CARD2,
-                                 border_width=1, border_color=BORDER)
+        ui_kit.SectionHeader(form, "Broches").pack(anchor="w")
+        pins_card = ui_kit.Card(form, fg_color=CARD2)
         pins_card.pack(fill="x", pady=(4, 6))
         self._pins_inner = ctk.CTkFrame(pins_card, fg_color="transparent")
         self._pins_inner.pack(fill="x", padx=10, pady=10)
 
         pin_btns = ctk.CTkFrame(form, fg_color="transparent")
         pin_btns.pack(fill="x", pady=(0, 2))
-        self._btn_add_pin = ctk.CTkButton(
-            pin_btns, text="＋ Broche", width=110, height=32,
-            corner_radius=6, font=ctk.CTkFont("Segoe UI", 11),
-            fg_color=CARD, hover_color="#263347",
-            border_width=1, border_color=BORDER,
-            command=self._ajouter_broche)
+        self._btn_add_pin = ui_kit.SecondaryButton(
+            pin_btns, "Ajouter une broche", self._ajouter_broche,
+            icon_name="plus", width=170, height=32)
         self._btn_add_pin.pack(side="left", padx=(0, 6))
-        self._btn_del_pin = ctk.CTkButton(
-            pin_btns, text="− Broche", width=110, height=32,
-            corner_radius=6, font=ctk.CTkFont("Segoe UI", 11),
-            fg_color=CARD, hover_color="#263347",
-            border_width=1, border_color=BORDER,
-            command=self._retirer_broche)
+        self._btn_del_pin = ui_kit.SecondaryButton(
+            pin_btns, "Retirer la broche", self._retirer_broche,
+            icon_name="x", width=170, height=32)
         self._btn_del_pin.pack(side="left")
         ligne_aide(form, "Noms des broches dans l'ordre de la netlist "
                          "(ex : B, C, E pour un transistor).")
@@ -149,18 +132,12 @@ class TabComponents:
         # ── Pied épinglé (hors scroll) : toujours visible
         pied = ctk.CTkFrame(right, fg_color="transparent")
         pied.pack(fill="x", padx=14, pady=(0, 14))
-        self._btn_save = ctk.CTkButton(
-            pied, text="💾  Sauvegarder le composant",
-            height=42, corner_radius=10,
-            font=ctk.CTkFont("Segoe UI", 13, "bold"),
-            fg_color="#15803d", hover_color="#16a34a",
-            command=self._sauvegarder)
-        self._btn_dupliquer = ctk.CTkButton(
-            pied, text="⧉  Dupliquer comme personnalisé",
-            height=42, corner_radius=10,
-            font=ctk.CTkFont("Segoe UI", 13, "bold"),
-            fg_color="#1d4ed8", hover_color="#3b82f6",
-            command=self._dupliquer)
+        self._btn_save = ui_kit.PrimaryButton(
+            pied, "Sauvegarder le composant", self._sauvegarder,
+            icon_name="save", height=42)
+        self._btn_dupliquer = ui_kit.SecondaryButton(
+            pied, "Dupliquer comme personnalisé", self._dupliquer,
+            icon_name="copy", height=42)
         self._btn_save.pack(fill="x")
 
         # La molette défile le formulaire même au-dessus des champs et des
@@ -281,15 +258,15 @@ class TabComponents:
         row = ctk.CTkFrame(self._pins_inner, fg_color="transparent")
         row.pack(anchor="w", pady=2)
         ctk.CTkLabel(row, text=f"{n}.",
-                     width=24, font=ctk.CTkFont("Segoe UI", 10),
-                     text_color=MUTED).pack(side="left")
+                     width=24, font=ui_kit.font("caption"),
+                     text_color=TEXT_MUTED).pack(side="left")
         var = tk.StringVar(value=valeur)
-        entry = ctk.CTkEntry(row, textvariable=var,
-                             width=140, height=30, corner_radius=6,
-                             font=ctk.CTkFont("Consolas", 11),
-                             fg_color=CARD, border_color=BORDER,
-                             text_color="#60a5fa",
-                             placeholder_text=f"Broche {n}")
+        entry = ui_kit.Field(
+            row, textvariable=var,
+            placeholder=f"Broche {n}",
+            width=140, height=30, corner_radius=6,
+            font=ctk.CTkFont("Consolas", 11),
+            text_color=BLUE)
         entry.pack(side="left")
         self._pin_lignes.append((var, entry))
         # Nouvelle ligne → la relier à la molette du formulaire scrollable.

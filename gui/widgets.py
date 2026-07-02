@@ -13,11 +13,12 @@
 import tkinter as tk
 import customtkinter as ctk
 
-from gui.theme import CARD, CARD2, BORDER, TEXT, MUTED, BLUE, BLUE_D
+from gui import theme
+from gui import ui_kit
 
-_GRIS_INTEGRE = "#94a3b8"   # éléments intégrés : consultables, non modifiables
-_BLEU_PERSO   = "#60a5fa"   # éléments personnalisés (étoile)
-_GRIS_ENTETE  = "#475569"   # en-têtes de section
+_GRIS_INTEGRE = theme.TEXT_MUTED   # éléments intégrés : consultables, non modifiables
+_BLEU_PERSO   = theme.BLUE         # éléments personnalisés (étoile)
+_GRIS_ENTETE  = theme.TEXT_DIM     # en-têtes de section
 
 
 class ListeSectionnee:
@@ -47,27 +48,25 @@ class ListeSectionnee:
         # rangée listbox -> ('entete', None) | ('integre', i) | ('perso', i)
         self._lignes: list[tuple] = []
 
-        self.frame = ctk.CTkFrame(parent, corner_radius=14, fg_color=CARD,
-                                  border_width=1, border_color=BORDER)
+        self.frame = ui_kit.Card(parent)
         self.frame.grid_rowconfigure(1, weight=1)
         self.frame.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(self.frame, text=titre,
-                     font=ctk.CTkFont("Segoe UI", 12, "bold"),
-                     text_color=TEXT).grid(row=0, column=0, sticky="w",
-                                           padx=14, pady=(14, 6))
+        ui_kit.SectionHeader(self.frame, titre).grid(
+            row=0, column=0, sticky="w", padx=14, pady=(14, 6))
 
-        lb_f = ctk.CTkFrame(self.frame, fg_color=CARD2, corner_radius=8)
+        lb_f = ctk.CTkFrame(self.frame, fg_color=theme.SURFACE,
+                            corner_radius=theme.R["md"])
         lb_f.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 8))
         self._listbox = tk.Listbox(
             lb_f, width=32, height=24,
-            bg=CARD2, fg=MUTED,
-            selectbackground=BLUE_D, selectforeground=TEXT,
-            font=("Segoe UI", 11), relief="flat", bd=0,
+            bg=theme.SURFACE, fg=theme.TEXT_MUTED,
+            selectbackground=theme.BLUE_PRESS, selectforeground=theme.TEXT,
+            font=ui_kit.font("body"), relief="flat", bd=0,
             activestyle="none", highlightthickness=0,
         )
         sb = tk.Scrollbar(lb_f, command=self._listbox.yview,
-                          bg=CARD, troughcolor=CARD2)
+                          bg=theme.RAISED, troughcolor=theme.SURFACE)
         self._listbox.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self._listbox.pack(fill="both", expand=True, padx=6, pady=6)
@@ -75,15 +74,12 @@ class ListeSectionnee:
 
         br = ctk.CTkFrame(self.frame, fg_color="transparent")
         br.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 12))
-        ctk.CTkButton(br, text="＋  Nouveau", height=36,
-                      corner_radius=8, font=ctk.CTkFont("Segoe UI", 12),
-                      fg_color=BLUE_D, hover_color=BLUE,
-                      command=on_new).pack(side="left", expand=True,
-                                           padx=(0, 4))
-        ctk.CTkButton(br, text="🗑  Supprimer", height=36,
-                      corner_radius=8, font=ctk.CTkFont("Segoe UI", 12),
-                      fg_color="#7f1d1d", hover_color="#991b1b",
-                      command=on_delete).pack(side="left", expand=True)
+        ui_kit.PrimaryButton(
+            br, "Nouveau", on_new, icon_name="plus",
+            height=36).pack(side="left", expand=True, fill="x", padx=(0, 4))
+        ui_kit.DangerButton(
+            br, "Supprimer", on_delete, icon_name="trash-2",
+            height=36).pack(side="left", expand=True, fill="x")
 
     def remplir(self, integres: list[str], personnalises: list[str]) -> None:
         """@brief (Re)peuple la liste : section intégrés puis section personnalisés.
@@ -155,7 +151,7 @@ class BandeauEtat:
     _STYLES = {
         'nouveau':  ("#14532d", "#4ade80"),   # fond vert sombre, texte vert
         'edition':  ("#1e3a8a", "#93c5fd"),   # fond bleu sombre, texte bleu
-        'lecture':  ("#374151", "#d1d5db"),   # fond gris, texte gris clair
+        'lecture':  (theme.SURFACE, theme.TEXT_MUTED),
     }
 
     def __init__(self, parent):
@@ -164,10 +160,10 @@ class BandeauEtat:
         @param parent Widget parent.
         @return None
         """
-        self._frame = ctk.CTkFrame(parent, corner_radius=8, height=34)
+        self._frame = ctk.CTkFrame(parent, corner_radius=theme.R["md"], height=34)
         self._frame.pack_propagate(False)
         self._label = ctk.CTkLabel(self._frame, text="",
-                                   font=ctk.CTkFont("Segoe UI", 12, "bold"))
+                                   font=ui_kit.font("body", "bold"))
         self._label.pack(side="left", padx=12, pady=6)
 
     def pack(self, **kwargs):
@@ -201,8 +197,8 @@ def ligne_aide(parent, texte: str) -> ctk.CTkLabel:
     @return ctk.CTkLabel Le label créé.
     """
     label = ctk.CTkLabel(parent, text=texte,
-                         font=ctk.CTkFont("Segoe UI", 10),
-                         text_color=MUTED, justify="left", anchor="w")
+                         font=ui_kit.font("caption"),
+                         text_color=theme.TEXT_DIM, justify="left", anchor="w")
     label.pack(anchor="w", pady=(0, 8))
     return label
 
