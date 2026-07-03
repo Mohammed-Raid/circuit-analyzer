@@ -147,3 +147,30 @@ def test_make_island_fig_detaille_deplie_z_generique_sans_hitbox():
     assert "Z1\n(R1)+(R2)" not in textes
     assert any("R1" in t for t in textes)
     assert any("R2" in t for t in textes)
+
+
+def test_z_reseau_compact_utilise_labels_refs_seules():
+    """Un reseau composite tres compresse dans un montage principal ne doit pas
+    empiler des labels ref+valeur qui se marchent dessus."""
+    from matplotlib.figure import Figure
+    import schemdraw
+    import gui.circuit_viewer as cv
+
+    fig = Figure(figsize=(4, 3))
+    ax = fig.add_subplot(111)
+    ax.axis("off")
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d.config(fontsize=10, inches_per_unit=0.5)
+        d._z_hitboxes = []
+        d._mode_detaille = True
+        bloc = {"refs": ["C1", "L1", "R2"], "composition": "(C1)//((L1)+(R2))"}
+        ci = {
+            "C1": {"type": "C", "value": "10n"},
+            "L1": {"type": "L", "value": "80m"},
+            "R2": {"type": "R", "value": "100k"},
+        }
+        cv._z_reseau(d, (0.0, 0.0), (1.4, 0.0), bloc, ci)
+
+    textes = {t.get_text() for t in ax.texts}
+    assert {"C1", "L1", "R2"} <= textes
+    assert not any("\n" in t for t in textes)

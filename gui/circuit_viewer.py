@@ -82,6 +82,7 @@ _ISLAND_ZOOM_STEP = 1.25
 _Z_DETAIL_PERP_MIN_SCALE = 0.85
 _Z_DETAIL_LABEL_AXIS_EPS = 0.05
 _Z_DETAIL_LABEL_FONTSIZE = 7
+_Z_DETAIL_COMPACT_LABEL_SCALE = 0.65
 _Z_BOX_LABEL_FONTSIZE = 10
 
 
@@ -2195,6 +2196,9 @@ def _z_reseau(d, p1, p2, bloc, ci) -> bool:
     arbre = impedance.arbre_expr(bloc["composition"])
     if arbre is None:
         return False
+    _sym_loc, _fils_loc, dims = impedance_schematic.agencer(arbre)
+    dist_segment = math.hypot(p2[0] - p1[0], p2[1] - p1[1])
+    compact = bool(dims.largeur and dist_segment / dims.largeur < _Z_DETAIL_COMPACT_LABEL_SCALE)
     symboles, fils = _agencement_entre(p1, p2, arbre)
     dx, dy = p2[0] - p1[0], p2[1] - p1[1]
     dist = math.hypot(dx, dy) or 1.0
@@ -2203,6 +2207,8 @@ def _z_reseau(d, p1, p2, bloc, ci) -> bool:
         typ = info.get("type", "")
         cls, coul, label = impedance_schematic.style_symbole(
             typ, info.get("value", ""), ref)
+        if compact:
+            label = ref
         mx, my = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
         signed_perp = ((mx - p1[0]) * (-dy) + (my - p1[1]) * dx) / dist
         # Les labels explicites evitent que schemdraw les colle au symbole voisin ;
