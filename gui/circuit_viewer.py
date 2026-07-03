@@ -2142,12 +2142,16 @@ def _agencement_entre(p1, p2, arbre):
     dx, dy = p2[0] - p1[0], p2[1] - p1[1]
     dist = math.hypot(dx, dy)
     echelle = dist / dims.largeur if dims.largeur else 0.0
+    # Les couplages courts compriment fortement les branches paralleles si l'on
+    # applique l'echelle uniforme aux deux axes. Garder un minimum perpendiculaire
+    # preserve la lisibilite des labels sans changer les bornes p1/p2.
+    echelle_perp = max(echelle, 0.85)
     theta = math.atan2(dy, dx)
     cos_t, sin_t = math.cos(theta), math.sin(theta)
 
     def _vers_global(lx, ly):
         along = lx * echelle
-        perp = (ly - dims.y_borne) * echelle
+        perp = (ly - dims.y_borne) * echelle_perp
         return (p1[0] + along * cos_t - perp * sin_t,
                 p1[1] + along * sin_t + perp * cos_t)
 
@@ -2178,12 +2182,20 @@ def _z_reseau(d, p1, p2, bloc, ci) -> bool:
     if arbre is None:
         return False
     symboles, fils = _agencement_entre(p1, p2, arbre)
+    dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+    dist = math.hypot(dx, dy) or 1.0
     for ref, pa, pb in symboles:
         info = ci.get(ref, {})
         typ = info.get("type", "")
         cls, coul, label = impedance_schematic.style_symbole(
             typ, info.get("value", ""), ref)
-        d.add(cls().at(pa).to(pb).color(coul).label(label, fontsize=9, color=coul))
+        mx, my = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
+        signed_perp = ((mx - p1[0]) * (-dy) + (my - p1[1]) * dx) / dist
+        # Les labels explicites evitent que schemdraw les colle au symbole voisin ;
+        # pour une branche sous l'axe, "top" evite aussi de poser le texte sur le rail.
+        loc = "top" if signed_perp < -0.05 else "bottom"
+        d.add(cls().at(pa).to(pb).color(coul).label(
+            label, loc=loc, fontsize=7, color=coul))
     for pa, pb in fils:
         d.add(elm.Line().at(pa).to(pb).color(_WIRE))
     return True
@@ -2228,10 +2240,14 @@ def _z_box(d, p1, p2, name, bloc, ci, label_loc="top"):
     if not dessine:
         d.add(elm.ResistorIEC().at(p1).to(p2).color(_Z_EDGE).fill(_Z_FILL))
         label = _z_label_anchor(p1, p2, label_loc)
+        # fontsize explicite (au lieu du 13/14 par defaut du Drawing) : une boite Z
+        # posee pres d'un composant voisin (ex. Rc du montage emetteur commun)
+        # voyait son etiquette (parfois 2 lignes) deborder sur le symbole voisin.
         d.add(elm.Label().at(label["pos"]).label(
             _z_label(name, bloc, ci),
             halign=label["ha"],
             valign=label["va"],
+            fontsize=10,
             color=_Z_EDGE,
         ))
     _enregistrer_hitbox(d, p1, p2, bloc["refs"], bloc["composition"])
