@@ -79,6 +79,11 @@ _ISLAND_ZOOM_MIN = 0.5
 _ISLAND_ZOOM_MAX = 3.0
 _ISLAND_ZOOM_STEP = 1.25
 
+_Z_DETAIL_PERP_MIN_SCALE = 0.85
+_Z_DETAIL_LABEL_AXIS_EPS = 0.05
+_Z_DETAIL_LABEL_FONTSIZE = 7
+_Z_BOX_LABEL_FONTSIZE = 10
+
 
 def _island_zoom_next(current, direction):
     """@brief Calcule le prochain facteur de zoom pour les boutons -/100%/+
@@ -2145,7 +2150,7 @@ def _agencement_entre(p1, p2, arbre):
     # Les couplages courts compriment fortement les branches paralleles si l'on
     # applique l'echelle uniforme aux deux axes. Garder un minimum perpendiculaire
     # preserve la lisibilite des labels sans changer les bornes p1/p2.
-    echelle_perp = max(echelle, 0.85)
+    echelle_perp = max(echelle, _Z_DETAIL_PERP_MIN_SCALE)
     theta = math.atan2(dy, dx)
     cos_t, sin_t = math.cos(theta), math.sin(theta)
 
@@ -2193,9 +2198,9 @@ def _z_reseau(d, p1, p2, bloc, ci) -> bool:
         signed_perp = ((mx - p1[0]) * (-dy) + (my - p1[1]) * dx) / dist
         # Les labels explicites evitent que schemdraw les colle au symbole voisin ;
         # pour une branche sous l'axe, "top" evite aussi de poser le texte sur le rail.
-        loc = "top" if signed_perp < -0.05 else "bottom"
+        loc = "top" if signed_perp < -_Z_DETAIL_LABEL_AXIS_EPS else "bottom"
         d.add(cls().at(pa).to(pb).color(coul).label(
-            label, loc=loc, fontsize=7, color=coul))
+            label, loc=loc, fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
     for pa, pb in fils:
         d.add(elm.Line().at(pa).to(pb).color(_WIRE))
     return True
@@ -2247,7 +2252,7 @@ def _z_box(d, p1, p2, name, bloc, ci, label_loc="top"):
             _z_label(name, bloc, ci),
             halign=label["ha"],
             valign=label["va"],
-            fontsize=10,
+            fontsize=_Z_BOX_LABEL_FONTSIZE,
             color=_Z_EDGE,
         ))
     _enregistrer_hitbox(d, p1, p2, bloc["refs"], bloc["composition"])
