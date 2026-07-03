@@ -84,7 +84,9 @@ _Z_DETAIL_LABEL_AXIS_EPS = 0.05
 _Z_DETAIL_LABEL_FONTSIZE = 7
 _Z_DETAIL_LABEL_CLEAR = 0.3
 _Z_DETAIL_COMPACT_LABEL_SCALE = 0.65
-_Z_DETAIL_COMPACT_INLINE_MAX = 2
+_Z_DETAIL_COMPACT_INLINE_MAX = 3
+_Z_DETAIL_COMPACT_SIDE_CLEAR = 0.45
+_Z_DETAIL_COMPACT_PERP_SCALE = 0.55
 _Z_BOX_LABEL_FONTSIZE = 10
 
 
@@ -2179,7 +2181,68 @@ def _agencement_entre(p1, p2, arbre):
     return symboles, fils
 
 
-def _z_reseau(d, p1, p2, bloc, ci) -> bool:
+def _label_loc_side(label_loc, nx, ny):
+    """@brief Signe du cote de decalage correspondant a un label_loc."""
+    vecteurs = {
+        "top": (0.0, 1.0),
+        "bottom": (0.0, -1.0),
+        "left": (-1.0, 0.0),
+        "right": (1.0, 0.0),
+    }
+    vx, vy = vecteurs.get(label_loc, vecteurs["top"])
+    return 1.0 if vx * nx + vy * ny >= 0 else -1.0
+
+
+def _agencement_compact_decale(p1, p2, arbre, label_loc="top"):
+    """@brief Agencement compact decale d'un reseau trop dense.
+
+    Quand le segment principal est trop court, le depliage lineaire ecrase les
+    branches paralleles. Ce placement garde les bornes p1/p2, mais pousse tout
+    le reseau d'un seul cote avec deux petits fils de liaison orthogonaux :
+    l'utilisateur voit toujours les vrais symboles R/L/C, sans boite Z ni
+    chevauchement des deux cotes du fil porteur.
+    """
+    from gui import impedance_schematic
+
+    symboles_loc, fils_loc, dims = impedance_schematic.agencer(arbre)
+    dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+    dist = math.hypot(dx, dy)
+    echelle = dist / dims.largeur if dims.largeur else 0.0
+    dist_norm = dist or 1.0
+    ux, uy = dx / dist_norm, dy / dist_norm
+    nx, ny = -uy, ux
+    cote = _label_loc_side(label_loc, nx, ny)
+    local_ys = [dims.y_borne]
+    local_ys.extend(y for _ref, _x1, _x2, y in symboles_loc)
+    for (xa, ya), (xb, yb) in fils_loc:
+        local_ys.extend((ya, yb))
+    rels = [y - dims.y_borne for y in local_ys]
+    min_rel, max_rel = min(rels), max(rels)
+    echelle_perp = max(echelle, _Z_DETAIL_COMPACT_PERP_SCALE)
+
+    def _rang(rel):
+        if cote >= 0:
+            return rel - min_rel
+        return max_rel - rel
+
+    def _vers_global(lx, ly):
+        along = lx * echelle
+        rel = ly - dims.y_borne
+        perp = cote * (_Z_DETAIL_COMPACT_SIDE_CLEAR + _rang(rel) * echelle_perp)
+        return (p1[0] + along * ux + perp * nx,
+                p1[1] + along * uy + perp * ny)
+
+    symboles = [(ref, _vers_global(x1, y), _vers_global(x2, y))
+                for ref, x1, x2, y in symboles_loc]
+    fils = [(_vers_global(xa, ya), _vers_global(xb, yb))
+            for (xa, ya), (xb, yb) in fils_loc]
+    entree = _vers_global(0.0, dims.y_borne)
+    sortie = _vers_global(dims.largeur, dims.y_borne)
+    fils.extend([(p1, entree), (sortie, p2)])
+    return symboles, fils, entree, sortie
+
+
+def _z_reseau(d, p1, p2, bloc, ci, label_loc="top") -> bool:
     """@brief Dessine le réseau R/L/C réel de `bloc` entre p1 et p2 (vue détaillée).
 
     Déplie la composition (`bloc["composition"]`) en son arbre série/parallèle
@@ -2201,16 +2264,14 @@ def _z_reseau(d, p1, p2, bloc, ci) -> bool:
     _sym_loc, _fils_loc, dims = impedance_schematic.agencer(arbre)
     dist_segment = math.hypot(p2[0] - p1[0], p2[1] - p1[1])
     compact = bool(dims.largeur and dist_segment / dims.largeur < _Z_DETAIL_COMPACT_LABEL_SCALE)
-    # Au-dela de _Z_DETAIL_COMPACT_INLINE_MAX symboles, un reseau compresse sur
-    # un segment court se chevauche lui-meme (les branches n'ont plus la place
-    # de respirer) -> repli boite Z. En dessous (typiquement 2 branches
-    # paralleles, ex. R2//C1), le reseau se deplie toujours : c'est le
-    # placement des labels ci-dessous (vers l'axe, pas vers l'exterieur) qui
-    # evite le chevauchement avec un voisin externe, pas le repli en boite.
-    if compact and len(_sym_loc) > _Z_DETAIL_COMPACT_INLINE_MAX:
-        return False
-    symboles, fils = _agencement_entre(p1, p2, arbre)
-    dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+    decale = compact and len(_sym_loc) > _Z_DETAIL_COMPACT_INLINE_MAX
+    if decale:
+        symboles, fils, label_p1, label_p2 = _agencement_compact_decale(
+            p1, p2, arbre, label_loc)
+    else:
+        symboles, fils = _agencement_entre(p1, p2, arbre)
+        label_p1, label_p2 = p1, p2
+    dx, dy = label_p2[0] - label_p1[0], label_p2[1] - label_p1[1]
     dist = math.hypot(dx, dy) or 1.0
     nx, ny = -dy / dist, dx / dist
     for ref, pa, pb in symboles:
@@ -2221,7 +2282,14 @@ def _z_reseau(d, p1, p2, bloc, ci) -> bool:
         if compact:
             label = ref
         mx, my = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
-        signed_perp = ((mx - p1[0]) * (-dy) + (my - p1[1]) * dx) / dist
+        sdx, sdy = pb[0] - pa[0], pb[1] - pa[1]
+        if decale and abs(sdy) > abs(sdx):
+            d.add(cls().at(pa).to(pb).color(coul))
+            d.add(elm.Label().at((mx, max(pa[1], pb[1]) + 0.08)).label(
+                label, halign="center", valign="bottom",
+                fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
+            continue
+        signed_perp = ((mx - label_p1[0]) * (-dy) + (my - label_p1[1]) * dx) / dist
         if abs(signed_perp) < _Z_DETAIL_LABEL_AXIS_EPS:
             # Axe quasi nul (reseau serie, une seule rangee) : le label reste
             # attache au symbole (comme avant) ; "top" pousse le label du cote
@@ -2292,7 +2360,7 @@ def _z_box(d, p1, p2, name, bloc, ci, label_loc="top"):
             label = f"{ref}\n{vfmt}" if vfmt else ref
             d.add(cls().at(p1).to(p2).color(coul).label(label, fontsize=9, color=coul))
             dessine = True
-        elif _z_reseau(d, p1, p2, bloc, ci):
+        elif _z_reseau(d, p1, p2, bloc, ci, label_loc=label_loc):
             dessine = True
     if not dessine:
         d.add(elm.ResistorIEC().at(p1).to(p2).color(_Z_EDGE).fill(_Z_FILL))

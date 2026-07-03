@@ -149,10 +149,12 @@ def test_make_island_fig_detaille_deplie_z_generique_sans_hitbox():
     assert any("R2" in t for t in textes)
 
 
-def test_z_reseau_compact_trop_dense_reste_en_boite_z():
-    """Un reseau composite trop compresse dans un montage principal ne doit pas
-    tenter un depliage inline : les symboles eux-memes se chevaucheraient."""
+def test_z_reseau_compact_trop_dense_dessine_des_symboles_reels():
+    """Un reseau composite trop compresse dans un montage principal reste en
+    vue detaillee R/L/C : il est decale, mais avec les vrais symboles, pas une
+    simple ligne annotee."""
     from matplotlib.figure import Figure
+    from schemdraw.elements.lines import Label
     import schemdraw
     import gui.circuit_viewer as cv
 
@@ -163,13 +165,18 @@ def test_z_reseau_compact_trop_dense_reste_en_boite_z():
         d.config(fontsize=10, inches_per_unit=0.5)
         d._z_hitboxes = []
         d._mode_detaille = True
-        bloc = {"refs": ["C1", "L1", "R2"], "composition": "(C1)//((L1)+(R2))"}
+        bloc = {"refs": ["C1", "L1", "R2", "R3"], "composition": "(C1)//(L1)//(R2)//(R3)"}
         ci = {
             "C1": {"type": "C", "value": "10n"},
             "L1": {"type": "L", "value": "80m"},
             "R2": {"type": "R", "value": "100k"},
+            "R3": {"type": "R", "value": "47k"},
         }
         dessine = cv._z_reseau(d, (0.0, 0.0), (1.4, 0.0), bloc, ci)
+        elements_non_label = [e for e in d.elements if not isinstance(e, Label)]
 
-    assert dessine is False
-    assert not ax.texts
+    textes = {t.get_text() for t in ax.texts}
+    assert dessine is True
+    assert {"C1", "L1", "R2", "R3"} <= textes
+    assert not any(t.startswith("Z") for t in textes)
+    assert len(elements_non_label) >= 4
