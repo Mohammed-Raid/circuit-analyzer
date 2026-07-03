@@ -1,11 +1,6 @@
 """Expansion d'une composition Z en réseau R/L/C entre deux points (vue détaillée)."""
-import math
 from circuit_analyzer.impedance import arbre_expr
 from gui.circuit_viewer import _agencement_entre
-
-
-def _pres(a, b, tol=1e-6):
-    return abs(a[0] - b[0]) < tol and abs(a[1] - b[1]) < tol
 
 
 def test_serie_horizontale_reste_sur_l_axe():
@@ -125,3 +120,30 @@ def test_make_fig_labels_dans_le_cadre():
                 f"label {txt.get_text()!r} en ({x}, {y}) hors cadre "
                 f"xlim={ax.get_xlim()} ylim={ax.get_ylim()} (detaille={detaille})"
             )
+
+
+def test_make_island_fig_detaille_deplie_z_generique_sans_hitbox():
+    import gui.circuit_viewer as cv
+
+    model = {
+        "label": "Ilot generique",
+        "components": [{
+            "ref": "Z1", "type": "Z", "value": "",
+            "pins": {"1": "A", "2": "B"},
+            "symbol": "impedance",
+            "refs": ["R1", "R2"],
+            "composition": "(R1)+(R2)",
+            "detail_info": {
+                "R1": {"type": "R", "value": "10k"},
+                "R2": {"type": "R", "value": "4.7k"},
+            },
+        }],
+    }
+    fig_z = cv._make_island_fig(model)
+    fig_d = cv._make_island_fig(model, detaille=True)
+    assert fig_z._z_hitboxes, "fallback generique Z : la boite reste cliquable"
+    assert fig_d._z_hitboxes == [], "fallback detaille : aucune hitbox"
+    textes = [t.get_text() for ax in fig_d.axes for t in ax.texts]
+    assert "Z1\n(R1)+(R2)" not in textes
+    assert any("R1" in t for t in textes)
+    assert any("R2" in t for t in textes)

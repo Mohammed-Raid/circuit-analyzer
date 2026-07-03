@@ -193,10 +193,12 @@ def _build_island_model(ilot: dict, graph, comp_info: dict) -> dict:
             })
         elif typ in {"R", "L", "C", "Z"}:
             z_index += 1
+            detail_info = {r: _info_for_ref(r, graph, comp_info) for r in refs}
             units.append({
                 "ref": f"Z{z_index}", "type": "Z", "value": "",
                 "pins": {"1": u, "2": v},
                 "symbol": "impedance", "refs": refs, "composition": composition,
+                "detail_info": detail_info,
             })
         else:
             # autre dipole 2 bornes (ex. relais) : on garde son symbole/ref.
@@ -625,10 +627,10 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                  text_color=theme.TEXT_DIM).pack(side="left")
     for comp in model["components"]:
         txt = f" {comp['ref']} {comp.get('value', '')} ".strip()
-        color = _COMP_COLORS.get(comp.get("type"), "#374151")
+        color = _COMP_COLORS.get(comp.get("type"), theme.OVERLAY)
         ctk.CTkLabel(chips, text=txt,
                      font=ui_kit.font("caption", "bold"),
-                     fg_color=color, text_color="#ffffff",
+                     fg_color=color, text_color=theme.TEXT,
                      corner_radius=4).pack(side="left", padx=3)
 
     principal = _circuit_principal_ilot(ilot, graph, results)
@@ -1155,9 +1157,8 @@ def _make_island_fig(model, matches=None, detaille: bool = False):
     symboles generiques pour les composants multi-broches.
 
     @param model Modele d'ilot (cf. _build_island_model).
-    @param detaille Drapeau pose sur le Drawing (`d._mode_detaille`) ; le
-        rendu générique de secours (`_draw_island_schematic`) ne le consomme
-        pas encore (posé pour cohérence d'interface avec les autres fabriques).
+    @param detaille Drapeau pose sur le Drawing (`d._mode_detaille`) ; les
+        lignes d'impedance Z du rendu generique sont alors deplies sans hitbox.
     @return matplotlib.figure.Figure Figure prete a afficher/exporter.
     """
     components = model["components"]
@@ -1519,6 +1520,7 @@ def _make_row(comp, y, net_pins, col_nets):
         "stubs": stubs,
         "refs": comp.get("refs", [comp.get("ref")]),
         "composition": comp.get("composition", comp.get("ref", "")),
+        "detail_info": comp.get("detail_info", {}),
     }
 
 
@@ -1751,9 +1753,16 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top", hitboxes=None):
     element = _SYMBOL_ELM.get(row["symbol"], elm.Resistor)
     label = _component_label(row)
 
+    def _draw_symbol(p1, p2):
+        if getattr(d, "_mode_detaille", False) and row["symbol"] == "impedance":
+            if _z_reseau(d, p1, p2, row, row.get("detail_info", {})):
+                return
+        _ajouter_symbole(d, element().at(p1).to(p2), row, label, label_loc)
+
     def _hit(xa, xb):
         # zone cliquable d'un Z (un peu elargie) pour ouvrir sa composition.
-        if hitboxes is not None and row["symbol"] == "impedance":
+        if (hitboxes is not None and row["symbol"] == "impedance"
+                and not getattr(d, "_mode_detaille", False)):
             hitboxes.append((min(xa, xb) - 0.3, max(xa, xb) + 0.3, y - 0.5, y + 0.5,
                              row.get("refs", []), row.get("composition", "")))
 
@@ -1763,8 +1772,8 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top", hitboxes=None):
         slen = min(1.6, max(0.8, right - left - 0.6))
         d += elm.Dot().at((left, y)).color(_WIRE)
         d += elm.Line().at((left, y)).tox(mid - slen / 2).color(_WIRE)
-        _ajouter_symbole(d, element().at((mid - slen / 2, y)).right(slen), row, label, label_loc)
-        d += elm.Line().tox(right).color(_WIRE)
+        _draw_symbol((mid - slen / 2, y), (mid + slen / 2, y))
+        d += elm.Line().at((mid + slen / 2, y)).tox(right).color(_WIRE)
         d += elm.Dot().at((right, y)).color(_WIRE)
         _hit(mid - slen / 2, mid + slen / 2)
         return
@@ -1777,8 +1786,8 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top", hitboxes=None):
             col_x, stub_net = x2, n1
         d += elm.Dot().at((col_x, y)).color(_WIRE)
         d += elm.Line().at((col_x, y)).right(0.3).color(_WIRE)
-        _ajouter_symbole(d, element().right(1.4), row, label, label_loc)
-        d += elm.Line().right(0.35).color(_WIRE)
+        _draw_symbol((col_x + 0.3, y), (col_x + 1.7, y))
+        d += elm.Line().at((col_x + 1.7, y)).right(0.35).color(_WIRE)
         if not _is_not_connected(stub_net):
             _draw_net_end(d, stub_net)
         _hit(col_x + 0.3, col_x + 1.7)
@@ -1787,7 +1796,7 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top", hitboxes=None):
     # composant isole (deux moignons) : symbole HORIZONTAL + deux bornes etiquetees.
     # On ne met PAS de drapeau masse/alim ici : les deux bouts sont les bornes du
     # dipole (ses ports), pas des rails distribues -> bornes nommees, dipole droit.
-    _ajouter_symbole(d, element().at((0.0, y)).right(1.4), row, label, label_loc)
+    _draw_symbol((0.0, y), (1.4, y))
     if not _is_not_connected(n1):
         d += elm.Dot().at((0.0, y)).label(n1, loc="left", color=_BUS, ofst=_LBL_OFST)
     if not _is_not_connected(n2):

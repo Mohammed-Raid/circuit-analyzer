@@ -313,7 +313,7 @@ def _bras_detaille(d, p1, p2, bras, comps):
         comp = comps.get(ref)
         typ = getattr(comp, "type", "")
         cls, coul, label = style_symbole(typ, getattr(comp, "value", ""), ref)
-        # loc="bottom" : sans ça le label colle au rail (finding review #2).
+        # loc="bottom" : evite que le label colle au rail du bras.
         d.add(cls().at(pa).to(pb).color(coul).label(
             label, loc="bottom", fontsize=9, color=coul))
     for pa, pb in fils:
