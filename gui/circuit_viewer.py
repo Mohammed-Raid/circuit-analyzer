@@ -83,6 +83,7 @@ _Z_DETAIL_PERP_MIN_SCALE = 0.85
 _Z_DETAIL_LABEL_AXIS_EPS = 0.05
 _Z_DETAIL_LABEL_FONTSIZE = 7
 _Z_DETAIL_COMPACT_LABEL_SCALE = 0.65
+_Z_DETAIL_COMPACT_INLINE_MAX = 2
 _Z_BOX_LABEL_FONTSIZE = 10
 
 
@@ -2199,6 +2200,14 @@ def _z_reseau(d, p1, p2, bloc, ci) -> bool:
     _sym_loc, _fils_loc, dims = impedance_schematic.agencer(arbre)
     dist_segment = math.hypot(p2[0] - p1[0], p2[1] - p1[1])
     compact = bool(dims.largeur and dist_segment / dims.largeur < _Z_DETAIL_COMPACT_LABEL_SCALE)
+    # Plusieurs rangees (branches paralleles empilees, ex. L1//R8) forcent un
+    # ecart perpendiculaire entre labels : compresse sur un segment court, cet
+    # ecart percute systematiquement le premier voisin externe venu (satellite
+    # Rb/Re du montage). Une composition purement serie (une seule rangee) ne
+    # pose pas ce probleme -> seul le nombre de symboles reste discriminant.
+    rangees = len({round(y, 6) for (_ref, _x1, _x2, y) in _sym_loc})
+    if compact and (len(_sym_loc) > _Z_DETAIL_COMPACT_INLINE_MAX or rangees > 1):
+        return False
     symboles, fils = _agencement_entre(p1, p2, arbre)
     dx, dy = p2[0] - p1[0], p2[1] - p1[1]
     dist = math.hypot(dx, dy) or 1.0
@@ -2213,7 +2222,14 @@ def _z_reseau(d, p1, p2, bloc, ci) -> bool:
         signed_perp = ((mx - p1[0]) * (-dy) + (my - p1[1]) * dx) / dist
         # Les labels explicites evitent que schemdraw les colle au symbole voisin ;
         # pour une branche sous l'axe, "top" evite aussi de poser le texte sur le rail.
-        loc = "top" if signed_perp < -_Z_DETAIL_LABEL_AXIS_EPS else "bottom"
+        # Axe quasi nul (reseau serie, une seule rangee) : "top" plutot que
+        # "bottom" pour un segment vertical descendant pousse le label du cote
+        # oppose a l'entree du reseau, la ou un satellite (Rb, ...) est deja
+        # etiquete juste apres le point p1 (cf. ilot_reel_ce_suiveur_sortie_rlc).
+        if abs(signed_perp) < _Z_DETAIL_LABEL_AXIS_EPS:
+            loc = "top"
+        else:
+            loc = "top" if signed_perp < -_Z_DETAIL_LABEL_AXIS_EPS else "bottom"
         d.add(cls().at(pa).to(pb).color(coul).label(
             label, loc=loc, fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
     for pa, pb in fils:

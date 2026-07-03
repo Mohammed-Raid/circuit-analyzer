@@ -193,7 +193,7 @@ def test_commande_relais_affiche_rb_satellite():
     assert any("Rb" in t for t in txts)
 
 
-def _render_ilot_xml(nom):
+def _render_ilot_xml(nom, detaille=False):
     from circuit_analyzer import detecteur
     from circuit_analyzer.composant import construire_graphe
     from circuit_analyzer.xml import lire_xml
@@ -206,11 +206,11 @@ def _render_ilot_xml(nom):
     matches = cv._matches_for_island(ilot, res)
     ordre = cv._ordonner_montages_flux(matches, ci)
     if ordre:
-        fig = cv._make_chain_fig(ordre, ci, matches=matches)
+        fig = cv._make_chain_fig(ordre, ci, matches=matches, detaille=detaille)
     else:
         principal = cv._circuit_principal_ilot(ilot, g, res)
         fig = cv._make_fig(principal, ci, cv._DRAWERS[principal["circuit_type"]],
-                           matches=matches)
+                           matches=matches, detaille=detaille)
     txts = [t.get_text() for ax in fig.axes for t in ax.texts]
     return fig, txts
 
@@ -302,6 +302,13 @@ def test_reel_suiveur_vout_label_hors_boite_z():
     # en dessous), contrairement au collecteur du CE (element aligne dessous).
     fig, _txts = _render_ilot_xml("ilot_reel_ce_suiveur_sortie_rlc.xml")
     _assert_label_hors_boites_z(fig, "VOUT")
+
+
+def test_reel_suiveur_detaille_rlc_labels_ne_se_chevauchent_pas():
+    fig, _txts = _render_ilot_xml("ilot_reel_ce_suiveur_sortie_rlc.xml", detaille=True)
+    _assert_texts_do_not_overlap(fig, "Rb", "C1")
+    _assert_texts_do_not_overlap(fig, "Re", "R8")
+    _assert_texts_do_not_overlap(fig, "Re", "L1")
 
 
 def test_darlington_xml_absorbe_resistance_emetteur_simple():

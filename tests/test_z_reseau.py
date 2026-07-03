@@ -149,9 +149,9 @@ def test_make_island_fig_detaille_deplie_z_generique_sans_hitbox():
     assert any("R2" in t for t in textes)
 
 
-def test_z_reseau_compact_utilise_labels_refs_seules():
-    """Un reseau composite tres compresse dans un montage principal ne doit pas
-    empiler des labels ref+valeur qui se marchent dessus."""
+def test_z_reseau_compact_trop_dense_reste_en_boite_z():
+    """Un reseau composite trop compresse dans un montage principal ne doit pas
+    tenter un depliage inline : les symboles eux-memes se chevaucheraient."""
     from matplotlib.figure import Figure
     import schemdraw
     import gui.circuit_viewer as cv
@@ -169,8 +169,7 @@ def test_z_reseau_compact_utilise_labels_refs_seules():
             "L1": {"type": "L", "value": "80m"},
             "R2": {"type": "R", "value": "100k"},
         }
-        cv._z_reseau(d, (0.0, 0.0), (1.4, 0.0), bloc, ci)
+        dessine = cv._z_reseau(d, (0.0, 0.0), (1.4, 0.0), bloc, ci)
 
-    textes = {t.get_text() for t in ax.texts}
-    assert {"C1", "L1", "R2"} <= textes
-    assert not any("\n" in t for t in textes)
+    assert dessine is False
+    assert not ax.texts
