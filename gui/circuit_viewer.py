@@ -82,6 +82,7 @@ _ISLAND_ZOOM_STEP = 1.25
 _Z_DETAIL_PERP_MIN_SCALE = 0.85
 _Z_DETAIL_LABEL_AXIS_EPS = 0.05
 _Z_DETAIL_LABEL_FONTSIZE = 7
+_Z_DETAIL_LABEL_CLEAR = 0.3
 _Z_DETAIL_COMPACT_LABEL_SCALE = 0.65
 _Z_DETAIL_COMPACT_INLINE_MAX = 2
 _Z_BOX_LABEL_FONTSIZE = 10
@@ -2200,17 +2201,18 @@ def _z_reseau(d, p1, p2, bloc, ci) -> bool:
     _sym_loc, _fils_loc, dims = impedance_schematic.agencer(arbre)
     dist_segment = math.hypot(p2[0] - p1[0], p2[1] - p1[1])
     compact = bool(dims.largeur and dist_segment / dims.largeur < _Z_DETAIL_COMPACT_LABEL_SCALE)
-    # Plusieurs rangees (branches paralleles empilees, ex. L1//R8) forcent un
-    # ecart perpendiculaire entre labels : compresse sur un segment court, cet
-    # ecart percute systematiquement le premier voisin externe venu (satellite
-    # Rb/Re du montage). Une composition purement serie (une seule rangee) ne
-    # pose pas ce probleme -> seul le nombre de symboles reste discriminant.
-    rangees = len({round(y, 6) for (_ref, _x1, _x2, y) in _sym_loc})
-    if compact and (len(_sym_loc) > _Z_DETAIL_COMPACT_INLINE_MAX or rangees > 1):
+    # Au-dela de _Z_DETAIL_COMPACT_INLINE_MAX symboles, un reseau compresse sur
+    # un segment court se chevauche lui-meme (les branches n'ont plus la place
+    # de respirer) -> repli boite Z. En dessous (typiquement 2 branches
+    # paralleles, ex. R2//C1), le reseau se deplie toujours : c'est le
+    # placement des labels ci-dessous (vers l'axe, pas vers l'exterieur) qui
+    # evite le chevauchement avec un voisin externe, pas le repli en boite.
+    if compact and len(_sym_loc) > _Z_DETAIL_COMPACT_INLINE_MAX:
         return False
     symboles, fils = _agencement_entre(p1, p2, arbre)
     dx, dy = p2[0] - p1[0], p2[1] - p1[1]
     dist = math.hypot(dx, dy) or 1.0
+    nx, ny = -dy / dist, dx / dist
     for ref, pa, pb in symboles:
         info = ci.get(ref, {})
         typ = info.get("type", "")
@@ -2220,18 +2222,37 @@ def _z_reseau(d, p1, p2, bloc, ci) -> bool:
             label = ref
         mx, my = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
         signed_perp = ((mx - p1[0]) * (-dy) + (my - p1[1]) * dx) / dist
-        # Les labels explicites evitent que schemdraw les colle au symbole voisin ;
-        # pour une branche sous l'axe, "top" evite aussi de poser le texte sur le rail.
-        # Axe quasi nul (reseau serie, une seule rangee) : "top" plutot que
-        # "bottom" pour un segment vertical descendant pousse le label du cote
-        # oppose a l'entree du reseau, la ou un satellite (Rb, ...) est deja
-        # etiquete juste apres le point p1 (cf. ilot_reel_ce_suiveur_sortie_rlc).
         if abs(signed_perp) < _Z_DETAIL_LABEL_AXIS_EPS:
-            loc = "top"
+            # Axe quasi nul (reseau serie, une seule rangee) : le label reste
+            # attache au symbole (comme avant) ; "top" pousse le label du cote
+            # oppose a l'entree du reseau, la ou un satellite (Rb, ...) est
+            # deja etiquete juste apres le point p1 (cf.
+            # ilot_reel_ce_suiveur_sortie_rlc).
+            d.add(cls().at(pa).to(pb).color(coul).label(
+                label, loc="top", fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
+            continue
+        d.add(cls().at(pa).to(pb).color(coul))
+        # Branche parallele hors axe : pousser le label VERS l'axe (interieur
+        # du reseau) plutot que vers l'exterieur. L'exterieur est le
+        # territoire d'un voisin externe (satellite Rb/Re du montage appelant)
+        # que _z_reseau ne voit pas, alors que l'espace ENTRE les branches est
+        # garanti libre (c'est l'ecart perpendiculaire qui les separe). Un
+        # placement manuel (plutot que le loc="top"/"bottom" de schemdraw)
+        # evite aussi l'ambiguite de rotation : pour un segment vertical,
+        # "top"/"bottom" se traduisent en gauche/droite selon le sens de
+        # tracage de l'element, ce qui inversait le cote attendu.
+        sign = -1.0 if signed_perp > 0 else 1.0
+        lx = mx + sign * nx * _Z_DETAIL_LABEL_CLEAR
+        ly = my + sign * ny * _Z_DETAIL_LABEL_CLEAR
+        if abs(nx) >= abs(ny):
+            ha = "left" if sign * nx > 0 else "right"
+            va = "center"
         else:
-            loc = "top" if signed_perp < -_Z_DETAIL_LABEL_AXIS_EPS else "bottom"
-        d.add(cls().at(pa).to(pb).color(coul).label(
-            label, loc=loc, fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
+            ha = "center"
+            va = "bottom" if sign * ny > 0 else "top"
+        d.add(elm.Label().at((lx, ly)).label(
+            label, halign=ha, valign=va,
+            fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
     for pa, pb in fils:
         d.add(elm.Line().at(pa).to(pb).color(_WIRE))
     return True

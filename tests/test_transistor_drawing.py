@@ -334,6 +334,15 @@ def test_darlington_reel_absorbe_resistance_entree_simple():
     assert {"L1", "R3", "C2", "R4"} in refs
 
 
+def test_darlington_reel_detaille_deplie_reseau_2_branches():
+    # Audit visuel : la vue detaillee R/L/C de l'ilot vitrine (Darlington +
+    # relais) doit au minimum deplier le reseau a 2 branches (R2//C1) en
+    # symboles reels, pas seulement garder une boite Z generique.
+    fig, txts = _render_ilot_xml("ilot_reel_darlington_relais_rlc.xml", detaille=True)
+    assert any(t.strip() == "R2" for t in txts), "R2 non deplie en detaille"
+    assert any(t.strip() == "C1" for t in txts), "C1 non deplie en detaille"
+
+
 def test_bjt_commutation_xml_affiche_charge_inductive():
     fig, txts = _render_ilot_xml("tr_bjt_commutation.xml")
     assert not any("non disponible" in t for t in txts)
