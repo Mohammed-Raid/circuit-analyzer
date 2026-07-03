@@ -54,6 +54,8 @@ def test_dessiner_bloc_detaille_tout():
     from circuit_analyzer.composant import Composant
     from gui import impedance_schematic as isch
 
+    # Signature réelle : Composant(ref, type, pins, value) — le pseudo-code du
+    # brief l'omettait ; pins est un dict {broche: nœud}, non utilisé ici.
     comps = {"R1": Composant("R1", "R", {"1": "A", "2": "M"}, "10k"),
              "R2": Composant("R2", "R", {"1": "M", "2": "B"}, "4.7k")}
     arbre = arbre_expr("(R1)+(R2)")

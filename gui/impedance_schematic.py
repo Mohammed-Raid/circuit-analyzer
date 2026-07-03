@@ -125,6 +125,22 @@ _SYMB = {
 }
 
 
+def style_symbole(typ, value, ref):
+    """@brief (classe schemdraw, couleur, étiquette) pour un composant réel.
+
+    Facteur commun aux 3 endroits qui dessinent un R/L/C réel (symbole+couleur
+    par type + étiquette "ref\\nvaleur formatée", ou juste "ref" si vide) :
+    _dessiner_impl et _bras_detaille ci-dessous, et circuit_viewer._z_reseau.
+    Fontsize/loc restent au choix de chaque appelant (échelles différentes).
+    """
+    from circuit_analyzer import impedance
+    cls = _SYMB.get(typ, elm.ResistorIEC)
+    coul = _COMP_COLORS.get(typ, _WIRE)
+    vfmt = impedance.formater_valeur(value, typ)
+    etiquette = f"{ref}\n{vfmt}" if vfmt else ref
+    return cls, coul, etiquette
+
+
 def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes, titre=None):
     """@brief Cœur de rendu série/parallèle.
 
@@ -165,10 +181,7 @@ def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes, titre=None):
             else:
                 comp = comps.get(ref)
                 typ = getattr(comp, "type", "")
-                cls = _SYMB.get(typ, elm.ResistorIEC)
-                coul = _COMP_COLORS.get(typ, _WIRE)
-                vfmt = impedance.formater_valeur(getattr(comp, "value", ""), typ)
-                etiquette = f"{ref}\n{vfmt}" if vfmt else ref
+                cls, coul, etiquette = style_symbole(typ, getattr(comp, "value", ""), ref)
                 d += cls().at((x1, y)).to((x2, y)).color(coul).label(
                     etiquette, loc="bottom", fontsize=11, color=coul)
         for (xa, ya), (xb, yb) in fils:
@@ -299,11 +312,10 @@ def _bras_detaille(d, p1, p2, bras, comps):
     for ref, pa, pb in symboles:
         comp = comps.get(ref)
         typ = getattr(comp, "type", "")
-        cls = _SYMB.get(typ, elm.ResistorIEC)
-        coul = _COMP_COLORS.get(typ, _WIRE)
-        vfmt = impedance.formater_valeur(getattr(comp, "value", ""), typ)
-        label = f"{ref}\n{vfmt}" if vfmt else ref
-        d.add(cls().at(pa).to(pb).color(coul).label(label, fontsize=9, color=coul))
+        cls, coul, label = style_symbole(typ, getattr(comp, "value", ""), ref)
+        # loc="bottom" : sans ça le label colle au rail (finding review #2).
+        d.add(cls().at(pa).to(pb).color(coul).label(
+            label, loc="bottom", fontsize=9, color=coul))
     for pa, pb in fils:
         d.add(elm.Line().at(pa).to(pb).color(_WIRE))
     return True

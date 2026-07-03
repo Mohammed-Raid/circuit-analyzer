@@ -2138,10 +2138,8 @@ def _z_reseau(d, p1, p2, bloc, ci) -> bool:
     for ref, pa, pb in symboles:
         info = ci.get(ref, {})
         typ = info.get("type", "")
-        cls = impedance_schematic._SYMB.get(typ, elm.ResistorIEC)
-        coul = _COMP_COLORS.get(typ, _WIRE)
-        vfmt = impedance.formater_valeur(info.get("value", ""), typ)
-        label = f"{ref}\n{vfmt}" if vfmt else ref
+        cls, coul, label = impedance_schematic.style_symbole(
+            typ, info.get("value", ""), ref)
         d.add(cls().at(pa).to(pb).color(coul).label(label, fontsize=9, color=coul))
     for pa, pb in fils:
         d.add(elm.Line().at(pa).to(pb).color(_WIRE))
