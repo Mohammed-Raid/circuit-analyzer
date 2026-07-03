@@ -930,6 +930,19 @@ def _make_fig(result, comp_info, drawer_fn, matches=None, detaille: bool = False
                 # du tracé pour qu'il remplisse la fenêtre.
                 try:
                     bb = d.get_bbox()
+                    # Cadrage explicite des axes sur le bbox schemdraw (qui, lui,
+                    # compte le texte des étiquettes via SegmentText.get_bbox) : sur
+                    # un ax existant (canvas=ax), schemdraw NE fixe PAS xlim/ylim
+                    # lui-même (cf. mpl.py getfig(): "if not self.userfig") et
+                    # laisse l'autoscale par défaut de Matplotlib faire le travail —
+                    # or cet autoscale ne considère QUE les Line2D/Patch (dataLim),
+                    # jamais les Text (ax.text, utilisé par elm.Label). Une boîte Z
+                    # isolée (rien d'autre pour étendre la vue) voit alors son
+                    # étiquette hors cadre. On fixe donc xlim/ylim nous-mêmes depuis
+                    # le bbox complet (texte inclus), avec une petite marge.
+                    marge = 0.3
+                    ax.set_xlim(bb.xmin - marge, bb.xmax + marge)
+                    ax.set_ylim(bb.ymin - marge, bb.ymax + marge)
                     w, h = (bb.xmax - bb.xmin), (bb.ymax - bb.ymin)
                     if w > 0 and h > 0:
                         asp = max(0.4, min(3.2, w / h))
@@ -1902,6 +1915,13 @@ def _draw_impedance(d, result, ci):
     `_z_box` (point d'entrée unique de la bascule Z/détaillé) au lieu de
     dessiner la boîte à la main : cliquable en vue Z, réseau réel déplié en
     vue détaillée.
+
+    Note : cette boîte étant souvent le SEUL contenu du schéma (« Impédance Z »
+    isolée), rien d'autre n'étend la vue jusqu'au label placé au-dessus par
+    `_z_label_anchor`. C'est `_make_fig` qui cadre explicitement les axes sur
+    `d.get_bbox()` (texte des étiquettes inclus) pour que ce label reste visible
+    — sans ce cadrage, l'autoscale par défaut de Matplotlib (basé sur les seuls
+    Line2D/Patch, jamais les Text) le laisse hors cadre.
     """
     nets = [n for n in result.get("nodes", []) if n]
     gauche = nets[0] if nets else ""

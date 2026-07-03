@@ -46,3 +46,25 @@ def test_make_fig_detaille_sans_hitboxes():
     fig_d = cv._make_fig(match, ci, cv._DRAWERS["Impédance Z"], detaille=True)
     assert fig_z._z_hitboxes, "vue Z : la boîte reste cliquable"
     assert fig_d._z_hitboxes == [], "vue détaillée : aucune hitbox"
+
+
+def test_make_fig_labels_dans_le_cadre():
+    """Garde-fou anti-régression : toute étiquette (ex. « Z\n(R1)+(R2) ») doit
+    tomber dans les xlim/ylim finaux de l'axe, en vue Z comme en vue détaillée.
+    Régression du bug où _z_label_anchor plaçait le label hors cadre (matplotlib
+    n'autoscale pas sur les Text) et rendait la boîte Z autonome muette."""
+    import gui.circuit_viewer as cv
+    match = {"circuit_type": "Impédance Z", "components": ["R1", "R2"],
+             "nodes": ["A", "B"], "composition": "(R1)+(R2)"}
+    ci = {"R1": {"type": "R", "value": "10k"}, "R2": {"type": "R", "value": "4.7k"}}
+    for detaille in (False, True):
+        fig = cv._make_fig(match, ci, cv._DRAWERS["Impédance Z"], detaille=detaille)
+        ax = fig.axes[0]
+        x0, x1 = ax.get_xlim()
+        y0, y1 = ax.get_ylim()
+        for txt in ax.texts:
+            x, y = txt.get_position()
+            assert x0 <= x <= x1 and y0 <= y <= y1, (
+                f"label {txt.get_text()!r} en ({x}, {y}) hors cadre "
+                f"xlim={ax.get_xlim()} ylim={ax.get_ylim()} (detaille={detaille})"
+            )
