@@ -311,6 +311,52 @@ def test_reel_suiveur_detaille_rlc_labels_ne_se_chevauchent_pas():
     _assert_texts_do_not_overlap(fig, "Re", "L1")
 
 
+def _assert_texte_hors_symbole_proche(fig, needle_texte, needle_repere, couleur,
+                                       rayon_px=60):
+    """@brief `needle_texte` ne doit pas chevaucher le SYMBOLE (traits `couleur`,
+    pas juste son étiquette texte) le plus proche du repère `needle_repere`
+    (ex. "C1"). `_assert_texts_do_not_overlap` ne compare que des textes entre
+    eux : un stub dépilé (C1+R1) peut chevaucher une étiquette voisine (Rb) par
+    son SYMBOLE (plaques du condensateur) sans que les DEUX textes ne se
+    touchent -> ce helper compare texte vs bbox réelle du symbole dessiné."""
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.transforms import Bbox
+
+    ax = fig.axes[0]
+    canvas = FigureCanvasAgg(fig)
+    canvas.draw()
+    renderer = canvas.get_renderer()
+    label_boxes = [t.get_window_extent(renderer)
+                   for t in ax.texts if needle_texte in t.get_text()]
+    repere_boxes = [t.get_window_extent(renderer)
+                    for t in ax.texts if t.get_text().strip() == needle_repere]
+    assert label_boxes, needle_texte
+    assert repere_boxes, needle_repere
+    rx = (repere_boxes[0].x0 + repere_boxes[0].x1) / 2
+    ry = (repere_boxes[0].y0 + repere_boxes[0].y1) / 2
+    candidats = []
+    for line in ax.lines:
+        if line.get_color() != couleur:
+            continue
+        bb = line.get_window_extent(renderer)
+        cx, cy = (bb.x0 + bb.x1) / 2, (bb.y0 + bb.y1) / 2
+        if ((cx - rx) ** 2 + (cy - ry) ** 2) ** 0.5 < rayon_px:
+            candidats.append(bb)
+    assert candidats, (needle_repere, couleur)
+    symbole_box = Bbox.union(candidats)
+    assert not any(symbole_box.overlaps(lb) for lb in label_boxes), (
+        needle_texte, needle_repere)
+
+
+def test_reel_suiveur_detaille_rb_entree_hors_symbole_c1():
+    # Audit visuel (D2) : le stub d'entree deplie (C1 serie + R1) descend sous
+    # VIN a la meme abscisse que le condensateur C1 -> l'etiquette "Rb = ..."
+    # (placee sous le fil Rb pour degager le titre) traversait les PLAQUES de
+    # C1 (chevauchement texte/symbole, invisible a un simple texte-vs-texte).
+    fig, _txts = _render_ilot_xml("ilot_reel_ce_suiveur_sortie_rlc.xml", detaille=True)
+    _assert_texte_hors_symbole_proche(fig, "Rb", "C1", "#0891b2")
+
+
 def test_darlington_xml_absorbe_resistance_emetteur_simple():
     fig, txts = _render_ilot_xml("tr_paire_darlington.xml")
     assert not any("non disponible" in t for t in txts)
@@ -323,6 +369,42 @@ def test_chaine_darlington_ce_absorbe_resistance_emetteur_simple():
     assert not any("non disponible" in t for t in txts)
     assert {"C1"} in refs
     assert {"R1"} not in refs
+
+
+def _assert_label_hors_lignes_noires(fig, needle):
+    """@brief `needle` ne doit chevaucher aucun trait NOIR par défaut (symbole
+    du transistor) : seul le fil/label explicitement coloré (_WIRE, Z…) peut
+    passer sous une étiquette, jamais le corps du composant actif lui-même."""
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    ax = fig.axes[0]
+    canvas = FigureCanvasAgg(fig)
+    canvas.draw()
+    renderer = canvas.get_renderer()
+    boxes = [t.get_window_extent(renderer) for t in ax.texts if needle in t.get_text()]
+    assert boxes, needle
+    for line in ax.lines:
+        if line.get_color() != "black":
+            continue
+        bb = line.get_window_extent(renderer)
+        assert not any(bb.overlaps(b) for b in boxes), needle
+
+
+def test_chaine_darlington_ce_rb_2e_etage_hors_transistor():
+    # Audit visuel (D4) : le label "Rb = 100 kOhm" du 2e etage (emetteur
+    # commun apres le Darlington) etait recentre sous le fil Rb -> quand le
+    # texte est un peu large, son bord droit chevauchait le fil horizontal ET
+    # le point de jonction / le corps du transistor. Doit rester degage.
+    fig, _txts = _render_ilot_xml("ilot_chaine_darlington_ce.xml")
+    _assert_label_hors_lignes_noires(fig, "Rb = 100")
+
+
+def test_chaine_darlington_ce_rc_2e_etage_hors_vcc():
+    # Audit visuel : dans la chaine Darlington -> CE, le label Rc du 2e etage
+    # remontait trop pres de l'etiquette VCC.
+    for detaille in (False, True):
+        fig, _txts = _render_ilot_xml("ilot_chaine_darlington_ce.xml", detaille=detaille)
+        _assert_texts_do_not_overlap(fig, "Rc = 2.2", "VCC")
 
 
 def test_darlington_reel_absorbe_resistance_entree_simple():
@@ -360,6 +442,33 @@ def test_mosfet_commutation_xml_affiche_charge_inductive():
 def test_commutation_bjt_vcc_ne_chevauche_pas_charge():
     fig, _txts = _render_ilot_xml("tr_bjt_commutation.xml")
     _assert_texts_do_not_overlap(fig, "VCC", "L1")
+
+
+def test_mosfet_commutation_entree_a_gauche():
+    # Audit visuel (D3) : le NFet schemdraw 0.22 place sa grille a DROITE par
+    # defaut -> Rg/IN se retrouvaient a droite du symbole, flux droite->gauche,
+    # incoherent avec tous les autres montages (IN toujours a gauche).
+    res = _ancres(cv._draw_mosfet_switch, *MOSFET_SWITCH, origin=(0, 0))
+    assert res["in"][0] < res["out"][0], "IN doit rester a gauche du montage"
+
+
+def test_high_side_mosfet_entree_a_gauche():
+    # Meme motif que le commutateur MOSFET (D3) : le NFet est ancre a (3, 0) ;
+    # sans .reverse() sa grille (donc Rg/IN) tombe a DROITE du drain/source,
+    # en miroir par rapport a tous les autres montages. Verifie sur le vrai
+    # drawer que le label "IN" reste a gauche du drain (VCC).
+    fig = cv.Figure()
+    ax = fig.add_subplot(111)
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d._z_hitboxes = []
+        result = {"circuit_type": "MOSFET haute-tension (côté haut)",
+                  "components": ["M1", "Rg"], "nodes": ["NG", "VCC", "NLOAD"]}
+        ci = _ci(("M1", "M", "", {"G": "NG", "D": "VCC", "S": "NLOAD"}),
+                 ("Rg", "R", "100", {"1": "NIN", "2": "NG"}))
+        cv._draw_high_side_mosfet(d, result, ci)
+    in_x = next(t.get_position()[0] for t in ax.texts if t.get_text().strip() == "IN")
+    vcc_x = next(t.get_position()[0] for t in ax.texts if t.get_text().strip() == "VCC")
+    assert in_x < vcc_x, "IN doit rester a gauche du drain/VCC (pas en miroir)"
 
 
 def test_commutation_mosfet_vcc_ne_chevauche_pas_charge():

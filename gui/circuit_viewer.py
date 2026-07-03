@@ -3495,7 +3495,13 @@ def _draw_common_emitter(d, result, ci, origin=(3, 0), titre=True,
     in_pt = (bx - 2.6, by)
     if rb:
         _r_simple(d, rb, ci, in_pt, (bx - 0.9, by), None)
-        d.add(elm.Label().at(((in_pt[0] + bx - 0.9) / 2, by - 0.78))
+        # Ajustement ciblé d'ancre (D2) : centré strictement sur Rb (comme
+        # avant), le label tombait à l'aplomb du stub d'entrée déplié (C1+R1,
+        # pendu sous VIN en vue détaillée) et traversait les plaques de C1.
+        # Recentré (toujours halign="center", par défaut) dans la fenêtre
+        # libre entre le stub (gauche) et la base du transistor (droite) :
+        # dégage C1 sans pour autant chevaucher le symbole du transistor.
+        d.add(elm.Label().at((bx - 1.2, by - 0.78))
               .label(_texte_passif_simple(rb, ci, "Rb"), fontsize=8))
         d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
     else:
@@ -3508,7 +3514,7 @@ def _draw_common_emitter(d, result, ci, origin=(3, 0), titre=True,
     # Rc en boîte Z verticale, du collecteur vers VCC
     cx, cy = t.collector
     _r_simple(d, rc, ci, (cx, cy + 0.5), (cx, cy + 1.9), None)
-    d.add(elm.Label().at((cx - 1.05, cy + 1.65))
+    d.add(elm.Label().at((cx - 1.05, cy + 1.35))
           .label(_texte_passif_simple(rc, ci, "Rc"), fontsize=8))
     d.add(elm.Line().at(t.collector).to((cx, cy + 0.5)))
     d.add(elm.Line().at((cx, cy + 1.9)).up(0.4).label("VCC", loc="top"))
@@ -3540,15 +3546,18 @@ def _draw_mosfet_switch(d, result, ci, origin=(3, 0), titre=True,
     load = _ref_passif_simple_vers_alim(ci, ("L", "R", "C"), m_pins.get("D"))
     if load:
         absorbed_refs.add(load)
-    t = d.add(elm.NFet().at(origin))
-    # NFet 0.22 : grille à DROITE -> Rg en boîte Z vers la droite.
+    # .reverse() : NFet 0.22 place sa grille à DROITE par défaut (drain/source
+    # inchangés) -> IN se retrouvait à droite du symbole, flux droite->gauche,
+    # en miroir par rapport à tous les autres montages (IN toujours à gauche).
+    # reverse() ramène la grille à GAUCHE sans toucher drain/source (cf. D3).
+    t = d.add(elm.NFet().at(origin).reverse())
     gx, gy = t.gate
-    _r_simple(d, r, ci, (gx + 0.9, gy), (gx + 2.6, gy), "Rg")
-    d.add(elm.Line().at(t.gate).to((gx + 0.9, gy)))
-    in_pt = (gx + 2.6, gy)
+    _r_simple(d, r, ci, (gx - 0.9, gy), (gx - 2.6, gy), "Rg")
+    d.add(elm.Line().at(t.gate).to((gx - 0.9, gy)))
+    in_pt = (gx - 2.6, gy)
     dot = elm.Dot().at(in_pt)
     if in_label:
-        dot = dot.label(in_label, loc="right")
+        dot = dot.label(in_label, loc="left")
     d.add(dot)
     if load:
         d.add(elm.Line().at(t.drain).up(0.35))
@@ -3578,12 +3587,13 @@ def _draw_high_side_mosfet(d, result, ci):
     """@brief Dessine le schéma « MOSFET haute-tension (côté haut) »."""
     m = _ref(result, ci, "M")
     r = _ref(result, ci, "R")
-    t = d.add(elm.NFet().at((3, 0)))
-    # Rg en boîte Z vers la droite (grille à droite dans NFet 0.22).
+    # .reverse() : cf. D3 dans _draw_mosfet_switch — ramène la grille à GAUCHE
+    # (sans toucher drain/source) pour garder IN à gauche, comme partout ailleurs.
+    t = d.add(elm.NFet().at((3, 0)).reverse())
     gx, gy = t.gate
-    _r_simple(d, r, ci, (gx + 0.9, gy), (gx + 2.6, gy), "Rg")
-    d.add(elm.Line().at(t.gate).to((gx + 0.9, gy)))
-    d.add(elm.Dot().at((gx + 2.6, gy)).label("IN", loc="right"))
+    _r_simple(d, r, ci, (gx - 0.9, gy), (gx - 2.6, gy), "Rg")
+    d.add(elm.Line().at(t.gate).to((gx - 0.9, gy)))
+    d.add(elm.Dot().at((gx - 2.6, gy)).label("IN", loc="left"))
     # Drain at top → VCC power rail
     d.add(elm.Line().at(t.drain).up(1))
     d.add(elm.Dot().label("VCC", loc="right"))
@@ -3715,7 +3725,13 @@ def _draw_suiveur_emetteur(d, result, ci, origin=(3, 0), titre=True,
     d.add(elm.Line().at(t.collector).up(1).label("VCC", loc="top"))
     # Émetteur -> Re -> GND, sortie au point d'émetteur
     ex, ey = t.emitter
-    out_pt = (ex + 1.4, ey)
+    # Ajustement ciblé d'ancre (D1) : en vue détaillée, une charge Z dépliée en
+    # aval (ex. L1//R8) s'étale perpendiculairement de part et d'autre de son
+    # ancre -> à 1.4 du noeud émetteur elle percute Re (qui reste, lui, à
+    # l'aplomb de l'émetteur). On éloigne le segment de sortie pour lui laisser
+    # sa marge d'étalement ; la vue Z garde 1.4 (sa boîte compacte ne collisionne pas).
+    out_dx = 2.6 if getattr(d, "_mode_detaille", False) else 1.4
+    out_pt = (ex + out_dx, ey)
     line = elm.Line().at(t.emitter).to(out_pt)
     if out_label:
         line = line.label(out_label, loc="right")
