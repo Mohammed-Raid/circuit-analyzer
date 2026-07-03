@@ -113,8 +113,14 @@ def _fig_for_ilot(ilot, graph, comp_info, results, detaille=False):
 
 def render_all() -> int:
     """@brief Rend tous les PNG bimode et retourne leur nombre."""
+    OUT.mkdir(parents=True, exist_ok=True)
+    for old_sheet in OUT.glob("_contact_*.png"):
+        old_sheet.unlink()
     for mode in ("z", "detaille"):
-        (OUT / mode).mkdir(parents=True, exist_ok=True)
+        dossier = OUT / mode
+        dossier.mkdir(parents=True, exist_ok=True)
+        for old_png in dossier.glob("*.png"):
+            old_png.unlink()
 
     count = 0
     for path in _xml_files():

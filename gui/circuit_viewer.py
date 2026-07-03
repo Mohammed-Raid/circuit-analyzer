@@ -2134,8 +2134,8 @@ def _agencement_entre(p1, p2, arbre):
     gauche (0, dims.y_borne), borne droite (dims.largeur, dims.y_borne)) puis
     applique translation p1 + rotation (angle p1->p2) + échelle uniforme
     (dist(p1,p2) / dims.largeur), pour amener les deux bornes locales sur p1/p2.
-    Le perpendiculaire local (écart à l'axe des bornes) utilise
-    (y_local - dims.y_borne) * échelle.
+    Le perpendiculaire local (écart à l'axe des bornes) utilise la même échelle
+    avec un minimum lisible pour ne pas écraser les branches parallèles courtes.
 
     @param p1, p2 Bornes globales (x, y) entre lesquelles agencer le réseau.
     @param arbre Arbre série/parallèle (cf. circuit_analyzer.impedance.arbre_expr).
