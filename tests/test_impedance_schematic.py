@@ -27,6 +27,24 @@ def test_agencer_parallele_empile_les_enfants():
     assert len(fils) >= 4
 
 
+def test_agencer_parallele_dense_reste_lisible_en_fenetre_detail():
+    arbre = ("parallele", [
+        ("feuille", "L1"), ("feuille", "R3"), ("feuille", "C2"), ("feuille", "R4"),
+    ])
+    symboles, _fils, dims = sch.agencer(arbre)
+    assert len(symboles) == 4
+    assert dims.hauteur / dims.largeur <= 2.0
+
+
+def test_dessiner_parallele_dense_ne_produit_pas_une_popup_trop_verticale():
+    arbre = ("parallele", [
+        ("feuille", "L1"), ("feuille", "R3"), ("feuille", "C2"), ("feuille", "R4"),
+    ])
+    fig = sch.dessiner(arbre, "A", "B", _comps_rlc("L1", "R3", "C2", "R4"))
+    w, h = fig.get_size_inches()
+    assert h / w <= 1.4
+
+
 def test_agencer_feuille_seule():
     symboles, fils, dims = sch.agencer(("feuille", "R1"))
     assert len(symboles) == 1

@@ -25,7 +25,13 @@ W_SYMB = 2.0    # longueur d'un symbole 2 bornes
 H_SYMB = 1.0    # empreinte verticale d'une feuille (pour l'empilement)
 LEAD = 0.6      # fil entre deux composants en série
 GAP_V = 1.4     # écart vertical entre branches parallèles
+GAP_V_DENSE = 0.35  # écart compact pour 4+ branches dans une fenêtre de détail
 RAIL = 0.6      # extension horizontale d'un rail de chaque côté
+
+
+def _gap_parallele(nb_branches):
+    """@brief Ecart vertical adapte au nombre de branches paralleles."""
+    return GAP_V_DENSE if nb_branches >= 4 else GAP_V
 
 
 def _mesurer(arbre):
@@ -41,7 +47,8 @@ def _mesurer(arbre):
     # parallele
     inner = max(d.largeur for d in enfants)
     largeur = inner + 2 * RAIL
-    hauteur = sum(d.hauteur for d in enfants) + GAP_V * (len(enfants) - 1)
+    gap = _gap_parallele(len(enfants))
+    hauteur = sum(d.hauteur for d in enfants) + gap * (len(enfants) - 1)
     return Dims(largeur, hauteur, hauteur / 2)
 
 
@@ -72,6 +79,7 @@ def _emettre(arbre, x, y, symboles, fils):
     inner = d.largeur - 2 * RAIL
     lignes = []
     haut = y + d.hauteur
+    gap = _gap_parallele(len(arbre[1]))
     for c in arbre[1]:
         dc = _mesurer(c)
         c_y0 = haut - dc.hauteur
@@ -81,7 +89,7 @@ def _emettre(arbre, x, y, symboles, fils):
         fils.append(((rail_g, c_ligne), (c_x, c_ligne)))
         fils.append(((c_x + dc.largeur, c_ligne), (rail_d, c_ligne)))
         lignes.append(c_ligne)
-        haut = c_y0 - GAP_V
+        haut = c_y0 - gap
     fils.append(((rail_g, lignes[0]), (rail_g, lignes[-1])))   # rail gauche
     fils.append(((rail_d, lignes[0]), (rail_d, lignes[-1])))   # rail droit
     return d
