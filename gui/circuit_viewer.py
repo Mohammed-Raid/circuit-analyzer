@@ -24,12 +24,12 @@ from circuit_analyzer.patterns.base import (
     is_power_net,
     is_protective_earth_net,
 )
+from gui import theme
+from gui import ui_kit
 from gui.theme import BLUE_HOVER, OVERLAY
 
 _log = logging.getLogger(__name__)
 
-UI_BG   = "#0f172a"
-UI_CARD = "#1e293b"
 SCH_BG  = "#fafafa"   # light background — standard for schematics
 
 _COMP_COLORS = {
@@ -277,11 +277,11 @@ def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
     popup = ctk.CTkToplevel(parent)
     popup.title(f"Schéma — {name}")
     popup.geometry("960x560")
-    popup.configure(fg_color=UI_BG)
+    popup.configure(fg_color=theme.SURFACE)
     popup.grab_set()
 
     # Header
-    hdr = ctk.CTkFrame(popup, fg_color=UI_CARD, corner_radius=0, height=54)
+    hdr = ctk.CTkFrame(popup, fg_color=theme.OVERLAY, corner_radius=0, height=54)
     hdr.pack(fill="x")
     hdr.pack_propagate(False)
     ctk.CTkLabel(hdr, text=f"⚡  {name}",
@@ -294,7 +294,7 @@ def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
                      text_color="#34d399").pack(side="right", padx=18)
 
     # Component chips
-    chips = ctk.CTkFrame(popup, fg_color=UI_BG)
+    chips = ctk.CTkFrame(popup, fg_color=theme.SURFACE)
     chips.pack(fill="x", padx=14, pady=(8, 2))
     ctk.CTkLabel(chips, text="Composants :",
                  font=ctk.CTkFont("Segoe UI", 10),
@@ -333,7 +333,7 @@ def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
         _suivre_curseur_z(canvas, fig)
 
     # Bottom bar
-    bar = ctk.CTkFrame(popup, fg_color=UI_CARD, corner_radius=0, height=44)
+    bar = ctk.CTkFrame(popup, fg_color=theme.OVERLAY, corner_radius=0, height=44)
     bar.pack(fill="x", side="bottom")
     bar.pack_propagate(False)
     ctk.CTkButton(bar, text="💾  Exporter PNG",
@@ -576,32 +576,33 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     popup = ctk.CTkToplevel(parent)
     popup.title(f"Schema ilot - {name}")
     popup.geometry("1000x600")
-    popup.configure(fg_color=UI_BG)
+    popup.configure(fg_color=theme.SURFACE)
     popup.grab_set()
 
-    hdr = ctk.CTkFrame(popup, fg_color=UI_CARD, corner_radius=0, height=54)
+    hdr = ctk.CTkFrame(popup, fg_color=theme.OVERLAY, corner_radius=0, height=54)
     hdr.pack(fill="x")
     hdr.pack_propagate(False)
     ctk.CTkLabel(hdr, text=f"Schema ilot - {name}",
-                 font=ctk.CTkFont("Segoe UI", 14, "bold"),
-                 text_color="#f1f5f9").pack(side="left", padx=18, pady=14)
+                 font=ui_kit.font("subtitle", "bold"),
+                 text_color=theme.TEXT).pack(side="left", padx=18, pady=14)
     _principal_hdr = _circuit_principal_ilot(ilot, graph, results)
     _gain_txt = _texte_gain(_principal_hdr, graph) if _principal_hdr else None
     if _gain_txt:
+        # Consolas conservée volontairement : valeur numérique, chasse fixe mono.
         ctk.CTkLabel(hdr, text=_gain_txt,
                      font=ctk.CTkFont("Consolas", 12, "bold"),
-                     text_color="#34d399").pack(side="right", padx=18)
+                     text_color=theme.SUCCESS).pack(side="right", padx=18)
 
-    chips = ctk.CTkFrame(popup, fg_color=UI_BG)
+    chips = ctk.CTkFrame(popup, fg_color=theme.SURFACE)
     chips.pack(fill="x", padx=14, pady=(8, 2))
     ctk.CTkLabel(chips, text="Composants :",
-                 font=ctk.CTkFont("Segoe UI", 10),
-                 text_color="#64748b").pack(side="left")
+                 font=ui_kit.font("caption"),
+                 text_color=theme.TEXT_DIM).pack(side="left")
     for comp in model["components"]:
         txt = f" {comp['ref']} {comp.get('value', '')} ".strip()
         color = _COMP_COLORS.get(comp.get("type"), "#374151")
         ctk.CTkLabel(chips, text=txt,
-                     font=ctk.CTkFont("Consolas", 10, "bold"),
+                     font=ui_kit.font("caption", "bold"),
                      fg_color=color, text_color="#ffffff",
                      corner_radius=4).pack(side="left", padx=3)
 
@@ -707,13 +708,11 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
 
     monter_canvas(fig)
 
-    bar = ctk.CTkFrame(popup, fg_color=UI_CARD, corner_radius=0, height=44)
+    bar = ctk.CTkFrame(popup, fg_color=theme.OVERLAY, corner_radius=0, height=44)
     bar.pack(fill="x", side="bottom")
     bar.pack_propagate(False)
-    ctk.CTkButton(bar, text="Exporter PNG",
-                  width=140, height=30, corner_radius=6,
-                  font=ctk.CTkFont("Segoe UI", 11),
-                  fg_color="#1d4ed8", hover_color="#2563eb",
+    ui_kit.SecondaryButton(bar, text="Exporter PNG", icon_name="download",
+                  width=140, height=30,
                   command=lambda: _export(etat["fig"], name, popup)).pack(
                       side="left", padx=12, pady=7)
 
@@ -725,16 +724,12 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         toggle_btn.configure(
             text="Vue simplifiée Z" if mode["detaille"] else "Vue détaillée R/L/C")
 
-    toggle_btn = ctk.CTkButton(bar, text="Vue détaillée R/L/C",
-                  width=170, height=30, corner_radius=6,
-                  font=ctk.CTkFont("Segoe UI", 11),
-                  fg_color="#374151", hover_color="#4b5563",
+    toggle_btn = ui_kit.SecondaryButton(bar, text="Vue détaillée R/L/C", icon_name="layers",
+                  width=170, height=30,
                   command=_toggle_detaille)
     toggle_btn.pack(side="left", padx=(0, 12), pady=7)
-    ctk.CTkButton(bar, text="Fermer",
-                  width=90, height=30, corner_radius=6,
-                  font=ctk.CTkFont("Segoe UI", 11),
-                  fg_color="#374151", hover_color="#4b5563",
+    ui_kit.GhostButton(bar, text="Fermer",
+                  width=90, height=30,
                   command=popup.destroy).pack(side="right", padx=12, pady=7)
 
 
@@ -857,15 +852,15 @@ def show_dipole_detail(refs, composition, graph, comp_info, parent=None):
     popup = ctk.CTkToplevel(parent)
     popup.title(titre)
     popup.geometry("760x560")
-    popup.configure(fg_color=UI_BG)
+    popup.configure(fg_color=theme.SURFACE)
     popup.grab_set()
 
-    hdr = ctk.CTkFrame(popup, fg_color=UI_CARD, corner_radius=0, height=48)
+    hdr = ctk.CTkFrame(popup, fg_color=theme.OVERLAY, corner_radius=0, height=48)
     hdr.pack(fill="x")
     hdr.pack_propagate(False)
     ctk.CTkLabel(hdr, text=f"Composition de l'impedance : {composition}",
-                 font=ctk.CTkFont("Segoe UI", 13, "bold"),
-                 text_color="#f1f5f9").pack(side="left", padx=18, pady=12)
+                 font=ui_kit.font("subtitle", "bold"),
+                 text_color=theme.TEXT).pack(side="left", padx=18, pady=12)
 
     canvas_frame = ctk.CTkFrame(popup, fg_color=SCH_BG, corner_radius=10)
     canvas_frame.pack(fill="both", expand=True, padx=14, pady=10)
@@ -874,19 +869,15 @@ def show_dipole_detail(refs, composition, graph, comp_info, parent=None):
     canvas.get_tk_widget().configure(bg=SCH_BG, highlightthickness=0)
     canvas.get_tk_widget().pack(fill="both", expand=True, padx=4, pady=4)
 
-    bar = ctk.CTkFrame(popup, fg_color=UI_CARD, corner_radius=0, height=44)
+    bar = ctk.CTkFrame(popup, fg_color=theme.OVERLAY, corner_radius=0, height=44)
     bar.pack(fill="x", side="bottom")
     bar.pack_propagate(False)
-    ctk.CTkButton(bar, text="Exporter PNG",
-                  width=140, height=30, corner_radius=6,
-                  font=ctk.CTkFont("Segoe UI", 11),
-                  fg_color="#1d4ed8", hover_color="#2563eb",
+    ui_kit.SecondaryButton(bar, text="Exporter PNG", icon_name="download",
+                  width=140, height=30,
                   command=lambda: _export(fig, titre, popup)).pack(
                       side="left", padx=12, pady=7)
-    ctk.CTkButton(bar, text="Fermer",
-                  width=90, height=30, corner_radius=6,
-                  font=ctk.CTkFont("Segoe UI", 11),
-                  fg_color="#374151", hover_color="#4b5563",
+    ui_kit.GhostButton(bar, text="Fermer",
+                  width=90, height=30,
                   command=popup.destroy).pack(side="right", padx=12, pady=7)
 
 
