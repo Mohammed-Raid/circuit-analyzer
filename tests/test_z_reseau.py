@@ -48,6 +48,50 @@ def test_make_fig_detaille_sans_hitboxes():
     assert fig_d._z_hitboxes == [], "vue détaillée : aucune hitbox"
 
 
+def test_dessiner_bloc_detaille_tout():
+    """dessiner_bloc(detaille=True) rend tout le réseau réel : plus de boîte Z,
+    donc plus de hitbox — contrairement à la vue Z par défaut."""
+    from circuit_analyzer.composant import Composant
+    from gui import impedance_schematic as isch
+
+    comps = {"R1": Composant("R1", "R", {"1": "A", "2": "M"}, "10k"),
+             "R2": Composant("R2", "R", {"1": "M", "2": "B"}, "4.7k")}
+    arbre = arbre_expr("(R1)+(R2)")
+    fig_z = isch.dessiner_bloc(arbre, "A", "B", comps)
+    fig_d = isch.dessiner_bloc(arbre, "A", "B", comps, detaille=True)
+    assert fig_z._z_hitboxes and fig_d._z_hitboxes == []
+
+
+def test_dessiner_pont_detaille_deplie_bras_composite():
+    """dessiner_pont(detaille=True) déplie chaque bras série/parallèle en
+    composants réels ; plus aucune boîte Z, donc plus de hitbox."""
+    from circuit_analyzer.composant import Composant
+    from gui import impedance_schematic as isch
+
+    comps = {
+        "R1": Composant("R1", "R", {"1": "H", "2": "G"}, "1k"),
+        "R2": Composant("R2", "R", {"1": "H", "2": "D"}, "2k"),
+        "R3": Composant("R3", "R", {"1": "D", "2": "B"}, "3k"),
+        "R4": Composant("R4", "R", {"1": "G", "2": "M"}, "1k"),
+        "R5": Composant("R5", "R", {"1": "M", "2": "B"}, "1k"),
+        "R6": Composant("R6", "R", {"1": "G", "2": "D"}, "5k"),
+    }
+    pont = {
+        "haut": "H", "bas": "B",
+        "bras": {
+            "haut_gauche": {"refs": ["R1"], "composition": "R1"},
+            "haut_droite": {"refs": ["R2"], "composition": "R2"},
+            "bas_gauche": {"refs": ["R4", "R5"], "composition": "(R4)+(R5)"},
+            "bas_droite": {"refs": ["R3"], "composition": "R3"},
+            "pont": {"refs": ["R6"], "composition": "R6"},
+        },
+    }
+    fig_z = isch.dessiner_pont(pont, comps)
+    fig_d = isch.dessiner_pont(pont, comps, detaille=True)
+    assert fig_z._z_hitboxes, "bras composite bas_gauche cliquable en vue Z"
+    assert fig_d._z_hitboxes == [], "vue détaillée : aucune hitbox"
+
+
 def test_make_fig_labels_dans_le_cadre():
     """Garde-fou anti-régression : toute étiquette (ex. « Z\n(R1)+(R2) ») doit
     tomber dans les xlim/ylim finaux de l'axe, en vue Z comme en vue détaillée.

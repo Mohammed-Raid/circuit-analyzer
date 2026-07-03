@@ -225,7 +225,7 @@ def _compo_arbre(node):
     return "//".join(parts)
 
 
-def dessiner_bloc(arbre, a, b, comps):
+def dessiner_bloc(arbre, a, b, comps, detaille=False):
     """@brief Schéma compact : tout le réseau réductible = UNE boîte Z cliquable.
 
     Le réseau entier (composant seul inclus) est représenté par une seule boîte Z
@@ -233,10 +233,13 @@ def dessiner_bloc(arbre, a, b, comps):
     R/L/C en série/parallèle (cf. show_dipole_detail). Un réseau d'un seul
     composant est dessiné tel quel (rien à déplier).
 
-    @return matplotlib.figure.Figure ; fig._z_hitboxes = la zone cliquable du bloc.
+    @param detaille Si True, rend tout le réseau réel (R/L/C, symboles/couleurs
+        réels) au lieu de la boîte Z unique ; aucune zone cliquable dans ce cas.
+    @return matplotlib.figure.Figure ; fig._z_hitboxes = la zone cliquable du bloc
+        (vide en mode détaillé).
     """
     refs = _refs_arbre(arbre)
-    if len(refs) <= 1:
+    if detaille or len(refs) <= 1:
         return _dessiner_impl(arbre, a, b, comps, {})
     cle = "__Z__"
     return _dessiner_impl(("feuille", cle), a, b, comps,
@@ -273,13 +276,50 @@ def _elem_bras(bras, comps, p1, p2):
     return el, hit
 
 
-def dessiner_pont(pont, comps, titre=None):
+def _bras_detaille(d, p1, p2, bras, comps):
+    """@brief Tente de déplier un bras composite entre p1 et p2 (mode détaillé).
+
+    Réutilise `circuit_viewer._agencement_entre` (import LAZY : pas de cycle,
+    ce module n'est importé par circuit_viewer qu'à l'appel) pour placer les
+    symboles réels R/L/C le long du segment p1->p2.
+
+    @param d Dessin schemdraw en cours.
+    @param p1, p2 Extrémités globales du bras.
+    @param bras Bras {"refs": [...], "composition": str}.
+    @param comps Dict {ref → Composant}.
+    @return bool True si dessiné (arbre série/parallèle valide), False si le
+        bras n'est pas dépliable (l'appelant garde alors la boîte Z).
+    """
+    from circuit_analyzer import impedance
+    from gui.circuit_viewer import _agencement_entre
+    arbre = impedance.arbre_expr(bras["composition"])
+    if arbre is None or arbre[0] not in ("serie", "parallele"):
+        return False
+    symboles, fils = _agencement_entre(p1, p2, arbre)
+    for ref, pa, pb in symboles:
+        comp = comps.get(ref)
+        typ = getattr(comp, "type", "")
+        cls = _SYMB.get(typ, elm.ResistorIEC)
+        coul = _COMP_COLORS.get(typ, _WIRE)
+        vfmt = impedance.formater_valeur(getattr(comp, "value", ""), typ)
+        label = f"{ref}\n{vfmt}" if vfmt else ref
+        d.add(cls().at(pa).to(pb).color(coul).label(label, fontsize=9, color=coul))
+    for pa, pb in fils:
+        d.add(elm.Line().at(pa).to(pb).color(_WIRE))
+    return True
+
+
+def dessiner_pont(pont, comps, titre=None, detaille=False):
     """@brief Figure matplotlib d'un pont (type Wheatstone) en losange.
 
     @param pont Structure de impedance.detecter_pont (bras = {refs, composition}).
     @param comps Dict {ref → Composant}.
     @param titre Titre embarqué sur la figure ; None = aucun.
-    @return matplotlib.figure.Figure ; fig._z_hitboxes liste les boîtes Z composites.
+    @param detaille Si True, chaque bras composite dont la composition est
+        série/parallèle est déplié en composants réels (cf. `_bras_detaille`) ;
+        un bras non dépliable garde sa boîte Z. Aucune zone cliquable dans ce mode.
+    @return matplotlib.figure.Figure ; fig._z_hitboxes liste les boîtes Z
+        composites (vide en mode détaillé).
     """
     haut, gauche, droite, bas = (0.0, 4.0), (-2.0, 2.0), (2.0, 2.0), (0.0, 0.0)
     bras = pont["bras"]
@@ -303,9 +343,11 @@ def dessiner_pont(pont, comps, titre=None):
     with schemdraw.Drawing(canvas=ax, show=False) as d:
         d.config(fontsize=13, inches_per_unit=0.5)
         for b, p1, p2 in segments:
+            if detaille and len(b["refs"]) > 1 and _bras_detaille(d, p1, p2, b, comps):
+                continue
             el, hit = _elem_bras(b, comps, p1, p2)
             d += el
-            if hit is not None:
+            if hit is not None and not detaille:
                 hitboxes.append(hit)
         d += elm.Dot().at(haut).label(pont["haut"], loc="top", color=_BUS)
         d += elm.Dot().at(bas).label(pont["bas"], loc="bottom", color=_BUS)

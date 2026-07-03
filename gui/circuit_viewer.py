@@ -624,9 +624,8 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         l'îlot (montage actif, arbre série/parallèle, pont, chaîne...).
 
         @param detaille Vue détaillée R/L/C (True) ou boîtes Z classiques (False).
-            Les chemins `impedance_schematic.dessiner_bloc/dessiner_pont`
-            ignorent encore ce drapeau (câblage prévu dans une tâche suivante) ;
-            il s'applique aux chemins `_make_*fig`.
+            Transmis à tous les chemins de rendu (`_make_*fig` et
+            `impedance_schematic.dessiner_bloc/dessiner_pont`).
         """
         if principal is not None:
             # Îlot = montage actif détecté : on réutilise son drawer dédié (schéma
@@ -638,11 +637,13 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         if _sp is not None:
             from gui import impedance_schematic
             _arbre, _comps = _sp
-            return impedance_schematic.dessiner_bloc(_arbre, "VIN", "VOUT", _comps)
+            return impedance_schematic.dessiner_bloc(_arbre, "VIN", "VOUT", _comps,
+                                                     detaille=detaille)
         if _pont is not None:
             from gui import impedance_schematic
             _pont_struct, _comps = _pont
-            return impedance_schematic.dessiner_pont(_pont_struct, _comps)
+            return impedance_schematic.dessiner_pont(_pont_struct, _comps,
+                                                      detaille=detaille)
         if _derive is not None:
             return _make_fig(_derive, comp_info, _draw_reseau_derive, detaille=detaille)
         if _deux is not None:
@@ -650,7 +651,8 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
             # etiquetes (cliquable), au lieu de la grille generique encombree.
             from gui import impedance_schematic
             _arbre, _a, _b, _comps = _deux
-            return impedance_schematic.dessiner_bloc(_arbre, _a, _b, _comps)
+            return impedance_schematic.dessiner_bloc(_arbre, _a, _b, _comps,
+                                                     detaille=detaille)
         if _chaine is not None:
             # Îlot multi-AOP en chaîne : un seul grand schéma, étages reliés OUT->IN.
             return _make_chain_fig(_chaine, comp_info,
