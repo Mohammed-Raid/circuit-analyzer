@@ -64,6 +64,17 @@ def test_dessiner_bloc_detaille_tout():
     assert fig_z._z_hitboxes and fig_d._z_hitboxes == []
 
 
+def test_island_zoom_next_est_borne_et_reversible():
+    import gui.circuit_viewer as cv
+
+    assert cv._island_zoom_next(1.0, "in") == 1.25
+    assert cv._island_zoom_next(1.25, "out") == 1.0
+    assert cv._island_zoom_next(2.9, "in") == 3.0        # borne haute
+    assert cv._island_zoom_next(0.51, "out") == 0.5      # borne basse
+    assert cv._island_zoom_next(2.4, "reset") == 1.0
+    assert cv._island_zoom_next(0.6, "reset") == 1.0
+
+
 def test_dessiner_pont_detaille_deplie_bras_composite():
     """dessiner_pont(detaille=True) déplie chaque bras série/parallèle en
     composants réels ; plus aucune boîte Z, donc plus de hitbox."""

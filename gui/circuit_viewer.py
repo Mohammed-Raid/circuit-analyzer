@@ -75,6 +75,26 @@ def _zoom_next_scale(current, wheel_delta):
     return max(_VIEWER_ZOOM_MIN, min(_VIEWER_ZOOM_MAX, current * factor))
 
 
+_ISLAND_ZOOM_MIN = 0.5
+_ISLAND_ZOOM_MAX = 3.0
+_ISLAND_ZOOM_STEP = 1.25
+
+
+def _island_zoom_next(current, direction):
+    """@brief Calcule le prochain facteur de zoom pour les boutons -/100%/+
+    de la fenêtre îlot (distinct du zoom molette du viewport scrollable).
+
+    @param current Facteur courant.
+    @param direction "in" (bouton +), "out" (bouton -) ou "reset" (bouton 100 %).
+    @return Facteur borné [_ISLAND_ZOOM_MIN, _ISLAND_ZOOM_MAX].
+    """
+    if direction == "reset":
+        return 1.0
+    factor = (current * _ISLAND_ZOOM_STEP if direction == "in"
+              else current / _ISLAND_ZOOM_STEP)
+    return max(_ISLAND_ZOOM_MIN, min(_ISLAND_ZOOM_MAX, factor))
+
+
 def _zoom_scroll_fractions(old_size, new_size, viewport, pointer, canvas_origin):
     """@brief Fractions x/y pour garder le point sous la souris pendant le zoom.
 
@@ -665,26 +685,29 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         matches = _matches_for_island(ilot, results)
         return _make_island_fig(model, matches=matches, detaille=detaille)
 
-    fig = construire_fig(False)
-    etat = {"fig": fig}
+    etat = {"fig": None}
     mode = {"detaille": False}
+    zoom = {"facteur": 1.0}
 
     canvas_frame = ctk.CTkFrame(popup, fg_color=SCH_BG, corner_radius=10)
     canvas_frame.pack(fill="both", expand=True, padx=14, pady=(4, 0))
 
-    def monter_canvas(fig):
+    def monter_canvas(fig, facteur=1.0):
         """@brief Empaquette `fig` dans `canvas_frame` (détruit l'ancien contenu),
         reconnecte le clic drill-down et le curseur « main » sur les Z.
 
         Vues larges (chaîne OU gros îlot-grille) : défilement horizontal à taille
         native pour ne pas écraser le schéma dans le popup. Les petites vues
-        remplissent simplement le cadre.
+        remplissent simplement le cadre. Un zoom (`facteur` > 1.0, boutons
+        -/100%/+) force aussi le chemin défilant : la figure agrandie ne doit
+        pas être écrasée dans le cadre.
         """
         for enfant in canvas_frame.winfo_children():
             enfant.destroy()
 
         _defile = (_chaine is not None or _branches is not None
-                   or fig.get_size_inches()[0] > 11.0)
+                   or fig.get_size_inches()[0] > 11.0
+                   or facteur > 1.0)
         if _defile:
             canvas = _pack_scrollable_figure(canvas_frame, fig)
         else:
@@ -706,7 +729,24 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         _suivre_curseur_z(canvas, fig)
         return canvas
 
-    monter_canvas(fig)
+    def _rendre():
+        """@brief Chemin de reconstruction partagé par le toggle vue détaillée
+        et les boutons de zoom : chacun conserve l'état de l'autre (le toggle
+        redessine au zoom courant, le zoom conserve le mode courant).
+
+        Reconstruit une figure fraîche via `construire_fig` (mémorise ses
+        base_w/base_h natifs), lui applique le facteur de zoom courant puis
+        la remonte via `monter_canvas`.
+        """
+        nouvelle_fig = construire_fig(mode["detaille"])
+        base_w, base_h = nouvelle_fig.get_size_inches()
+        facteur = zoom["facteur"]
+        if facteur != 1.0:
+            nouvelle_fig.set_size_inches(base_w * facteur, base_h * facteur)
+        etat["fig"] = nouvelle_fig
+        monter_canvas(nouvelle_fig, facteur)
+
+    _rendre()
 
     bar = ctk.CTkFrame(popup, fg_color=theme.OVERLAY, corner_radius=0, height=44)
     bar.pack(fill="x", side="bottom")
@@ -718,9 +758,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
 
     def _toggle_detaille():
         mode["detaille"] = not mode["detaille"]
-        nouvelle_fig = construire_fig(mode["detaille"])
-        etat["fig"] = nouvelle_fig
-        monter_canvas(nouvelle_fig)
+        _rendre()
         toggle_btn.configure(
             text="Vue simplifiée Z" if mode["detaille"] else "Vue détaillée R/L/C")
 
@@ -728,9 +766,23 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                   width=170, height=30,
                   command=_toggle_detaille)
     toggle_btn.pack(side="left", padx=(0, 12), pady=7)
+
+    def _zoom(direction):
+        zoom["facteur"] = _island_zoom_next(zoom["facteur"], direction)
+        _rendre()
+
+    # Fermer est packé side="right" en premier pour rester à l'extrémité
+    # droite ; les boutons de zoom, packés ensuite, s'empilent à sa gauche
+    # dans l'ordre de lecture −, 100 %, +.
     ui_kit.GhostButton(bar, text="Fermer",
                   width=90, height=30,
                   command=popup.destroy).pack(side="right", padx=12, pady=7)
+    ui_kit.GhostButton(bar, text="+", width=40, height=30,
+                  command=lambda: _zoom("in")).pack(side="right", padx=(0, 12), pady=7)
+    ui_kit.GhostButton(bar, text="100 %", width=56, height=30,
+                  command=lambda: _zoom("reset")).pack(side="right", padx=0, pady=7)
+    ui_kit.GhostButton(bar, text="−", width=40, height=30,
+                  command=lambda: _zoom("out")).pack(side="right", padx=(12, 0), pady=7)
 
 
 def _pack_scrollable_figure(parent, fig):
