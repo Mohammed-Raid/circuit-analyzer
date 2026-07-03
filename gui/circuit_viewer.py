@@ -784,7 +784,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     # Fermer est packé side="right" en premier pour rester à l'extrémité
     # droite ; les boutons de zoom, packés ensuite, s'empilent à sa gauche
     # dans l'ordre de lecture −, 100 %, +.
-    ui_kit.GhostButton(bar, text="Fermer",
+    ui_kit.GhostButton(bar, text="Fermer", icon_name="x",
                   width=90, height=30,
                   command=popup.destroy).pack(side="right", padx=12, pady=7)
     ui_kit.GhostButton(bar, text="+", width=40, height=30,
@@ -938,7 +938,7 @@ def show_dipole_detail(refs, composition, graph, comp_info, parent=None):
                   width=140, height=30,
                   command=lambda: _export(fig, titre, popup)).pack(
                       side="left", padx=12, pady=7)
-    ui_kit.GhostButton(bar, text="Fermer",
+    ui_kit.GhostButton(bar, text="Fermer", icon_name="x",
                   width=90, height=30,
                   command=popup.destroy).pack(side="right", padx=12, pady=7)
 
