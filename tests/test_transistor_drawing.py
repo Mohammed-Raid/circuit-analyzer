@@ -502,3 +502,60 @@ def test_high_side_mosfet_entree_a_gauche():
 def test_commutation_mosfet_vcc_ne_chevauche_pas_charge():
     fig, _txts = _render_ilot_xml("tr_mosfet_commutation.xml")
     _assert_texts_do_not_overlap(fig, "VCC", "L1")
+
+
+# ── Audit fenêtre F1 : labels Rc/Re à côté de leur zigzag, jamais dessus ─────
+#
+# Reproduction fidèle : le chevauchement n'apparaît qu'à travers le pipeline
+# RÉEL (_make_chain_fig fixe la hauteur de figure à 4.2" quelle que soit la
+# largeur de la chaîne -> ratio px/unité différent d'un rendu de montage
+# isolé). Un rendu synthétique isolé (_draw_common_emitter seul, figure par
+# défaut) ne reproduit PAS le bug (vérifié en le rejouant sur l'ancien code).
+# D'où l'usage direct des XML îlots réels via `_render_ilot_xml`.
+
+def _assert_texte_ne_touche_aucune_ligne_noire(fig, needle):
+    """@brief Le texte `needle` (ex. "Rc") ne doit chevaucher AUCUN trait noir
+    du schéma (symboles/fils des montages transistor, dessinés en noir par
+    `_r_simple` — contrairement aux réseaux R/L/C détaillés, colorés)."""
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    canvas = FigureCanvasAgg(fig)
+    canvas.draw()
+    renderer = canvas.get_renderer()
+    ax = fig.axes[0]
+    labels = [t.get_window_extent(renderer) for t in ax.texts
+              if t.get_text().startswith(needle)]
+    assert labels, needle
+    for line in ax.lines:
+        if line.get_color() not in ("black", "k", "#000000"):
+            continue
+        xs = line.get_xdata()
+        if len(xs) < 2:
+            continue
+        bb = line.get_window_extent(renderer)
+        assert not any(lb.overlaps(bb) for lb in labels), (
+            f"{needle} chevauche une ligne noire (symbole) en {bb}")
+
+
+def test_darlington_chaine_rc_label_hors_zigzag():
+    # Audit fenêtre F1 (ilot_chaine_darlington_ce, "Rc = 2.2 kΩ") : "Rc = ..."
+    # était centré sur son ancre (halign par défaut) et sa moitié droite
+    # traversait le zigzag de Rc.
+    fig, _txts = _render_ilot_xml("ilot_chaine_darlington_ce.xml", detaille=True)
+    _assert_texte_ne_touche_aucune_ligne_noire(fig, "Rc")
+
+
+def test_suiveur_re_label_hors_zigzag():
+    # Audit fenêtre F1 (ilot_reel_ce_suiveur_sortie_rlc, "Re = 1.2 kΩ") :
+    # "Re = ..." (placé à gauche de Re) était centré sur son ancre et sa
+    # moitié droite traversait le zigzag de Re.
+    fig, _txts = _render_ilot_xml("ilot_reel_ce_suiveur_sortie_rlc.xml", detaille=True)
+    _assert_texte_ne_touche_aucune_ligne_noire(fig, "Re")
+
+
+def test_darlington_chaine_re_label_hors_zigzag():
+    # Audit fenêtre F1 (ilot_chaine_darlington_ce, "Re = 1 kΩ") : "Re = ..."
+    # (placé à droite de Re) était centré sur son ancre et sa moitié gauche
+    # traversait le zigzag de Re.
+    fig, _txts = _render_ilot_xml("ilot_chaine_darlington_ce.xml", detaille=True)
+    _assert_texte_ne_touche_aucune_ligne_noire(fig, "Re")

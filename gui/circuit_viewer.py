@@ -78,17 +78,38 @@ def _zoom_next_scale(current, wheel_delta):
 _ISLAND_ZOOM_MIN = 0.5
 _ISLAND_ZOOM_MAX = 3.0
 _ISLAND_ZOOM_STEP = 1.25
+# Largeur (pouces, dpi 100) au-dela de laquelle le popup ilot bascule en
+# defilement horizontal plutot que de tasser le schema. Alignee sur la
+# largeur utile du popup 1200px (audit fenetre F6).
+_ISLAND_DEFILE_WIDTH_IN = 11.6
 
 _Z_DETAIL_PERP_MIN_SCALE = 0.85
 _Z_DETAIL_LABEL_AXIS_EPS = 0.05
-_Z_DETAIL_LABEL_FONTSIZE = 7
+# 7 illisible en fenetre compressee (audit fenetre F2) ; 8 reste compact tout
+# en restant net une fois la figure redimensionnee dans le popup.
+_Z_DETAIL_LABEL_FONTSIZE = 8
 _Z_DETAIL_LABEL_CLEAR = 0.3
+# Degagement vertical (branche horizontale) : doit couvrir l'amplitude du
+# zigzag/de la spirale (~0.25 unite) + marge, sinon le label chevauche les
+# crêtes (audit fenetre F1).
+_Z_DETAIL_LABEL_CLEAR_VERT = 0.5
 _Z_DETAIL_COMPACT_LABEL_SCALE = 0.65
 _Z_DETAIL_COMPACT_INLINE_MAX = 3
-_Z_DETAIL_COMPACT_SIDE_CLEAR = 0.45
+# 0.45 laissait l'etiquette "VCC" du montage appelant frôler la premiere
+# branche decalee (ex. L1 du reseau darlington+relais) -> 0.6 degage le texte
+# voisin d'au moins 0.4 unite (audit fenetre F5).
+_Z_DETAIL_COMPACT_SIDE_CLEAR = 0.6
 # 0.55 collait zigzags/bobines des branches paralleles (labels sur symboles) ;
 # 0.9 laisse respirer sans envahir les voisins (verifie sur le sweep bimode).
 _Z_DETAIL_COMPACT_PERP_SCALE = 0.9
+# Degagement label/rail pour les branches verticales d'un reseau decale (F2) :
+# le rail est a `rang max`, on veut le label AU-DESSUS, jamais dans l'entrefer
+# etroit symbole<->rail (souvent < 0.25 unite, insuffisant pour un label lisible).
+_Z_DETAIL_COMPACT_RAIL_CLEAR = 0.14
+# Longueur minimale absolue (unites schemdraw) sous laquelle un symbole
+# periodique (zigzag Resistor, spirale Inductor2) deborde de ses propres
+# bornes au lieu de se compresser proprement (audit fenetre F3/F4).
+_Z_DETAIL_SYMBOL_MIN_LEN = 1.0
 _Z_BOX_LABEL_FONTSIZE = 10
 
 
@@ -2312,8 +2333,15 @@ def _z_reseau(d, p1, p2, bloc, ci, label_loc="top") -> bool:
         # "top"/"bottom" se traduisent en gauche/droite selon le sens de
         # tracage de l'element, ce qui inversait le cote attendu.
         sign = -1.0 if signed_perp > 0 else 1.0
-        lx = mx + sign * nx * _Z_DETAIL_LABEL_CLEAR
-        ly = my + sign * ny * _Z_DETAIL_LABEL_CLEAR
+        # Poussee verticale (branche horizontale, ex. R5//L1 d'un couplage) :
+        # il faut degager l'AMPLITUDE du zigzag/de la spirale (~0.25 unite),
+        # plus large que la demi-largeur etroite qu'une poussee horizontale
+        # doit degager (branche verticale) -> deux degagements distincts,
+        # sinon le petit degagement laisse le label chevaucher les crêtes
+        # (audit fenetre F1, ex. R5 de ilot_reel_2ce_bias_rlc).
+        clear = _Z_DETAIL_LABEL_CLEAR if abs(nx) >= abs(ny) else _Z_DETAIL_LABEL_CLEAR_VERT
+        lx = mx + sign * nx * clear
+        ly = my + sign * ny * clear
         if abs(nx) >= abs(ny):
             ha = "left" if sign * nx > 0 else "right"
             va = "center"
@@ -3594,8 +3622,11 @@ def _draw_common_emitter(d, result, ci, origin=(3, 0), titre=True,
     # Rc en boîte Z verticale, du collecteur vers VCC
     cx, cy = t.collector
     _r_simple(d, rc, ci, (cx, cy + 0.5), (cx, cy + 1.9), None)
+    # halign="right" : l'étiquette se TERMINE à l'ancre (côté gauche du zigzag)
+    # au lieu d'être centrée dessus -> sans ça, la moitié droite du texte
+    # ("kΩ") traverse le symbole (audit fenêtre F1).
     d.add(elm.Label().at((cx - 1.05, cy + 1.35))
-          .label(_texte_passif_simple(rc, ci, "Rc"), fontsize=8))
+          .label(_texte_passif_simple(rc, ci, "Rc"), fontsize=8, halign="right"))
     d.add(elm.Line().at(t.collector).to((cx, cy + 0.5)))
     d.add(elm.Line().at((cx, cy + 1.9)).up(0.4).label("VCC", loc="top"))
     emitter_net = q_pins.get("E")
@@ -3819,8 +3850,10 @@ def _draw_suiveur_emetteur(d, result, ci, origin=(3, 0), titre=True,
     _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), None)
     # Label a GAUCHE de Re : a droite du noeud emetteur/OUT, la chaine peut poser
     # une boite Z de sortie (ex. L1//R8) qui percuterait "Re = ..." (audit visuel).
+    # halign="right" : le texte se TERMINE à l'ancre au lieu d'être centré
+    # dessus, sinon sa moitié droite traverse le zigzag (audit fenêtre F1).
     d.add(elm.Label().at((ex - 0.9, ey - 1.25))
-          .label(_texte_passif_simple(re, ci, "Re"), fontsize=9))
+          .label(_texte_passif_simple(re, ci, "Re"), fontsize=9, halign="right"))
     d.add(elm.Line().at(t.emitter).to((ex, ey - 0.6)))
     d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
     d.add(elm.Ground())
@@ -3953,8 +3986,11 @@ def _draw_darlington(d, result, ci, origin=(3, 0), titre=True,
         d.add(line)
         if re:
             _r_simple(d, re, ci, (ex, ey - 0.6), (ex, ey - 2.0), None)
+            # halign="left" : le texte COMMENCE à l'ancre (côté droit du
+            # zigzag) au lieu d'être centré dessus, sinon sa moitié gauche
+            # traverse le symbole (audit fenêtre F1, ilot_chaine_darlington_ce).
             d.add(elm.Label().at((ex + 0.85, ey - 1.25))
-                  .label(_texte_passif_simple(re, ci, "Re"), fontsize=9))
+                  .label(_texte_passif_simple(re, ci, "Re"), fontsize=9, halign="left"))
             d.add(elm.Line().at(q2.emitter).to((ex, ey - 0.6)))
             d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
             d.add(elm.Ground())
