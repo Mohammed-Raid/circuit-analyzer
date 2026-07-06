@@ -86,7 +86,9 @@ _Z_DETAIL_LABEL_CLEAR = 0.3
 _Z_DETAIL_COMPACT_LABEL_SCALE = 0.65
 _Z_DETAIL_COMPACT_INLINE_MAX = 3
 _Z_DETAIL_COMPACT_SIDE_CLEAR = 0.45
-_Z_DETAIL_COMPACT_PERP_SCALE = 0.55
+# 0.55 collait zigzags/bobines des branches paralleles (labels sur symboles) ;
+# 0.9 laisse respirer sans envahir les voisins (verifie sur le sweep bimode).
+_Z_DETAIL_COMPACT_PERP_SCALE = 0.9
 _Z_BOX_LABEL_FONTSIZE = 10
 
 
