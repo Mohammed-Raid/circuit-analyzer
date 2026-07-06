@@ -630,7 +630,18 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
 
     popup = ctk.CTkToplevel(parent)
     popup.title(f"Schema ilot - {name}")
-    popup.geometry("1000x600")
+    # 1200x720 (audit fenetre F6) borne a l'ecran dispo : un ecran bas (petit
+    # portable, VM) laisserait sinon la barre du bas (Exporter/toggle/Fermer)
+    # hors-champ derriere la barre des taches.
+    largeur = min(1200, popup.winfo_screenwidth() - 40)
+    hauteur = min(720, popup.winfo_screenheight() - 200)
+    # Position explicite (centree) : le placement en cascade par defaut du
+    # gestionnaire de fenetres n'a aucune garantie de tenir a l'ecran une fois
+    # la taille appliquee (verifie sur un ecran bas : la barre du bas sortait
+    # du cadre malgre une hauteur bornee a l'ecran).
+    pos_x = max(0, (popup.winfo_screenwidth() - largeur) // 2)
+    pos_y = max(0, (popup.winfo_screenheight() - hauteur) // 2)
+    popup.geometry(f"{largeur}x{hauteur}+{pos_x}+{pos_y}")
     popup.configure(fg_color=theme.SURFACE)
     popup.grab_set()
 
@@ -741,7 +752,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
             enfant.destroy()
 
         _defile = (_chaine is not None or _branches is not None
-                   or fig.get_size_inches()[0] > 11.0
+                   or fig.get_size_inches()[0] > _ISLAND_DEFILE_WIDTH_IN
                    or facteur > 1.0)
         if _defile:
             canvas = _pack_scrollable_figure(canvas_frame, fig)
@@ -778,6 +789,16 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         facteur = zoom["facteur"]
         if facteur != 1.0:
             nouvelle_fig.set_size_inches(base_w * facteur, base_h * facteur)
+        elif (_chaine is None and _branches is None
+                and base_w > _ISLAND_DEFILE_WIDTH_IN):
+            # Depassement MARGINAL (<= 15 %) du viewport : on tasse la figure
+            # pour tenir sans barre de defilement au facteur 100 % plutot que
+            # de faire apparaitre un scroll pour quelques pixels (audit
+            # fenetre F6). Un depassement plus large (chaine large...) garde
+            # le defilement natif (cf. `_defile` dans monter_canvas).
+            ratio = base_w / _ISLAND_DEFILE_WIDTH_IN
+            if ratio <= 1.15:
+                nouvelle_fig.set_size_inches(base_w / ratio, base_h / ratio)
         etat["fig"] = nouvelle_fig
         monter_canvas(nouvelle_fig, facteur)
 
