@@ -1,0 +1,205 @@
+"""
+@file test_island_viewport.py
+@brief Viewport zoom exact (persistance croisee mode/zoom, centrage < 1.0x,
+scrollregion > 1.0x) et demontage deterministe (zero fuite) de la fenetre
+ilot (`gui.circuit_viewer.show_island`).
+
+Design : docs/superpowers/specs/2026-07-06-ilots-rendu-rigoureux-design.md
+sections 2 et 3. Tests d'integration legers sur un vrai root Tk (sautes sans
+affichage), meme idiome que tests/test_gui_sync.py::ctk_root.
+"""
+import gc
+import weakref
+
+import pytest
+
+from circuit_analyzer.composant import construire_graphe
+from circuit_analyzer.detecteur import analyser
+from circuit_analyzer.xml import lire_xml
+import gui.circuit_viewer as cv
+
+
+@pytest.fixture
+def ctk_root():
+    ctk = pytest.importorskip("customtkinter")
+    import tkinter as tk
+    try:
+        root = ctk.CTk()
+    except tk.TclError:
+        pytest.skip("pas d'affichage Tk disponible")
+    root.withdraw()
+    yield root
+    root.destroy()
+
+
+def _premier_ilot(fichier):
+    """@brief Charge un ilot reel (graphe + comp_info + results) depuis un XML
+    de circuits_industriels/, pour ouvrir une vraie fenetre show_island."""
+    comps = lire_xml(f"circuits_industriels/{fichier}")
+    graph = construire_graphe(comps)
+    res = analyser(graph)
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    return res.ilots[0], graph, ci, res
+
+
+def _ouvrir(ctk_root, fichier):
+    ilot, graph, ci, res = _premier_ilot(fichier)
+    popup = cv.show_island(ilot, graph, ci, parent=ctk_root, results=res)
+    ctk_root.update()
+    return popup
+
+
+# ── Section 2 : persistance croisee mode/zoom ─────────────────────────────────
+
+def test_toggle_ne_modifie_pas_le_zoom_et_zoom_ne_modifie_pas_le_mode(ctk_root):
+    popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
+    t = popup._etat_test
+    mode, zoom = t["mode"], t["zoom"]
+
+    assert mode["detaille"] is False
+    assert zoom["facteur"] == 1.0
+
+    t["zoom_in"]()
+    ctk_root.update()
+    assert zoom["facteur"] == pytest.approx(1.25)
+    assert mode["detaille"] is False, "le zoom ne doit pas toucher le mode"
+
+    t["toggle"]()
+    ctk_root.update()
+    assert mode["detaille"] is True
+    assert zoom["facteur"] == pytest.approx(1.25), "le toggle ne doit pas toucher le zoom"
+
+    t["zoom_out"]()
+    ctk_root.update()
+    assert zoom["facteur"] == pytest.approx(1.0)
+    assert mode["detaille"] is True, "le zoom ne doit pas toucher le mode"
+
+    t["toggle"]()
+    ctk_root.update()
+    assert mode["detaille"] is False
+    assert zoom["facteur"] == pytest.approx(1.0)
+
+    popup.destroy()
+
+
+# ── Section 2 : centrage explicite < 1.0x (pas d'etirement) ───────────────────
+
+def test_zoom_reduit_centre_le_widget_sans_l_etirer(ctk_root):
+    # Choisi pour son chemin non-defilant (pas un montage en chaine/branches,
+    # figure de base sous le seuil _ISLAND_DEFILE_WIDTH_IN) : c'est justement
+    # le chemin "< 1.0x" vise par la section 2 du design. L'autre ilot du meme
+    # fichier (index 1) qualifie aussi ; l'ilot 0 de ce_suiveur_sortie_rlc, lui,
+    # est un montage en chaine -> toujours defilant, meme sous 1.0x (verifie).
+    popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
+    t = popup._etat_test
+
+    t["zoom_out"]()
+    ctk_root.update()
+    assert t["zoom"]["facteur"] < 1.0
+
+    canvas = t["etat"]["canvas"]
+    widget = canvas.get_tk_widget()
+    info = widget.pack_info()
+    assert info.get("fill") in ("none", None), (
+        "a facteur < 1.0, le widget ne doit pas etre etire (fill both) : "
+        "l'etirement declenche le resize() de FigureCanvasTkAgg qui annule "
+        "le zoom reduit en re-agrandissant la figure au cadre disponible"
+    )
+    assert info.get("expand") in ("1", True, 1), "doit rester centre (expand=True)"
+
+    # La figure montee reflete bien le facteur applique (pas re-agrandie par
+    # un resize() Tk qui l'aurait forcee a remplir le cadre disponible).
+    fig = t["etat"]["fig"]
+    fw, fh = fig.get_size_inches()
+    reqw = widget.winfo_reqwidth()
+    assert reqw == pytest.approx(fw * fig.dpi, abs=2), (
+        "le widget doit demander la taille NATIVE de la figure reduite, "
+        "pas la taille du cadre"
+    )
+
+    popup.destroy()
+
+
+# ── Section 2 : scrollregion exacte > 1.0x ────────────────────────────────────
+
+def test_scrollregion_couvre_exactement_la_figure_zoomee(ctk_root):
+    popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
+    t = popup._etat_test
+
+    t["zoom_in"]()
+    t["zoom_in"]()
+    ctk_root.update()
+    assert t["zoom"]["facteur"] > 1.0
+
+    canvas = t["etat"]["canvas"]
+    view = getattr(canvas, "_scroll_view", None)
+    assert view is not None, "chemin defilant attendu au-dessus de 1.0x"
+
+    fig = t["etat"]["fig"]
+    attendu_w, attendu_h = cv._figure_pixel_size(fig)
+    region = [float(v) for v in view.cget("scrollregion").split()]
+    assert region == pytest.approx([0.0, 0.0, float(attendu_w), float(attendu_h)], abs=1.0)
+
+    # Le bord du schema est atteignable pile a la fraction 1.0, rien au-dela.
+    view.xview_moveto(1.0)
+    view.yview_moveto(1.0)
+    ctk_root.update()
+    x0, x1 = view.xview()
+    y0, y1 = view.yview()
+    assert x1 == pytest.approx(1.0, abs=1e-6)
+    assert y1 == pytest.approx(1.0, abs=1e-6)
+
+    popup.destroy()
+
+
+# ── Section 3 : demontage deterministe (zero fuite) ──────────────────────────
+
+def test_aucune_fuite_de_figure_sur_cycles_toggle_zoom(ctk_root):
+    popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
+    t = popup._etat_test
+
+    actions = [
+        t["zoom_in"], t["toggle"], t["zoom_in"], t["toggle"],
+        t["zoom_out"], t["toggle"], t["zoom_reset"], t["toggle"],
+    ]
+    assert len(actions) >= 8
+
+    refs = []
+    old_fig = None
+    for action in actions:
+        old_fig = t["etat"]["fig"]
+        refs.append(weakref.ref(old_fig))
+        action()
+        ctk_root.update()
+
+    del old_fig
+    gc.collect()
+
+    vivantes = [i for i, r in enumerate(refs) if r() is not None]
+    popup.destroy()
+    assert not vivantes, (
+        f"{len(vivantes)}/{len(refs)} figures remplacees non collectees "
+        f"apres gc.collect() (indices {vivantes})"
+    )
+
+
+def test_fermeture_popup_demonte_le_dernier_contexte(ctk_root):
+    """`_fermer` (partagee par le bouton Fermer ET le protocole
+    WM_DELETE_WINDOW, cf. `popup.protocol("WM_DELETE_WINDOW", _fermer)` dans
+    show_island) doit liberer la derniere figure affichee avant de detruire
+    le popup — pas seulement les figures intermediaires des toggles/zoom."""
+    popup = _ouvrir(ctk_root, "ilot_reel_ce_suiveur_sortie_rlc.xml")
+    t = popup._etat_test
+
+    # Verifie le wiring WM_DELETE_WINDOW -> meme fonction que le hook "fermer".
+    assert popup.protocol("WM_DELETE_WINDOW"), "protocole de fermeture non enregistre"
+
+    derniere_fig = t["etat"]["fig"]
+    ref = weakref.ref(derniere_fig)
+    del derniere_fig
+
+    t["fermer"]()  # meme chemin que le bouton Fermer / WM_DELETE_WINDOW
+    ctk_root.update()
+
+    gc.collect()
+    assert ref() is None, "la derniere figure affichee doit etre liberee a la fermeture"
