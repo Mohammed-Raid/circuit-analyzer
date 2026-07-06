@@ -1,6 +1,8 @@
 """Expansion d'une composition Z en réseau R/L/C entre deux points (vue détaillée)."""
+import math
+
 from circuit_analyzer.impedance import arbre_expr
-from gui.circuit_viewer import _agencement_entre
+from gui.circuit_viewer import _agencement_entre, _amorce_centree, _z_locale_extra
 
 
 def test_serie_horizontale_reste_sur_l_axe():
@@ -180,3 +182,111 @@ def test_z_reseau_compact_trop_dense_dessine_des_symboles_reels():
     assert {"C1", "L1", "R2", "R3"} <= textes
     assert not any(t.startswith("Z") for t in textes)
     assert len(elements_non_label) >= 4
+
+
+# ── Audit fenêtre F3/F4 : symbole recentré + fils d'amorce ────────────────────
+
+def test_amorce_centree_raccourcit_un_segment_long():
+    """Un segment assez long pour laisser de la place recoit deux fils
+    d'amorce ; le symbole recentre garde le meme milieu que le segment
+    d'origine (les labels perpendiculaires s'appuient dessus)."""
+    pa, pb = (0.0, 0.0), (3.0, 0.0)
+    sa, sb, amorces = _amorce_centree(pa, pb)
+    assert len(amorces) == 2
+    assert amorces[0] == (pa, sa)
+    assert amorces[1] == (sb, pb)
+    assert sa[0] > pa[0] and sb[0] < pb[0]                 # symbole recule des bornes
+    milieu_orig = (pa[0] + pb[0]) / 2
+    milieu_symb = (sa[0] + sb[0]) / 2
+    assert math.isclose(milieu_orig, milieu_symb, abs_tol=1e-9)
+
+
+def test_amorce_centree_segment_trop_court_reste_inchange():
+    """Un segment deja plus court que le minimum absolu ne peut pas degager de
+    fil d'amorce sans deborder de ses propres bornes p1/p2 : il reste tel
+    quel (comportement de repli, pas de crash ni de symbole hors segment)."""
+    pa, pb = (0.0, 0.0), (0.4, 0.0)
+    sa, sb, amorces = _amorce_centree(pa, pb, min_len=1.0)
+    assert (sa, sb) == (pa, pb)
+    assert amorces == []
+
+
+def test_amorce_centree_verticale_respecte_le_milieu():
+    pa, pb = (2.0, 5.0), (2.0, 1.0)
+    sa, sb, amorces = _amorce_centree(pa, pb)
+    assert amorces
+    assert sa[0] == sb[0] == 2.0
+    assert min(pa[1], pb[1]) < sb[1] < sa[1] < max(pa[1], pb[1])
+
+
+# ── Audit fenêtre F4 : moignon Z local élargi pour un couplage composite ─────
+
+def test_z_locale_extra_nulle_hors_vue_detaillee():
+    class Faux:
+        _mode_detaille = False
+    z = {"refs": ["C1", "R1"], "composition": "(C1)+(R1)"}
+    assert _z_locale_extra(Faux(), z, 1.2) == 0.0
+
+
+def test_z_locale_extra_nulle_pour_une_seule_ref():
+    class Faux:
+        _mode_detaille = True
+    z = {"refs": ["C1"], "composition": "C1"}
+    assert _z_locale_extra(Faux(), z, 1.2) == 0.0
+
+
+def test_z_locale_extra_positive_pour_reseau_composite_en_vue_detaillee():
+    """C1+R1 en série sur un moignon a longueur fixe (1.2) ecrase chaque
+    symbole a une fraction d'unite : schemdraw deborde alors des bornes
+    (audit fenetre F4). L'allongement doit etre strictement positif."""
+    class Faux:
+        _mode_detaille = True
+    z = {"refs": ["C1", "R1"], "composition": "(C1)+(R1)"}
+    assert _z_locale_extra(Faux(), z, 1.2) > 0.0
+
+
+# ── Audit fenêtre F2 : labels des réseaux décalés au-dessus/dessous du rail ──
+
+def test_z_reseau_decale_place_les_labels_hors_du_rail():
+    """Les 4 branches d'un réseau décalé (> _Z_DETAIL_COMPACT_INLINE_MAX) ne
+    doivent jamais poser leur étiquette dans l'entrefer symbole<->rail (trop
+    étroit pour un texte lisible) : chaque label tombe au-delà du rail le
+    plus proche de sa branche."""
+    from matplotlib.figure import Figure
+    import schemdraw
+    import gui.circuit_viewer as cv
+
+    fig = Figure(figsize=(4, 3))
+    ax = fig.add_subplot(111)
+    ax.axis("off")
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d.config(fontsize=10, inches_per_unit=0.5)
+        d._z_hitboxes = []
+        d._mode_detaille = True
+        bloc = {"refs": ["L1", "R3", "C2", "R4"],
+                "composition": "(L1)//(R3)//(C2)//(R4)"}
+        ci = {
+            "L1": {"type": "L", "value": "10u"},
+            "R3": {"type": "R", "value": "1k"},
+            "C2": {"type": "C", "value": "10n"},
+            "R4": {"type": "R", "value": "2k"},
+        }
+        dessine = cv._z_reseau(d, (0.0, 0.0), (0.0, 1.2), bloc, ci, label_loc="right")
+    assert dessine is True
+    textes = {t.get_text(): t.get_position() for t in ax.texts}
+    for ref in ("L1", "R3", "C2", "R4"):
+        assert ref in textes, f"{ref} absent des labels"
+        _lx, ly = textes[ref]
+        # Hors de l'intervalle [0, 1.2] du rail (au-dessus ou en-dessous).
+        assert ly < 0.0 or ly > 1.2, (
+            f"label {ref} en y={ly} tombe dans l'entrefer symbole<->rail"
+        )
+
+
+def test_label_clear_vertical_couvre_amplitude_zigzag():
+    """Une branche HORIZONTALE hors-axe (ex. R5 d'un couplage C2+(R5//L1))
+    pousse son étiquette verticalement : le dégagement doit couvrir
+    l'amplitude du zigzag (~0.25 unité), pas seulement une fraction (audit
+    fenêtre F1, ilot_reel_2ce_bias_rlc)."""
+    from gui.circuit_viewer import _Z_DETAIL_LABEL_CLEAR_VERT
+    assert _Z_DETAIL_LABEL_CLEAR_VERT > 0.3

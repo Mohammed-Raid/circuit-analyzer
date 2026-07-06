@@ -2265,6 +2265,35 @@ def _agencement_compact_decale(p1, p2, arbre, label_loc="top"):
     return symboles, fils, entree, sortie
 
 
+def _amorce_centree(pa, pb, fraction=0.65, min_len=_Z_DETAIL_SYMBOL_MIN_LEN):
+    """@brief Rétrécit (pa,pb) sur ~`fraction` du segment, CENTRÉ.
+
+    schemdraw ne compresse pas les motifs périodiques (zigzag Resistor, spirale
+    Inductor2) en dessous de leur taille naturelle (~1 unité) : un symbole
+    dessiné sur un segment plus court DÉBORDE de ses propres bornes (audit
+    fenêtre F4, ex. R1 d'un stub compact). Sur les boucles parallèles, un
+    symbole qui occupe 100 % du segment vient aussi buter visuellement sur les
+    coins des rails (F3). Ce helper renvoie les nouvelles bornes du symbole et
+    les segments de fil d'amorce à dessiner de part et d'autre (liste vide si
+    le segment est déjà trop court pour dégager de la place).
+
+    @return (sa, sb, fils_amorce) ; fils_amorce = [(pa,sa), (sb,pb)] ou [].
+    """
+    ax, ay = pa
+    bx, by = pb
+    dist = math.hypot(bx - ax, by - ay)
+    if dist < 1e-9:
+        return pa, pb, []
+    cible = min(dist, max(dist * fraction, min(dist, min_len)))
+    marge = (dist - cible) / 2
+    if marge < 1e-6:
+        return pa, pb, []
+    ux, uy = (bx - ax) / dist, (by - ay) / dist
+    sa = (ax + ux * marge, ay + uy * marge)
+    sb = (bx - ux * marge, by - uy * marge)
+    return sa, sb, [(pa, sa), (sb, pb)]
+
+
 def _z_reseau(d, p1, p2, bloc, ci, label_loc="top") -> bool:
     """@brief Dessine le réseau R/L/C réel de `bloc` entre p1 et p2 (vue détaillée).
 
@@ -2306,10 +2335,35 @@ def _z_reseau(d, p1, p2, bloc, ci, label_loc="top") -> bool:
             label = ref
         mx, my = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
         sdx, sdy = pb[0] - pa[0], pb[1] - pa[1]
+        # Symbole recentre sur ~65% du segment (mini absolu pour les motifs
+        # periodiques R/L) + fils d'amorce de part et d'autre : evite le
+        # debordement de bornes (F4) et le symbole rail-a-rail dans les
+        # boucles paralleles (F3). mx/my restent le milieu du segment
+        # D'ORIGINE (identique a celui du symbole recentre) pour la logique
+        # de placement des labels ci-dessous.
+        sa, sb, amorces = _amorce_centree(pa, pb)
+        for fa, fb in amorces:
+            d.add(elm.Line().at(fa).to(fb).color(coul))
+        pa, pb = sa, sb
         if decale and abs(sdy) > abs(sdx):
             d.add(cls().at(pa).to(pb).color(coul))
-            d.add(elm.Label().at((mx, max(pa[1], pb[1]) + 0.08)).label(
-                label, halign="center", valign="bottom",
+            # Le label va AU-DESSUS du rail le plus proche (jamais dans
+            # l'entrefer symbole<->rail, souvent trop etroit pour un texte
+            # lisible - audit fenetre F2). On choisit le rail dont la branche
+            # est la plus proche : une branche plus courte que ses voisines
+            # (ecart bas > ecart haut) bascule son etiquette SOUS le rail bas.
+            rail_haut = max(label_p1[1], label_p2[1])
+            rail_bas = min(label_p1[1], label_p2[1])
+            ecart_haut = rail_haut - max(pa[1], pb[1])
+            ecart_bas = min(pa[1], pb[1]) - rail_bas
+            if ecart_haut <= ecart_bas:
+                ly = rail_haut + _Z_DETAIL_COMPACT_RAIL_CLEAR
+                valign = "bottom"
+            else:
+                ly = rail_bas - _Z_DETAIL_COMPACT_RAIL_CLEAR
+                valign = "top"
+            d.add(elm.Label().at((mx, ly)).label(
+                label, halign="center", valign=valign,
                 fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
             continue
         signed_perp = ((mx - label_p1[0]) * (-dy) + (my - label_p1[1]) * dx) / dist
@@ -2777,8 +2831,9 @@ def _couplage_entre(m_out, m_in, couplages, find, ci):
 def _fil_avec_couplage(d, out_pt, in_pt, cc, ci):
     """@brief Relie out_pt -> in_pt en intercalant le symbole du couplage."""
     midx = (out_pt[0] + in_pt[0]) / 2
-    p1 = (midx - 0.6, out_pt[1])
-    p2 = (midx + 0.6, out_pt[1])
+    demi = 0.6 + _z_locale_extra(d, cc, 1.2) / 2
+    p1 = (midx - demi, out_pt[1])
+    p2 = (midx + demi, out_pt[1])
     d.add(elm.Line().at(out_pt).to(p1).color(_WIRE))
     _dessiner_symbole_couplage(d, p1, p2, cc, ci)
     d.add(elm.Line().at(p2).to((in_pt[0], out_pt[1])).color(_WIRE))
@@ -2788,8 +2843,9 @@ def _fil_avec_couplage(d, out_pt, in_pt, cc, ci):
 def _fil_canal_avec_couplage(d, out_pt, in_pt, channel_x, cc, ci):
     """@brief Fil en canal avec le couplage dessiné sur la branche de destination."""
     cap_x = (channel_x + in_pt[0]) / 2
-    p1 = (cap_x - 0.6, in_pt[1])
-    p2 = (cap_x + 0.6, in_pt[1])
+    demi = 0.6 + _z_locale_extra(d, cc, 1.2) / 2
+    p1 = (cap_x - demi, in_pt[1])
+    p2 = (cap_x + demi, in_pt[1])
     d.add(elm.Line().at(out_pt).to((channel_x, out_pt[1])).color(_WIRE))
     d.add(elm.Line().at((channel_x, out_pt[1])).to((channel_x, in_pt[1])).color(_WIRE))
     d.add(elm.Line().at((channel_x, in_pt[1])).to(p1).color(_WIRE))
@@ -2856,6 +2912,35 @@ def _dessiner_impedances_locales(d, stages, ancres, z_matches, z_utilises, ci):
             break
 
 
+def _z_locale_extra(d, z, base):
+    """@brief Rallonge (unites schemdraw) du moignon d'une Z locale composite.
+
+    En vue detaillee, un moignon a longueur fixe ecrase un reseau a 2+
+    composants (chaque symbole n'a plus qu'une fraction d'unite) : le zigzag
+    Resistor/la spirale Inductor2 debordent alors de leurs propres bornes
+    (audit fenetre F4) et, en parallele, occupent toute la boucle jusqu'aux
+    coins des rails (F3). Calcule la longueur nécessaire pour que le plus
+    grand symbole atteigne `_Z_DETAIL_SYMBOL_MIN_LEN`, a partir de la mise en
+    page reelle (`impedance_schematic.agencer`). Sans effet en vue Z (boîte
+    generique, taille libre) ni pour un couplage a une seule ref.
+    """
+    if not getattr(d, "_mode_detaille", False):
+        return 0.0
+    refs = _refs_couplage(z)
+    if len(refs) <= 1:
+        return 0.0
+    from circuit_analyzer import impedance
+    from gui import impedance_schematic
+    arbre = impedance.arbre_expr(z.get("composition") or " // ".join(refs))
+    if arbre is None:
+        return 0.0
+    _sym, _fils, dims = impedance_schematic.agencer(arbre)
+    if not dims.largeur:
+        return 0.0
+    besoin = _Z_DETAIL_SYMBOL_MIN_LEN * dims.largeur / impedance_schematic.W_SYMB
+    return max(0.0, besoin - base)
+
+
 def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0, bloque_bas=False):
     """@brief Dessine une Z locale depuis `anchor` vers un rail ou une etiquette.
 
@@ -2871,12 +2956,14 @@ def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0, bloque_bas=False):
     # (ex. couplage d'entrée + polarisation sur la même base) -> pas de chevauchement.
     dx = index * 1.8
     if other_net == "VCC":
-        p1, p2 = (ax + dx, ay + 0.45), (ax + dx, ay + 1.65)
+        extra = _z_locale_extra(d, z, 1.2)
+        p1, p2 = (ax + dx, ay + 0.45), (ax + dx, ay + 1.65 + extra)
         d.add(elm.Line().at(anchor).to(p1).color(_WIRE))
         _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right")
         d.add(elm.Line().at(p2).up(0.35).label("VCC", loc="top").color(_WIRE))
     elif other_net == "GND":
-        p1, p2 = (ax + dx, ay - 0.45), (ax + dx, ay - 1.65)
+        extra = _z_locale_extra(d, z, 1.2)
+        p1, p2 = (ax + dx, ay - 0.45), (ax + dx, ay - 1.65 - extra)
         d.add(elm.Line().at(anchor).to(p1).color(_WIRE))
         _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right")
         d.add(elm.Line().at(p2).down(0.25).color(_WIRE))
@@ -2884,14 +2971,16 @@ def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0, bloque_bas=False):
     elif bloque_bas:
         # Un élément (l'émetteur) occupe l'espace sous l'ancre (collecteur) : un
         # stub vertical le traverserait -> boîte EN LIGNE sur le fil de sortie.
-        p1, p2 = (ax + 0.4 + dx, ay), (ax + 1.4 + dx, ay)
+        extra = _z_locale_extra(d, z, 1.0)
+        p1, p2 = (ax + 0.4 + dx, ay), (ax + 1.4 + dx + extra, ay)
         _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci)
     else:
         # Couplage vers un net non-rail : stub vertical vers le BAS (hors du fil
         # d'entrée/sortie horizontal de l'étage), TERMINÉ par le second nœud réel
         # étiqueté -> pas de borne flottante qui paraît coupée. L'étiquette de la Z
         # passe à droite pour laisser la place au nom du nœud sous la boîte.
-        p1, p2 = (ax + dx, ay - 0.55), (ax + dx, ay - 1.75)
+        extra = _z_locale_extra(d, z, 1.2)
+        p1, p2 = (ax + dx, ay - 0.55), (ax + dx, ay - 1.75 - extra)
         d.add(elm.Line().at(anchor).to(p1).color(_WIRE))
         _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right")
         # Terminer le moignon par un nœud : sinon la boîte paraît avoir une borne
