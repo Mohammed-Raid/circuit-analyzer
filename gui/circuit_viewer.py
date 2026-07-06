@@ -3162,7 +3162,10 @@ def _draw_branched_chain(d, layers, ci, couplages=None):
     dernier = len(layers) - 1
     # Plusieurs sorties parallèles dans la dernière couche -> labels distincts
     # (VOUT1, VOUT2…) pour lever l'ambiguïté ; une seule sortie reste « VOUT ».
+    # Même logique pour les entrées de la première couche (VIN / VIN1, VIN2…) :
+    # sans label, le point d'entrée du fan-out restait anonyme (audit D5).
     n_sorties = len(layers[dernier]) if layers else 0
+    n_entrees = len(layers[0]) if layers else 0
     for lx, couche in enumerate(layers):
         m = len(couche)
         for ry, match in enumerate(couche):
@@ -3174,7 +3177,14 @@ def _draw_branched_chain(d, layers, ci, couplages=None):
                 out_label = f"VOUT{ry + 1}"
             else:
                 out_label = "VOUT"
-            ancres[id(match)] = _dessiner_montage_a(d, match, ci, origin, "", out_label)
+            if lx != 0:
+                in_label = ""
+            elif n_entrees > 1:
+                in_label = f"VIN{ry + 1}"
+            else:
+                in_label = "VIN"
+            ancres[id(match)] = _dessiner_montage_a(d, match, ci, origin,
+                                                    in_label, out_label)
             _annoter_etage(d, ancres[id(match)], match)
 
     # Câblage : un canal vertical distinct par entrée d'un même consommateur (fan-in).

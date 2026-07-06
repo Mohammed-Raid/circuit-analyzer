@@ -215,6 +215,25 @@ def _render_ilot_xml(nom, detaille=False):
     return fig, txts
 
 
+def _render_ilot_branche_xml(nom, detaille=False):
+    """Rendu par le chemin DAG en couches (_layers/_make_branched_fig)."""
+    from circuit_analyzer import detecteur
+    from circuit_analyzer.composant import construire_graphe
+    from circuit_analyzer.xml import lire_xml
+
+    comps = lire_xml(f"circuits_industriels/{nom}")
+    g = construire_graphe(comps)
+    res = detecteur.analyser(g)
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    matches = cv._matches_for_island(ilot, res)
+    layers = cv._layers_montages_flux(matches, ci)
+    assert layers, f"{nom} devrait passer par le chemin branche (DAG en couches)"
+    fig = cv._make_branched_fig(layers, ci, matches=matches, detaille=detaille)
+    txts = [t.get_text() for ax in fig.axes for t in ax.texts]
+    return fig, txts
+
+
 def _hitbox_refsets(fig):
     return [set(hb[4]) for hb in getattr(fig, "_z_hitboxes", [])]
 
@@ -442,6 +461,15 @@ def test_mosfet_commutation_xml_affiche_charge_inductive():
 def test_commutation_bjt_vcc_ne_chevauche_pas_charge():
     fig, _txts = _render_ilot_xml("tr_bjt_commutation.xml")
     _assert_texts_do_not_overlap(fig, "VCC", "L1")
+
+
+def test_fanout_premier_etage_etiquette_vin():
+    # Audit visuel (D5) : le chemin branche (_make_branched_fig) laissait le
+    # point d'entree du premier etage SANS label, contrairement aux chaines
+    # lineaires qui etiquettent VIN. L'entree doit etre nommee.
+    _fig, txts = _render_ilot_branche_xml("ilot_branche_ce_fanout.xml")
+    assert any(t.strip().startswith("VIN") for t in txts), \
+        "le premier etage du fan-out doit porter un label VIN"
 
 
 def test_mosfet_commutation_entree_a_gauche():
