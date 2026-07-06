@@ -14,6 +14,7 @@ import schemdraw
 import schemdraw.elements as elm
 from matplotlib.figure import Figure
 
+from gui.schema_labels import ajuster_labels
 from gui.theme import BLUE_HOVER
 
 _log = logging.getLogger(__name__)
@@ -134,19 +135,22 @@ _SYMB = {
 
 
 def style_symbole(typ, value, ref):
-    """@brief (classe schemdraw, couleur, étiquette) pour un composant réel.
+    """@brief (classe schemdraw, couleur, ref, valeur formatée) pour un
+    composant réel.
 
     Facteur commun aux 3 endroits qui dessinent un R/L/C réel (symbole+couleur
-    par type + étiquette "ref\\nvaleur formatée", ou juste "ref" si vide) :
-    _dessiner_impl et _bras_detaille ci-dessous, et circuit_viewer._z_reseau.
-    Fontsize/loc restent au choix de chaque appelant (échelles différentes).
+    par type) : _dessiner_impl et _bras_detaille ci-dessous, et
+    circuit_viewer._z_reseau. Règle ref/valeur (décision d'architecte, cf.
+    design 2026-07-06) : ref et valeur sont deux `Text` DISTINCTS posés de
+    part et d'autre du symbole (ref toujours affichée ; `valeur` vide "" si
+    non formatable, l'appelant n'affiche alors que la ref). Fontsize/loc
+    restent au choix de chaque appelant (échelles différentes).
     """
     from circuit_analyzer import impedance
     cls = _SYMB.get(typ, elm.ResistorIEC)
     coul = _COMP_COLORS.get(typ, _WIRE)
     vfmt = impedance.formater_valeur(value, typ)
-    etiquette = f"{ref}\n{vfmt}" if vfmt else ref
-    return cls, coul, etiquette
+    return cls, coul, ref, vfmt
 
 
 def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes, titre=None):
@@ -189,9 +193,18 @@ def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes, titre=None):
             else:
                 comp = comps.get(ref)
                 typ = getattr(comp, "type", "")
-                cls, coul, etiquette = style_symbole(typ, getattr(comp, "value", ""), ref)
-                d += cls().at((x1, y)).to((x2, y)).color(coul).label(
-                    etiquette, loc="bottom", fontsize=11, color=coul)
+                cls, coul, ref_txt, valeur = style_symbole(
+                    typ, getattr(comp, "value", ""), ref)
+                # Règle ref/valeur (feuille dépliée) : ref au-dessus (+Y),
+                # valeur en dessous (-Y) — deux Text distincts. schemdraw
+                # tourne ses ancres "top"/"bottom" avec l'élément : un
+                # symbole vertical voit donc ref/valeur basculer à
+                # gauche/droite automatiquement, sans logique dédiée ici.
+                el = cls().at((x1, y)).to((x2, y)).color(coul).label(
+                    ref_txt, loc="top", fontsize=11, color=coul)
+                if valeur:
+                    el = el.label(valeur, loc="bottom", fontsize=11, color=coul)
+                d += el
         for (xa, ya), (xb, yb) in fils:
             d += elm.Line().at((xa, ya)).to((xb, yb)).color(_WIRE)
         d += elm.Dot().at((0.0, dims.y_borne)).label(a, loc="left", color=_BUS)
@@ -204,6 +217,13 @@ def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes, titre=None):
         fig.tight_layout(pad=0.3)
     except Exception:
         _log.debug("tight_layout ignoré", exc_info=True)
+    # Après tight_layout/margins (pas avant) : tight_layout()/ax.margins()
+    # peuvent réduire la boîte des axes (subplot params), or la taille de
+    # police est fixée en POINTS (pas en unités de données) -> une boîte plus
+    # petite pour le MÊME xlim/ylim fait mécaniquement déborder un texte qui
+    # tenait tout juste avant. Seule une résolution APRÈS que la géométrie
+    # finale des axes soit figée garantit "aucun label clippé" pour de vrai.
+    ajuster_labels(fig)
     return fig
 
 
@@ -320,10 +340,16 @@ def _bras_detaille(d, p1, p2, bras, comps):
     for ref, pa, pb in symboles:
         comp = comps.get(ref)
         typ = getattr(comp, "type", "")
-        cls, coul, label = style_symbole(typ, getattr(comp, "value", ""), ref)
-        # loc="bottom" : evite que le label colle au rail du bras.
-        d.add(cls().at(pa).to(pb).color(coul).label(
-            label, loc="bottom", fontsize=9, color=coul))
+        cls, coul, ref_txt, valeur = style_symbole(typ, getattr(comp, "value", ""), ref)
+        # Règle ref/valeur : ref+valeur de part et d'autre (loc="top"/
+        # "bottom", tournent avec l'élément). loc="bottom" pour la ref est
+        # conservé tel quel (évite qu'elle colle au rail du bras, cf. avant) ;
+        # la valeur va de l'autre côté ("top").
+        el = cls().at(pa).to(pb).color(coul).label(
+            ref_txt, loc="bottom", fontsize=9, color=coul)
+        if valeur:
+            el = el.label(valeur, loc="top", fontsize=9, color=coul)
+        d.add(el)
     for pa, pb in fils:
         d.add(elm.Line().at(pa).to(pb).color(_WIRE))
     return True
@@ -378,4 +404,6 @@ def dessiner_pont(pont, comps, titre=None, detaille=False):
         fig.tight_layout(pad=0.4)
     except Exception:
         _log.debug("tight_layout ignoré", exc_info=True)
+    # Après tight_layout/margins (cf. commentaire de _dessiner_impl).
+    ajuster_labels(fig)
     return fig

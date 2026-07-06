@@ -26,6 +26,7 @@ from circuit_analyzer.patterns.base import (
 )
 from gui import theme
 from gui import ui_kit
+from gui.schema_labels import ajuster_labels
 from gui.theme import BLUE_HOVER, OVERLAY
 
 _log = logging.getLogger(__name__)
@@ -1087,6 +1088,16 @@ def _make_fig(result, comp_info, drawer_fn, matches=None, detaille: bool = False
         fig.tight_layout(rect=rect, pad=0.4)
     except Exception:
         _log.debug("tight_layout ignoré", exc_info=True)
+    # Filet de sécurité mathématique : résout tout chevauchement de labels
+    # restant (métriques réelles du renderer) et ré-étend les limites d'axe.
+    # APRÈS tight_layout/margins (pas avant, contrairement à une première
+    # tentative) : tight_layout()/ax.margins() peuvent réduire la boîte des
+    # axes (subplot params), or la taille de police est fixée en POINTS (pas
+    # en unités de données) -> une boîte plus petite pour le MÊME xlim/ylim
+    # fait mécaniquement déborder un texte qui tenait tout juste avant. Seule
+    # une résolution APRÈS que la géométrie finale des axes soit figée
+    # garantit "aucun label clippé" pour de vrai (cf. gui/schema_labels.py).
+    ajuster_labels(fig)
     return fig
 
 
@@ -1144,6 +1155,9 @@ def _make_chain_fig(ordered, comp_info, matches=None, detaille: bool = False):
         fig.tight_layout(pad=0.4)
     except Exception:
         _log.debug("tight_layout ignoré", exc_info=True)
+    # Après tight_layout/margins (cf. commentaire de _make_fig) : la boîte
+    # des axes est figée avant la résolution finale des labels.
+    ajuster_labels(fig)
     return fig
 
 
@@ -1195,6 +1209,8 @@ def _make_branched_fig(layers, comp_info, matches=None, detaille: bool = False):
         fig.tight_layout(pad=0.4)
     except Exception:
         _log.debug("tight_layout ignoré", exc_info=True)
+    # Après tight_layout/margins (cf. commentaire de _make_fig).
+    ajuster_labels(fig)
     return fig
 
 
@@ -1233,6 +1249,7 @@ def _make_island_fig(model, matches=None, detaille: bool = False):
     if not components:
         ax.text(0.5, 0.5, "Ilot vide", ha="center", va="center",
                 transform=ax.transAxes, fontsize=13, color="#64748b")
+        ajuster_labels(fig)
         return fig
 
     try:
@@ -1256,6 +1273,8 @@ def _make_island_fig(model, matches=None, detaille: bool = False):
             fontsize=8, color="#64748b", va="bottom", ha="left")
     ax.margins(0.16)
     fig.subplots_adjust(left=0.03, right=0.97, top=0.96, bottom=0.06)
+    # Après margins/subplots_adjust (cf. commentaire de _make_fig).
+    ajuster_labels(fig)
     return fig
 
 
@@ -2350,10 +2369,12 @@ def _z_reseau(d, p1, p2, bloc, ci, label_loc="top") -> bool:
     for ref, pa, pb in symboles:
         info = ci.get(ref, {})
         typ = info.get("type", "")
-        cls, coul, label = impedance_schematic.style_symbole(
+        cls, coul, ref_txt, valeur = impedance_schematic.style_symbole(
             typ, info.get("value", ""), ref)
         if compact:
-            label = ref
+            # Reseau compact : seule la ref est lisible a cette echelle
+            # (comportement inchange, cf. audits fenetre).
+            valeur = ""
         mx, my = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
         sdx, sdy = pb[0] - pa[0], pb[1] - pa[1]
         # Symbole recentre sur ~65% du segment (mini absolu pour les motifs
@@ -2380,12 +2401,24 @@ def _z_reseau(d, p1, p2, bloc, ci, label_loc="top") -> bool:
             if ecart_haut <= ecart_bas:
                 ly = rail_haut + _Z_DETAIL_COMPACT_RAIL_CLEAR
                 valign = "bottom"
+                pas = _Z_DETAIL_LABEL_CLEAR
             else:
                 ly = rail_bas - _Z_DETAIL_COMPACT_RAIL_CLEAR
                 valign = "top"
+                pas = -_Z_DETAIL_LABEL_CLEAR
             d.add(elm.Label().at((mx, ly)).label(
-                label, halign="center", valign=valign,
+                ref_txt, halign="center", valign=valign,
                 fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
+            # Regle ref/valeur (design section 1) adaptee a ce reseau decale
+            # (audit F2) : la valeur est empilee plus loin que la ref, DU
+            # MEME cote (celui deja choisi pour degager le rail) plutot que
+            # du cote oppose -- le cote oppose est le territoire du rail/du
+            # reseau, precisement ce que la ref evite deja. Ecart assume et
+            # documente (cf. design, "Ecart au brief assumé et documenté").
+            if valeur:
+                d.add(elm.Label().at((mx, ly + pas)).label(
+                    valeur, halign="center", valign=valign,
+                    fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
             continue
         signed_perp = ((mx - label_p1[0]) * (-dy) + (my - label_p1[1]) * dx) / dist
         if abs(signed_perp) < _Z_DETAIL_LABEL_AXIS_EPS:
@@ -2393,9 +2426,16 @@ def _z_reseau(d, p1, p2, bloc, ci, label_loc="top") -> bool:
             # attache au symbole (comme avant) ; "top" pousse le label du cote
             # oppose a l'entree du reseau, la ou un satellite (Rb, ...) est
             # deja etiquete juste apres le point p1 (cf.
-            # ilot_reel_ce_suiveur_sortie_rlc).
-            d.add(cls().at(pa).to(pb).color(coul).label(
-                label, loc="top", fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
+            # ilot_reel_ce_suiveur_sortie_rlc). Regle ref/valeur : la valeur
+            # va cote oppose ("bottom") -- schemdraw tourne ses ancres avec
+            # l'element, donc un symbole vertical bascule automatiquement en
+            # gauche/droite, sans logique dediee ici.
+            el = cls().at(pa).to(pb).color(coul).label(
+                ref_txt, loc="top", fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul)
+            if valeur:
+                el = el.label(valeur, loc="bottom",
+                              fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul)
+            d.add(el)
             continue
         d.add(cls().at(pa).to(pb).color(coul))
         # Branche parallele hors axe : pousser le label VERS l'axe (interieur
@@ -2424,8 +2464,19 @@ def _z_reseau(d, p1, p2, bloc, ci, label_loc="top") -> bool:
             ha = "center"
             va = "bottom" if sign * ny > 0 else "top"
         d.add(elm.Label().at((lx, ly)).label(
-            label, halign=ha, valign=va,
+            ref_txt, halign=ha, valign=va,
             fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
+        # Regle ref/valeur (design section 1), adaptee ici comme pour le
+        # reseau decale ci-dessus : la valeur est empilee un cran plus loin
+        # QUE la ref, dans la MEME direction (sign, nx, ny) plutot que du
+        # cote oppose -- le cote oppose est "vers l'exterieur", precisement
+        # le territoire qu'on evite (cf. commentaire ci-dessus). Ecart au
+        # brief assume et documente.
+        if valeur:
+            lx2, ly2 = lx + sign * nx * clear, ly + sign * ny * clear
+            d.add(elm.Label().at((lx2, ly2)).label(
+                valeur, halign=ha, valign=va,
+                fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
     for pa, pb in fils:
         d.add(elm.Line().at(pa).to(pb).color(_WIRE))
     return True
