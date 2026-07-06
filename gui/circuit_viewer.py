@@ -308,14 +308,21 @@ def _texte_gain(result, graph):
 
 
 def _suivre_curseur_z(canvas, fig):
-    """@brief Curseur « main » au survol d'une boîte Z cliquable (découvrabilité)."""
+    """@brief Curseur « main » au survol d'une boîte Z cliquable (découvrabilité).
+
+    @return Le cid `mpl_connect` — l'appelant DOIT le garder (aux côtés de
+        celui du clic) pour pouvoir le `mpl_disconnect` lors du teardown
+        déterministe (cf. `monter_canvas` / démontage §3), sans quoi le
+        callback (qui ferme sur `fig`) reste vivant dans la CallbackRegistry
+        du canvas et retarde la libération de la figure remplacée.
+    """
     widget = canvas.get_tk_widget()
     def _on_motion(event):
         over = event.xdata is not None and event.ydata is not None and any(
             x0 <= event.xdata <= x1 and y0 <= event.ydata <= y1
             for x0, x1, y0, y1, *_ in getattr(fig, "_z_hitboxes", []))
         widget.configure(cursor="hand2" if over else "")
-    canvas.mpl_connect("motion_notify_event", _on_motion)
+    return canvas.mpl_connect("motion_notify_event", _on_motion)
 
 
 def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
@@ -732,25 +739,78 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         matches = _matches_for_island(ilot, results)
         return _make_island_fig(model, matches=matches, detaille=detaille)
 
-    etat = {"fig": None}
+    # `etat["fig"]` = figure actuellement montee ; `etat["canvas"]` = son
+    # FigureCanvasTkAgg ; `etat["cids"]` = les cid `mpl_connect` a deconnecter
+    # avant tout remontage (cf. `_demonter_contexte`, demontage deterministe
+    # section 3 du design). Les trois sont reecrits ENSEMBLE a chaque
+    # (re)montage, jamais partiellement.
+    etat = {"fig": None, "canvas": None, "cids": []}
     mode = {"detaille": False}
     zoom = {"facteur": 1.0}
 
     canvas_frame = ctk.CTkFrame(popup, fg_color=SCH_BG, corner_radius=10)
     canvas_frame.pack(fill="both", expand=True, padx=14, pady=(4, 0))
 
+    def _demonter_contexte():
+        """@brief Demonte totalement le contexte de rendu courant : deconnecte
+        les cid matplotlib, detruit le widget Tk du canvas puis vide la
+        figure remplacee. Partage par toute reconstruction (`monter_canvas`,
+        appele par le toggle et le zoom) ET par la fermeture du popup
+        (bouton Fermer / WM_DELETE_WINDOW) — un seul chemin de teardown.
+
+        Pourquoi pas `plt.close()` : nos figures sont creees via
+        `matplotlib.figure.Figure()` DIRECTEMENT (jamais via `plt.figure()`),
+        donc jamais enregistrees dans le registre pyplot (`Gcf`) — `plt.close()`
+        n'aurait rien a fermer. L'equivalent deterministe est : `mpl_disconnect`
+        (retire les callbacks de la CallbackRegistry du canvas, qui referencent
+        la figure via leurs closures `_on_click`/`_on_motion`) puis destruction
+        du widget Tk (rompt le dernier lien canvas Tk <-> figure) puis `clf()`
+        (vide les axes/artistes, rompt les cycles Artist<->Figure internes) —
+        apres quoi plus aucune reference forte ne subsiste et `gc.collect()`
+        recupere la figure IMMEDIATEMENT (au lieu d'attendre un futur passage
+        du GC cyclique).
+        """
+        ancien_canvas = etat.get("canvas")
+        if ancien_canvas is not None:
+            for cid in etat.get("cids") or ():
+                try:
+                    ancien_canvas.mpl_disconnect(cid)
+                except Exception:
+                    _log.debug("mpl_disconnect ignore au demontage", exc_info=True)
+            try:
+                ancien_canvas.get_tk_widget().destroy()
+            except tk.TclError:
+                pass
+        # Filet de securite : detruit tout residu (ex. le cadre `viewport` +
+        # scrollbars de `_pack_scrollable_figure`, dont seul le widget mpl
+        # interne vient d'etre detruit ci-dessus explicitement).
+        for enfant in canvas_frame.winfo_children():
+            enfant.destroy()
+        ancienne_fig = etat.get("fig")
+        if ancienne_fig is not None:
+            ancienne_fig.clf()
+        etat["canvas"] = None
+        etat["cids"] = []
+        etat["fig"] = None
+
     def monter_canvas(fig, facteur=1.0):
-        """@brief Empaquette `fig` dans `canvas_frame` (détruit l'ancien contenu),
-        reconnecte le clic drill-down et le curseur « main » sur les Z.
+        """@brief Demonte l'ancien contexte puis empaquette `fig` dans
+        `canvas_frame`, reconnecte le clic drill-down et le curseur « main »
+        sur les Z.
 
         Vues larges (chaîne OU gros îlot-grille) : défilement horizontal à taille
         native pour ne pas écraser le schéma dans le popup. Les petites vues
         remplissent simplement le cadre. Un zoom (`facteur` > 1.0, boutons
         -/100%/+) force aussi le chemin défilant : la figure agrandie ne doit
         pas être écrasée dans le cadre.
+
+        DPI : la figure garde un DPI CONSTANT (`fig.dpi` inchangé) ; c'est
+        `set_size_inches` (appelé par `_rendre` avant ce montage) qui fait
+        varier la taille pixel native — un re-rendu vectoriel natif a chaque
+        facteur, equivalent a un reglage de DPI mais sans jamais invalider
+        `_figure_pixel_size` (qui lit `fig.dpi` en le supposant stable).
         """
-        for enfant in canvas_frame.winfo_children():
-            enfant.destroy()
+        _demonter_contexte()
 
         _defile = (_chaine is not None or _branches is not None
                    or fig.get_size_inches()[0] > _ISLAND_DEFILE_WIDTH_IN
@@ -760,8 +820,29 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         else:
             canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
             canvas.draw()
-            canvas.get_tk_widget().configure(bg=SCH_BG, highlightthickness=0)
-            canvas.get_tk_widget().pack(fill="both", expand=True, padx=4, pady=4)
+            widget = canvas.get_tk_widget()
+            widget.configure(bg=SCH_BG, highlightthickness=0)
+            # Centrage EXPLICITE (design section 2) : ax.set_anchor("C") fixe
+            # le point d'ancrage de la boite equal-aspect au centre (deja la
+            # valeur par defaut de Matplotlib pour adjustable="box", mais
+            # rendue explicite ici pour ne plus dependre d'un defaut
+            # implicite qui pourrait changer sous nos pieds).
+            for ax in fig.axes:
+                ax.set_anchor("C")
+            if facteur < 1.0:
+                # Zoom REDUIT (bouton -) : surtout PAS fill="both". Un fill
+                # forcerait le widget Tk a grandir jusqu'au cadre disponible,
+                # ce qui declenche le handler `resize()` de FigureCanvasTkAgg
+                # (lie a <Configure>) — celui-ci recalcule bêtement
+                # `figure.set_size_inches(largeur_cadre/dpi, ...)` et annule
+                # purement et simplement le facteur de reduction qu'on vient
+                # d'appliquer (bug verifie : le schema « zoome out » revenait
+                # visuellement a 100 %). `expand=True` SANS `fill` garde la
+                # taille native (deja reduite) du widget et le centre dans
+                # l'espace disponible — jamais clippe, jamais reetire.
+                widget.pack(expand=True, padx=4, pady=4)
+            else:
+                widget.pack(fill="both", expand=True, padx=4, pady=4)
 
         def _on_click(event):
             # Clic dans une zone de Z -> ouvre le sous-schema des R/L/C qui le composent.
@@ -772,8 +853,10 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                     show_dipole_detail(refs, composition, graph, comp_info, popup)
                     return
 
-        canvas.mpl_connect("button_press_event", _on_click)
-        _suivre_curseur_z(canvas, fig)
+        cid_click = canvas.mpl_connect("button_press_event", _on_click)
+        cid_motion = _suivre_curseur_z(canvas, fig)
+        etat["canvas"] = canvas
+        etat["cids"] = [cid_click, cid_motion]
         return canvas
 
     def _rendre():
@@ -783,7 +866,9 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
 
         Reconstruit une figure fraîche via `construire_fig` (mémorise ses
         base_w/base_h natifs), lui applique le facteur de zoom courant puis
-        la remonte via `monter_canvas`.
+        la remonte via `monter_canvas` — qui démonte d'abord l'ancienne
+        (encore dans `etat["fig"]` a cet instant : `monter_canvas` en a
+        besoin pour le teardown avant qu'on l'ecrase ci-dessous).
         """
         nouvelle_fig = construire_fig(mode["detaille"])
         base_w, base_h = nouvelle_fig.get_size_inches()
@@ -800,8 +885,8 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
             ratio = base_w / _ISLAND_DEFILE_WIDTH_IN
             if ratio <= 1.15:
                 nouvelle_fig.set_size_inches(base_w / ratio, base_h / ratio)
-        etat["fig"] = nouvelle_fig
         monter_canvas(nouvelle_fig, facteur)
+        etat["fig"] = nouvelle_fig
 
     _rendre()
 
@@ -828,12 +913,22 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         zoom["facteur"] = _island_zoom_next(zoom["facteur"], direction)
         _rendre()
 
+    def _fermer():
+        """@brief Fermeture du popup (bouton Fermer ET WM_DELETE_WINDOW) : meme
+        teardown déterministe qu'un remontage (cf. `_demonter_contexte`) AVANT
+        `popup.destroy()` — sinon le dernier contexte affiché ne serait jamais
+        démonté explicitement (seul le GC cyclique l'aurait récupéré, un jour)."""
+        _demonter_contexte()
+        popup.destroy()
+
+    popup.protocol("WM_DELETE_WINDOW", _fermer)
+
     # Fermer est packé side="right" en premier pour rester à l'extrémité
     # droite ; les boutons de zoom, packés ensuite, s'empilent à sa gauche
     # dans l'ordre de lecture −, 100 %, +.
     ui_kit.GhostButton(bar, text="Fermer", icon_name="x",
                   width=90, height=30,
-                  command=popup.destroy).pack(side="right", padx=12, pady=7)
+                  command=_fermer).pack(side="right", padx=12, pady=7)
     ui_kit.GhostButton(bar, text="+", width=40, height=30,
                   command=lambda: _zoom("in")).pack(side="right", padx=(0, 12), pady=7)
     ui_kit.GhostButton(bar, text="100 %", width=56, height=30,
@@ -841,9 +936,36 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     ui_kit.GhostButton(bar, text="−", width=40, height=30,
                   command=lambda: _zoom("out")).pack(side="right", padx=(12, 0), pady=7)
 
+    # Hook de test minimal (jamais utilise par l'UI, prefixe _test) : expose
+    # l'etat interne (mode/zoom/etat de montage) et les actions declenchantes
+    # pour verrouiller par test la persistance croisee mode<->zoom (section 2)
+    # et l'absence de fuite au demontage (section 3), sans dependre des
+    # libelles de bouton (fragiles a une traduction/un refactor visuel) ni
+    # exposer les widgets Tk eux-memes. Meme idiome que `fig._z_hitboxes`
+    # (attribut ad hoc attache a un objet existant plutot qu'une API dediee).
+    popup._etat_test = {
+        "etat": etat,
+        "mode": mode,
+        "zoom": zoom,
+        "toggle": _toggle_detaille,
+        "zoom_in": lambda: _zoom("in"),
+        "zoom_out": lambda: _zoom("out"),
+        "zoom_reset": lambda: _zoom("reset"),
+        "fermer": _fermer,
+    }
+    return popup
+
 
 def _pack_scrollable_figure(parent, fig):
-    """@brief Affiche une figure a sa taille native dans un viewport scrollable."""
+    """@brief Affiche une figure a sa taille native dans un viewport scrollable.
+
+    `base_w`/`base_h` (donc la scrollregion initiale) sont derives de
+    `_figure_pixel_size(fig)`, qui lit `fig.get_size_inches() * fig.dpi` — a
+    l'appel, `fig` a DEJA recu son `set_size_inches` post-facteur de zoom
+    (cf. `_rendre` dans `show_island`) : le DPI reste constant, seule la
+    taille pouce varie, donc `_figure_pixel_size` reste toujours juste sans
+    avoir a suivre un DPI mouvant.
+    """
     base_w, base_h = _figure_pixel_size(fig)
     state = {"scale": 1.0}
 
@@ -932,6 +1054,11 @@ def _pack_scrollable_figure(parent, fig):
         widget.bind("<B1-Motion>", _on_pan_drag)
     _bind_scrollable_mpl_events(
         canvas.get_tk_widget(), _on_mousewheel, _on_pan_start, _on_pan_drag)
+    # Hook de test minimal (meme idiome que `fig._z_hitboxes`) : expose le
+    # canvas Tk scrollable pour verrouiller par test que la scrollregion
+    # colle exactement aux bornes du schema (xview_moveto(1)/yview_moveto(1)
+    # atteignent le bord sans rien couper ni deborder, cf. design section 2).
+    canvas._scroll_view = view
     return canvas
 
 
