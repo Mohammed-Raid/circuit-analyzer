@@ -9,6 +9,7 @@ sections 2 et 3. Tests d'integration legers sur un vrai root Tk (sautes sans
 affichage), meme idiome que tests/test_gui_sync.py::ctk_root.
 """
 import gc
+import time
 import weakref
 
 import pytest
@@ -286,3 +287,90 @@ def test_fermeture_popup_demonte_le_dernier_contexte(ctk_root):
 
     gc.collect()
     assert ref() is None, "la derniere figure affichee doit etre liberee a la fermeture"
+
+
+# ── Task chips-export section A : clic sur une puce composant ────────────────
+
+def test_clic_puce_centre_le_scroll_et_affiche_puis_efface_l_anneau(ctk_root):
+    """Ilot en chaine (ilot_tous_aop, toujours defilant) : le clic simule sur
+    une puce composant (hook `cliquer_composant`, meme idiome que
+    `zoom_in`/`toggle` -- pas de dependance fragile aux libelles de bouton ni
+    aux widgets Tk) doit centrer le viewport scrollable sur ce composant et
+    poser un anneau de surbrillance qui disparait apres le delai."""
+    popup = _ouvrir(ctk_root, "ilot_tous_aop.xml")
+    t = popup._etat_test
+    fig = t["etat"]["fig"]
+    canvas = t["etat"]["canvas"]
+    view = getattr(canvas, "_scroll_view", None)
+    assert view is not None, "ilot_tous_aop (chaine) attendu toujours defilant"
+
+    ilot, _graph, _ci, _res = _premier_ilot("ilot_tous_aop.xml")
+    ref = next(r for r in ilot["composants"] if cv._position_composant(fig, r) is not None)
+
+    pos = cv._position_composant(fig, ref)
+    ax0 = fig.axes[0]
+    dispx, dispy = ax0.transData.transform(pos)
+    fig_w_px, fig_h_px = cv._figure_pixel_size(fig)
+    vw = max(1, view.winfo_width())
+    vh = max(1, view.winfo_height())
+    attendu_fx = cv._fraction_centree(dispx, fig_w_px, vw)
+    attendu_fy = cv._fraction_centree(fig_h_px - dispy, fig_h_px, vh)
+
+    t["cliquer_composant"](ref)
+    ctk_root.update()
+
+    fx0, _fx1 = view.xview()
+    fy0, _fy1 = view.yview()
+    # Tolerance large (pas 1e-6) : Tk quantifie la fraction reportee par
+    # xview()/yview() en pixels internes (scrollregion parsee en chaine),
+    # introduisant un ecart negligeable (< 1 px observe) face au calcul flottant.
+    assert fx0 == pytest.approx(attendu_fx, abs=2e-3)
+    assert fy0 == pytest.approx(attendu_fy, abs=2e-3)
+
+    anneaux = [p for p in ax0.patches if getattr(p, "_surbrillance_puce", False)]
+    assert len(anneaux) == 1, "un anneau de surbrillance doit etre pose au clic"
+    assert anneaux[0].center == pytest.approx(pos)
+
+    time.sleep((cv._CHIP_HIGHLIGHT_DELAY_MS / 1000.0) + 0.3)
+    ctk_root.update()
+
+    anneaux_apres = [p for p in ax0.patches if getattr(p, "_surbrillance_puce", False)]
+    assert not anneaux_apres, "l'anneau doit disparaitre apres le delai"
+
+    popup.destroy()
+
+
+def test_clic_puce_ref_introuvable_est_silencieux(ctk_root):
+    popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
+    t = popup._etat_test
+
+    t["cliquer_composant"]("REF_INEXISTANTE_XYZ")
+    ctk_root.update()
+
+    popup.destroy()
+
+
+def test_clic_puce_apres_toggle_survit_au_remontage_de_figure(ctk_root):
+    """La figure est remontee au toggle vue detaillee : le clic doit lire
+    l'etat COURANT (liaison tardive), pas une figure capturee a la creation
+    des puces."""
+    popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
+    t = popup._etat_test
+
+    t["toggle"]()
+    ctk_root.update()
+    fig_apres_toggle = t["etat"]["fig"]
+
+    ilot, _graph, _ci, _res = _premier_ilot("ilot_reel_darlington_relais_rlc.xml")
+    ref = next((r for r in ilot["composants"]
+                if cv._position_composant(fig_apres_toggle, r) is not None), None)
+    assert ref is not None, "au moins un composant doit rester localisable en vue detaillee"
+
+    t["cliquer_composant"](ref)
+    ctk_root.update()
+
+    anneaux = [p for p in fig_apres_toggle.axes[0].patches
+               if getattr(p, "_surbrillance_puce", False)]
+    assert len(anneaux) == 1
+
+    popup.destroy()

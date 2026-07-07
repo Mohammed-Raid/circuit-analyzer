@@ -17,6 +17,7 @@ import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.patches as mpatches
 import schemdraw
 import schemdraw.elements as elm
 from circuit_analyzer.patterns.base import (
@@ -97,6 +98,10 @@ _ISLAND_VIEWPORT_PAD = 8 + 15
 # largeur utile du popup 1200px (audit fenetre F6).
 _ISLAND_DEFILE_WIDTH_IN = 11.6
 
+# Clic sur une puce "Composants : ..." -> centrage + surbrillance (section A).
+_CHIP_HIGHLIGHT_RADIUS = 0.8       # unites data, cf. design
+_CHIP_HIGHLIGHT_DELAY_MS = 1400
+
 _Z_DETAIL_PERP_MIN_SCALE = 0.85
 _Z_DETAIL_LABEL_AXIS_EPS = 0.05
 # 7 illisible en fenetre compressee (audit fenetre F2) ; 8 reste compact tout
@@ -166,6 +171,47 @@ def _zoom_scroll_fractions(old_size, new_size, viewport, pointer, canvas_origin)
     fx = max(0.0, min(1.0, target_x / max_x))
     fy = max(0.0, min(1.0, target_y / max_y))
     return fx, fy
+
+
+def _position_composant(fig, ref):
+    """@brief Position (x, y) DATA d'un composant dans une figure d'ilot deja
+    construite -- utilisee par le clic sur une puce « Composants : ... » pour
+    centrer la vue et poser l'anneau de surbrillance dessus.
+
+    Deux sources, dans l'ordre :
+      1. `fig._z_hitboxes` (zones cliquables des boites Z, cf. `_make_fig`) :
+         si `ref` figure dans les refs d'une hitbox, le centre de sa boite.
+      2. un `Text` d'un axe dont le contenu COMMENCE par `ref` sur une
+         frontiere de mot (« R5 », « Rb = 10k », « C1\\n100nF » matchent pour
+         ref="R5"/"Rb"/"C1" ; « R51 » NE matche PAS ref="R5").
+
+    @param fig Figure matplotlib d'ilot (porte fig._z_hitboxes).
+    @param ref Reference recherchee (ex. "R5").
+    @return (x, y) en coordonnees data, ou None si introuvable.
+    """
+    for x0, x1, y0, y1, refs, _composition in getattr(fig, "_z_hitboxes", None) or ():
+        if ref in (refs or ()):
+            return (x0 + x1) / 2.0, (y0 + y1) / 2.0
+    for ax in fig.axes:
+        for t in ax.texts:
+            texte = t.get_text()
+            if not texte.startswith(ref):
+                continue
+            suivant = texte[len(ref):len(ref) + 1]
+            if not suivant or not suivant.isalnum():
+                return t.get_position()
+    return None
+
+
+def _fraction_centree(cible_px, total_px, viewport_px):
+    """@brief Fraction xview/yview (Tk Canvas) pour CENTRER `cible_px` dans un
+    viewport de `viewport_px` pixels, sur une scrollregion de `total_px`
+    pixels -- meme convention que `_zoom_scroll_fractions` (bornee [0, 1],
+    clampee au bord plutot que de tenter de centrer un point trop pres d'une
+    extremite de la scrollregion)."""
+    max_offset = max(1, total_px - viewport_px)
+    bord_gauche_vise = cible_px - viewport_px / 2.0
+    return max(0.0, min(1.0, bord_gauche_vise / max_offset))
 
 
 def _bind_scrollable_mpl_events(widget, on_mousewheel, on_pan_start, on_pan_drag):
@@ -686,12 +732,26 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                  font=ui_kit.font("caption"),
                  text_color=theme.TEXT_DIM).pack(side="left")
     for comp in model["components"]:
-        txt = f" {comp['ref']} {comp.get('value', '')} ".strip()
+        ref = comp["ref"]
+        txt = f" {ref} {comp.get('value', '')} ".strip()
         color = _COMP_COLORS.get(comp.get("type"), theme.OVERLAY)
-        ctk.CTkLabel(chips, text=txt,
+        # Candidats de resolution (cf. `_on_chip_click`) : pour une puce Z
+        # composite (ex. "Z1" -> comp['refs']=['R3']), le ref de MODELE de la
+        # puce (numerotation globale de l'ilot) ne correspond pas forcement
+        # au libelle LOCAL affiche sur le schema (chaque etage d'une chaine
+        # multi-AOP renumerote ses propres Zin/Zf/Z1/Z2... a partir de 1) --
+        # on essaie d'abord les refs RAW sous-jacents (ceux effectivement
+        # portes par les hitboxes/labels du schema), le ref de modele en repli.
+        candidats = list(dict.fromkeys([*(comp.get("refs") or ()), ref]))
+        # Cliquable : centre le schema sur ce composant + surbrillance
+        # (`_on_chip_click`, defini plus bas -- liaison tardive via `etat`,
+        # cf. son commentaire).
+        puce = ctk.CTkLabel(chips, text=txt,
                      font=ui_kit.font("caption", "bold"),
                      fg_color=color, text_color=theme.TEXT,
-                     corner_radius=4).pack(side="left", padx=3)
+                     corner_radius=4, cursor="hand2")
+        puce.pack(side="left", padx=3)
+        puce.bind("<Button-1>", lambda _e, c=candidats: _on_chip_click(c))
 
     principal = _circuit_principal_ilot(ilot, graph, results)
     _sp = _arbre_serie_parallele_ilot(ilot, graph) if principal is None else None
@@ -872,6 +932,88 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         etat["cids"] = [cid_click, cid_motion]
         return canvas
 
+    def _on_chip_click(refs):
+        """@brief Callback de clic sur une puce « Composants : ... » : centre
+        la vue (si defilante) et pose un anneau de surbrillance temporaire
+        sur le composant vise.
+
+        @param refs Un ref (str) ou une liste de refs CANDIDATS (str),
+            essayes dans l'ordre via `_position_composant` jusqu'au premier
+            qui resout (cf. commentaire de construction des puces ci-dessus :
+            necessaire pour les puces Z composites, dont le ref de modele ne
+            correspond pas toujours au libelle local affiche sur le schema).
+
+        Liaison TARDIVE a `etat["fig"]`/`etat["canvas"]` : les puces sont
+        creees UNE SEULE FOIS, avant le premier `monter_canvas`, mais la
+        figure/le canvas sont remplaces a chaque (re)montage (toggle vue
+        detaillee, zoom, Ajuster) -- on doit donc toujours lire l'etat
+        COURANT au moment du clic, jamais capturer `fig`/`canvas` par
+        fermeture au moment de la creation des puces.
+
+        No-op silencieux si AUCUN candidat n'est trouvable dans la figure
+        courante (cf. `_position_composant`).
+        """
+        candidats = [refs] if isinstance(refs, str) else list(refs)
+        fig = etat.get("fig")
+        canvas = etat.get("canvas")
+        if fig is None or canvas is None or not fig.axes:
+            return
+        pos = None
+        for r in candidats:
+            pos = _position_composant(fig, r)
+            if pos is not None:
+                break
+        if pos is None:
+            return
+
+        view = getattr(canvas, "_scroll_view", None)
+        if view is not None:
+            ax0 = fig.axes[0]
+            dispx, dispy = ax0.transData.transform(pos)
+            fig_w_px, fig_h_px = _figure_pixel_size(fig)
+            # Conversion display matplotlib (origine bas-gauche, y vers le
+            # haut) -> pixel canvas Tk (origine haut-gauche, y vers le bas),
+            # meme convention que le rendu Agg sous-jacent du widget.
+            vw = max(1, view.winfo_width())
+            vh = max(1, view.winfo_height())
+            view.xview_moveto(_fraction_centree(dispx, fig_w_px, vw))
+            view.yview_moveto(_fraction_centree(fig_h_px - dispy, fig_h_px, vh))
+
+        anneau = mpatches.Circle(pos, radius=_CHIP_HIGHLIGHT_RADIUS, fill=False,
+                                  lw=2.5, edgecolor=BLUE_HOVER, zorder=50)
+        # Marqueur ad hoc (meme idiome que `fig._z_hitboxes`) : distingue cet
+        # anneau des Circle deja dessines par schemdraw sur le meme axe (ex.
+        # points de jonction, rayon ~0.075) -- utilise par les tests pour
+        # cibler precisement l'anneau de surbrillance sans dependre du rayon.
+        anneau._surbrillance_puce = True
+        fig.axes[0].add_patch(anneau)
+        try:
+            canvas.draw_idle()
+        except tk.TclError:
+            _log.debug("draw_idle ignore (canvas deja detruit ?)", exc_info=True)
+
+        def _retirer_anneau(fig_cible=fig, anneau_cible=anneau):
+            # `fig_cible`/`anneau_cible` figent la figure/l'anneau VISES au
+            # moment du clic (arguments par defaut, pas une fermeture sur les
+            # variables mutables `etat`) : si un toggle/zoom a depuis remonte
+            # une AUTRE figure, `etat["fig"]` a change -- on retire quand meme
+            # l'anneau de la figure d'origine (propre, meme demontee) mais on
+            # ne redessine QUE si cette figure est encore celle affichee.
+            try:
+                if anneau_cible.axes is not None:
+                    anneau_cible.remove()
+                if etat.get("fig") is fig_cible:
+                    canvas_courant = etat.get("canvas")
+                    if canvas_courant is not None:
+                        canvas_courant.draw_idle()
+            except Exception:
+                _log.debug("retrait anneau surbrillance ignore", exc_info=True)
+
+        try:
+            popup.after(_CHIP_HIGHLIGHT_DELAY_MS, _retirer_anneau)
+        except Exception:
+            _log.debug("popup.after ignore (popup deja ferme ?)", exc_info=True)
+
     def _rendre():
         """@brief Chemin de reconstruction partagé par le toggle vue détaillée
         et les boutons de zoom : chacun conserve l'état de l'autre (le toggle
@@ -994,6 +1136,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         "zoom_reset": lambda: _zoom("reset"),
         "ajuster": _ajuster,
         "fermer": _fermer,
+        "cliquer_composant": _on_chip_click,
     }
     return popup
 
