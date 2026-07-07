@@ -27,7 +27,7 @@ from circuit_analyzer.patterns.base import (
 )
 from gui import theme
 from gui import ui_kit
-from gui.schema_labels import ajuster_labels
+from gui.schema_labels import ajuster_labels, obtenir_renderer
 from gui.theme import BLUE_HOVER, OVERLAY
 
 _log = logging.getLogger(__name__)
@@ -101,6 +101,9 @@ _ISLAND_DEFILE_WIDTH_IN = 11.6
 # Clic sur une puce "Composants : ..." -> centrage + surbrillance (section A).
 _CHIP_HIGHLIGHT_RADIUS = 0.8       # unites data, cf. design
 _CHIP_HIGHLIGHT_DELAY_MS = 1400
+# Export PNG cadre sur le contenu reel (section B) : marge uniforme en
+# unites data appliquee de chaque cote de la bbox de contenu avant savefig.
+_EXPORT_MARGE_DATA = 0.5
 
 _Z_DETAIL_PERP_MIN_SCALE = 0.85
 _Z_DETAIL_LABEL_AXIS_EPS = 0.05
@@ -2244,6 +2247,145 @@ def _ajouter_symbole(d, element, row, label, label_loc):
     d += el.label(label, loc=label_loc, color=coul)
 
 
+def _bbox_contenu(fig):
+    """@brief Bbox DATA (x0, x1, y0, y1) du contenu reel d'un axe de schema
+    d'ilot -- union des Text de l'axe (rendu reel du renderer, meme technique
+    que `gui.schema_labels.ajuster_labels`/`_reetendre_axes` : mesure via
+    `Text.get_window_extent` puis inversion par `ax.transData`) et des
+    donnees Line2D/patches deja tenues a jour par `ax.dataLim` (cf.
+    commentaire historique de `_make_fig` sur l'autoscale qui ignore les
+    Text mais suit bien Line2D/Patch).
+
+    Sert au cadrage de l'export PNG (`_exporter_figure`) : les limites d'axe
+    AFFICHEES a l'ecran sont volontairement asymetriques (marges de cadrage,
+    extensions unilaterales de l'anti-collision de labels) -> le contenu reel
+    y est souvent decentre.
+
+    N'inclut QUE les Text ancres en coordonnees DATA (`t.get_transform() is
+    ax.transData`, le defaut de `ax.text()`) : les captions/indices d'usage
+    ("Astuce : cliquez une boite Z...", légende de repli "Schema non
+    disponible") sont ancres en fraction d'AXE ou de FIGURE (`transAxes`/
+    `transFigure`), donc a une position qui depend elle-meme de la boite des
+    axes courante -- les inclure ferait DIVERGER la recherche de point fixe
+    ci-dessous (leur "equivalent donnees" change a chaque iteration, dans le
+    meme sens que l'ajustement qui vient de les deplacer). `_exporter_figure`
+    les masque explicitement pour l'export (ce ne sont que des indices
+    d'usage de l'app, hors-propos dans un PNG statique).
+
+    @param fig Figure matplotlib d'ilot (un seul axe, cf. tous les `_make_*fig`).
+    @return (x0, x1, y0, y1) en coordonnees data, ou None si aucun axe/contenu.
+    """
+    renderer = obtenir_renderer(fig)
+    x0 = y0 = math.inf
+    x1 = y1 = -math.inf
+    for ax in fig.axes:
+        dl = ax.dataLim
+        if math.isfinite(dl.x0) and math.isfinite(dl.x1) and (dl.width > 0 or dl.height > 0):
+            x0, x1 = min(x0, dl.x0), max(x1, dl.x1)
+            y0, y1 = min(y0, dl.y0), max(y1, dl.y1)
+        inv = ax.transData.inverted()
+        for t in ax.texts:
+            if t.get_transform() is not ax.transData:
+                continue
+            if not (t.get_visible() and t.get_text().strip()):
+                continue
+            bbox = t.get_window_extent(renderer)
+            dx0, dy0 = inv.transform((bbox.x0, bbox.y0))
+            dx1, dy1 = inv.transform((bbox.x1, bbox.y1))
+            x0, x1 = min(x0, dx0, dx1), max(x1, dx0, dx1)
+            y0, y1 = min(y0, dy0, dy1), max(y1, dy0, dy1)
+    if not math.isfinite(x0):
+        return None
+    return x0, x1, y0, y1
+
+
+def _masquer_textes_hors_donnees(fig):
+    """@brief Masque temporairement les Text qui ne sont PAS ancres en
+    coordonnees data (`fig.texts` + `ax.texts` en `transAxes`/`transFigure` :
+    captions/indices d'usage de l'app, cf. `_bbox_contenu`) pour l'export PNG.
+
+    `bbox_inches="tight"` engloberait sinon leur position fixe (coin de l'axe
+    ou de la figure) dans le cadrage final, quel que soit le xlim/ylim pose --
+    hors-propos dans un export statique et potentiellement tres excentre une
+    fois le schema recadre sur son contenu reel.
+
+    @param fig Figure matplotlib d'ilot.
+    @return list Les Text masques (a rendre visible via leur `set_visible(True)`).
+    """
+    masques = []
+    for t in fig.texts:
+        if t.get_visible():
+            masques.append(t)
+    for ax in fig.axes:
+        for t in ax.texts:
+            if t.get_visible() and t.get_transform() is not ax.transData:
+                masques.append(t)
+    for t in masques:
+        t.set_visible(False)
+    return masques
+
+
+_EXPORT_MAX_ITER = 8
+_EXPORT_TOL = 1e-6
+
+
+def _exporter_figure(fig, path):
+    """@brief Sauvegarde `fig` en PNG/SVG cadre sur son CONTENU reel (marge
+    uniforme), pas sur les limites d'axe affichees a l'ecran (volontairement
+    asymetriques, cf. `_bbox_contenu`).
+
+    Isolee de `_export` (qui ne fait plus que la boite de dialogue Tk) pour
+    rester testable sans dependance a `tkinter.filedialog`.
+
+    Point fixe itere (meme raison que `gui.schema_labels._reetendre_axes`) :
+    la taille d'un `Text` est fixee en POINTS, pas en unites de donnees --
+    resserrer xlim/ylim change l'echelle pixels/donnee de l'axe, donc la
+    largeur EN DONNEES occupee par ce meme texte. Une seule passe peut donc
+    laisser un residu asymetrique (le texte le plus proche d'un bord grossit
+    ou retrecit en donnees differemment d'un bord a l'autre) ; on reboucle
+    jusqu'a stabilisation des limites (bornee, `_EXPORT_MAX_ITER`).
+
+    L'AFFICHAGE A L'ECRAN N'EST PAS MODIFIE : les limites d'axe et la
+    visibilite des textes de figure sont restaurees dans un `finally`, avant
+    le retour de la fonction.
+
+    @param fig Figure matplotlib a exporter.
+    @param path Chemin de destination (.png ou .svg).
+    @return None
+    """
+    ax = fig.axes[0] if fig.axes else None
+    limites_orig = (ax.get_xlim(), ax.get_ylim()) if ax is not None else None
+    textes_masques = []
+    if ax is not None:
+        textes_masques = _masquer_textes_hors_donnees(fig)
+        for _ in range(_EXPORT_MAX_ITER):
+            bbox = _bbox_contenu(fig)
+            if bbox is None:
+                break
+            x0, x1, y0, y1 = bbox
+            nx0, nx1 = x0 - _EXPORT_MARGE_DATA, x1 + _EXPORT_MARGE_DATA
+            ny0, ny1 = y0 - _EXPORT_MARGE_DATA, y1 + _EXPORT_MARGE_DATA
+            cx0, cx1 = ax.get_xlim()
+            cy0, cy1 = ax.get_ylim()
+            ax.set_xlim(nx0, nx1)
+            ax.set_ylim(ny0, ny1)
+            ax.apply_aspect()
+            echelle = max(abs(nx1 - nx0), abs(ny1 - ny0), 1e-9)
+            if (abs(nx0 - cx0) < _EXPORT_TOL * echelle and abs(nx1 - cx1) < _EXPORT_TOL * echelle
+                    and abs(ny0 - cy0) < _EXPORT_TOL * echelle and abs(ny1 - cy1) < _EXPORT_TOL * echelle):
+                break
+    try:
+        fig.savefig(path, dpi=150, bbox_inches="tight",
+                    facecolor=SCH_BG, edgecolor="none")
+    finally:
+        for t in textes_masques:
+            t.set_visible(True)
+        if limites_orig is not None:
+            ax.set_xlim(limites_orig[0])
+            ax.set_ylim(limites_orig[1])
+            ax.apply_aspect()
+
+
 def _export(fig, name, parent):
     """@brief Exporte la figure en PNG/SVG via une boîte de dialogue.
 
@@ -2259,8 +2401,7 @@ def _export(fig, name, parent):
         title="Exporter le schéma",
     )
     if path:
-        fig.savefig(path, dpi=150, bbox_inches="tight",
-                    facecolor=SCH_BG, edgecolor="none")
+        _exporter_figure(fig, path)
 
 
 # ── Label helpers ─────────────────────────────────────────────────────────────

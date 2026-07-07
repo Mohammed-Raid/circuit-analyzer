@@ -277,6 +277,26 @@ def _reetendre_axes(fig, entrees, renderer):
                 break
 
 
+def obtenir_renderer(fig):
+    """@brief Renderer pret pour `Text.get_window_extent`/`get_window_extent`,
+    sans rasterisation complete si possible.
+
+    Partage par `ajuster_labels` et par l'export PNG cadre de
+    `circuit_viewer._export` : `draw_without_rendering()` calcule le layout
+    (transforms, tailles de texte) sans produire de pixels — la rasterisation
+    Agg complete coutait +30-50 % par figure (finding review 2026-07-06) alors
+    que seul le renderer est requis pour get_window_extent. Repli sur le rendu
+    Agg complet si l'API privee _get_renderer disparait un jour.
+    """
+    try:
+        fig.draw_without_rendering()
+        return fig._get_renderer()
+    except Exception:
+        canvas = FigureCanvasAgg(fig)
+        canvas.draw()
+        return canvas.get_renderer()
+
+
 def ajuster_labels(fig):
     """@brief Passe de resolution anti-collision (cf. docstring du module).
 
@@ -284,19 +304,7 @@ def ajuster_labels(fig):
     cf. design section 1) : ni deplacement de texte, ni extension d'axe si
     tout est deja contenu dans le cadre courant.
     """
-    # Mesure des metriques SANS rasterisation : draw_without_rendering()
-    # calcule le layout (transforms, tailles de texte) sans produire de
-    # pixels — la rasterisation Agg complete coutait +30-50 % par figure
-    # (finding review 2026-07-06) alors que seul le renderer est requis
-    # pour get_window_extent. Repli sur le rendu Agg complet si l'API
-    # privee _get_renderer disparait un jour.
-    try:
-        fig.draw_without_rendering()
-        renderer = fig._get_renderer()
-    except Exception:
-        canvas = FigureCanvasAgg(fig)
-        canvas.draw()
-        renderer = canvas.get_renderer()
+    renderer = obtenir_renderer(fig)
 
     entrees = _collecter_entrees(fig)
     if not entrees:
