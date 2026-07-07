@@ -183,6 +183,89 @@ def test_aucune_fuite_de_figure_sur_cycles_toggle_zoom(ctk_root):
     )
 
 
+# ── Task 1 : bouton « Ajuster à la fenêtre » ──────────────────────────────────
+
+def test_ajuster_reduit_une_chaine_large_pour_tenir_dans_le_viewport(ctk_root):
+    """Chaine de 7 AOP (ilot_tous_aop) : sans Ajuster, la figure deborde tres
+    largement le viewport (defilement enorme). Apres Ajuster, elle doit tenir
+    entierement dans le cadre visible (wpx <= vw et hpx <= vh) avec un
+    facteur < 1.0."""
+    popup = _ouvrir(ctk_root, "ilot_tous_aop.xml")
+    t = popup._etat_test
+
+    t["ajuster"]()
+    ctk_root.update()
+
+    assert t["zoom"]["facteur"] < 1.0
+
+    vw = t["canvas_frame"].winfo_width()
+    vh = t["canvas_frame"].winfo_height()
+    wpx, hpx = cv._figure_pixel_size(t["etat"]["fig"])
+    assert wpx <= vw
+    assert hpx <= vh
+
+    popup.destroy()
+
+
+def test_ajuster_reste_dans_les_bornes_larges_sur_ilot_compact(ctk_root):
+    """Sur un ilot compact (darlington/relais/RLC), Ajuster ne doit jamais
+    depasser la borne large 3.0 (distincte des bornes manuelles 0.5-3.0 des
+    boutons -/+), et le resultat tient dans le viewport."""
+    popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
+    t = popup._etat_test
+
+    t["ajuster"]()
+    ctk_root.update()
+
+    assert t["zoom"]["facteur"] <= 3.0
+
+    vw = t["canvas_frame"].winfo_width()
+    vh = t["canvas_frame"].winfo_height()
+    wpx, hpx = cv._figure_pixel_size(t["etat"]["fig"])
+    assert wpx <= vw
+    assert hpx <= vh
+
+    popup.destroy()
+
+
+def test_ajuster_repart_du_facteur_pose_pour_les_boutons_manuels(ctk_root):
+    """Les boutons -/+ manuels doivent repartir du facteur pose par Ajuster
+    (`_island_zoom_next` le re-clampe vers ses propres bornes 0.5-3.0 si
+    Ajuster est alle plus loin — comportement documente, pas un bug)."""
+    popup = _ouvrir(ctk_root, "ilot_tous_aop.xml")
+    t = popup._etat_test
+
+    t["ajuster"]()
+    ctk_root.update()
+    facteur_ajuste = t["zoom"]["facteur"]
+
+    t["zoom_in"]()
+    ctk_root.update()
+
+    attendu = cv._island_zoom_next(facteur_ajuste, "in")
+    assert t["zoom"]["facteur"] == pytest.approx(attendu)
+    assert 0.5 <= t["zoom"]["facteur"] <= 3.0
+
+    popup.destroy()
+
+
+def test_ajuster_preserve_le_mode_detaille(ctk_root):
+    """Ajuster ne doit pas toucher au mode vue detaillee/Z (meme contrat que
+    le zoom manuel, cf. test_toggle_ne_modifie_pas_le_zoom_et_zoom_ne_modifie_pas_le_mode)."""
+    popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
+    t = popup._etat_test
+
+    t["toggle"]()
+    ctk_root.update()
+    assert t["mode"]["detaille"] is True
+
+    t["ajuster"]()
+    ctk_root.update()
+    assert t["mode"]["detaille"] is True, "Ajuster ne doit pas toucher le mode"
+
+    popup.destroy()
+
+
 def test_fermeture_popup_demonte_le_dernier_contexte(ctk_root):
     """`_fermer` (partagee par le bouton Fermer ET le protocole
     WM_DELETE_WINDOW, cf. `popup.protocol("WM_DELETE_WINDOW", _fermer)` dans

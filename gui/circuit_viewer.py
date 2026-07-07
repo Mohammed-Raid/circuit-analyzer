@@ -79,6 +79,19 @@ def _zoom_next_scale(current, wheel_delta):
 _ISLAND_ZOOM_MIN = 0.5
 _ISLAND_ZOOM_MAX = 3.0
 _ISLAND_ZOOM_STEP = 1.25
+# Bornes larges du bouton « Ajuster à la fenêtre » — distinctes des bornes
+# manuelles ci-dessus : Ajuster peut poser un facteur hors [0.5, 3.0] (ex.
+# chaîne de 7 AOP très large -> facteur < 0.5) ; les boutons -/+ repartiront
+# ensuite normalement de ce facteur via `_island_zoom_next`, qui les
+# re-clampera vers 0.5/3.0 si besoin (comportement documenté, pas un bug).
+_ISLAND_AJUSTER_MIN = 0.15
+_ISLAND_AJUSTER_MAX = 3.0
+# Paddings internes du `canvas_frame` à déduire pour mesurer le viewport utile
+# du schéma : le chemin plein-cadre ET le chemin défilant packent leur widget
+# avec padx=4/pady=4 (8px par dimension) ; le chemin défilant réserve en plus
+# des barres de défilement Tk (~15px) — réservées par prudence même si elles
+# ne s'affichent pas forcément, pour ne jamais surestimer l'espace utile.
+_ISLAND_VIEWPORT_PAD = 8 + 15
 # Largeur (pouces, dpi 100) au-dela de laquelle le popup ilot bascule en
 # defilement horizontal plutot que de tasser le schema. Alignee sur la
 # largeur utile du popup 1200px (audit fenetre F6).
@@ -872,6 +885,10 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         """
         nouvelle_fig = construire_fig(mode["detaille"])
         base_w, base_h = nouvelle_fig.get_size_inches()
+        # Mémorisés AVANT tassage/zoom (taille native au facteur 1.0) — sert
+        # au bouton « Ajuster à la fenêtre » (`_ajuster`) sans reconstruire de
+        # figure juste pour mesurer.
+        etat["base_w"], etat["base_h"], etat["dpi"] = base_w, base_h, nouvelle_fig.dpi
         facteur = zoom["facteur"]
         if facteur != 1.0:
             nouvelle_fig.set_size_inches(base_w * facteur, base_h * facteur)
@@ -913,6 +930,26 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         zoom["facteur"] = _island_zoom_next(zoom["facteur"], direction)
         _rendre()
 
+    def _ajuster():
+        """@brief Pose le facteur de zoom qui fait tenir la figure ENTIÈRE
+        dans le viewport courant : `f = min(vw/wpx, vh/hpx)` où (vw, vh) est
+        la taille utile de `canvas_frame` (paddings/scrollbars déduits, cf.
+        `_ISLAND_VIEWPORT_PAD`) et (wpx, hpx) la taille native de la figure au
+        facteur 1.0 (mémorisée dans `etat` par `_rendre`). Mode détaillé/Z
+        conservé — seul `zoom["facteur"]` change, `_rendre()` réutilise le
+        chemin partagé (centrage < 1x déjà géré).
+        """
+        popup.update_idletasks()
+        vw = canvas_frame.winfo_width() - _ISLAND_VIEWPORT_PAD
+        vh = canvas_frame.winfo_height() - _ISLAND_VIEWPORT_PAD
+        wpx = etat["base_w"] * etat["dpi"]
+        hpx = etat["base_h"] * etat["dpi"]
+        if vw <= 0 or vh <= 0 or wpx <= 0 or hpx <= 0:
+            return
+        f = min(vw / wpx, vh / hpx)
+        zoom["facteur"] = max(_ISLAND_AJUSTER_MIN, min(_ISLAND_AJUSTER_MAX, f))
+        _rendre()
+
     def _fermer():
         """@brief Fermeture du popup (bouton Fermer ET WM_DELETE_WINDOW) : meme
         teardown déterministe qu'un remontage (cf. `_demonter_contexte`) AVANT
@@ -935,6 +972,9 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                   command=lambda: _zoom("reset")).pack(side="right", padx=0, pady=7)
     ui_kit.GhostButton(bar, text="−", width=40, height=30,
                   command=lambda: _zoom("out")).pack(side="right", padx=(12, 0), pady=7)
+    ui_kit.GhostButton(bar, text="Ajuster", icon_name="maximize",
+                  width=100, height=30,
+                  command=_ajuster).pack(side="right", padx=(12, 0), pady=7)
 
     # Hook de test minimal (jamais utilise par l'UI, prefixe _test) : expose
     # l'etat interne (mode/zoom/etat de montage) et les actions declenchantes
@@ -947,10 +987,12 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         "etat": etat,
         "mode": mode,
         "zoom": zoom,
+        "canvas_frame": canvas_frame,
         "toggle": _toggle_detaille,
         "zoom_in": lambda: _zoom("in"),
         "zoom_out": lambda: _zoom("out"),
         "zoom_reset": lambda: _zoom("reset"),
+        "ajuster": _ajuster,
         "fermer": _fermer,
     }
     return popup
