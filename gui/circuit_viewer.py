@@ -3242,15 +3242,18 @@ def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0, bloque_bas=False):
         p1, p2 = (ax + dx, ay - 0.55), (ax + dx, ay - 1.75 - extra)
         d.add(elm.Line().at(anchor).to(p1).color(_WIRE))
         _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right")
-        # Terminer le moignon par un nœud : sinon la boîte paraît avoir une borne
-        # flottante coupée. Le second nœud n'est étiqueté que s'il est informatif
-        # (un port VIN/VOUT est déjà nommé par le drawer -> on évite le doublon).
+        # Terminer le moignon par un nœud étiqueté du nom du net réel de
+        # destination : sinon la boîte paraît avoir une borne flottante coupée
+        # et anonyme, même quand ce net est déjà nommé ailleurs sur le schéma
+        # (ex. VIN/VOUT du port principal) — deux points distincts du même net
+        # portent chacun leur étiquette, pratique standard en schématique.
         d.add(elm.Line().at(p2).down(0.3).color(_WIRE))
         fin = (p2[0], p2[1] - 0.3)
-        d.add(elm.Dot().at(fin).color(_WIRE))
-        if other_net and other_net.upper() not in {"VIN", "VOUT", "IN", "OUT"}:
+        d.add(elm.Dot(open=True).at(fin).color(_BUS))
+        if other_net:
             d.add(elm.Label().at((fin[0], fin[1] - 0.25))
-                  .label(other_net, halign="center", valign="top", color=_WIRE))
+                  .label(other_net, halign="center", valign="top",
+                         color=_BUS, fontsize=9))
 
 
 def _draw_island_chain(d, ordered, ci, couplages=None):

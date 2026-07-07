@@ -323,6 +323,24 @@ def test_reel_suiveur_vout_label_hors_boite_z():
     _assert_label_hors_boites_z(fig, "VOUT")
 
 
+def test_reel_suiveur_stub_vin_et_vout_termines_par_le_nom_du_net():
+    # Les stubs locaux (C1+R1 sous VIN ; L1+R8 sous VOUT) se terminaient par un
+    # Dot plein anonyme. Ils doivent maintenant afficher le nom du net reel de
+    # destination (VIN / VOUT) au bout du moignon -> 2 occurrences de chaque
+    # texte (le port principal + la terminaison du stub), dans les DEUX vues.
+    for detaille in (False, True):
+        fig, txts = _render_ilot_xml("ilot_reel_ce_suiveur_sortie_rlc.xml", detaille=detaille)
+        assert sum(1 for t in txts if t.strip() == "VIN") == 2, (detaille, txts)
+        assert sum(1 for t in txts if t.strip() == "VOUT") == 2, (detaille, txts)
+
+
+def test_reel_ampli_audio_stub_vin_et_vout_termines_par_le_nom_du_net():
+    for detaille in (False, True):
+        fig, txts = _render_ilot_xml("ilot_reel_ampli_audio_3etages.xml", detaille=detaille)
+        assert sum(1 for t in txts if t.strip() == "VIN") == 2, (detaille, txts)
+        assert sum(1 for t in txts if t.strip() == "VOUT") == 2, (detaille, txts)
+
+
 def test_reel_suiveur_detaille_rlc_labels_ne_se_chevauchent_pas():
     fig, _txts = _render_ilot_xml("ilot_reel_ce_suiveur_sortie_rlc.xml", detaille=True)
     _assert_texts_do_not_overlap(fig, "Rb", "C1")

@@ -766,9 +766,11 @@ def test_make_fig_principal_dessine_les_impedances_restantes():
     assert "Cload" in refs
 
 
-def test_z_locale_ne_double_pas_le_label_de_port():
-    # Une Z locale vers un net non-rail ne doit PAS re-etiqueter ce net : le port
-    # (VIN/VOUT) est deja nomme par le drawer -> evite les doublons. Reste cliquable.
+def test_z_locale_etiquette_le_net_reel_meme_si_deja_nomme_ailleurs():
+    # Une Z locale vers un net non-rail termine son moignon par le NOM DU NET
+    # REEL de destination (ex. VIN), meme si ce net est deja nomme ailleurs par
+    # le port principal du drawer : deux points distincts du meme net portent
+    # chacun leur etiquette (cf. task-2, plus de Dot nu anonyme). Reste cliquable.
     import schemdraw
     fig = cv.Figure(figsize=(4, 3))
     ax = fig.add_subplot(111)
@@ -780,8 +782,8 @@ def test_z_locale_ne_double_pas_le_label_de_port():
             {"C1": {"type": "C", "value": "1u"}})
         hits = len(d._z_hitboxes)
     texts = [t.get_text() for t in ax.texts]
-    assert "VIN" not in texts          # pas de re-etiquetage du port
-    assert hits >= 1                   # mais la Z locale reste cliquable
+    assert "VIN" in texts              # net reel de destination affiche
+    assert hits >= 1                   # et la Z locale reste cliquable
 
 
 def test_chaine_couplage_complexe_affiche_boite_z():
