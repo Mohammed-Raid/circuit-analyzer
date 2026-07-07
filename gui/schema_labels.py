@@ -284,9 +284,19 @@ def ajuster_labels(fig):
     cf. design section 1) : ni deplacement de texte, ni extension d'axe si
     tout est deja contenu dans le cadre courant.
     """
-    canvas = FigureCanvasAgg(fig)
-    canvas.draw()
-    renderer = canvas.get_renderer()
+    # Mesure des metriques SANS rasterisation : draw_without_rendering()
+    # calcule le layout (transforms, tailles de texte) sans produire de
+    # pixels — la rasterisation Agg complete coutait +30-50 % par figure
+    # (finding review 2026-07-06) alors que seul le renderer est requis
+    # pour get_window_extent. Repli sur le rendu Agg complet si l'API
+    # privee _get_renderer disparait un jour.
+    try:
+        fig.draw_without_rendering()
+        renderer = fig._get_renderer()
+    except Exception:
+        canvas = FigureCanvasAgg(fig)
+        canvas.draw()
+        renderer = canvas.get_renderer()
 
     entrees = _collecter_entrees(fig)
     if not entrees:
