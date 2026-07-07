@@ -3040,14 +3040,32 @@ def _fil_avec_couplage(d, out_pt, in_pt, cc, ci):
 
 
 def _fil_canal_avec_couplage(d, out_pt, in_pt, channel_x, cc, ci):
-    """@brief Fil en canal avec le couplage dessiné sur la branche de destination."""
+    """@brief Fil en canal avec le couplage dessiné sur la branche de destination.
+
+    Le réseau déplié (`_z_reseau`) peut avoir besoin de plus de largeur que
+    l'espace [channel_x, in_pt] alloué par le routage (réseaux composites,
+    cf. `_z_locale_extra`) : un centrage symétrique naïf sur ce segment
+    déborderait alors des DEUX côtés à la fois -- l'amorce gauche traverserait
+    le bus vertical du canal, et la borne droite du réseau engloutirait le
+    point d'entrée de la destination (et son Dot de prise, posé à une position
+    fixe qui suppose une boîte compacte). On ancre donc le réseau sur sa borne
+    réelle de sortie (le même petit dégagement qu'un réseau qui rentre déjà
+    dans l'espace alloué) et on repousse le canal vertical à gauche pour
+    rejoindre sa borne réelle d'entrée -- jamais l'inverse : les fils du
+    caller se terminent toujours sur les bornes réelles p1/p2 du réseau
+    (cf. `_agencement_entre`), sans jamais les dépasser.
+    """
     cap_x = (channel_x + in_pt[0]) / 2
     demi = 0.6 + _z_locale_extra(d, cc, 1.2) / 2
-    p1 = (cap_x - demi, in_pt[1])
-    p2 = (cap_x + demi, in_pt[1])
-    d.add(elm.Line().at(out_pt).to((channel_x, out_pt[1])).color(_WIRE))
-    d.add(elm.Line().at((channel_x, out_pt[1])).to((channel_x, in_pt[1])).color(_WIRE))
-    d.add(elm.Line().at((channel_x, in_pt[1])).to(p1).color(_WIRE))
+    p1x, p2x = cap_x - demi, cap_x + demi
+    if p2x > in_pt[0] - _Z_DETAIL_LABEL_CLEAR:
+        p2x = in_pt[0] - _Z_DETAIL_LABEL_CLEAR
+        p1x = p2x - 2 * demi
+    p1, p2 = (p1x, in_pt[1]), (p2x, in_pt[1])
+    canal_x = min(channel_x, p1x)
+    d.add(elm.Line().at(out_pt).to((canal_x, out_pt[1])).color(_WIRE))
+    d.add(elm.Line().at((canal_x, out_pt[1])).to((canal_x, in_pt[1])).color(_WIRE))
+    d.add(elm.Line().at((canal_x, in_pt[1])).to(p1).color(_WIRE))
     _dessiner_symbole_couplage(d, p1, p2, cc, ci)
     d.add(elm.Line().at(p2).to(in_pt).color(_WIRE))
 

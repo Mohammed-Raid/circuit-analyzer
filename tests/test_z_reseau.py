@@ -290,3 +290,75 @@ def test_label_clear_vertical_couvre_amplitude_zigzag():
     fenêtre F1, ilot_reel_2ce_bias_rlc)."""
     from gui.circuit_viewer import _Z_DETAIL_LABEL_CLEAR_VERT
     assert _Z_DETAIL_LABEL_CLEAR_VERT > 0.3
+
+
+# ── Régression bug visuel : couplage déplié plus large que le canal alloué ───
+
+def test_fil_canal_avec_couplage_reseau_large_reste_dans_le_segment_alloue():
+    """Bug visuel réel (ilot_reel_fanout_filtres_rlc, couplage C2+(R5//L1) de la
+    branche du bas vers VOUT1, vue détaillée) : un réseau composite (3 refs)
+    a besoin de plus de largeur que l'espace [channel_x, in_pt] alloué par le
+    routage du fan-out. Un centrage symétrique naïf sur ce segment déborde
+    alors des DEUX côtés à la fois :
+      A. le fil d'amorce gauche de C2 traverse le bus vertical du canal et
+         dépasse de l'autre côté ;
+      B. la borne droite du réseau déplié (rail droit de R5//L1) engloutit le
+         point d'entrée de destination, là où le drawer suivant (transistor)
+         pose son Dot de prise (Rb) à une position fixe qui suppose une boîte
+         Z compacte -- le Dot se retrouve DANS la boucle R5//L1 au lieu d'être
+         sur le fil de sortie, après le réseau.
+    Reproduit les coordonnées réelles de ce circuit (cf.
+    tools/render_ilots_v2.py + circuits_industriels/ilot_reel_fanout_filtres_rlc.xml).
+    """
+    from matplotlib.figure import Figure
+    import schemdraw
+    import gui.circuit_viewer as cv
+
+    fig = Figure(figsize=(6, 4))
+    ax = fig.add_subplot(111)
+    ax.axis("off")
+    out_pt = (6.751666666666667, -0.0003333333333332966)
+    in_pt = (14.9, -5.197)
+    channel_x = 12.5
+    cc = {"refs": ["C2", "R5", "L1"], "composition": "C2+(R5//L1)"}
+    ci = {
+        "C2": {"type": "C", "value": "1u"},
+        "R5": {"type": "R", "value": "10k"},
+        "L1": {"type": "L", "value": "10m"},
+    }
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d.config(fontsize=10, inches_per_unit=0.5)
+        d._z_hitboxes = []
+        d._mode_detaille = True
+        cv._fil_canal_avec_couplage(d, out_pt, in_pt, channel_x, cc, ci)
+
+    # Le bus vertical du canal : une ligne à x constant reliant les niveaux y
+    # de out_pt et in_pt.
+    canal_x = None
+    for line in ax.lines:
+        xs = [float(x) for x in line.get_xdata()]
+        ys = [float(y) for y in line.get_ydata()]
+        if (max(xs) - min(xs) < 1e-9
+                and min(ys) <= min(out_pt[1], in_pt[1]) + 1e-6
+                and max(ys) >= max(out_pt[1], in_pt[1]) - 1e-6):
+            canal_x = xs[0]
+    assert canal_x is not None, "bus vertical du canal introuvable"
+
+    # Étendue x de tout ce qui est dessiné au niveau du couplage (bande
+    # verticale autour de in_pt[1], assez large pour couvrir la boucle R5//L1).
+    xs_bande = [
+        x for line in ax.lines
+        for x, y in zip(line.get_xdata(), line.get_ydata())
+        if not (math.isnan(x) or math.isnan(y)) and abs(y - in_pt[1]) <= 1.5
+    ]
+    x_gauche, x_droit = min(xs_bande), max(xs_bande)
+
+    assert x_gauche >= canal_x - 1e-9, (
+        "A: le fil d'amorce gauche du couplage traverse le bus vertical du "
+        f"canal (x_gauche={x_gauche}, canal_x={canal_x})"
+    )
+    assert x_droit <= in_pt[0] + 1e-9, (
+        "B: le réseau déplié engloutit le point d'entrée de destination "
+        f"(x_droit={x_droit}, in_pt={in_pt[0]}) -- le Dot de prise se "
+        "retrouverait à l'intérieur de la boucle"
+    )
