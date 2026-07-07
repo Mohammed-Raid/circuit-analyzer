@@ -101,6 +101,11 @@ _ISLAND_DEFILE_WIDTH_IN = 11.6
 # Clic sur une puce "Composants : ..." -> centrage + surbrillance (section A).
 _CHIP_HIGHLIGHT_RADIUS = 0.8       # unites data, cf. design
 _CHIP_HIGHLIGHT_DELAY_MS = 1400
+# Clic = FOCUS (demande utilisateur 2026-07-07) : si le zoom courant est sous
+# ce facteur, on y monte d'abord (la vue devient defilante) puis on centre le
+# composant -- « centrer » = s'en approcher, pas seulement l'entourer. Un zoom
+# manuel deja superieur est conserve.
+_CHIP_FOCUS_FACTEUR = 2.0
 # Export PNG cadre sur le contenu reel (section B) : marge uniforme en
 # unites data appliquee de chaque cote de la bbox de contenu avant savefig.
 _EXPORT_MARGE_DATA = 0.5
@@ -936,9 +941,10 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         return canvas
 
     def _on_chip_click(refs):
-        """@brief Callback de clic sur une puce « Composants : ... » : centre
-        la vue (si defilante) et pose un anneau de surbrillance temporaire
-        sur le composant vise.
+        """@brief Callback de clic sur une puce « Composants : ... » : FOCUS
+        sur le composant vise -- zoome a `_CHIP_FOCUS_FACTEUR` si le zoom
+        courant est inferieur (la vue devient defilante), centre la vue sur
+        le composant et pose un anneau de surbrillance temporaire.
 
         @param refs Un ref (str) ou une liste de refs CANDIDATS (str),
             essayes dans l'ordre via `_position_composant` jusqu'au premier
@@ -969,8 +975,31 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         if pos is None:
             return
 
+        # Clic = FOCUS : sous _CHIP_FOCUS_FACTEUR on zoome d'abord sur le
+        # schema (le composant seulement entoure d'un anneau a 100 % ne
+        # suffisait pas -- retour utilisateur). Le re-rendu remplace figure
+        # et canvas : on re-resout la position sur la figure COURANTE.
+        if zoom["facteur"] < _CHIP_FOCUS_FACTEUR:
+            zoom["facteur"] = _CHIP_FOCUS_FACTEUR
+            _rendre()
+            fig = etat.get("fig")
+            canvas = etat.get("canvas")
+            if fig is None or canvas is None or not fig.axes:
+                return
+            pos = None
+            for r in candidats:
+                pos = _position_composant(fig, r)
+                if pos is not None:
+                    break
+            if pos is None:
+                return
+
         view = getattr(canvas, "_scroll_view", None)
         if view is not None:
+            # Le viewport peut sortir d'un re-rendu immediat : forcer la mise
+            # en page Tk avant de mesurer, sinon winfo_width() vaut 1 et la
+            # fraction de centrage est fausse.
+            popup.update_idletasks()
             ax0 = fig.axes[0]
             dispx, dispy = ax0.transData.transform(pos)
             fig_w_px, fig_h_px = _figure_pixel_size(fig)
@@ -1017,6 +1046,16 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         except Exception:
             _log.debug("popup.after ignore (popup deja ferme ?)", exc_info=True)
 
+    def _maj_bouton_pct():
+        """@brief Reflète le facteur de zoom courant sur le bouton « % » de la
+        barre basse (créé APRÈS le premier rendu : d'où le get tolérant)."""
+        b = etat.get("bouton_pct")
+        if b is not None:
+            try:
+                b.configure(text=f"{round(zoom['facteur'] * 100)} %")
+            except tk.TclError:
+                _log.debug("maj bouton pct ignoree (widget detruit ?)", exc_info=True)
+
     def _rendre():
         """@brief Chemin de reconstruction partagé par le toggle vue détaillée
         et les boutons de zoom : chacun conserve l'état de l'autre (le toggle
@@ -1049,6 +1088,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                 nouvelle_fig.set_size_inches(base_w / ratio, base_h / ratio)
         monter_canvas(nouvelle_fig, facteur)
         etat["fig"] = nouvelle_fig
+        _maj_bouton_pct()
 
     _rendre()
 
@@ -1113,8 +1153,15 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                   command=_fermer).pack(side="right", padx=12, pady=7)
     ui_kit.GhostButton(bar, text="+", width=40, height=30,
                   command=lambda: _zoom("in")).pack(side="right", padx=(0, 12), pady=7)
-    ui_kit.GhostButton(bar, text="100 %", width=56, height=30,
-                  command=lambda: _zoom("reset")).pack(side="right", padx=0, pady=7)
+    # Affiche le POURCENTAGE COURANT (mis a jour par _rendre) tout en gardant
+    # son role de remise a 100 % au clic : depuis le clic-focus des puces, le
+    # facteur peut changer sans passer par les boutons -/+, un « 100 % » fige
+    # mentirait sur l'etat reel de la vue.
+    bouton_pct = ui_kit.GhostButton(bar, text="100 %", width=56, height=30,
+                  command=lambda: _zoom("reset"))
+    bouton_pct.pack(side="right", padx=0, pady=7)
+    etat["bouton_pct"] = bouton_pct
+    _maj_bouton_pct()
     ui_kit.GhostButton(bar, text="−", width=40, height=30,
                   command=lambda: _zoom("out")).pack(side="right", padx=(12, 0), pady=7)
     ui_kit.GhostButton(bar, text="Ajuster", icon_name="maximize",

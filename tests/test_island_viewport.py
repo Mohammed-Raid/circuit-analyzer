@@ -291,23 +291,34 @@ def test_fermeture_popup_demonte_le_dernier_contexte(ctk_root):
 
 # ── Task chips-export section A : clic sur une puce composant ────────────────
 
-def test_clic_puce_centre_le_scroll_et_affiche_puis_efface_l_anneau(ctk_root):
-    """Ilot en chaine (ilot_tous_aop, toujours defilant) : le clic simule sur
-    une puce composant (hook `cliquer_composant`, meme idiome que
-    `zoom_in`/`toggle` -- pas de dependance fragile aux libelles de bouton ni
-    aux widgets Tk) doit centrer le viewport scrollable sur ce composant et
-    poser un anneau de surbrillance qui disparait apres le delai."""
+def test_clic_puce_focus_zoome_centre_et_affiche_puis_efface_l_anneau(ctk_root):
+    """Clic = FOCUS (retour utilisateur 2026-07-07) : sous _CHIP_FOCUS_FACTEUR
+    le clic monte d'abord le zoom a ce facteur (la figure est re-rendue), puis
+    centre le viewport defilant sur le composant et pose l'anneau. Les
+    attentes se calculent sur la figure COURANTE (post-focus), pas sur celle
+    d'avant le clic."""
     popup = _ouvrir(ctk_root, "ilot_tous_aop.xml")
     t = popup._etat_test
-    fig = t["etat"]["fig"]
-    canvas = t["etat"]["canvas"]
-    view = getattr(canvas, "_scroll_view", None)
-    assert view is not None, "ilot_tous_aop (chaine) attendu toujours defilant"
+    fig_avant = t["etat"]["fig"]
 
     ilot, _graph, _ci, _res = _premier_ilot("ilot_tous_aop.xml")
-    ref = next(r for r in ilot["composants"] if cv._position_composant(fig, r) is not None)
+    ref = next(r for r in ilot["composants"]
+               if cv._position_composant(fig_avant, r) is not None)
+
+    assert t["zoom"]["facteur"] == 1.0
+    t["cliquer_composant"](ref)
+    ctk_root.update()
+
+    # Focus : zoom monte au facteur cible, figure remplacee.
+    assert t["zoom"]["facteur"] == pytest.approx(cv._CHIP_FOCUS_FACTEUR)
+    fig = t["etat"]["fig"]
+    assert fig is not fig_avant, "le focus doit re-rendre la figure"
+    canvas = t["etat"]["canvas"]
+    view = getattr(canvas, "_scroll_view", None)
+    assert view is not None, "au facteur focus la vue doit etre defilante"
 
     pos = cv._position_composant(fig, ref)
+    assert pos is not None
     ax0 = fig.axes[0]
     dispx, dispy = ax0.transData.transform(pos)
     fig_w_px, fig_h_px = cv._figure_pixel_size(fig)
@@ -315,9 +326,6 @@ def test_clic_puce_centre_le_scroll_et_affiche_puis_efface_l_anneau(ctk_root):
     vh = max(1, view.winfo_height())
     attendu_fx = cv._fraction_centree(dispx, fig_w_px, vw)
     attendu_fy = cv._fraction_centree(fig_h_px - dispy, fig_h_px, vh)
-
-    t["cliquer_composant"](ref)
-    ctk_root.update()
 
     fx0, _fx1 = view.xview()
     fy0, _fy1 = view.yview()
@@ -336,6 +344,32 @@ def test_clic_puce_centre_le_scroll_et_affiche_puis_efface_l_anneau(ctk_root):
 
     anneaux_apres = [p for p in ax0.patches if getattr(p, "_surbrillance_puce", False)]
     assert not anneaux_apres, "l'anneau doit disparaitre apres le delai"
+
+    popup.destroy()
+
+
+def test_clic_puce_conserve_un_zoom_manuel_superieur(ctk_root):
+    """Un zoom manuel deja au-dela du facteur focus n'est PAS ecrase par le
+    clic : la figure courante est conservee, seul le centrage s'applique."""
+    popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
+    t = popup._etat_test
+    while t["zoom"]["facteur"] < cv._CHIP_FOCUS_FACTEUR:
+        t["zoom_in"]()
+    ctk_root.update()
+    facteur_manuel = t["zoom"]["facteur"]
+    assert facteur_manuel >= cv._CHIP_FOCUS_FACTEUR
+    fig_avant = t["etat"]["fig"]
+
+    ilot, _graph, _ci, _res = _premier_ilot("ilot_reel_darlington_relais_rlc.xml")
+    ref = next((r for r in ilot["composants"]
+                if cv._position_composant(fig_avant, r) is not None), None)
+    assert ref is not None
+
+    t["cliquer_composant"](ref)
+    ctk_root.update()
+
+    assert t["zoom"]["facteur"] == pytest.approx(facteur_manuel)
+    assert t["etat"]["fig"] is fig_avant, "pas de re-rendu si deja au-dela du focus"
 
     popup.destroy()
 
@@ -369,7 +403,11 @@ def test_clic_puce_apres_toggle_survit_au_remontage_de_figure(ctk_root):
     t["cliquer_composant"](ref)
     ctk_root.update()
 
-    anneaux = [p for p in fig_apres_toggle.axes[0].patches
+    # Le clic-focus a re-rendu (facteur 1.0 -> focus) : l'anneau vit sur la
+    # figure COURANTE, et le mode detaille survit au focus.
+    assert t["mode"]["detaille"] is True
+    fig_courante = t["etat"]["fig"]
+    anneaux = [p for p in fig_courante.axes[0].patches
                if getattr(p, "_surbrillance_puce", False)]
     assert len(anneaux) == 1
 
