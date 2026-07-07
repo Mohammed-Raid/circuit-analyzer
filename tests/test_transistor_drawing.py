@@ -334,6 +334,27 @@ def test_reel_suiveur_stub_vin_et_vout_termines_par_le_nom_du_net():
         assert sum(1 for t in txts if t.strip() == "VOUT") == 2, (detaille, txts)
 
 
+def test_reel_suiveur_fils_stub_en_bus_chemin_principal_en_wire():
+    # Task 3 (hierarchie visuelle) : les fils des stubs satellites locaux
+    # (C1+R1 sous VIN, R5//C2 en aval du 1er etage, L1//R8 sous VOUT) doivent
+    # passer en _BUS (gris net), en retrait par rapport au chemin principal.
+    # Le fil du couplage de chaine entre les deux etages (C3, sur le chemin du
+    # signal, dessine par _fil_avec_couplage) doit lui rester en _WIRE plein.
+    fig, _txts = _render_ilot_xml("ilot_reel_ce_suiveur_sortie_rlc.xml")
+    ax = fig.axes[0]
+    bus_lines = [l for l in ax.lines if l.get_color() == cv._BUS]
+    wire_lines = [l for l in ax.lines if l.get_color() == cv._WIRE]
+    assert bus_lines, "aucun fil de stub local en _BUS"
+    assert wire_lines, "le fil de couplage de chaine (chemin du signal) doit rester en _WIRE"
+    # Position : un stub descend nettement SOUS l'axe principal (y=0) du
+    # montage -> il "quitte" le chemin, contrairement au couplage inter-etages
+    # qui reste ACCROCHE a cet axe (meme ligne y que les bornes in/out).
+    assert any(min(l.get_ydata()) < -0.5 for l in bus_lines), (
+        "un fil de stub doit descendre hors de l'axe principal")
+    assert any(max(abs(v) for v in l.get_ydata()) < 0.01 for l in wire_lines), (
+        "le fil de couplage de chaine doit rester sur l'axe principal (y~0)")
+
+
 def test_reel_ampli_audio_stub_vin_et_vout_termines_par_le_nom_du_net():
     for detaille in (False, True):
         fig, txts = _render_ilot_xml("ilot_reel_ampli_audio_3etages.xml", detaille=detaille)

@@ -2503,7 +2503,7 @@ def _amorce_centree(pa, pb, fraction=0.65, min_len=_Z_DETAIL_SYMBOL_MIN_LEN):
     return sa, sb, [(pa, sa), (sb, pb)]
 
 
-def _z_reseau(d, p1, p2, bloc, ci, label_loc="top") -> bool:
+def _z_reseau(d, p1, p2, bloc, ci, label_loc="top", wire_color=_WIRE) -> bool:
     """@brief Dessine le réseau R/L/C réel de `bloc` entre p1 et p2 (vue détaillée).
 
     Déplie la composition (`bloc["composition"]`) en son arbre série/parallèle
@@ -2515,6 +2515,10 @@ def _z_reseau(d, p1, p2, bloc, ci, label_loc="top") -> bool:
     @param p1, p2 Extrémités globales du bloc Z remplacé.
     @param bloc Bloc d'impédance {'refs','composition',...}.
     @param ci Dict {ref → {type, value}} pour l'étiquette de chaque composant.
+    @param wire_color Couleur des fils de jonction internes (rungs du réseau
+        déplié) — `_WIRE` par défaut (chemin principal/couplage de chaîne),
+        `_BUS` quand ce réseau habille un stub satellite (cf. `_dessiner_z_locale`).
+        Les symboles gardent leur propre couleur sémantique, non affectée.
     @return bool True si le réseau a été dessiné, False sinon.
     """
     from circuit_analyzer import impedance
@@ -2647,11 +2651,11 @@ def _z_reseau(d, p1, p2, bloc, ci, label_loc="top") -> bool:
                 valeur, halign=ha, valign=va,
                 fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
     for pa, pb in fils:
-        d.add(elm.Line().at(pa).to(pb).color(_WIRE))
+        d.add(elm.Line().at(pa).to(pb).color(wire_color))
     return True
 
 
-def _z_box(d, p1, p2, name, bloc, ci, label_loc="top"):
+def _z_box(d, p1, p2, name, bloc, ci, label_loc="top", wire_color=_WIRE):
     """@brief Dessine une boîte Z cliquable (ResistorIEC bleue) de p1 à p2 et
     enregistre sa hitbox sur d._z_hitboxes.
 
@@ -2668,6 +2672,10 @@ def _z_box(d, p1, p2, name, bloc, ci, label_loc="top"):
     @param bloc Bloc d'impédance {'refs','composition','nodes'}.
     @param ci Dict {ref → {type, value}} pour l'étiquette.
     @param label_loc Position de l'étiquette schemdraw.
+    @param wire_color Couleur des fils de jonction internes du réseau déplié
+        (vue détaillée uniquement) — transmis tel quel à `_z_reseau`. Sans
+        effet sur la boîte Z elle-même (toujours `_Z_EDGE`, cliquable) ni sur
+        les symboles réels (couleur sémantique R/L/C inchangée).
     @return None
     """
     dessine = False
@@ -2685,7 +2693,7 @@ def _z_box(d, p1, p2, name, bloc, ci, label_loc="top"):
             label = f"{ref}\n{vfmt}" if vfmt else ref
             d.add(cls().at(p1).to(p2).color(coul).label(label, fontsize=9, color=coul))
             dessine = True
-        elif _z_reseau(d, p1, p2, bloc, ci, label_loc=label_loc):
+        elif _z_reseau(d, p1, p2, bloc, ci, label_loc=label_loc, wire_color=wire_color):
             dessine = True
     if not dessine:
         d.add(elm.ResistorIEC().at(p1).to(p2).color(_Z_EDGE).fill(_Z_FILL))
@@ -3209,6 +3217,16 @@ def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0, bloque_bas=False):
     @param bloque_bas True si un élément de l'étage occupe l'espace directement
         sous l'ancre (collecteur aligné au-dessus de l'émetteur) : le stub
         vertical le traverserait, on dessine alors la boîte EN LIGNE.
+
+    Hiérarchie visuelle (Task 3) : les fils qui QUITTENT le chemin principal
+    pour rejoindre ce stub (branches VCC/GND et branche vers un net satellite)
+    sont tracés en `_BUS` (gris net), y compris les fils internes du réseau
+    déplié (`wire_color=_BUS` transmis à `_z_box`/`_z_reseau`) — la boîte Z et
+    les symboles réels gardent leurs couleurs sémantiques inchangées. Le cas
+    `bloque_bas` est un repli géométrique où la boîte est posée EN LIGNE, à
+    même le fil de sortie du montage (pas de fil dédié qui « quitte » le
+    chemin) : conservé en `_WIRE` par défaut, choix conservateur documenté ici
+    car l'appartenance stub/chemin y est ambiguë.
     """
     ax, ay = anchor
     # Étalement horizontal large quand plusieurs Z partagent le même nœud
@@ -3217,19 +3235,21 @@ def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0, bloque_bas=False):
     if other_net == "VCC":
         extra = _z_locale_extra(d, z, 1.2)
         p1, p2 = (ax + dx, ay + 0.45), (ax + dx, ay + 1.65 + extra)
-        d.add(elm.Line().at(anchor).to(p1).color(_WIRE))
-        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right")
-        d.add(elm.Line().at(p2).up(0.35).label("VCC", loc="top").color(_WIRE))
+        d.add(elm.Line().at(anchor).to(p1).color(_BUS))
+        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right", wire_color=_BUS)
+        d.add(elm.Line().at(p2).up(0.35).label("VCC", loc="top").color(_BUS))
     elif other_net == "GND":
         extra = _z_locale_extra(d, z, 1.2)
         p1, p2 = (ax + dx, ay - 0.45), (ax + dx, ay - 1.65 - extra)
-        d.add(elm.Line().at(anchor).to(p1).color(_WIRE))
-        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right")
-        d.add(elm.Line().at(p2).down(0.25).color(_WIRE))
+        d.add(elm.Line().at(anchor).to(p1).color(_BUS))
+        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right", wire_color=_BUS)
+        d.add(elm.Line().at(p2).down(0.25).color(_BUS))
         d.add(elm.Ground())
     elif bloque_bas:
         # Un élément (l'émetteur) occupe l'espace sous l'ancre (collecteur) : un
         # stub vertical le traverserait -> boîte EN LIGNE sur le fil de sortie.
+        # Reste en _WIRE (cf. docstring) : ce Z est posé sur le fil de sortie
+        # du montage lui-même, il ne le quitte pas visuellement.
         extra = _z_locale_extra(d, z, 1.0)
         p1, p2 = (ax + 0.4 + dx, ay), (ax + 1.4 + dx + extra, ay)
         _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci)
@@ -3240,14 +3260,14 @@ def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0, bloque_bas=False):
         # passe à droite pour laisser la place au nom du nœud sous la boîte.
         extra = _z_locale_extra(d, z, 1.2)
         p1, p2 = (ax + dx, ay - 0.55), (ax + dx, ay - 1.75 - extra)
-        d.add(elm.Line().at(anchor).to(p1).color(_WIRE))
-        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right")
+        d.add(elm.Line().at(anchor).to(p1).color(_BUS))
+        _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right", wire_color=_BUS)
         # Terminer le moignon par un nœud étiqueté du nom du net réel de
         # destination : sinon la boîte paraît avoir une borne flottante coupée
         # et anonyme, même quand ce net est déjà nommé ailleurs sur le schéma
         # (ex. VIN/VOUT du port principal) — deux points distincts du même net
         # portent chacun leur étiquette, pratique standard en schématique.
-        d.add(elm.Line().at(p2).down(0.3).color(_WIRE))
+        d.add(elm.Line().at(p2).down(0.3).color(_BUS))
         fin = (p2[0], p2[1] - 0.3)
         d.add(elm.Dot(open=True).at(fin).color(_BUS))
         if other_net:
