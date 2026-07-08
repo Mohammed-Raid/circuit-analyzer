@@ -4,6 +4,7 @@ d'arbres série/parallèle, réseaux pull-up/pull-down, classification et rejets
 import pytest
 
 from circuit_analyzer import logique
+from circuit_analyzer.composant import Composant, construire_graphe
 
 
 # ── Algèbre d'arbres ─────────────────────────────────────────────────────────
@@ -88,3 +89,43 @@ def test_forme_pure():
     mixte = ("serie", [("feuille", "M1"),
                        ("parallele", [("feuille", "M2"), ("feuille", "M3")])])
     assert logique.forme_pure(mixte) is None
+
+
+# ── Graphe de conduction et réseaux ──────────────────────────────────────────
+
+def _m(ref, g, d, s):
+    return Composant(ref=ref, type="M", pins={"G": g, "D": d, "S": s}, value="")
+
+
+def _graphe_inverseur():
+    # M1 : VDD—OUT (grille A), M2 : OUT—GND (grille A). Sources aux rails.
+    comps = [_m("M1", "A", "OUT", "VDD"), _m("M2", "A", "OUT", "GND")]
+    return construire_graphe(comps)
+
+
+def test_graphe_conduction_liste_les_arcs_ds():
+    arcs = logique.graphe_conduction(_graphe_inverseur())
+    assert sorted(arcs) == [("M1", "OUT", "VDD"), ("M2", "OUT", "GND")]
+
+
+def test_graphe_conduction_sans_mosfet_vide():
+    comps = [Composant(ref="R1", type="R", pins={"1": "A", "2": "B"}, value="1k")]
+    assert logique.graphe_conduction(construire_graphe(comps)) == []
+
+
+def test_reseau_pull_down_nand2():
+    # Pull-down : M3 (OUT—X) + M4 (X—GND) ; pull-up : M1, M2 (OUT—VDD).
+    arcs = [("M1", "OUT", "VDD"), ("M2", "OUT", "VDD"),
+            ("M3", "OUT", "X"), ("M4", "X", "GND")]
+    bas = logique._reseau(arcs, "OUT", {"GND"}, {"VDD"})
+    assert sorted(r for r, _, _ in bas) == ["M3", "M4"]
+    haut = logique._reseau(arcs, "OUT", {"VDD"}, {"GND"})
+    assert sorted(r for r, _, _ in haut) == ["M1", "M2"]
+
+
+def test_reseau_ne_traverse_pas_un_net_interdit():
+    # Chemin OUT—VDD—GND : ne doit PAS compter M2 dans le pull-down
+    # (il faudrait traverser VDD).
+    arcs = [("M1", "OUT", "VDD"), ("M2", "VDD", "GND")]
+    bas = logique._reseau(arcs, "OUT", {"GND"}, {"VDD"})
+    assert bas == []

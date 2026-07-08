@@ -12,6 +12,8 @@ Organisation (unités testables indépendamment) :
      serait du faux DRY).
 """
 
+from circuit_analyzer.patterns.base import is_ground_net, is_power_net
+
 
 def reduire_reseau(arcs, a, b):
     """@brief Réduit un réseau d'arêtes en arbre série/parallèle entre a et b.
@@ -121,3 +123,53 @@ def forme_pure(arbre):
     if all(e[0] == "feuille" for e in enfants):
         return (genre, [e[1] for e in enfants])
     return None
+
+
+def graphe_conduction(graphe):
+    """@brief Arcs D/S des MOSFET : [(ref, net_D, net_S)]. UNE construction
+    par appel de détection — les candidats OUT sont exclusivement les nets de
+    ce graphe (jamais les nets du circuit entier : garde-fou perf, spec § 1.1).
+
+    @return liste vide si le circuit n'a aucun composant M (garde zéro-M)."""
+    arcs = []
+    for ref, comp in (graphe.graph.get('components', {}) or {}).items():
+        if getattr(comp, 'type', None) != 'M':
+            continue
+        d, s = comp.pins.get('D'), comp.pins.get('S')
+        if d and s and d != s:
+            arcs.append((ref, d, s))
+    return arcs
+
+
+def _reseau(arcs, out, terminaux, interdits):
+    """@brief Arêtes situées sur AU MOINS un chemin out→terminal.
+
+    Deux passes d'atteignabilité (les nets terminaux/interdits et `out` ne
+    sont jamais TRAVERSÉS, seulement atteints) :
+      R1 = arêtes atteignables depuis `out` ;
+      R2 = arêtes depuis lesquelles un terminal est atteignable.
+    Réseau = R1 ∩ R2.
+    """
+    adjacence = {}
+    for i, (_ref, n1, n2) in enumerate(arcs):
+        adjacence.setdefault(n1, []).append((i, n2))
+        adjacence.setdefault(n2, []).append((i, n1))
+
+    bloques = set(interdits) | {out}
+
+    def _atteignables(departs, stop_traverse):
+        vues, frontiere, arete_vue = set(departs), list(departs), set()
+        while frontiere:
+            net = frontiere.pop()
+            for i, voisin in adjacence.get(net, ()):  # ponytail: BFS simple, tailles = nb de MOSFET
+                arete_vue.add(i)
+                if voisin in vues or voisin in stop_traverse:
+                    vues.add(voisin)
+                    continue
+                vues.add(voisin)
+                frontiere.append(voisin)
+        return arete_vue
+
+    r1 = _atteignables([out], set(terminaux) | set(interdits))
+    r2 = _atteignables(list(terminaux), bloques)
+    return [arcs[i] for i in sorted(r1 & r2)]
