@@ -106,6 +106,9 @@ _CHIP_HIGHLIGHT_DELAY_MS = 1400
 # composant -- « centrer » = s'en approcher, pas seulement l'entourer. Un zoom
 # manuel deja superieur est conserve.
 _CHIP_FOCUS_FACTEUR = 2.0
+# Duree d'affichage du message « X n'est pas dessiné dans cette vue » (barre
+# basse) apres un clic sur une puce indisponible.
+_CHIP_MSG_DELAY_MS = 2500
 # Export PNG cadre sur le contenu reel (section B) : marge uniforme en
 # unites data appliquee de chaque cote de la bbox de contenu avant savefig.
 _EXPORT_MARGE_DATA = 0.5
@@ -759,27 +762,13 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     ctk.CTkLabel(chips, text="Composants :",
                  font=ui_kit.font("caption"),
                  text_color=theme.TEXT_DIM).pack(side="left")
-    for comp in model["components"]:
-        ref = comp["ref"]
-        txt = f" {ref} {comp.get('value', '')} ".strip()
-        color = _COMP_COLORS.get(comp.get("type"), theme.OVERLAY)
-        # Candidats de resolution (cf. `_on_chip_click`) : pour une puce Z
-        # composite (ex. "Z1" -> comp['refs']=['R3']), le ref de MODELE de la
-        # puce (numerotation globale de l'ilot) ne correspond pas forcement
-        # au libelle LOCAL affiche sur le schema (chaque etage d'une chaine
-        # multi-AOP renumerote ses propres Zin/Zf/Z1/Z2... a partir de 1) --
-        # on essaie d'abord les refs RAW sous-jacents (ceux effectivement
-        # portes par les hitboxes/labels du schema), le ref de modele en repli.
-        candidats = list(dict.fromkeys([*(comp.get("refs") or ()), ref]))
-        # Cliquable : centre le schema sur ce composant + surbrillance
-        # (`_on_chip_click`, defini plus bas -- liaison tardive via `etat`,
-        # cf. son commentaire).
-        puce = ctk.CTkLabel(chips, text=txt,
-                     font=ui_kit.font("caption", "bold"),
-                     fg_color=color, text_color=theme.TEXT,
-                     corner_radius=4, cursor="hand2")
-        puce.pack(side="left", padx=3)
-        puce.bind("<Button-1>", lambda _e, c=candidats: _on_chip_click(c))
+    # Les puces sont (re)construites par `_reconstruire_puces` (appelee en
+    # fin de `_rendre`) : leur CONTENU depend de la vue courante (refs de
+    # modele Z1/Z2... en vue Z, refs REELLES R/L/C en vue detaillee) et leur
+    # DISPONIBILITE (grisee si le composant n'est pas dessine) se resout sur
+    # la figure courante -- qui n'existe pas encore ici.
+    puces_zone = ctk.CTkFrame(chips, fg_color="transparent")
+    puces_zone.pack(side="left", fill="x")
 
     principal = _circuit_principal_ilot(ilot, graph, results)
     _sp = _arbre_serie_parallele_ilot(ilot, graph) if principal is None else None
@@ -993,6 +982,9 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
             if pos is not None:
                 break
         if pos is None:
+            # Defensif : les puces indisponibles sont grisees et ne passent
+            # pas par ici (cf. _reconstruire_puces) -- mais jamais muet.
+            _puce_indisponible_cliquee(candidats[0] if candidats else "?")
             return
 
         # Clic = FOCUS : sous _CHIP_FOCUS_FACTEUR on zoome d'abord sur le
@@ -1012,6 +1004,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                 if pos is not None:
                     break
             if pos is None:
+                _puce_indisponible_cliquee(candidats[0] if candidats else "?")
                 return
 
         view = getattr(canvas, "_scroll_view", None)
@@ -1076,6 +1069,84 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
             except tk.TclError:
                 _log.debug("maj bouton pct ignoree (widget detruit ?)", exc_info=True)
 
+    def _liste_puces():
+        """@brief (libelle, type, candidats) des puces selon la vue courante.
+
+        Vue Z : une puce par composant de MODELE (Z1, Z2, D1, Q1...) ;
+        candidats = refs RAW sous-jacents d'abord (ceux effectivement portes
+        par les hitboxes/labels du schema -- chaque etage d'une chaine
+        multi-AOP renumerote ses Zin/Zf/Z1... a partir de 1), le ref de
+        modele en repli.
+        Vue detaillee : chaque Z composite est remplace par UNE PUCE PAR
+        COMPOSANT REEL (R/L/C), coherent avec le schema affiche qui ne
+        montre plus de boites Z ; les actifs (Q/U/D...) restent tels quels.
+        """
+        items = {}
+        for comp in model["components"]:
+            ref = comp["ref"]
+            refs = [r for r in (comp.get("refs") or ()) if r]
+            if mode["detaille"] and refs:
+                for r in refs:
+                    typ = (comp_info.get(r, {}) or {}).get("type")
+                    items.setdefault(r, (typ, [r]))
+            else:
+                txt = f"{ref} {comp.get('value', '')}".strip()
+                candidats = list(dict.fromkeys([*refs, ref]))
+                items.setdefault(txt, (comp.get("type"), candidats))
+        return [(txt, typ, cands) for txt, (typ, cands) in items.items()]
+
+    def _message_puce(texte):
+        """@brief Message transitoire de la barre basse (clic sur une puce
+        indisponible) ; s'efface seul, sauf si un message plus recent l'a
+        deja remplace."""
+        lbl = etat.get("msg_puce")
+        if lbl is None:
+            return
+        def _effacer(t=texte):
+            try:
+                if lbl.cget("text") == t:
+                    lbl.configure(text="")
+            except tk.TclError:
+                _log.debug("effacement message puce ignore", exc_info=True)
+        try:
+            lbl.configure(text=texte)
+            lbl.after(_CHIP_MSG_DELAY_MS, _effacer)
+        except tk.TclError:
+            _log.debug("message puce ignore (widget detruit ?)", exc_info=True)
+
+    def _puce_indisponible_cliquee(txt):
+        _message_puce(f"{txt} n'est pas dessiné dans cette vue")
+
+    def _reconstruire_puces():
+        """@brief (Re)construit le bandeau « Composants » : contenu selon la
+        vue courante (cf. `_liste_puces`), puce GRISEE si aucun candidat ne
+        resout de position sur la figure courante -- son clic affiche alors
+        un message au lieu d'etre muet (retour utilisateur 2026-07-08 :
+        « des fois quand je clique il ne se passe rien »)."""
+        fig = etat.get("fig")
+        for w in puces_zone.winfo_children():
+            w.destroy()
+        etat["puces"] = []
+        for txt, typ, candidats in _liste_puces():
+            dispo = fig is not None and any(
+                _position_composant(fig, r) is not None for r in candidats)
+            puce = ctk.CTkLabel(
+                puces_zone, text=f" {txt} ",
+                font=ui_kit.font("caption", "bold"),
+                fg_color=_COMP_COLORS.get(typ, theme.OVERLAY) if dispo
+                         else theme.SURFACE,
+                text_color=theme.TEXT if dispo else theme.TEXT_DIM,
+                corner_radius=4,
+                cursor="hand2" if dispo else "arrow")
+            puce.pack(side="left", padx=3)
+            if dispo:
+                puce.bind("<Button-1>", lambda _e, c=candidats: _on_chip_click(c))
+            else:
+                puce.bind("<Button-1>",
+                          lambda _e, t=txt: _puce_indisponible_cliquee(t))
+            etat["puces"].append(
+                {"texte": txt, "dispo": dispo, "candidats": candidats})
+
     def _rendre():
         """@brief Chemin de reconstruction partagé par le toggle vue détaillée
         et les boutons de zoom : chacun conserve l'état de l'autre (le toggle
@@ -1109,6 +1180,10 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         monter_canvas(nouvelle_fig, facteur)
         etat["fig"] = nouvelle_fig
         _maj_bouton_pct()
+        # Bandeau reconstruit a CHAQUE rendu (un seul point de verite :
+        # premier affichage, toggle, zoom, Ajuster) : contenu et
+        # disponibilite dependent de la vue et de la figure courantes.
+        _reconstruire_puces()
 
     _rendre()
 
@@ -1130,6 +1205,11 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
                   width=170, height=30,
                   command=_toggle_detaille)
     toggle_btn.pack(side="left", padx=(0, 12), pady=7)
+
+    # Message transitoire des puces indisponibles (cf. `_message_puce`).
+    etat["msg_puce"] = ctk.CTkLabel(bar, text="", font=ui_kit.font("caption"),
+                                    text_color=theme.TEXT_DIM)
+    etat["msg_puce"].pack(side="left", padx=(0, 12))
 
     def _zoom(direction):
         zoom["facteur"] = _island_zoom_next(zoom["facteur"], direction)
@@ -1207,6 +1287,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         "ajuster": _ajuster,
         "fermer": _fermer,
         "cliquer_composant": _on_chip_click,
+        "cliquer_puce_indisponible": _puce_indisponible_cliquee,
     }
     return popup
 

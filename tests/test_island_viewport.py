@@ -352,6 +352,62 @@ def test_clic_puce_focus_zoome_centre_et_affiche_puis_efface_l_anneau(ctk_root):
     popup.destroy()
 
 
+def test_bandeau_puces_refs_reelles_en_vue_detaillee(ctk_root):
+    """Le bandeau suit la vue (retour utilisateur 2026-07-08) : vue Z = refs
+    de modele (Z1, Z2...), vue detaillee = une puce par composant REEL
+    (R/L/C), coherent avec le schema qui ne montre plus de boites Z."""
+    popup = _ouvrir(ctk_root, "ilot_reel_fanout_filtres_rlc.xml")
+    t = popup._etat_test
+    ilot, _graph, ci, _res = _premier_ilot("ilot_reel_fanout_filtres_rlc.xml")
+
+    textes_z = [p["texte"] for p in t["etat"]["puces"]]
+    assert any(x.startswith("Z") for x in textes_z), "vue Z : puces de modele"
+
+    t["toggle"]()
+    ctk_root.update()
+    textes_det = [p["texte"] for p in t["etat"]["puces"]]
+    assert textes_det, "bandeau reconstruit apres toggle"
+    assert not any(x.startswith("Z") for x in textes_det), (
+        "vue detaillee : plus de puce Z")
+    reels = {r for r in ilot["composants"]
+             if (ci.get(r, {}) or {}).get("type") in ("R", "L", "C")}
+    assert reels & set(textes_det), (
+        f"les refs reelles doivent apparaitre : {reels} vs {textes_det}")
+
+    t["toggle"]()
+    ctk_root.update()
+    assert [p["texte"] for p in t["etat"]["puces"]] == textes_z, (
+        "retour vue Z : bandeau d'origine")
+
+    popup.destroy()
+
+
+def test_puce_indisponible_grisee_et_message_au_clic(ctk_root):
+    """Plus de clic muet (retour utilisateur 2026-07-08) : une puce dont
+    aucun candidat ne resout de position sur la figure courante est marquee
+    indisponible, et son clic affiche un message transitoire au lieu de ne
+    rien faire. Cas stable : D1, diode de roue libre du darlington, jamais
+    dessinee (cf. exclusions de test_puces_resolution)."""
+    popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
+    t = popup._etat_test
+
+    puces = {p["texte"]: p for p in t["etat"]["puces"]}
+    p_d1 = next(v for k, v in puces.items() if k.startswith("D1"))
+    assert p_d1["dispo"] is False, "D1 jamais dessinee -> puce indisponible"
+    assert any(v["dispo"] for v in puces.values()), (
+        "les autres puces restent disponibles")
+
+    lbl = t["etat"]["msg_puce"]
+    assert lbl.cget("text") == ""
+    t["cliquer_puce_indisponible"](p_d1["texte"])
+    ctk_root.update()
+    assert "D1" in lbl.cget("text") and "dessin" in lbl.cget("text")
+    # zoom inchange : pas de focus sur une puce indisponible
+    assert t["zoom"]["facteur"] == 1.0
+
+    popup.destroy()
+
+
 def test_clic_puce_conserve_un_zoom_manuel_superieur(ctk_root):
     """Un zoom manuel deja au-dela du facteur focus n'est PAS ecrase par le
     clic : la figure courante est conservee, seul le centrage s'applique."""
