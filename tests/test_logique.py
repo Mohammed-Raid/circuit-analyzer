@@ -33,6 +33,32 @@ def test_reduire_trois_en_serie_aplatis():
                                ("feuille", "M3")])
 
 
+def test_reduire_serie_insensible_a_l_orientation_des_tuples():
+    # Arêtes NON ORIENTÉES : l'ordre (net1, net2) d'un arc est arbitraire
+    # (drain/source d'un MOSFET). Un tuple renversé ne change pas le réseau.
+    arbre = logique.reduire_reseau(
+        [("M1", "OUT", "X"), ("M2", "GND", "X")], "OUT", "GND")
+    assert arbre == ("serie", [("feuille", "M1"), ("feuille", "M2")])
+    # Trois maillons avec M2 et M3 renversés.
+    arbre = logique.reduire_reseau(
+        [("M1", "OUT", "X"), ("M2", "Y", "X"), ("M3", "GND", "Y")],
+        "OUT", "GND")
+    assert arbre == ("serie", [("feuille", "M1"), ("feuille", "M2"),
+                               ("feuille", "M3")])
+
+
+def test_reduire_reseau_deconnecte_de_a_b_renvoie_none():
+    # Arcs qui ne touchent ni a ni b.
+    assert logique.reduire_reseau([("M1", "N1", "N2")], "OUT", "GND") is None
+
+
+def test_reduire_cycle_isole_a_cote_d_un_chemin_valide_renvoie_none():
+    # Cycle flottant P-Q (ne touche ni a ni b) à côté d'un chemin valide :
+    # le réseau n'est pas série/parallèle propre entre a et b -> None.
+    arcs = [("M1", "OUT", "GND"), ("M2", "P", "Q"), ("M3", "Q", "P")]
+    assert logique.reduire_reseau(arcs, "OUT", "GND") is None
+
+
 def test_reduire_pont_non_serie_parallele_renvoie_none():
     # Pont de Wheatstone : irréductible en série/parallèle.
     arcs = [("M1", "A", "X"), ("M2", "A", "Y"), ("M3", "X", "B"),

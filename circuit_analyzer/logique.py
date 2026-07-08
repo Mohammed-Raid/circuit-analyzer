@@ -28,6 +28,16 @@ def reduire_reseau(arcs, a, b):
     def _enfants(arbre, genre):
         return list(arbre[1]) if arbre[0] == genre else [arbre]
 
+    def _renverse(arbre):
+        """Renverse le sens de parcours d'un arbre (chaîne lue à l'envers)."""
+        genre = arbre[0]
+        if genre == "feuille":
+            return arbre
+        enfants = [_renverse(e) for e in arbre[1]]
+        if genre == "serie":
+            enfants.reverse()
+        return (genre, enfants)
+
     change = True
     while change:
         change = False
@@ -58,27 +68,33 @@ def reduire_reseau(arcs, a, b):
             if len(incidentes) != 2:
                 continue
             (t1, x1, y1), (t2, x2, y2) = incidentes
-            # Préserver la direction de la chaîne série.
-            if y1 == net and x2 == net:
-                # t1: x1 -> net, t2: net -> y2 → ordre [t1, t2]
-                enfants = _enfants(t1, "serie") + _enfants(t2, "serie")
-                autre1, autre2 = x1, y2
-            elif x1 == net and y2 == net:
-                # t1: net -> y1, t2: x2 -> net → ordre [t2, t1]
-                enfants = _enfants(t2, "serie") + _enfants(t1, "serie")
-                autre1, autre2 = x2, y1
-            else:
-                # Cas invalide ou parallèle, passer
-                continue
+            # Arêtes NON ORIENTÉES : l'ordre (n1, n2) d'un arc est arbitraire
+            # (drain/source d'un MOSFET). On normalise chaque arête pour lire
+            # la chaîne autre1 -> net -> autre2 : si le net commun est du
+            # mauvais côté, on échange (n1, n2) et on renverse l'arbre (une
+            # chaîne série lue à l'envers reste valide, enfants inversés).
+            if x1 == net:
+                t1, x1, y1 = _renverse(t1), y1, x1
+            if y2 == net:
+                t2, x2, y2 = _renverse(t2), y2, x2
+            autre1, autre2 = x1, y2
+            # autre1 == autre2 (auto-boucle) est impossible ici : la passe
+            # parallèle vient de dédoublonner chaque paire de nets dans cette
+            # même itération, donc deux arêtes incidentes à `net` ont
+            # forcément des extrémités opposées distinctes.
             edges = [e for e in edges if e not in incidentes]
-            edges.append((("serie", enfants), autre1, autre2))
+            edges.append((("serie", _enfants(t1, "serie")
+                           + _enfants(t2, "serie")), autre1, autre2))
             change = True
             break
 
     if len(edges) == 1:
         t, n1, n2 = edges[0]
-        if frozenset((n1, n2)) == frozenset((a, b)):
+        if (n1, n2) == (a, b):
             return t
+        if (n1, n2) == (b, a):
+            # Chaîne aboutie mais lue b -> a : renverser pour le sens a -> b.
+            return _renverse(t)
     return None
 
 
