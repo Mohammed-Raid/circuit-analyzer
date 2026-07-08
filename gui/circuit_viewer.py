@@ -138,6 +138,11 @@ _Z_DETAIL_COMPACT_RAIL_CLEAR = 0.14
 # bornes au lieu de se compresser proprement (audit fenetre F3/F4).
 _Z_DETAIL_SYMBOL_MIN_LEN = 1.0
 _Z_BOX_LABEL_FONTSIZE = 10
+# Taille UNIQUE des labels satellites (« Rb = 10 kΩ », Rc/Re/Rg...) : trois
+# tailles coexistaient (14 heritee du d.config global via _r_simple, 8 et 9
+# explicites selon le drawer) pour le meme role visuel. Contrat =
+# tests/test_labels_satellites.py.
+_SATELLITE_LABEL_FONTSIZE = 9
 
 
 def _island_zoom_next(current, direction):
@@ -3824,7 +3829,8 @@ def _r_simple(d, ref, ci, p1, p2, nom, label_loc="top"):
     if nom is None:
         d.add(elem)
         return
-    d.add(elem.label(_texte_passif_simple(ref, ci, nom), loc=label_loc))
+    d.add(elem.label(_texte_passif_simple(ref, ci, nom), loc=label_loc,
+                     fontsize=_SATELLITE_LABEL_FONTSIZE))
 
 
 def _texte_passif_simple(ref, ci, nom):
@@ -4340,7 +4346,8 @@ def _draw_bjt_switch(d, result, ci, origin=(3, 0), titre=True,
     in_pt = (bx - 2.6, by)
     _r_simple(d, r, ci, in_pt, (bx - 0.9, by), None)
     d.add(elm.Label().at(((in_pt[0] + bx - 0.9) / 2, by + 0.52))
-          .label(_texte_passif_simple(r, ci, "Rb"), fontsize=9))
+          .label(_texte_passif_simple(r, ci, "Rb"),
+                 fontsize=_SATELLITE_LABEL_FONTSIZE))
     d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
     dot = elm.Dot().at(in_pt)
     if in_label:
@@ -4407,7 +4414,8 @@ def _draw_common_emitter(d, result, ci, origin=(3, 0), titre=True,
         # libre entre le stub (gauche) et la base du transistor (droite) :
         # dégage C1 sans pour autant chevaucher le symbole du transistor.
         d.add(elm.Label().at((bx - 1.2, by - 0.78))
-              .label(_texte_passif_simple(rb, ci, "Rb"), fontsize=8))
+              .label(_texte_passif_simple(rb, ci, "Rb"),
+                     fontsize=_SATELLITE_LABEL_FONTSIZE))
         d.add(elm.Line().at((bx - 0.9, by)).to((bx, by)))
     else:
         # Couplage DC (base = collecteur amont) : fil direct, pas de Rb fantôme.
@@ -4423,7 +4431,8 @@ def _draw_common_emitter(d, result, ci, origin=(3, 0), titre=True,
     # au lieu d'être centrée dessus -> sans ça, la moitié droite du texte
     # ("kΩ") traverse le symbole (audit fenêtre F1).
     d.add(elm.Label().at((cx - 1.05, cy + 1.35))
-          .label(_texte_passif_simple(rc, ci, "Rc"), fontsize=8, halign="right"))
+          .label(_texte_passif_simple(rc, ci, "Rc"),
+                 fontsize=_SATELLITE_LABEL_FONTSIZE, halign="right"))
     d.add(elm.Line().at(t.collector).to((cx, cy + 0.5)))
     d.add(elm.Line().at((cx, cy + 1.9)).up(0.4).label("VCC", loc="top"))
     emitter_net = q_pins.get("E")
@@ -4672,7 +4681,8 @@ def _draw_suiveur_emetteur(d, result, ci, origin=(3, 0), titre=True,
     # halign="right" : le texte se TERMINE à l'ancre au lieu d'être centré
     # dessus, sinon sa moitié droite traverse le zigzag (audit fenêtre F1).
     d.add(elm.Label().at((ex - 0.9, ey - 1.25))
-          .label(_texte_passif_simple(re, ci, "Re"), fontsize=9, halign="right"))
+          .label(_texte_passif_simple(re, ci, "Re"),
+                 fontsize=_SATELLITE_LABEL_FONTSIZE, halign="right"))
     d.add(elm.Line().at(t.emitter).to((ex, ey - 0.6)))
     d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
     d.add(elm.Ground())
@@ -4818,7 +4828,8 @@ def _draw_darlington(d, result, ci, origin=(3, 0), titre=True,
             # zigzag) au lieu d'être centré dessus, sinon sa moitié gauche
             # traverse le symbole (audit fenêtre F1, ilot_chaine_darlington_ce).
             d.add(elm.Label().at((ex + 0.85, ey - 1.25))
-                  .label(_texte_passif_simple(re, ci, "Re"), fontsize=9, halign="left"))
+                  .label(_texte_passif_simple(re, ci, "Re"),
+                         fontsize=_SATELLITE_LABEL_FONTSIZE, halign="left"))
             d.add(elm.Line().at(q2.emitter).to((ex, ey - 0.6)))
             d.add(elm.Line().at((ex, ey - 2.0)).down(0.4))
             d.add(elm.Ground())
