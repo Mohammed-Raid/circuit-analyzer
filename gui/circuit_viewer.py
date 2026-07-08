@@ -166,7 +166,6 @@ def _zoom_scroll_fractions(old_size, new_size, viewport, pointer, canvas_origin)
     """
     old_w, old_h = old_size
     new_w, new_h = new_size
-    view_w, view_h = viewport
     px, py = pointer
     ox, oy = canvas_origin
 
@@ -174,10 +173,11 @@ def _zoom_scroll_fractions(old_size, new_size, viewport, pointer, canvas_origin)
     scale_y = new_h / old_h if old_h else 1.0
     target_x = (ox + px) * scale_x - px
     target_y = (oy + py) * scale_y - py
-    max_x = max(1, new_w - view_w)
-    max_y = max(1, new_h - view_h)
-    fx = max(0.0, min(1.0, target_x / max_x))
-    fy = max(0.0, min(1.0, target_y / max_y))
+    # Convention Tk (cf. `_fraction_centree`) : `xview_moveto(f)` place le
+    # bord gauche a `f * new_w` -- denominateur = taille totale, sans quoi le
+    # point sous la souris derive pendant le zoom molette.
+    fx = max(0.0, min(1.0, target_x / max(1, new_w)))
+    fy = max(0.0, min(1.0, target_y / max(1, new_h)))
     return fx, fy
 
 
@@ -224,12 +224,17 @@ def _position_composant(fig, ref):
 def _fraction_centree(cible_px, total_px, viewport_px):
     """@brief Fraction xview/yview (Tk Canvas) pour CENTRER `cible_px` dans un
     viewport de `viewport_px` pixels, sur une scrollregion de `total_px`
-    pixels -- meme convention que `_zoom_scroll_fractions` (bornee [0, 1],
-    clampee au bord plutot que de tenter de centrer un point trop pres d'une
-    extremite de la scrollregion)."""
-    max_offset = max(1, total_px - viewport_px)
+    pixels.
+
+    Convention Tk : `xview_moveto(f)` place le bord gauche visible a
+    `f * total_px` -- le denominateur est la taille TOTALE de la scrollregion,
+    PAS `total - viewport` (l'erreur historique : elle sur-defilait d'un
+    facteur total/(total-viewport), d'autant plus que la cible etait loin --
+    audit 2026-07-08 : 317/344 centrages rates). Tk clampe lui-meme au bord si
+    la fraction depasse le defilement possible ; le clamp [0, 1] ici couvre
+    les cibles dans la premiere demi-fenetre."""
     bord_gauche_vise = cible_px - viewport_px / 2.0
-    return max(0.0, min(1.0, bord_gauche_vise / max_offset))
+    return max(0.0, min(1.0, bord_gauche_vise / max(1, total_px)))
 
 
 def _bind_scrollable_mpl_events(widget, on_mousewheel, on_pan_start, on_pan_drag):

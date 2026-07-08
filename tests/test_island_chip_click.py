@@ -75,14 +75,22 @@ def test_fig_sans_hitboxes_attribut_ne_plante_pas():
 # ── _fraction_centree ─────────────────────────────────────────────────────────
 
 def test_fraction_centree_point_au_centre_exact():
-    # Point au centre exact de la scrollregion, viewport quelconque : la
-    # fraction visee met le bord gauche pile a mi-chemin du centrage.
-    assert _fraction_centree(500, 1000, 200) == (500 - 100) / (1000 - 200)
+    # Convention Tk : xview_moveto(f) place le bord gauche visible a
+    # f * total. Pour centrer la cible : bord gauche vise = cible - vw/2,
+    # donc f = (cible - vw/2) / total. Verite geometrique : le centre
+    # visible (f * total + vw/2) retombe sur la cible.
+    f = _fraction_centree(500, 1000, 200)
+    assert f == (500 - 100) / 1000
+    assert f * 1000 + 100 == 500
 
 
 def test_fraction_centree_bornee_a_zero_pres_du_bord_gauche():
     assert _fraction_centree(0, 1000, 200) == 0.0
 
 
-def test_fraction_centree_bornee_a_un_pres_du_bord_droit():
-    assert _fraction_centree(1000, 1000, 200) == 1.0
+def test_fraction_centree_cible_au_bord_droit_laisse_tk_clamper():
+    # Cible collee au bord droit : f = (1000-100)/1000 = 0.9 demande un bord
+    # gauche a 900 px ; Tk clampe lui-meme a total - viewport (800 px) et
+    # montre la fin de la scrollregion. Sur-clamper ici a 1.0 (l'ancienne
+    # convention) sur-defilait TOUS les centrages loin du bord gauche.
+    assert _fraction_centree(1000, 1000, 200) == 0.9

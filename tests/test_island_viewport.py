@@ -321,19 +321,23 @@ def test_clic_puce_focus_zoome_centre_et_affiche_puis_efface_l_anneau(ctk_root):
     assert pos is not None
     ax0 = fig.axes[0]
     dispx, dispy = ax0.transData.transform(pos)
-    fig_w_px, fig_h_px = cv._figure_pixel_size(fig)
+    _fig_w_px, fig_h_px = cv._figure_pixel_size(fig)
     vw = max(1, view.winfo_width())
     vh = max(1, view.winfo_height())
-    attendu_fx = cv._fraction_centree(dispx, fig_w_px, vw)
-    attendu_fy = cv._fraction_centree(fig_h_px - dispy, fig_h_px, vh)
-
-    fx0, _fx1 = view.xview()
-    fy0, _fy1 = view.yview()
-    # Tolerance large (pas 1e-6) : Tk quantifie la fraction reportee par
-    # xview()/yview() en pixels internes (scrollregion parsee en chaine),
-    # introduisant un ecart negligeable (< 1 px observe) face au calcul flottant.
-    assert fx0 == pytest.approx(attendu_fx, abs=2e-3)
-    assert fy0 == pytest.approx(attendu_fy, abs=2e-3)
+    # Invariant GEOMETRIQUE (pas la fraction demandee, qui serait un test
+    # auto-referentiel) : le CENTRE VISIBLE du viewport doit tomber sur le
+    # pixel du composant, clampe aux bords de la scrollregion quand le
+    # centrage parfait n'est pas atteignable (composant trop pres d'un bord).
+    sr = [float(v) for v in str(view.cget("scrollregion")).split()]
+    sr_w, sr_h = sr[2] - sr[0], sr[3] - sr[1]
+    cible_x, cible_y = dispx, fig_h_px - dispy
+    attendu_cx = min(max(cible_x, vw / 2.0), max(vw / 2.0, sr_w - vw / 2.0))
+    attendu_cy = min(max(cible_y, vh / 2.0), max(vh / 2.0, sr_h - vh / 2.0))
+    centre_x = view.canvasx(vw / 2.0)
+    centre_y = view.canvasy(vh / 2.0)
+    # Tolerance 2 px : Tk quantifie le defilement au pixel entier.
+    assert centre_x == pytest.approx(attendu_cx, abs=2.0)
+    assert centre_y == pytest.approx(attendu_cy, abs=2.0)
 
     anneaux = [p for p in ax0.patches if getattr(p, "_surbrillance_puce", False)]
     assert len(anneaux) == 1, "un anneau de surbrillance doit etre pose au clic"

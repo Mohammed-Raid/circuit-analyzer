@@ -207,8 +207,11 @@ def test_zoom_scroll_fraction_keeps_mouse_world_point_stable():
         canvas_origin=(100, 80),
     )
 
-    assert round(fx, 4) == 0.275
-    assert round(fy, 4) == 0.275
+    # Verite geometrique (convention Tk : bord gauche visible = f * new_size)
+    # -- le point monde sous la souris, une fois rescale par le zoom, doit
+    # rester sous le pointeur : f * new_w + px == (ox + px) * scale.
+    assert round(fx * 1500 + 250, 4) == round((100 + 250) * 1.5, 4)
+    assert round(fy * 1200 + 200, 4) == round((80 + 200) * 1.5, 4)
 
 
 def test_scrollable_mpl_bindings_preserve_matplotlib_handlers():
