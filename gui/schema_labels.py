@@ -231,9 +231,18 @@ def _reetendre_axes(fig, entrees, renderer):
     borne d'iterations) fait converger ce point fixe (la correction requise
     retrecit geometriquement a chaque iteration)."""
     for ax in fig.axes:
+        # UNIQUEMENT les Text ancres en coordonnees DONNEES : le titre et les
+        # labels d'axes (transform mixte axes/pixels) ne suivent pas
+        # transData -- les inclure cree un point fixe DIVERGENT (chaque
+        # extension de ylim repousse leur inverse-projection plus loin en
+        # donnees, jusqu'a la borne d'iterations : drill-down pont observe a
+        # ylim 4.9 -> 13.9, deux tiers de figure vides). Ils sont de toute
+        # facon mis en page par matplotlib RELATIVEMENT a la boite des axes,
+        # jamais clippes par xlim/ylim.
         textes = [e["text"] for e in entrees
                   if getattr(e["text"], "axes", None) is ax
-                  and e["text"].get_text().strip()]
+                  and e["text"].get_text().strip()
+                  and e["text"].get_transform().contains_branch(ax.transData)]
         if not textes:
             continue
         for _ in range(_REEXTEND_MAX_ITER):

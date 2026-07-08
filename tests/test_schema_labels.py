@@ -46,6 +46,30 @@ def test_no_op_titre_et_labels_axe_ignores():
     assert ax.title.get_position() == titre_avant
 
 
+def test_titre_d_axe_n_etend_pas_les_limites():
+    # Le titre (ax.set_title) est ancre au-dessus de la BOITE des axes
+    # (transform mixte axes/pixels), PAS en coordonnees donnees : l'inclure
+    # dans la re-extension cree un point fixe divergent -- chaque extension
+    # de ylim le repousse plus haut en donnees, et ainsi de suite jusqu'a la
+    # borne d'iterations (observe sur le drill-down pont : ylim 4.9 -> 13.9,
+    # deux tiers de la figure vides).
+    fig = Figure(figsize=(5, 5))
+    ax = fig.add_subplot(111)
+    ax.set_aspect("equal")
+    ax.set_title("Z = pont{...}")
+    ax.plot([-2, 2], [0, 0])
+    ax.text(0.0, 2.0, "R1")
+    ax.set_xlim(-2, 2)
+    ax.set_ylim(0, 4)
+
+    ajuster_labels(fig)
+
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    assert y1 <= 4.5, f"ylim divergee : {y1}"
+    assert y0 >= -0.5 and x0 >= -2.5 and x1 <= 2.5
+
+
 def test_resout_un_chevauchement_reel_entre_deux_textes():
     fig = Figure(figsize=(4, 3))
     ax = fig.add_subplot(111)
