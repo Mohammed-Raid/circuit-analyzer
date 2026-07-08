@@ -188,3 +188,104 @@ def _reseau(arcs, out, terminaux, interdits):
     r1 = _atteignables([out], set(terminaux) | set(interdits))
     r2 = _atteignables(list(terminaux), bloques)
     return [arcs[i] for i in sorted(r1 & r2)]
+
+
+def _classifier(genre_bas, refs_bas, genre_haut):
+    """@brief (circuit_type, nom_fonction) selon la forme pure du pull-down.
+
+    Grammaire v1 : dans les formes pures, « forme complémentaire + multisets
+    de grilles égaux » ÉQUIVAUT à la dualité d'arbres (spec § 1.4)."""
+    complementaire = {"feuille": "feuille", "serie": "parallele",
+                      "parallele": "serie"}
+    if genre_haut != complementaire[genre_bas]:
+        return None
+    if genre_bas == "feuille":
+        return ("Inverseur (CMOS)", "NOT")
+    if genre_bas == "serie":
+        return ("Porte NAND (CMOS)", "NAND")
+    return ("Porte NOR (CMOS)", "NOR")
+
+
+def detecter_portes_cmos(graphe):
+    """@brief Détecteur UNIQUE (une passe) des portes CMOS statiques.
+
+    Émet les trois circuit_type (Inverseur/NAND/NOR) — enregistré en TÊTE de
+    detecteur._DETECTEURS_COMPLEXES : l'anti-vol du matcher fait la priorité.
+    Tout cas hors grammaire v1 est un rejet SILENCIEUX (zéro match, les M
+    retombent sur le pipeline existant). @return list[dict] au contrat spec § 1.5.
+    """
+    arcs = graphe_conduction(graphe)
+    if not arcs:                                   # garde zéro-M (perf)
+        return []
+    composants = graphe.graph.get('components', {}) or {}
+    rails = {n for _r, n1, n2 in arcs for n in (n1, n2) if is_power_net(n)}
+    masses = {n for _r, n1, n2 in arcs for n in (n1, n2) if is_ground_net(n)}
+    candidats = sorted({n for _r, n1, n2 in arcs for n in (n1, n2)}
+                       - rails - masses)
+
+    matches = []
+    for out in candidats:
+        bas = _reseau(arcs, out, masses, rails)
+        haut = _reseau(arcs, out, rails, masses)
+        if not bas or not haut:
+            continue
+        refs_bas = {r for r, _n1, _n2 in bas}
+        refs_haut = {r for r, _n1, _n2 in haut}
+        if refs_bas & refs_haut:                   # transistor partagé
+            continue
+        # Rails du pull-up : UN SEUL net de rail (rejet bi-rail, PAR candidat).
+        rails_haut = {n for _r, n1, n2 in haut for n in (n1, n2) if n in rails}
+        masses_bas = {n for _r, n1, n2 in bas for n in (n1, n2) if n in masses}
+        if len(rails_haut) != 1 or len(masses_bas) != 1:
+            continue
+        vdd, gnd = next(iter(rails_haut)), next(iter(masses_bas))
+
+        arbre_bas = reduire_reseau(bas, out, gnd)
+        arbre_haut = reduire_reseau(haut, out, vdd)
+        if arbre_bas is None or arbre_haut is None:
+            continue
+        pur_bas = forme_pure(arbre_bas)
+        pur_haut = forme_pure(arbre_haut)
+        if pur_bas is None or pur_haut is None:
+            continue
+
+        grilles_bas = sorted(composants[r].pins.get('G', '') for r in pur_bas[1])
+        grilles_haut = sorted(composants[r].pins.get('G', '') for r in pur_haut[1])
+        if grilles_bas != grilles_haut:            # multisets de grilles égaux
+            continue
+        entrees = grilles_bas
+        if len(set(entrees)) != len(entrees):      # grilles dupliquées
+            continue
+        if any((not e) or e in rails or e in masses or is_power_net(e)
+               or is_ground_net(e) for e in entrees):   # grille sur rail
+            continue
+        if out in entrees:                         # sortie réinjectée
+            continue
+
+        classement = _classifier(pur_bas[0], pur_bas[1], pur_haut[0])
+        if classement is None:
+            continue
+        circuit_type, nom_fn = classement
+
+        # Cas 1+1 : critère d'orientation D/S (spec § 1.3) — source au rail.
+        if nom_fn == "NOT":
+            m_haut, m_bas = pur_haut[1][0], pur_bas[1][0]
+            if composants[m_haut].pins.get('S') != vdd:
+                continue
+            if composants[m_bas].pins.get('S') != gnd:
+                continue
+
+        polarites = {r: "P" for r in refs_haut}
+        polarites.update({r: "N" for r in refs_bas})
+        matches.append({
+            'circuit_type': circuit_type,
+            'components': sorted(refs_haut | refs_bas),
+            'nodes': {'entrees': list(entrees), 'sortie': out,
+                      'vdd': vdd, 'gnd': gnd},
+            'io': {'ins': list(entrees), 'out': out},
+            'polarites': polarites,
+            'arbres': {'pull_down': arbre_bas, 'pull_up': arbre_haut},
+            'fonction': (nom_fn, list(entrees)),
+            'expression': f"{out} = {nom_fn}({', '.join(entrees)})",
+        })
+    return matches
