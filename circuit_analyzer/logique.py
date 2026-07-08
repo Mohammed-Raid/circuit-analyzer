@@ -142,13 +142,28 @@ def graphe_conduction(graphe):
 
 
 def _reseau(arcs, out, terminaux, interdits):
-    """@brief Arêtes situées sur AU MOINS un chemin out→terminal.
+    """@brief SUR-ENSEMBLE des arêtes situées sur un chemin out→terminal
+    (approximation R1 ∩ R2 — jamais un sous-ensemble).
 
     Deux passes d'atteignabilité (les nets terminaux/interdits et `out` ne
     sont jamais TRAVERSÉS, seulement atteints) :
       R1 = arêtes atteignables depuis `out` ;
       R2 = arêtes depuis lesquelles un terminal est atteignable.
     Réseau = R1 ∩ R2.
+
+    L'intersection retient AUSSI des arêtes qui ne sont sur aucun chemin
+    out→terminal : impasses pendantes sur un net du corridor, cycles
+    latéraux, arêtes touchant un rail interdit depuis le corridor (mesuré
+    ~5,3 % des graphes aléatoires). Le rejet de ces parasites est DÉLÉGUÉ
+    à l'aval : `reduire_reseau` (jonctions irréductibles → None) puis
+    `forme_pure` (arbres mixtes → None). En v1, les parasites ne peuvent
+    donc produire que des faux négatifs, jamais un match faux.
+
+    AVERTISSEMENT AOI v2 : si la grammaire accepte un jour les arbres
+    MIXTES, ce sur-ensemble peut produire un arbre bien formé encodant un
+    pseudo-chemin qui traverse un rail interdit (ex. OUT-M1-X, X-Ma-VDD-Mb-Y,
+    X-Mz1-Z-Mz2-Y, Y-M4-GND). Il faudra alors un filtrage EXACT des chemins
+    AVANT d'étendre la grammaire.
     """
     adjacence = {}
     for i, (_ref, n1, n2) in enumerate(arcs):
@@ -161,7 +176,7 @@ def _reseau(arcs, out, terminaux, interdits):
         vues, frontiere, arete_vue = set(departs), list(departs), set()
         while frontiere:
             net = frontiere.pop()
-            for i, voisin in adjacence.get(net, ()):  # ponytail: BFS simple, tailles = nb de MOSFET
+            for i, voisin in adjacence.get(net, ()):  # ponytail: DFS simple, tailles = nb de MOSFET
                 arete_vue.add(i)
                 if voisin in vues or voisin in stop_traverse:
                     vues.add(voisin)
