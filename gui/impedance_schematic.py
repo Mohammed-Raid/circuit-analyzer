@@ -178,6 +178,13 @@ def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes, titre=None):
 
     ordre_groupes = list(groupes)
     hitboxes = []
+    # Registre ref -> position (meme idiome que circuit_viewer._enregistrer_position) :
+    # une feuille groupee (boite Zn) affiche "Zn / composition", jamais les refs
+    # brutes qui la composent -- on les enregistre ici pour que le clic sur une
+    # puce composant ('R1' d'un Z composite, ex.) resolve quand meme sa position.
+    # Une feuille NON groupee affiche deja sa ref reelle (`ref_txt`) : deja
+    # resoluble par le fallback texte de `_position_composant`, pas besoin ici.
+    positions = {}
     with schemdraw.Drawing(canvas=ax, show=False) as d:
         d.config(fontsize=13, inches_per_unit=0.5)
         for ref, x1, x2, y in symboles:
@@ -190,6 +197,8 @@ def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes, titre=None):
                     _Z_FILL).label(label, loc="bottom", fontsize=11, color=_Z_EDGE)
                 hitboxes.append((x1 - 0.1, x2 + 0.1, y - 0.6, y + 0.6,
                                  list(grefs), gcompo))
+                for r in grefs:
+                    positions[r] = ((x1 + x2) / 2.0, y)
             else:
                 comp = comps.get(ref)
                 typ = getattr(comp, "type", "")
@@ -212,6 +221,7 @@ def _dessiner_impl(arbre_a_tracer, a, b, comps, groupes, titre=None):
             b, loc="right", color=_BUS)
 
     fig._z_hitboxes = hitboxes
+    fig._comp_positions = positions
     ax.margins(0.1)
     try:
         fig.tight_layout(pad=0.3)
@@ -386,9 +396,15 @@ def dessiner_pont(pont, comps, titre=None, detaille=False):
         ax.set_title(titre, fontsize=12, color=_Z_EDGE, pad=8)
 
     hitboxes = []
+    # Registre ref -> position (meme idiome que `_dessiner_impl`) : un bras
+    # composite non deplie affiche sa composition, pas ses refs brutes.
+    positions = {}
     with schemdraw.Drawing(canvas=ax, show=False) as d:
         d.config(fontsize=13, inches_per_unit=0.5)
         for b, p1, p2 in segments:
+            centre = ((p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0)
+            for r in b.get("refs", []) or ():
+                positions[r] = centre
             if detaille and len(b["refs"]) > 1 and _bras_detaille(d, p1, p2, b, comps):
                 continue
             el, hit = _elem_bras(b, comps, p1, p2)
@@ -399,6 +415,7 @@ def dessiner_pont(pont, comps, titre=None, detaille=False):
         d += elm.Dot().at(bas).label(pont["bas"], loc="bottom", color=_BUS)
 
     fig._z_hitboxes = hitboxes
+    fig._comp_positions = positions
     ax.margins(0.2)
     try:
         fig.tight_layout(pad=0.4)

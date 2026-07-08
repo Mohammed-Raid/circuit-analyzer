@@ -186,17 +186,27 @@ def _position_composant(fig, ref):
     construite -- utilisee par le clic sur une puce « Composants : ... » pour
     centrer la vue et poser l'anneau de surbrillance dessus.
 
-    Deux sources, dans l'ordre :
-      1. `fig._z_hitboxes` (zones cliquables des boites Z, cf. `_make_fig`) :
+    Trois sources, dans l'ordre :
+      1. `fig._comp_positions` (registre rempli AU MOMENT DU DESSIN par les
+         drawers -- cf. `_enregistrer_position` -- seule source qui couvre les
+         composants dont le SCHEMA n'affiche que le role, jamais la reference
+         brute : Q/M/U des montages transistor/AOP -- leur titre est un role,
+         pas "Q1" -- et les satellites Rb/Rc/Re/Rg/diode de roue
+         libre/bobine de relais, dessines en symbole reel avec une etiquette
+         de role (« Rb = 10 kΩ »), jamais leur ref).
+      2. `fig._z_hitboxes` (zones cliquables des boites Z, cf. `_make_fig`) :
          si `ref` figure dans les refs d'une hitbox, le centre de sa boite.
-      2. un `Text` d'un axe dont le contenu COMMENCE par `ref` sur une
+      3. un `Text` d'un axe dont le contenu COMMENCE par `ref` sur une
          frontiere de mot (« R5 », « Rb = 10k », « C1\\n100nF » matchent pour
          ref="R5"/"Rb"/"C1" ; « R51 » NE matche PAS ref="R5").
 
-    @param fig Figure matplotlib d'ilot (porte fig._z_hitboxes).
+    @param fig Figure matplotlib d'ilot (porte fig._comp_positions/_z_hitboxes).
     @param ref Reference recherchee (ex. "R5").
     @return (x, y) en coordonnees data, ou None si introuvable.
     """
+    positions = getattr(fig, "_comp_positions", None) or {}
+    if ref in positions:
+        return positions[ref]
     for x0, x1, y0, y1, refs, _composition in getattr(fig, "_z_hitboxes", None) or ():
         if ref in (refs or ()):
             return (x0 + x1) / 2.0, (y0 + y1) / 2.0
@@ -1375,11 +1385,13 @@ def _make_fig(result, comp_info, drawer_fn, matches=None, detaille: bool = False
     ax.set_aspect("equal")
 
     fig._z_hitboxes = []   # zones cliquables des Z (renseignées par le drawer)
+    fig._comp_positions = {}   # registre ref -> position (renseigné par le drawer)
     if drawer_fn:
         try:
             with schemdraw.Drawing(canvas=ax, show=False) as d:
                 d.config(fontsize=14, inches_per_unit=0.62)
                 d._z_hitboxes = []
+                d._comp_positions = {}
                 d._mode_detaille = detaille
                 ancres = drawer_fn(d, result, comp_info)
                 # Réseaux d'impédance Z restants de l'îlot (charges/couplages que le
@@ -1388,6 +1400,7 @@ def _make_fig(result, comp_info, drawer_fn, matches=None, detaille: bool = False
                 if coupl and isinstance(ancres, dict) and ancres.get("nets"):
                     _dessiner_impedances_locales(d, [result], [ancres], coupl, set(), comp_info)
                 fig._z_hitboxes = list(d._z_hitboxes)
+                fig._comp_positions = dict(d._comp_positions)
                 # Ajuster la figure au format réel du dessin : sinon le schéma
                 # (large) est « letterboxé » dans une figure carrée -> petit, avec
                 # de grandes bandes vides. On colle le format de la figure à celui
@@ -1481,14 +1494,17 @@ def _make_chain_fig(ordered, comp_info, matches=None, detaille: bool = False):
     ax.axis("off")
     ax.set_aspect("equal")
     fig._z_hitboxes = []
+    fig._comp_positions = {}
     try:
         with schemdraw.Drawing(canvas=ax, show=False) as d:
             d.config(fontsize=12, inches_per_unit=0.5)
             d._z_hitboxes = []
+            d._comp_positions = {}
             d._mode_detaille = detaille
             _draw_island_chain(d, ordered, ci=comp_info,
                                couplages=(matches or ordered))
             fig._z_hitboxes = list(d._z_hitboxes)
+            fig._comp_positions = dict(d._comp_positions)
             try:
                 bb = d.get_bbox()
                 # get_bbox ne compte PAS le texte des étiquettes : on fixe des
@@ -1539,14 +1555,17 @@ def _make_branched_fig(layers, comp_info, matches=None, detaille: bool = False):
     ax.axis("off")
     ax.set_aspect("equal")
     fig._z_hitboxes = []
+    fig._comp_positions = {}
     try:
         with schemdraw.Drawing(canvas=ax, show=False) as d:
             d.config(fontsize=12, inches_per_unit=0.5)
             d._z_hitboxes = []
+            d._comp_positions = {}
             d._mode_detaille = detaille
             _draw_branched_chain(d, layers, ci=comp_info,
                                  couplages=(matches or [m for L in layers for m in L]))
             fig._z_hitboxes = list(d._z_hitboxes)
+            fig._comp_positions = dict(d._comp_positions)
             try:
                 bb = d.get_bbox()
                 x0, x1 = bb.xmin - 1.5, bb.xmax + 1.8
@@ -1607,6 +1626,7 @@ def _make_island_fig(model, matches=None, detaille: bool = False):
 
     hitboxes = []
     fig._z_hitboxes = hitboxes   # zones cliquables des Z (renseignees par le drawer)
+    fig._comp_positions = {}   # registre ref -> position (renseigné par le drawer)
 
     if not components:
         ax.text(0.5, 0.5, "Ilot vide", ha="center", va="center",
@@ -1618,7 +1638,9 @@ def _make_island_fig(model, matches=None, detaille: bool = False):
         with schemdraw.Drawing(canvas=ax, show=False) as d:
             d.config(fontsize=10, inches_per_unit=0.5)
             d._mode_detaille = detaille
+            d._comp_positions = {}
             _draw_island_schematic(d, plan, hitboxes)
+            fig._comp_positions = dict(d._comp_positions)
     except Exception as exc:
         _log.warning("schéma automatique de l'îlot indisponible", exc_info=True)
         ax.text(0.5, 0.56, model.get("label", "Ilot"),
@@ -2246,6 +2268,7 @@ def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
     else:
         d += elm.Rect(w=1.8, h=0.8).at((device_x, y)).label(row["ref"])
         block_right = (device_x + 0.9, y)    # bord droit du bloc
+    _enregistrer_position(d, row.get("ref"), (device_x, y))
 
     for pin, net in cols_pins:
         x = x_by_net[net]
@@ -2657,6 +2680,7 @@ def _draw_inverting_amp(d, result, ci):
         rf = rs[0] if rs else "Rf"
         rin = rs[1] if len(rs) > 1 else "Rin"
         op = d.add(elm.Opamp().anchor("in1").at((4.5, 0)))
+        _enregistrer_position(d, _ref(result, ci, "U"), (4.5, 0))
         d.add(elm.Resistor().at(op.in1).left().label(_lbl(rin, ci), loc="top"))
         d.add(elm.Dot().label("IN", loc="left"))
         d.add(elm.Line().at(op.in2).left(1))
@@ -2668,7 +2692,7 @@ def _draw_inverting_amp(d, result, ci):
         d.add(elm.Line().at(op.out).right(1).label("OUT", loc="right"))
         return
 
-    _draw_aop_inverseur_zin_zf(d, imp, ci)
+    _draw_aop_inverseur_zin_zf(d, imp, ci, ref=_ref(result, ci, "U"))
 
 
 _Z_LABEL_CLEAR = 0.95
@@ -2880,6 +2904,7 @@ def _z_reseau(d, p1, p2, bloc, ci, label_loc="top", wire_color=_WIRE) -> bool:
             # (comportement inchange, cf. audits fenetre).
             valeur = ""
         mx, my = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
+        _enregistrer_position(d, ref, (mx, my))
         sdx, sdy = pb[0] - pa[0], pb[1] - pa[1]
         # Symbole recentre sur ~65% du segment (mini absolu pour les motifs
         # periodiques R/L) + fils d'amorce de part et d'autre : evite le
@@ -3009,6 +3034,15 @@ def _z_box(d, p1, p2, name, bloc, ci, label_loc="top", wire_color=_WIRE):
         les symboles réels (couleur sémantique R/L/C inchangée).
     @return None
     """
+    # Position de repli pour CHAQUE ref du bloc (centre de la boite) : couvre
+    # les candidats ('R1','Z1') meme quand ni hitbox (vue detaillee : no-op,
+    # cf. `_enregistrer_hitbox`) ni texte de ref n'est present sur le dessin.
+    # Ecrasee plus bas par une position plus precise (symbole reel deplie)
+    # quand `_z_reseau`/le repli 1-ref l'obtient.
+    centre_boite = ((p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0)
+    for r in bloc.get("refs", []) or ():
+        _enregistrer_position(d, r, centre_boite)
+
     dessine = False
     if getattr(d, "_mode_detaille", False):
         refs = bloc.get("refs", [])
@@ -3023,6 +3057,7 @@ def _z_box(d, p1, p2, name, bloc, ci, label_loc="top", wire_color=_WIRE):
             vfmt = impedance.formater_valeur(info.get("value", ""), typ)
             label = f"{ref}\n{vfmt}" if vfmt else ref
             d.add(cls().at(p1).to(p2).color(coul).label(label, fontsize=9, color=coul))
+            _enregistrer_position(d, ref, centre_boite)
             dessine = True
         elif _z_reseau(d, p1, p2, bloc, ci, label_loc=label_loc, wire_color=wire_color):
             dessine = True
@@ -3061,6 +3096,32 @@ def _enregistrer_hitbox(d, p1, p2, refs, composition, pad=0.5):
                    list(refs), composition))
 
 
+def _enregistrer_position(d, ref, pos):
+    """@brief Enregistre la position (x, y) DATA d'un composant sur
+    `d._comp_positions`, au moment ou son symbole est effectivement pose.
+
+    Contrepartie de `_enregistrer_hitbox` pour les composants qu'aucune
+    hitbox Z ni aucun texte de ref ne rend cliquables autrement : les
+    transistors/AOP (dont le titre du montage affiche un ROLE, jamais leur
+    ref) et les satellites R/L/C dessines en symbole reel avec une etiquette
+    de role (« Rb = 10 kΩ ») plutot que leur ref -- cf. `_r_simple`,
+    `_charge_verticale`, `_z_box`, `_z_reseau`.
+
+    No-op si `d` ne porte pas `_comp_positions` (meme idiome que
+    `_enregistrer_hitbox`/`d._z_hitboxes` : les Drawings crees hors des
+    fabriques `_make_*fig` n'ont pas ce dict) ou si `ref` est vide/None.
+
+    @param d Dessin schemdraw (ou tout objet portant `_comp_positions`).
+    @param ref Reference du composant (ex. "Q1"), ou None/"" (no-op).
+    @param pos (x, y) en coordonnees data.
+    """
+    if not ref:
+        return
+    positions = getattr(d, "_comp_positions", None)
+    if positions is not None:
+        positions[ref] = (float(pos[0]), float(pos[1]))
+
+
 def _draw_reseau_derive(d, info, ci):
     """@brief Dessine un reseau derive : rail haut -[Z serie]- prise -[Z shunt]- GND.
 
@@ -3084,7 +3145,8 @@ def _draw_reseau_derive(d, info, ci):
     return {}
 
 
-def _draw_aop_inverseur_zin_zf(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT"):
+def _draw_aop_inverseur_zin_zf(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT",
+                               ref=None):
     """@brief Dessin commun des montages à topologie inverseuse : AOP + Zin/Zf cliquables.
 
     Partagé par l'ampli inverseur, l'intégrateur, le dérivateur (même structure :
@@ -3094,10 +3156,12 @@ def _draw_aop_inverseur_zin_zf(d, imp, ci, origin=(4.5, 0), in_label="IN", out_l
     @param ci Dict {ref → {type, value}} pour étiquettes/valeurs.
     @param origin Position de l'AOP (pour chaîner plusieurs montages).
     @param in_label/out_label Libellés d'entrée/sortie ("" pour les masquer).
+    @param ref Référence U du montage (registre de positions), ou None.
     @return dict {"in": (x,y), "out": (x,y)} : points de connexion du bloc.
     """
     zin, zf = imp["Zin"], imp["Zf"]
     op = d.add(elm.Opamp().right().anchor("in1").at(origin).color(_WIRE).fill(_OPAMP_FILL))
+    _enregistrer_position(d, ref, origin)
     in1, out = op.in1, op.out
 
     # Nœud de sommation, déporté à GAUCHE du triangle : Zin y arrive, un court fil
@@ -3127,14 +3191,17 @@ def _draw_aop_inverseur_zin_zf(d, imp, ci, origin=(4.5, 0), in_label="IN", out_l
     return {"in": in_pt, "out": out_pt}
 
 
-def _draw_aop_sommateur(d, imp, ci, origin=(5.0, 0), in_label="IN1", out_label="OUT"):
+def _draw_aop_sommateur(d, imp, ci, origin=(5.0, 0), in_label="IN1", out_label="OUT",
+                        ref=None):
     """@brief Dessine le sommateur : bus d'entrées Zin + Zf cliquables sur IN-.
 
     @param imp Dict {'Zf': bloc, 'Zin': [bloc, ...]} (cf. détecteur).
+    @param ref Référence U du montage (registre de positions), ou None.
     @return dict {"in": (x,y), "out": (x,y)}.
     """
     zf, zin = imp["Zf"], imp["Zin"]
     op = d.add(elm.Opamp().right().anchor("in1").at(origin).color(_WIRE).fill(_OPAMP_FILL))
+    _enregistrer_position(d, ref, origin)
     inm, out = op.in1, op.out
 
     # IN+ à la masse
@@ -3180,7 +3247,8 @@ def _draw_aop_sommateur(d, imp, ci, origin=(5.0, 0), in_label="IN1", out_label="
     return {"in": in_pts[0], "out": out_pt, "in_pts": in_pts}
 
 
-def _draw_aop_non_inverseur_zf_zg(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT"):
+def _draw_aop_non_inverseur_zf_zg(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT",
+                                  ref=None):
     """@brief Dessin du non-inverseur : signal sur IN+, pont Zf/Zg cliquable sur IN-.
 
     Topologie distincte de l'inverseur : l'entrée attaque IN+, et IN- porte un
@@ -3189,10 +3257,12 @@ def _draw_aop_non_inverseur_zf_zg(d, imp, ci, origin=(4.5, 0), in_label="IN", ou
     @param imp Dict {'Zf': bloc, 'Zg': bloc} (cf. détecteur).
     @param ci Dict {ref → {type, value}} pour étiquettes/valeurs.
     @param origin/in_label/out_label cf. _draw_aop_inverseur_zin_zf.
+    @param ref Référence U du montage (registre de positions), ou None.
     @return dict {"in": (x,y), "out": (x,y)}.
     """
     zf, zg = imp["Zf"], imp["Zg"]
     op = d.add(elm.Opamp().right().anchor("in2").at(origin).color(_WIRE).fill(_OPAMP_FILL))
+    _enregistrer_position(d, ref, origin)
     in1, out = op.in1, op.out                          # in1 = IN-, in2 = IN+ (signal)
 
     # Entrée -> IN+ (broche du bas)
@@ -3231,7 +3301,7 @@ def _draw_non_inverting_amp(d, result, ci):
     """
     imp = result.get("impedances")
     if imp:
-        _draw_aop_non_inverseur_zf_zg(d, imp, ci)
+        _draw_aop_non_inverseur_zf_zg(d, imp, ci, ref=_ref(result, ci, "U"))
         return
 
     rs = _refs(result, ci, "R")
@@ -3239,6 +3309,7 @@ def _draw_non_inverting_amp(d, result, ci):
     rg  = rs[1] if len(rs) > 1 else "Rg"
 
     op = d.add(elm.Opamp().anchor("in2").at((4.5, 0)))
+    _enregistrer_position(d, _ref(result, ci, "U"), (4.5, 0))
     d.add(elm.Line().at(op.in2).left(1.2).label("IN+", loc="left"))
 
     fb_pt = op.in1  # IN− pin
@@ -3298,6 +3369,8 @@ def _draw_follower(d, result, ci, origin=(4.5, 0), in_label="IN", out_label="OUT
     @return dict {"in": (x,y), "out": (x,y)}.
     """
     op = d.add(elm.Opamp().right().anchor("in2").at(origin))
+    if isinstance(result, dict) and result.get("components"):
+        _enregistrer_position(d, _ref(result, ci, "U"), origin)
     in_net = (result.get("nodes") or [None])[0] if isinstance(result, dict) else None
     pont = _diviseur_sur_net(in_net, ci)
     if pont:
@@ -3359,8 +3432,9 @@ def _dessiner_montage_a(d, match, ci, origin, in_label, out_label):
         return res
 
     # Montages ancrés "center" (à router avant les branches Zin/Zg) :
+    u_ref = _ref(match, ci, "U")
     if "sommateur" in ct.lower():
-        res = _draw_aop_sommateur(d, imp, ci, origin, in_label, out_label)
+        res = _draw_aop_sommateur(d, imp, ci, origin, in_label, out_label, ref=u_ref)
     elif "différentiel" in ct.lower() or "differentiel" in ct.lower():
         in1 = "VIN-" if in_label == "VIN" else (in_label or "IN1")
         in2 = "VIN+" if in_label == "VIN" else "IN2"
@@ -3369,15 +3443,16 @@ def _dessiner_montage_a(d, match, ci, origin, in_label, out_label):
             in1_label=in1,
             in2_label=in2,
             out_label=out_label,
+            ref=u_ref,
         )
     elif "Schmitt" in ct:
-        res = _draw_aop_schmitt(d, imp, ci, origin, in_label, out_label)
+        res = _draw_aop_schmitt(d, imp, ci, origin, in_label, out_label, ref=u_ref)
     elif "Comparateur" in ct:
         res = _draw_aop_comparateur(d, match, ci, origin, in_label, out_label)
     elif "Zg" in imp:
-        res = _draw_aop_non_inverseur_zf_zg(d, imp, ci, origin, in_label, out_label)
+        res = _draw_aop_non_inverseur_zf_zg(d, imp, ci, origin, in_label, out_label, ref=u_ref)
     elif "Zin" in imp:
-        res = _draw_aop_inverseur_zin_zf(d, imp, ci, origin, in_label, out_label)
+        res = _draw_aop_inverseur_zin_zf(d, imp, ci, origin, in_label, out_label, ref=u_ref)
     else:
         res = _draw_follower(d, match, ci, origin, in_label, out_label)
 
@@ -3739,6 +3814,7 @@ def _r_simple(d, ref, ci, p1, p2, nom, label_loc="top"):
     """
     if not ref:
         return
+    _enregistrer_position(d, ref, ((p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0))
     elem = elm.Resistor().at(p1).to(p2)
     if nom is None:
         d.add(elem)
@@ -3824,6 +3900,7 @@ def _charge_verticale(d, ref, ci, longueur=1.1):
     else:
         elem = elm.Line()
     e = d.add(elem.up(longueur))
+    _enregistrer_position(d, ref, e.center)
     # Label cale a DROITE du symbole : loc="right" retombe centre sur le fil
     # vertical (les spires de l'inductance rendent la bbox symetrique), d'ou un
     # chevauchement label/fil a l'audit visuel.
@@ -3950,7 +4027,7 @@ def _draw_integrator(d, result, ci):
     """
     imp = result.get("impedances")
     if imp:
-        _draw_aop_inverseur_zin_zf(d, imp, ci)
+        _draw_aop_inverseur_zin_zf(d, imp, ci, ref=_ref(result, ci, "U"))
         return
 
     rs = _refs(result, ci, "R"); cs = _refs(result, ci, "C")
@@ -3958,6 +4035,7 @@ def _draw_integrator(d, result, ci):
     c = cs[0] if cs else "C"
 
     op = d.add(elm.Opamp().anchor("in1").at((4.5, 0)))
+    _enregistrer_position(d, _ref(result, ci, "U"), (4.5, 0))
     d.add(elm.Resistor().at(op.in1).left().label(_lbl(r, ci), loc="top"))
     d.add(elm.Dot().label("IN", loc="left"))
     mid_pt = op.in1
@@ -3979,7 +4057,7 @@ def _draw_differentiator(d, result, ci):
     """
     imp = result.get("impedances")
     if imp:
-        _draw_aop_inverseur_zin_zf(d, imp, ci)
+        _draw_aop_inverseur_zin_zf(d, imp, ci, ref=_ref(result, ci, "U"))
         return
 
     cs = _refs(result, ci, "C"); rs = _refs(result, ci, "R")
@@ -3987,6 +4065,7 @@ def _draw_differentiator(d, result, ci):
     r = rs[0] if rs else "R"
 
     op = d.add(elm.Opamp().anchor("in1").at((4.5, 0)))
+    _enregistrer_position(d, _ref(result, ci, "U"), (4.5, 0))
     d.add(elm.Capacitor().at(op.in1).left().label(_lbl(c, ci), loc="top"))
     d.add(elm.Dot().label("IN", loc="left"))
     mid_pt = op.in1
@@ -4010,6 +4089,8 @@ def _draw_aop_comparateur(d, _result, ci, origin=(4.5, 0), in_label="IN+", out_l
     @return dict {"in": (x,y), "out": (x,y)}.
     """
     op = d.add(elm.Opamp().right().anchor("center").at(origin).color(_WIRE).fill(_OPAMP_FILL))
+    if isinstance(_result, dict) and _result.get("components"):
+        _enregistrer_position(d, _ref(_result, ci, "U"), origin)
     d.add(elm.Line().at(op.in2).left(1.3).color(_WIRE))
     in_pt = (op.in2[0] - 1.3, op.in2[1])
     d.add(elm.Dot().at(in_pt).color(_WIRE).label(in_label, loc="left", color=_WIRE))
@@ -4025,16 +4106,18 @@ def _draw_comparator(d, result, ci):
     _draw_aop_comparateur(d, result, ci)
 
 
-def _draw_aop_schmitt(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT"):
+def _draw_aop_schmitt(d, imp, ci, origin=(4.5, 0), in_label="IN", out_label="OUT", ref=None):
     """@brief Dessine la bascule de Schmitt : contre-réaction positive Zf
     (OUT → IN+) + patte d'entrée Zin sur IN+, toutes deux cliquables.
 
     @param imp Dict {'Zf': bloc, 'Zin': bloc?} (cf. détecteur).
+    @param ref Référence U du montage (registre de positions), ou None.
     @return dict {"in": (x,y), "out": (x,y)}.
     """
     zf = imp["Zf"]
     zin = imp.get("Zin")
     op = d.add(elm.Opamp().right().anchor("center").at(origin).color(_WIRE).fill(_OPAMP_FILL))
+    _enregistrer_position(d, ref, origin)
     inm, inp, out = op.in1, op.in2, op.out
 
     # IN- = référence. Étiquette au-DESSUS de la patte (l'étiquette de Zin occupe
@@ -4073,13 +4156,14 @@ def _draw_schmitt(d, result, ci):
     """@brief Dessine le schéma « Bascule de Schmitt (AOP) »."""
     imp = result.get("impedances")
     if imp:
-        _draw_aop_schmitt(d, imp, ci)
+        _draw_aop_schmitt(d, imp, ci, ref=_ref(result, ci, "U"))
         return
 
     rs = _refs(result, ci, "R")
     rf = rs[0] if rs else "Rf"
 
     op = d.add(elm.Opamp().anchor("center").at((4.5, 0)))
+    _enregistrer_position(d, _ref(result, ci, "U"), (4.5, 0))
     d.add(elm.Line().at(op.in1).left(1.2).label("REF", loc="left"))
 
     in2_pt = op.in2  # IN+ (non-inverting, lower pin)
@@ -4099,14 +4183,16 @@ def _draw_schmitt(d, result, ci):
 
 
 def _draw_aop_differentiel(d, imp, ci, origin=(6.0, 0),
-                           in1_label="IN1", in2_label="IN2", out_label="OUT"):
+                           in1_label="IN1", in2_label="IN2", out_label="OUT", ref=None):
     """@brief Dessine le différentiel : AOP + pont Z1/Zf/Z3/Zg cliquable.
 
     @param imp Dict {'Z1','Zf','Z3','Zg'} (cf. détecteur).
+    @param ref Référence U du montage (registre de positions), ou None.
     @return dict {"in": (x,y), "out": (x,y)}.
     """
     z1, zf, z3, zg = imp["Z1"], imp["Zf"], imp["Z3"], imp["Zg"]
     op = d.add(elm.Opamp().right().anchor("center").at(origin).color(_WIRE).fill(_OPAMP_FILL))
+    _enregistrer_position(d, ref, origin)
     inm, inp, out = op.in1, op.in2, op.out
 
     # IN- (haut) : Z1 depuis la source, Zf en contre-réaction par le haut
@@ -4151,7 +4237,7 @@ def _draw_differential_amp(d, result, ci):
     """@brief Dessine le schéma « Amplificateur différentiel (AOP) »."""
     imp = result.get("impedances")
     if imp:
-        _draw_aop_differentiel(d, imp, ci)
+        _draw_aop_differentiel(d, imp, ci, ref=_ref(result, ci, "U"))
         return
 
     rs = _refs(result, ci, "R")
@@ -4162,6 +4248,7 @@ def _draw_differential_amp(d, result, ci):
     r2  = rs[3] if len(rs) > 3 else "R2"   # source → IN- (input)
 
     op = d.add(elm.Opamp().anchor("center").at((6.0, 0)))
+    _enregistrer_position(d, _ref(result, ci, "U"), (6.0, 0))
 
     # IN+ path: R1 goes left from IN+; loc="bottom" keeps label away from r2 above it
     d.add(elm.Resistor().at(op.in2).left(1.35).label(_lbl(r1, ci), loc="bottom"))
@@ -4186,7 +4273,7 @@ def _draw_summing_amp(d, result, ci):
     """@brief Dessine le schéma « Amplificateur sommateur (AOP) »."""
     imp = result.get("impedances")
     if imp:
-        _draw_aop_sommateur(d, imp, ci)
+        _draw_aop_sommateur(d, imp, ci, ref=_ref(result, ci, "U"))
         return
 
     rs = _refs(result, ci, "R")
@@ -4195,6 +4282,7 @@ def _draw_summing_amp(d, result, ci):
     n = min(len(inputs), 3)
 
     op = d.add(elm.Opamp().anchor("in1").at((5, 0)))
+    _enregistrer_position(d, _ref(result, ci, "U"), (5, 0))
     in1_pt = op.in1  # summing node (IN-)
     # Route IN+ straight down to GND — avoids merging visually with the bottom of the input bus
     d.add(elm.Line().at(op.in2).left(0.65))
@@ -4242,6 +4330,7 @@ def _draw_bjt_switch(d, result, ci, origin=(3, 0), titre=True,
     if load:
         absorbed_refs.add(load)
     t = d.add(elm.BjtNpn().at(origin))
+    _enregistrer_position(d, q, origin)
     bx, by = t.base
     in_pt = (bx - 2.6, by)
     _r_simple(d, r, ci, in_pt, (bx - 0.9, by), None)
@@ -4301,6 +4390,7 @@ def _draw_common_emitter(d, result, ci, origin=(3, 0), titre=True,
     # Darlington en vue chaine) peut laisser inversee -> transistor mirroir dont
     # l'emetteur percute l'etiquette Rb (cf. ilot_chaine_darlington_ce).
     t = d.add(elm.BjtNpn().at(origin).right())
+    _enregistrer_position(d, q, origin)
     bx, by = t.base
     in_pt = (bx - 2.6, by)
     if rb:
@@ -4364,6 +4454,7 @@ def _draw_mosfet_switch(d, result, ci, origin=(3, 0), titre=True,
     # en miroir par rapport à tous les autres montages (IN toujours à gauche).
     # reverse() ramène la grille à GAUCHE sans toucher drain/source (cf. D3).
     t = d.add(elm.NFet().at(origin).reverse())
+    _enregistrer_position(d, m, origin)
     gx, gy = t.gate
     _r_simple(d, r, ci, (gx - 0.9, gy), (gx - 2.6, gy), "Rg")
     d.add(elm.Line().at(t.gate).to((gx - 0.9, gy)))
@@ -4403,6 +4494,7 @@ def _draw_high_side_mosfet(d, result, ci):
     # .reverse() : cf. D3 dans _draw_mosfet_switch — ramène la grille à GAUCHE
     # (sans toucher drain/source) pour garder IN à gauche, comme partout ailleurs.
     t = d.add(elm.NFet().at((3, 0)).reverse())
+    _enregistrer_position(d, m, (3, 0))
     gx, gy = t.gate
     _r_simple(d, r, ci, (gx - 0.9, gy), (gx - 2.6, gy), "Rg")
     d.add(elm.Line().at(t.gate).to((gx - 0.9, gy)))
@@ -4426,6 +4518,7 @@ def _draw_relay_driver(d, result, ci):
 
     use_mosfet = not qs and bool(ms)
     t = d.add((elm.NFet() if use_mosfet else elm.BjtNpn()).at((3.5, 0)))
+    _enregistrer_position(d, (ms[0] if use_mosfet else (qs[0] if qs else None)), (3.5, 0))
 
     ctrl_pin = t.gate if use_mosfet else t.base
     coll_pin = t.drain if use_mosfet else t.collector
@@ -4458,14 +4551,30 @@ def _draw_relay_driver(d, result, ci):
     coil_top = d.here
     d.add(elm.Dot().at(coil_top))
     d.add(elm.Line().up(0.3).label("VCC", loc="top"))
+    _enregistrer_position(d, k, (coil_bot[0], (coil_bot[1] + coil_top[1]) / 2))
     # Étiquette de la bobine à gauche, dégagée du fil
     d.add(elm.Label().at((coil_bot[0] - 0.7, (coil_bot[1] + coil_top[1]) / 2))
           .label(_lbl(k, ci)))
 
-    # Diode flyback en parallèle de la bobine (anode côté collecteur, cathode VCC)
+    # Diode flyback en parallèle de la bobine (anode côté collecteur, cathode VCC).
+    # dbs peut etre vide (la diode n'est pas toujours incluse dans les
+    # composants detectes du montage) alors que le symbole, lui, est TOUJOURS
+    # trace -- on retrouve alors sa ref par ses broches (meme idiome que le
+    # repli `rbs` ci-dessus) pour le registre de positions UNIQUEMENT : le
+    # libelle affiche (`diode_lbl`) reste inchange (aucun impact visuel).
+    d1_ref = dbs[0] if dbs else None
+    if not d1_ref:
+        coll_net = None
+        if qs:
+            coll_net = ci.get(qs[0], {}).get("pins", {}).get("C")
+        elif ms:
+            coll_net = ci.get(ms[0], {}).get("pins", {}).get("D")
+        cand = _refs_type_sur_net(ci, "D", coll_net)
+        d1_ref = cand[0] if cand else None
     diode_lbl = _lbl(dbs[0], ci) if dbs else ""
     d.add(elm.Line().at(coil_bot).right(1.6))
-    d.add(elm.Diode().up(coil_len).label(diode_lbl, loc="right"))
+    diode_el = d.add(elm.Diode().up(coil_len).label(diode_lbl, loc="right"))
+    _enregistrer_position(d, d1_ref, diode_el.center)
     d.add(elm.Line().tox(coil_top[0]))
 
     # Émetteur → GND
@@ -4479,6 +4588,8 @@ def _draw_current_mirror(d, result, ci):
     qs = _refs(result, ci, "Q")
     t1 = d.add(elm.BjtNpn().at((1.5, 0)))
     t2 = d.add(elm.BjtNpn().at((4.5, 0)))
+    _enregistrer_position(d, qs[0] if qs else None, (1.5, 0))
+    _enregistrer_position(d, qs[1] if len(qs) > 1 else None, (4.5, 0))
 
     # Shared base wire + junction dots at both bases
     d.add(elm.Line().at(t1.base).tox(t2.base[0]))
@@ -4519,6 +4630,7 @@ def _draw_suiveur_emetteur(d, result, ci, origin=(3, 0), titre=True,
     re = _ref_on_net(rs, ci, q_pins.get("E"), rs[0] if rs else "Re")
     rb = next((r for r in rs if r != re), None)
     t = d.add(elm.BjtNpn().at(origin))
+    _enregistrer_position(d, q, origin)
     bx, by = t.base
     in_pt = (bx - 2.6, by)
     if rb:
@@ -4574,6 +4686,13 @@ def _draw_push_pull(d, result, ci, origin=(3, 0), titre=True,
     ox, oy = origin
     qn = d.add(elm.BjtNpn().at((ox, oy + 1.7)))
     qp = d.add(elm.BjtPnp().at((ox, oy - 1.7)))
+    # Ref NPN/PNP distinguees par leur collecteur (NPN -> alim, PNP -> masse),
+    # meme convention que le cablage juste en dessous.
+    qs = _refs(result, ci, "Q")
+    npn_ref = next((r for r in qs if is_power_net(ci.get(r, {}).get("pins", {}).get("C"))), None)
+    pnp_ref = next((r for r in qs if r != npn_ref), None)
+    _enregistrer_position(d, npn_ref, (ox, oy + 1.7))
+    _enregistrer_position(d, pnp_ref, (ox, oy - 1.7))
     # Bases communes (entrée) reliées verticalement, prise d'entrée à gauche
     d.add(elm.Line().at(qn.base).to(qp.base))
     midb = ((qn.base[0] + qp.base[0]) / 2, (qn.base[1] + qp.base[1]) / 2)
@@ -4627,6 +4746,8 @@ def _draw_darlington(d, result, ci, origin=(3, 0), titre=True,
 
     q1 = d.add(elm.BjtNpn().at((ox, oy + 1.7)))
     q2 = d.add(elm.BjtNpn().at((ox + 1.8, oy - 1.4)))
+    _enregistrer_position(d, q1ref, (ox, oy + 1.7))
+    _enregistrer_position(d, q2ref, (ox + 1.8, oy - 1.4))
     if rin:
         in_pt = (q1.base[0] - 2.8, q1.base[1])
         base_node = (q1.base[0] - 0.65, q1.base[1])
