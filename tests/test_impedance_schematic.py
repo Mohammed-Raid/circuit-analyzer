@@ -119,6 +119,28 @@ def test_dessiner_pont_simple_pas_de_hitbox():
     assert getattr(fig, "_z_hitboxes", []) == []   # tous simples -> aucun hitbox
 
 
+def test_dessiner_pont_bras_simple_labels_ref_et_valeur_separes():
+    # Idiome feuille unifie (meme regle que _dessiner_impl / style_symbole) :
+    # ref et valeur d'un bras simple = DEUX Texts distincts (ref loc="top",
+    # valeur loc="bottom"), jamais un « ref\nvaleur » combine.
+    from circuit_analyzer.composant import Composant
+    comps = {r: Composant(r, "R", {"1": "x", "2": "y"}, "1k")
+             for r in ("R1", "R2", "R3", "R4", "R5")}
+    pont = {
+        "haut": "VIN", "bas": "VOUT", "gauche": "N1", "droite": "N2",
+        "bras": {role: {"refs": [r], "composition": r} for role, r in (
+            ("haut_gauche", "R1"), ("haut_droite", "R2"), ("bas_gauche", "R3"),
+            ("bas_droite", "R4"), ("pont", "R5"))},
+    }
+    fig = sch.dessiner_pont(pont, comps)
+    txts = _all_texts(fig)
+    assert not any("\n" in t for t in txts), (
+        "aucun label combine ref\\nvaleur sur un bras simple")
+    for r in ("R1", "R2", "R3", "R4", "R5"):
+        assert r in txts, f"ref {r} en Text autonome"
+    assert txts.count("1 kΩ") == 5, "une valeur autonome par bras"
+
+
 def test_dessiner_pont_composite_a_un_hitbox():
     from circuit_analyzer.composant import Composant
     comps = {r: Composant(r, "R", {"1": "x", "2": "y"}, "1k")

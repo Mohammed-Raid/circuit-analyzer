@@ -309,12 +309,16 @@ def _elem_bras(bras, comps, p1, p2):
         ref = refs[0]
         comp = comps.get(ref)
         typ = getattr(comp, "type", "")
-        cls = _SYMB.get(typ, elm.ResistorIEC)
-        coul = _COMP_COLORS.get(typ, _WIRE)
-        vfmt = impedance.formater_valeur(getattr(comp, "value", ""), typ)
-        label = f"{ref}\n{vfmt}" if vfmt else ref
-        return cls().at(p1).to(p2).color(coul).label(
-            label, loc="bottom", fontsize=11, color=coul), None
+        # Idiome feuille unifie (meme regle que `_dessiner_impl`) : ref et
+        # valeur de part et d'autre du symbole, deux Texts distincts -- pas
+        # de « ref\nvaleur » combine propre aux bras de pont.
+        cls, coul, ref_txt, valeur = style_symbole(
+            typ, getattr(comp, "value", ""), ref)
+        el = cls().at(p1).to(p2).color(coul).label(
+            ref_txt, loc="top", fontsize=11, color=coul)
+        if valeur:
+            el = el.label(valeur, loc="bottom", fontsize=11, color=coul)
+        return el, None
     label = impedance.formater_expr(bras["composition"])
     el = elm.ResistorIEC().at(p1).to(p2).color(_Z_EDGE).fill(_Z_FILL).label(
         label, loc="bottom", fontsize=11, color=_Z_EDGE)
