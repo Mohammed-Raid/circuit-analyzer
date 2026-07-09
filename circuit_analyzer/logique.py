@@ -261,6 +261,12 @@ def detecter_portes_cmos(graphe):
             continue
         if out in entrees:                         # sortie réinjectée
             continue
+        # Rejet si une entrée est branchée sur un net interne des réseaux.
+        nets_bas = {n for _, n1, n2 in bas for n in (n1, n2)}
+        nets_haut = {n for _, n1, n2 in haut for n in (n1, n2)}
+        internal_nets = (nets_bas | nets_haut) - {out, vdd, gnd}
+        if any(e in internal_nets for e in entrees):
+            continue
 
         classement = _classifier(pur_bas[0], pur_bas[1], pur_haut[0])
         if classement is None:

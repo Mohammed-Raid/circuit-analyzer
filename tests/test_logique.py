@@ -244,3 +244,14 @@ def test_rejet_sans_rail_ou_sans_masse():
 def test_garde_zero_mosfet():
     comps = [Composant(ref="R1", type="R", pins={"1": "A", "2": "B"}, value="1k")]
     assert _detecter(comps) == []
+
+
+def test_rejet_entree_sur_net_interne():
+    # Rétroaction sur net interne du pull-down : X est un net interne
+    # du réseau pull-down (OUT—M3—X—M4—GND), mais utilisé aussi comme grille.
+    # Pull-up : M1(G=A), M2(G=X) en parallèle sur OUT—VDD.
+    # Pull-down : M3(G=A) OUT→X, M4(G=X) X→GND (diode-connecté).
+    # Structure de rétroaction, pas une porte statique → rejet.
+    comps = [_m("M1", "A", "OUT", "VDD"), _m("M2", "X", "OUT", "VDD"),
+             _m("M3", "A", "OUT", "X"), _m("M4", "X", "X", "GND")]
+    assert _detecter(comps) == []
