@@ -28,7 +28,8 @@ _SYMBOLES = {"NOT": slogic.Not, "NAND": slogic.Nand, "NOR": slogic.Nor}
 
 _PAS_Y = 1.7      # écart vertical entre transistors empilés (série)
 _PAS_X = 2.2      # écart horizontal entre branches parallèles
-_STUB_GAUCHE = 2.4  # longueur du rail de grille vers les stubs d'entrée
+_STUB_GAUCHE = 2.4  # longueur du rail de grille vers les stubs d'entrée (NOT)
+_PAS_LABEL = 1.35   # pas vertical des labels d'entrée en fan-in aérée (>=1.2)
 
 
 def dessiner_porte(d, result, ci, origin=(3, 0), titre=True,
@@ -174,25 +175,31 @@ def _porte_transistors(d, result, ci, origin, titre, in_label, out_label):
     d.add(elm.Line().at((x_max, oy)).to(out_pt))
     d.add(elm.Dot().at(out_pt).label(out_label or sortie, loc="right"))
 
-    # Rails de grilles : un stub par ENTRÉE à gauche. Chaque fil de grille
-    # traverse le `jeu` en restant du MÊME côté de oy que sa cible (bande
-    # (oy, oy+jeu) pour une grille PMOS, (oy-jeu, oy) pour une grille NMOS)
-    # -- jamais la hauteur oy elle-même : évite de croiser la barre OUT/GND
-    # posée exactement à oy (piège visuel observé sur le premier rendu :
-    # un y_net fixe traversant oy croisait salement la barre OUT).
+    # Rails de grilles. Deux régimes :
     #
-    # Le point de départ (x_stub_i, y_label) de CHAQUE entrée est en plus
-    # DÉCALÉ EN X (échelle en escalier) -- sinon, comme les y_h/y_b sont
-    # tassés dans la fine bande `jeu`, les points d'étiquette de toutes les
-    # entrées tombent quasi au même endroit et les labels se chevauchent
-    # (piège observé : NET1/NET3 superposés au premier rendu du correctif).
+    #  - UNE entrée (NOT) : routage HISTORIQUE inchangé (rendu validé « parfait »
+    #    par le coordinateur, à garder pixel-identique) -- deux brins dans la
+    #    fine bande `jeu` autour de oy, reliés par un court tronçon vertical.
+    #
+    #  - PLUSIEURS entrées (NAND/NOR…) : fan-in AÉRÉE. Toute la tuyauterie de
+    #    grille reste STRICTEMENT à gauche de la barre OUT (qui commence à
+    #    x=min(xs+xs_b) : les tronçons verticaux sont à x < ce bord et les taps
+    #    horizontaux se terminent sur les ancres de grille (x = transistor − 1.37),
+    #    donc AUCUN fil de grille n'est colinéaire avec / ne recouvre la barre
+    #    OUT (défaut #1 signalé). Chaque tap est routé à la hauteur PROPRE de sa
+    #    grille (loin du niveau oy), avec un petit décalage `off` par entrée pour
+    #    que deux grilles d'une même rangée parallèle ne se recouvrent pas. Les
+    #    ÉTIQUETTES sont empilées en escalier (x décalé) ET espacées de
+    #    _PAS_LABEL en y (>=1.2) au-dessus des grilles PMOS : « jamais de labels
+    #    collés » (défaut #2), et jamais au niveau de la barre OUT.
     nets = {sortie: out_pt}
-    x_stub_max = min(xs + xs_b) - _STUB_GAUCHE
-    n = len(entrees) or 1
-    for i, net in enumerate(entrees):
-        x_stub = x_stub_max - i * 0.9
-        y_h = oy + jeu * (i + 1) / (n + 1)
-        y_b = oy - jeu * (i + 1) / (n + 1)
+    tous = list(haut) + list(bas)
+    n = len(entrees)
+
+    if n == 1:
+        net = entrees[0]
+        x_stub = min(xs + xs_b) - _STUB_GAUCHE
+        y_h, y_b = oy + jeu / 2.0, oy - jeu / 2.0
         touche_haut = touche_bas = False
         for ref, e in haut:
             if grille_de.get(ref) == net:
@@ -206,12 +213,29 @@ def _porte_transistors(d, result, ci, origin, titre, in_label, out_label):
                 touche_bas = True
         if touche_haut and touche_bas:
             d.add(elm.Line().at((x_stub, y_h)).to((x_stub, y_b)))
-        # Étiquette sur le brin haut si la net y touche une grille (sinon
-        # bas) : chaque net a déjà SON x_stub distinct ci-dessus.
-        y_label = y_h if touche_haut else y_b
-        pt = (x_stub, y_label)
+        pt = (x_stub, y_h if touche_haut else y_b)
         d.add(elm.Dot().at(pt).label(in_label or net, loc="left"))
         nets[net] = pt
+    else:
+        base_top = max(e.gate[1] for _r, e in haut)   # hauteur des grilles PMOS
+        x0 = min(xs + xs_b) - _STUB_GAUCHE - 1.6       # colonne poussée à gauche
+        for i, net in enumerate(entrees):
+            x_i = x0 - i * 1.3                          # escalier horizontal
+            y_lab = base_top + 0.9 + i * _PAS_LABEL     # labels aérés vers le haut
+            off = (i - (n - 1) / 2.0) * 0.26            # anti-recouvrement rangée
+            cibles = [e for ref, e in tous if grille_de.get(ref) == net]
+            y_taps = []
+            for e in cibles:
+                gx, gy = e.gate
+                y_tap = gy + off
+                d.add(elm.Line().at((x_i, y_tap)).to((gx, y_tap)))
+                d.add(elm.Line().at((gx, y_tap)).to((gx, gy)))
+                y_taps.append(y_tap)
+            y_lo, y_hi = min(y_taps + [y_lab]), max(y_taps + [y_lab])
+            d.add(elm.Line().at((x_i, y_lo)).to((x_i, y_hi)))
+            pt = (x_i, y_lab)
+            d.add(elm.Dot().at(pt).label(in_label or net, loc="left"))
+            nets[net] = pt
 
     title_pt = (ox, y_vdd + 0.8)
     if titre:
