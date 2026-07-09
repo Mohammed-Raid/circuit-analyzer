@@ -146,9 +146,14 @@ def _porte_transistors(d, result, ci, origin, titre, in_label, out_label):
         y0 = oy + jeu + 1.5 + (len(refs_haut) - 1) * _PAS_Y
         haut = _colonne(refs_haut, y0, elm.PFet)
     y_vdd = max(e.source[1] for _r, e in haut) + 1.2
-    for _r, e in haut:
-        d.add(elm.Line().at(e.source).to((e.source[0], y_vdd)))
-        d.add(elm.Line().at(e.drain).to((e.drain[0], oy)))
+    if genre_haut in ("parallele", "feuille"):
+        for _r, e in haut:                       # chaque branche : source→VDD, drain→OUT
+            d.add(elm.Line().at(e.source).to((e.source[0], y_vdd)))
+            d.add(elm.Line().at(e.drain).to((e.drain[0], oy)))
+    else:                                        # pile série : SEULS les 2 bouts touchent
+        e_som, e_bas = haut[0][1], haut[-1][1]   # étages internes reliés par _colonne
+        d.add(elm.Line().at(e_som.source).to((e_som.source[0], y_vdd)))
+        d.add(elm.Line().at(e_bas.drain).to((e_bas.drain[0], oy)))
     xs = [e.drain[0] for _r, e in haut]
     d.add(elm.Line().at((min(xs), y_vdd)).to((max(xs), y_vdd)))
     d.add(elm.Dot().at(((min(xs) + max(xs)) / 2.0, y_vdd))
@@ -161,9 +166,14 @@ def _porte_transistors(d, result, ci, origin, titre, in_label, out_label):
     else:                                   # série (NAND) : pile verticale
         bas = _colonne(refs_bas, oy - jeu, elm.NFet)
     y_gnd = min(e.source[1] for _r, e in bas) - 1.2
-    for _r, e in bas:
-        d.add(elm.Line().at(e.source).to((e.source[0], y_gnd)))
-        d.add(elm.Line().at(e.drain).to((e.drain[0], oy)))
+    if genre_bas in ("parallele", "feuille"):
+        for _r, e in bas:                        # chaque branche : drain→OUT, source→GND
+            d.add(elm.Line().at(e.source).to((e.source[0], y_gnd)))
+            d.add(elm.Line().at(e.drain).to((e.drain[0], oy)))
+    else:                                        # pile série : SEULS les 2 bouts touchent
+        e_som, e_bas = bas[0][1], bas[-1][1]     # étages internes reliés par _colonne
+        d.add(elm.Line().at(e_som.drain).to((e_som.drain[0], oy)))
+        d.add(elm.Line().at(e_bas.source).to((e_bas.source[0], y_gnd)))
     xs_b = [e.drain[0] for _r, e in bas]
     d.add(elm.Line().at((min(xs_b), y_gnd)).to((max(xs_b), y_gnd)))
     d.add(elm.Ground().at(((min(xs_b) + max(xs_b)) / 2.0, y_gnd)))

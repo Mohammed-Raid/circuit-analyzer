@@ -68,6 +68,52 @@ def test_detaille_chaque_m_a_sa_position():
         assert cle in res
 
 
+NOR2 = {
+    "circuit_type": "Porte NOR (CMOS)",
+    "components": ["M1", "M2", "M3", "M4"],
+    "nodes": {"entrees": ["A", "B"], "sortie": "OUT", "vdd": "VDD", "gnd": "GND"},
+    "io": {"ins": ["A", "B"], "out": "OUT"},
+    "polarites": {"M1": "P", "M2": "P", "M3": "N", "M4": "N"},
+    "arbres": {"pull_up": ("serie", [("feuille", "M1"), ("feuille", "M2")]),
+               "pull_down": ("parallele", [("feuille", "M3"), ("feuille", "M4")])},
+    "fonction": ("NOR", ["A", "B"]),
+    "expression": "OUT = NOR(A, B)",
+}
+
+
+def _n_verticals_touchant_oy(d, ox, oy, cote):
+    """Compte les fils VERTICAUX à x=ox qui touchent le niveau OUT (oy)
+    depuis le bas (pull-down) ou le haut (pull-up). Sur une pile SÉRIE,
+    un SEUL transistor (le bout) doit toucher oy ; >1 = nœud interne shunté
+    vers OUT (court-circuit invisible car les fils fusionnent à x=ox)."""
+    import schemdraw.elements as elm
+    n = 0
+    for e in d.elements:
+        if not isinstance(e, elm.Line):
+            continue
+        (x1, y1), (x2, y2) = tuple(e.start), tuple(e.end)
+        if round(x1, 2) != round(ox, 2) or round(x2, 2) != round(ox, 2):
+            continue
+        lo, hi = sorted((round(y1, 2), round(y2, 2)))
+        if cote == "bas" and hi == round(oy, 2) and lo < round(oy, 2):
+            n += 1
+        if cote == "haut" and lo == round(oy, 2) and hi > round(oy, 2):
+            n += 1
+    return n
+
+
+def test_detaille_pile_serie_pas_de_court_circuit_out_rail():
+    # Bug électrique Critical : sur une pile série, chaque nœud interne était
+    # câblé vers OUT ET vers le rail → OUT court-circuité au rail. Invisible à
+    # l'œil (fils colinéaires à x=ox). Invariant : UN SEUL transistor de la
+    # pile touche le niveau OUT.
+    ox, oy = 3, 0
+    d_nand, _ = _dessiner(NAND2, detaille=True)    # pull-down NMOS série
+    assert _n_verticals_touchant_oy(d_nand, ox, oy, "bas") == 1
+    d_nor, _ = _dessiner(NOR2, detaille=True)       # pull-up PMOS série
+    assert _n_verticals_touchant_oy(d_nor, ox, oy, "haut") == 1
+
+
 def test_detaille_fets_grille_a_gauche():
     # Piège NFet/PFet schemdraw 0.22 : grille à DROITE par défaut → .reverse().
     # Garde : les x des grilles sont STRICTEMENT à gauche des x drain/source.
