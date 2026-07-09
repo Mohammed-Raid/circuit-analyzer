@@ -6,6 +6,7 @@ import glob
 import pytest
 
 from circuit_analyzer import detecteur, logique
+from circuit_analyzer.detecteur import analyser
 from circuit_analyzer.composant import Composant, construire_graphe
 from circuit_analyzer.xml import lire_xml
 
@@ -92,3 +93,35 @@ def test_detection_corpus_logic(fichier, types, fonctions):
     matches = logique.detecter_portes_cmos(graphe)
     assert sorted(m["circuit_type"] for m in matches) == sorted(types)
     assert sorted(m["fonction"] for m in matches) == sorted(fonctions)
+
+
+# ── Routage io : chaîne et DAG de portes ─────────────────────────────────────
+
+def _matches_fichier(fichier):
+    res = analyser(construire_graphe(lire_xml(f"circuits_industriels/{fichier}")))
+    return [c for c in res if "(CMOS)" in c["circuit_type"]], res
+
+
+def test_io_montage_lit_le_champ_io_en_priorite():
+    import gui.circuit_viewer as cv
+    match = {"circuit_type": "Porte NAND (CMOS)",
+             "io": {"ins": ["A", "B"], "out": "OUT"}, "nodes": {}}
+    assert cv._io_montage(match, {}) == (["A", "B"], "OUT")
+
+
+def test_chaine_nand_not_ordonnee():
+    import gui.circuit_viewer as cv
+    matches, _res = _matches_fichier("logic_chaine_and.xml")
+    ordre = cv._ordonner_montages_flux(matches, {})
+    assert ordre is not None
+    assert [m["circuit_type"] for m in ordre] == \
+        ["Porte NAND (CMOS)", "Inverseur (CMOS)"]
+
+
+def test_dag_deux_not_vers_nand_en_couches():
+    import gui.circuit_viewer as cv
+    matches, _res = _matches_fichier("logic_dag_2vers1.xml")
+    couches = cv._layers_montages_flux(matches, {})
+    assert couches is not None
+    assert [sorted(m["circuit_type"] for m in c) for c in couches] == \
+        [["Inverseur (CMOS)", "Inverseur (CMOS)"], ["Porte NAND (CMOS)"]]

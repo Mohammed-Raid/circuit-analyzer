@@ -1889,10 +1889,18 @@ def _darlington_sortie(q2_pins):
 def _io_montage(match, ci):
     """@brief Nets d'entrée/sortie d'un montage, selon son type.
 
+    PRIORITÉ au contrat embarqué `match['io']` ({'ins': [...], 'out': net}) :
+    les nouvelles familles (portes CMOS...) transportent leur propre routage
+    — plus AUCUNE extension de whitelist par circuit_type (décision revue
+    d'architecture 2026-07-08). Familles historiques sans `io` : inchangées.
+
     AOP (et montages historiques) : (_in_nets, nodes[-1]) — inchangé. Transistor
     chaînable : via broches. Transistor terminal : out_net = None (jamais relié
     en aval). @return (in_nets: list[str], out_net: str | None).
     """
+    io = match.get("io")
+    if io is not None:
+        return list(io.get("ins") or []), io.get("out")
     ct = match.get("circuit_type", "")
     if ct in _MONTAGES_TRANSISTOR_CHAINABLES:
         return _io_transistor(match, ci)
