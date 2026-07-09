@@ -50,3 +50,45 @@ def test_non_regression_types_detectes_corpus(fichier):
     res = detecteur.analyser(construire_graphe(lire_xml(fichier)))
     for c in res:
         assert "(CMOS)" not in c["circuit_type"]
+
+
+# ── Détection sur le corpus logic_* (fichiers réels, round-trip XML) ─────────
+#
+# ATTENTION round-trip (vérifié à la main, cf. tools/gen_logic_corpus.py) :
+# le format BoardSCH (generer_xml/lire_xml) n'a AUCUN champ pour stocker le
+# nom d'un net SIGNAL — seuls les rails VDD/GND survivent verbatim (portés
+# par un symbole dédié, cf. xml.py::nom_net). Les nets d'entrée/sortie
+# "A", "B", "OUT", "N1"... sont donc renommés en NET1, NET2... par lire_xml,
+# de façon DÉTERMINISTE (ordre d'insertion des composants/broches — la
+# régénération du corpus produit des fichiers strictement identiques).
+# Confirmé pré-existant et non spécifique à ce corpus : le même renommage
+# s'observe sur circuits_industriels/tr_mosfet_commutation.xml (fixture
+# antérieure, sans rapport avec cette tâche) — ce n'est donc pas un bug du
+# générateur mais une propriété structurelle du format XML lui-même.
+# Les valeurs ci-dessous sont les NET# réels observés après round-trip.
+_ATTENDUS = [
+    ("logic_cmos_not.xml", ["Inverseur (CMOS)"], [("NOT", ["NET1"])]),
+    ("logic_cmos_nand2.xml", ["Porte NAND (CMOS)"], [("NAND", ["NET1", "NET3"])]),
+    ("logic_cmos_nand3.xml", ["Porte NAND (CMOS)"], [("NAND", ["NET1", "NET3", "NET4"])]),
+    ("logic_cmos_nor2.xml", ["Porte NOR (CMOS)"], [("NOR", ["NET1", "NET3"])]),
+    ("logic_chaine_and.xml",
+     ["Porte NAND (CMOS)", "Inverseur (CMOS)"],
+     [("NAND", ["NET1", "NET3"]), ("NOT", ["NET2"])]),
+    ("logic_dag_2vers1.xml",
+     ["Inverseur (CMOS)", "Inverseur (CMOS)", "Porte NAND (CMOS)"],
+     [("NOT", ["NET1"]), ("NOT", ["NET3"]), ("NAND", ["NET2", "NET4"])]),
+    ("logic_latch_sr.xml",
+     ["Porte NOR (CMOS)", "Porte NOR (CMOS)"],
+     [("NOR", ["NET4", "NET5"]), ("NOR", ["NET1", "NET3"])]),
+    ("logic_not_r_grille.xml", ["Inverseur (CMOS)"], [("NOT", ["NET1"])]),
+    ("logic_suiveur_mos.xml", [], []),
+    ("logic_non_dual.xml", [], []),
+]
+
+
+@pytest.mark.parametrize("fichier,types,fonctions", _ATTENDUS)
+def test_detection_corpus_logic(fichier, types, fonctions):
+    graphe = construire_graphe(lire_xml(f"circuits_industriels/{fichier}"))
+    matches = logique.detecter_portes_cmos(graphe)
+    assert sorted(m["circuit_type"] for m in matches) == sorted(types)
+    assert sorted(m["fonction"] for m in matches) == sorted(fonctions)
