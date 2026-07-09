@@ -26,6 +26,7 @@ from circuit_analyzer.satellites import rattacher_satellites
 from circuit_analyzer.ilots import detecter_ilots
 from circuit_analyzer import impedance
 from circuit_analyzer.impedance import expandre_composites
+from circuit_analyzer.logique import detecter_portes_cmos
 
 # Alias français (= les nouvelles fonctions enrichies par le fichier de config)
 est_masse        = is_ground_net
@@ -1558,6 +1559,7 @@ def _enrichir(match: dict, graphe) -> dict:
 # Ces détecteurs sont appelés EN PREMIER pour éviter qu'un composant
 # d'un circuit complexe soit "volé" par un circuit simple.
 _DETECTEURS_COMPLEXES = [
+    detecter_portes_cmos,                  # portes CMOS AVANT tout détecteur M (anti-vol)
     detecter_amplificateur_differentiel,   # 4 résistances en pont
     detecter_amplificateur_sommateur,      # plusieurs R d'entrée sur IN-
     detecter_integrateur,                  # R entrée + C feedback
@@ -1605,6 +1607,7 @@ NOMS_CIRCUITS = [
     "MOSFET en commutation", "MOSFET haute-tension (côté haut)",
     "Collecteur commun (suiveur d'émetteur)", "Étage push-pull",
     "Paire Darlington",
+    "Inverseur (CMOS)", "Porte NAND (CMOS)", "Porte NOR (CMOS)",
     "Pont redresseur (Graetz)", "Diode de roue libre",
     "Diode de protection ESD", "Redresseur simple alternance", "Détecteur de crête",
     "Impédance Z",

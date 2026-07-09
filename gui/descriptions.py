@@ -68,6 +68,15 @@ DESCRIPTIONS_CIRCUITS = {
     "Paire Darlington":
         "Deux BJT en cascade (émetteur de Q1 sur la base de Q2) : gain en "
         "courant composé, se comporte comme un seul transistor.",
+    "Inverseur (CMOS)":
+        "Porte logique NOT. Un NMOS (source à GND) et un PMOS (source au "
+        "rail) partagent grille d'entrée et drain de sortie.",
+    "Porte NAND (CMOS)":
+        "Porte logique NAND. Réseau pull-down en série (NMOS), réseau "
+        "pull-up en parallèle (PMOS) : structure complémentaire.",
+    "Porte NOR (CMOS)":
+        "Porte logique NOR. Réseau pull-down en parallèle (NMOS), réseau "
+        "pull-up en série (PMOS) : structure complémentaire.",
     "Pont redresseur (Graetz)":
         "Redresse les deux alternances du secteur. Cycle fermé de "
         "4 diodes.",
