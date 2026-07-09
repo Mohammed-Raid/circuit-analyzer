@@ -58,3 +58,29 @@ def test_drawers_enregistres_pour_les_trois_types():
 def test_expression_affichee_en_en_tete():
     # Généralisation _texte_gain : un montage porteur d'expression l'affiche.
     assert cv._texte_gain(NAND2, None) == "OUT = NAND(A, B)"
+
+
+def test_detaille_chaque_m_a_sa_position():
+    d, res = _dessiner(NAND2, detaille=True)
+    positions = [d._comp_positions[r] for r in NAND2["components"]]
+    assert len(set(positions)) == 4, "en vue détaillée chaque M a SA position"
+    for cle in ("in", "out", "title", "nets", "absorbed_refs"):
+        assert cle in res
+
+
+def test_detaille_fets_grille_a_gauche():
+    # Piège NFet/PFet schemdraw 0.22 : grille à DROITE par défaut → .reverse().
+    # Garde : les x des grilles sont STRICTEMENT à gauche des x drain/source.
+    import schemdraw
+    with schemdraw.Drawing(show=False) as d:
+        d._comp_positions = {}
+        d._z_hitboxes = []
+        d._mode_detaille = True
+        from gui import logic_schematic
+        elems_avant = len(d.elements)
+        logic_schematic.dessiner_porte(d, NAND2, CI)
+        fets = [e for e in d.elements[elems_avant:]
+                if hasattr(e, "gate") and hasattr(e, "drain")]
+    assert len(fets) == 4
+    for f in fets:
+        assert f.gate[0] < f.drain[0] and f.gate[0] < f.source[0]
