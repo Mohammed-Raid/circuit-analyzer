@@ -377,6 +377,8 @@ def _texte_gain(result, graph):
     @return str|None « Av = −Zf/Zin = -20 » (résistif) / « … (|Av|≈3.2 à 1000 Hz) »
             (réactif) / « Av = −Zf/Zin » si non évaluable, ou None si pas de gain.
     """
+    if result and result.get("expression"):
+        return result["expression"]
     g = result.get("gain")
     if not g:
         return None
@@ -4932,6 +4934,15 @@ def _draw_darlington(d, result, ci, origin=(3, 0), titre=True,
             "absorbed_refs": absorbed_refs}
 
 
+def _draw_porte_cmos(d, result, ci, origin=(3, 0), titre=True,
+                     in_label=None, out_label=None):
+    """@brief Délégation au module dédié (import LAZY : pas de cycle)."""
+    from gui import logic_schematic
+    return logic_schematic.dessiner_porte(d, result, ci, origin=origin,
+                                          titre=titre, in_label=in_label,
+                                          out_label=out_label)
+
+
 # ── Pattern registry ──────────────────────────────────────────────────────────
 
 ## @brief Registre {nom de circuit -> fonction de dessin schemdraw}.
@@ -4962,4 +4973,7 @@ _DRAWERS = {
     "Collecteur commun (suiveur d'émetteur)": _draw_suiveur_emetteur,
     "Étage push-pull":                   _draw_push_pull,
     "Paire Darlington":                  _draw_darlington,
+    "Inverseur (CMOS)":                  _draw_porte_cmos,
+    "Porte NAND (CMOS)":                 _draw_porte_cmos,
+    "Porte NOR (CMOS)":                  _draw_porte_cmos,
 }
