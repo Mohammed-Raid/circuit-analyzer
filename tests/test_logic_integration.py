@@ -125,3 +125,20 @@ def test_dag_deux_not_vers_nand_en_couches():
     assert couches is not None
     assert [sorted(m["circuit_type"] for m in c) for c in couches] == \
         [["Inverseur (CMOS)", "Inverseur (CMOS)"], ["Porte NAND (CMOS)"]]
+
+
+# ── Rapport et onglet (la forme nouvelle du match ne casse aucun consommateur) ─
+#
+# Point d'entree reellement appele par gui/tab_analyze.py (cf. _coeur_analyse) :
+# `circuit_analyzer.rapport.generate(results, input_file, total_components,
+# all_refs=...)`, alias anglais de `generer_rapport` -- pas la signature
+# esquissee dans le brief.
+
+@pytest.mark.parametrize("fichier", ["logic_cmos_nand2.xml", "logic_latch_sr.xml"])
+def test_rapport_se_genere_avec_des_portes(fichier):
+    from circuit_analyzer.rapport import generate
+    comps = lire_xml(f"circuits_industriels/{fichier}")
+    graphe = construire_graphe(comps)
+    res = analyser(graphe)
+    texte = generate(res, fichier, len(comps), all_refs=[c.ref for c in comps])
+    assert "CMOS" in texte

@@ -472,3 +472,33 @@ def test_clic_puce_apres_toggle_survit_au_remontage_de_figure(ctk_root):
     assert len(anneaux) == 1
 
     popup.destroy()
+
+
+# ── Portes CMOS : mêmes contrats de fenêtre que le reste du corpus ───────────
+
+def test_fenetre_ilot_porte_nand_toggle_et_expression(ctk_root):
+    """La fenêtre îlot d'une porte : expression en en-tête (comme le gain),
+    toggle simplifié/détaillé sans exception, puces M cliquables."""
+    popup = _ouvrir(ctk_root, "logic_cmos_nand2.xml")
+    t = popup._etat_test
+    assert t["etat"]["fig"] is not None
+    refs = [p["texte"] for p in t["etat"]["puces"]]
+    assert any(r.startswith("M") for r in refs)
+    assert all(p["dispo"] for p in t["etat"]["puces"]), "aucune puce grisée"
+    t["toggle"]()
+    ctk_root.update()
+    assert t["mode"]["detaille"] is True
+    assert all(p["dispo"] for p in t["etat"]["puces"]), "détaillé : chaque M dessiné"
+    popup.destroy()
+
+
+def test_fenetre_ilot_latch_sr_ouvre_sans_exception(ctk_root):
+    """Rendu de repli des topologies bouclées (spec § 2) : FIGÉ — la fenêtre
+    s'ouvre, une figure existe, le toggle ne lève pas."""
+    popup = _ouvrir(ctk_root, "logic_latch_sr.xml")
+    t = popup._etat_test
+    assert t["etat"]["fig"] is not None
+    t["toggle"]()
+    ctk_root.update()
+    assert t["etat"]["fig"] is not None
+    popup.destroy()

@@ -19,7 +19,8 @@ Ordre d'appel important (voir la fonction principale `analyser`) :
 
 import networkx as nx
 from circuit_analyzer.patterns.base import (
-    is_ground_net, is_power_net, is_protective_earth_net, classify_net
+    is_ground_net, is_power_net, is_protective_earth_net, classify_net,
+    nodes_aplatis,
 )
 from circuit_analyzer.value_parser import parse_valeur
 from circuit_analyzer.satellites import rattacher_satellites
@@ -1450,7 +1451,10 @@ def _enrichir(match: dict, graphe) -> dict:
     confidence = 0.80
 
     # ── Vérification PE/CHASSIS (ne doit pas être traité comme GND) ──────────
-    for n in nodes:
+    # nodes_aplatis : les portes CMOS stockent 'nodes' en DICT (pas en liste,
+    # cf. circuit_analyzer.logique) -- itérer nodes directement parcourrait
+    # ses clés ('entrees', 'sortie'...) au lieu des noms de nets.
+    for n in nodes_aplatis(nodes):
         if n and is_protective_earth_net(n):
             warnings.append(
                 f"Nœud PE/CHASSIS '{n}' détecté — ne pas confondre avec GND"

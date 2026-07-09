@@ -17,7 +17,7 @@ Format d'un satellite :
      'reason': 'R 10k entre NET_BASE et GND'}
 """
 from circuit_analyzer.patterns.base import (
-    is_ground_net, is_power_net, is_protective_earth_net,
+    is_ground_net, is_power_net, is_protective_earth_net, nodes_aplatis,
 )
 from circuit_analyzer.value_parser import (
     parse_valeur, classifier_resistance, classifier_condensateur,
@@ -44,7 +44,7 @@ def _noeuds_internes(match: dict) -> set:
     @param match Match d'un circuit détecté (clé 'nodes').
     @return set Ensemble des nœuds signal du circuit.
     """
-    return {n for n in match.get('nodes', []) if n and not _est_rail(n)}
+    return {n for n in nodes_aplatis(match.get('nodes')) if n and not _est_rail(n)}
 
 
 def _rails_alim(match: dict) -> set:
@@ -53,7 +53,7 @@ def _rails_alim(match: dict) -> set:
     @param match Match d'un circuit détecté (clé 'nodes').
     @return set Ensemble des rails d'alimentation du circuit.
     """
-    return {n for n in match.get('nodes', []) if n and is_power_net(n)}
+    return {n for n in nodes_aplatis(match.get('nodes')) if n and is_power_net(n)}
 
 
 def _evaluer(comp, internes: set, rails: set):

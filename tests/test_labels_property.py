@@ -33,7 +33,12 @@ def _circuit_files():
     ci = ROOT / "circuits_industriels"
     return (sorted(ci.glob("ilot_*.xml"))
             + sorted(ci.glob("tr_*.xml"))
-            + sorted(ci.glob("aop_*.xml")))
+            + sorted(ci.glob("aop_*.xml"))
+            # Portes CMOS -- logic_non_dual est EXCLU des contrats visuels
+            # (fichier de rejet : ilot de MOSFET non matches, reserve aux
+            # tests unitaires).
+            + sorted(f for f in ci.glob("logic_*.xml")
+                     if "non_dual" not in f.name))
 
 
 def _figs_for_file(path, detaille):

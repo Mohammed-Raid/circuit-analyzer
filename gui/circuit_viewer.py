@@ -1844,6 +1844,15 @@ _MONTAGES_TRANSISTOR_TERMINAUX = {
     "MOSFET en commutation",
     "MOSFET haute-tension (côté haut)",
 }
+# Portes CMOS : mêmes contrats de chaînage que les montages transistor
+# (dispatch direct via _DRAWERS dans _dessiner_montage_a) -- sinon la chaîne/
+# le DAG de portes (logic_chaine_and.xml, logic_dag_2vers1.xml) retombe sur
+# _draw_follower (drawer AOP générique) et aucune ref M n'est enregistrée.
+_MONTAGES_PORTES_CMOS = {
+    "Inverseur (CMOS)",
+    "Porte NAND (CMOS)",
+    "Porte NOR (CMOS)",
+}
 
 
 def _io_transistor(match, ci):
@@ -3525,11 +3534,18 @@ def _dessiner_montage_a(d, match, ci, origin, in_label, out_label):
     imp = match.get("impedances") or {}
     ct = match.get("circuit_type", "")
     if ct in _DRAWERS and (ct in _MONTAGES_TRANSISTOR_CHAINABLES
-                           or ct in _MONTAGES_TRANSISTOR_TERMINAUX):
+                           or ct in _MONTAGES_TRANSISTOR_TERMINAUX
+                           or ct in _MONTAGES_PORTES_CMOS):
         res = _DRAWERS[ct](d, match, ci, origin=origin, titre=False,
                            in_label=in_label, out_label=out_label)
         ins, _out = _io_montage(match, ci)
-        res["ins"] = {n: res["in"] for n in ins}
+        # Les portes CMOS exposent un point réel par net (res["nets"], posé
+        # par gui.logic_schematic._porte_symbole/_porte_transistors) -- une
+        # porte à N entrées (NAND/NOR) ne doit pas les collapser toutes sur
+        # l'unique point res["in"] (première entrée) comme les montages
+        # transistor mono-entrée.
+        nets = res.get("nets") or {}
+        res["ins"] = {n: nets.get(n, res["in"]) for n in ins}
         return res
 
     # Montages ancrés "center" (à router avant les branches Zin/Zg) :

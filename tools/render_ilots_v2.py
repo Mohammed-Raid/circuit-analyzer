@@ -45,6 +45,10 @@ def _xml_files() -> list[Path]:
         list(ci.glob("ilot_*.xml"))
         + list(ci.glob("tr_*.xml"))
         + list(ci.glob("aop_*.xml"))
+        # Portes CMOS -- logic_non_dual est EXCLU des contrats visuels
+        # (fichier de rejet : ilot de MOSFET non matches, reserve aux
+        # tests unitaires).
+        + [f for f in ci.glob("logic_*.xml") if "non_dual" not in f.name]
     )
 
 

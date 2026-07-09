@@ -148,6 +148,31 @@ is_gnd   = is_ground_net
 is_power = is_power_net
 
 
+def nodes_aplatis(nodes) -> list:
+    """@brief Liste plate de noms de nets depuis match['nodes'].
+
+    Les familles historiques stockent 'nodes' en LISTE de noms de nets. Les
+    portes CMOS (cf. circuit_analyzer.logique) le stockent en DICT
+    ({'entrees': [...], 'sortie', 'vdd', 'gnd'}) -- itérer un dict directement
+    (`for n in nodes`) parcourt ses CLÉS ('entrees', 'sortie'...), pas les noms
+    de nets : un no-op silencieux pour tout consommateur générique (avertissement
+    PE/CHASSIS, rattachement de satellites...). Cette fonction aplatit les deux
+    formes en une liste homogène de noms de nets.
+
+    @param nodes list[str] ou dict (forme porte CMOS), ou None.
+    @return list[str] Noms de nets (valeurs de dict aplaties si besoin).
+    """
+    if isinstance(nodes, dict):
+        plats = []
+        for v in nodes.values():
+            if isinstance(v, (list, tuple, set)):
+                plats.extend(v)
+            elif v:
+                plats.append(v)
+        return plats
+    return list(nodes or [])
+
+
 # =============================================================================
 # CLASSE DE BASE POUR LES PATTERNS PERSONNALISÉS
 # =============================================================================
