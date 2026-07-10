@@ -4,6 +4,8 @@
 """
 from collections import Counter
 
+from circuit_analyzer.patterns.base import nodes_aplatis
+
 
 # NB : sortie limitée aux caractères cp1252 (console Windows) — pas de
 # symboles Unicode (fleches, triangles d'avertissement, traits pleins).
@@ -60,7 +62,7 @@ def generer_rapport(resultats, fichier: str,
         lignes.append(f'[{i}] {ct}')
         lignes.append(f'    Confiance    : {niveau} ({conf_pct}%) — {cat}')
         lignes.append(f'    Composants   : {", ".join(match["components"])}')
-        lignes.append(f'    Nœuds        : {" -> ".join(n for n in match["nodes"] if n)}')
+        lignes.append(f'    Nœuds        : {" -> ".join(n for n in nodes_aplatis(match["nodes"]) if n)}')
         if surs:
             lignes.append('    Satellites sûrs     : ' + ' ; '.join(
                 f"{s['ref']} ({s['role']} - {s['reason']})" for s in surs))

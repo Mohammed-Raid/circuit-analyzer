@@ -142,3 +142,20 @@ def test_rapport_se_genere_avec_des_portes(fichier):
     res = analyser(graphe)
     texte = generate(res, fichier, len(comps), all_refs=[c.ref for c in comps])
     assert "CMOS" in texte
+
+
+def test_rapport_noeuds_montre_les_vrais_nets_pas_les_cles_du_dict():
+    # Bug integration (revue finale) : match['nodes'] est un DICT pour les portes
+    # CMOS ({entrees, sortie, vdd, gnd}). Itere directement, il rend ses CLES au
+    # lieu des noms de nets -> "Noeuds : entrees -> sortie -> vdd -> gnd" (vue
+    # generique interdite par le boss). nodes_aplatis doit rendre les vrais nets.
+    from circuit_analyzer.rapport import generate
+    comps = lire_xml("circuits_industriels/logic_cmos_nand2.xml")
+    graphe = construire_graphe(comps)
+    res = analyser(graphe)
+    texte = generate(res, "logic_cmos_nand2.xml", len(comps),
+                     all_refs=[c.ref for c in comps])
+    ligne = next(l for l in texte.splitlines() if "Nœuds" in l)
+    assert "entrees" not in ligne and "sortie" not in ligne, \
+        f"le rapport affiche les cles du dict au lieu des nets : {ligne!r}"
+    assert "VDD" in ligne and "GND" in ligne, f"nets manquants : {ligne!r}"

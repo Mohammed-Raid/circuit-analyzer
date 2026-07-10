@@ -873,7 +873,10 @@ class _CircuitCard(ctk.CTkFrame):
                          font=ui_kit.font("caption"),
                          text_color=MUTED, width=75,
                          anchor="w").pack(side="left")
-            nodes = [n for n in result["nodes"] if n]
+            # Import local volontaire : patterns.base tire networkx -- le hisser
+            # au module regresserait le demarrage GUI (cf. _coeur_analyse lazy).
+            from circuit_analyzer.patterns.base import nodes_aplatis
+            nodes = [n for n in nodes_aplatis(result["nodes"]) if n]
             nodes_text = " → ".join(nodes[:3])
             ctk.CTkLabel(n_row, text=nodes_text,
                          font=ctk.CTkFont("Consolas", 9),
