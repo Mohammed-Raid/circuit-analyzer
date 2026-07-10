@@ -68,3 +68,13 @@ def test_555_du_corpus_identifie_et_pas_daop():
     assert "2" in u.pins                      # multi-unité/non-alias : intact
     res = analyser(construire_graphe(comps))
     assert not any("(AOP)" in m["circuit_type"] for m in res)
+
+
+@pytest.mark.parametrize("fichier", FICHIERS)
+def test_aucun_faux_warning_broches_critiques(fichier):
+    # Critical revue Task 4 : le check IN+/IN-/OUT tournait AVANT l'aliasing,
+    # sur les cles NUMERIQUES des formes Puce -> "broches critiques non
+    # connectees" a tort sur 7/8 fichiers. Le check ne s'applique qu'aux
+    # formes a plan nomme (AOP historique).
+    warnings = lire_xml(fichier).warnings
+    assert not any("broches critiques" in w for w in warnings), warnings

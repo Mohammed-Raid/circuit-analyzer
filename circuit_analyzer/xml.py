@@ -824,6 +824,12 @@ def generer_xml(composants, resultats=None, results=None) -> str:
         if comp.type == "U" and comp.pins and all(k.isdigit() for k in comp.pins):
             n = next((t for t in _TAILLES_PUCE
                       if t >= max(int(k) for k in comp.pins)), None)
+            # PLAFOND : au-delà de 16 broches (max _TAILLES_PUCE), n=None ->
+            # retombée forme AOP = broches numérotées perdues (comportement
+            # pré-Puce). Couvre tout le catalogue v1 (max 16) ; pour un DIP
+            # 20/28/40, ajouter la taille à _TAILLES_PUCE suffit. Les boîtiers
+            # 3 broches (7805/LM317) arrondissent à Puce4 (4e broche en l'air,
+            # cosmétique — net singleton, aucune collision).
             if n is not None:
                 spec = (f"Puce{n}", {k: k for k in comp.pins})
         if spec is None:
@@ -1251,11 +1257,14 @@ def lire_xml(chemin: str) -> list:
             for std in ('IN+', 'IN-', 'OUT', 'V+', 'V-'):
                 broches.setdefault(std, 'NC')
 
-        # Vérifier les broches critiques manquantes
+        # Vérifier les broches critiques manquantes — formes à plan NOMMÉ
+        # uniquement : une puce numérotée (PuceN, plan vide) n'a pas encore
+        # ses broches fonctionnelles ici (l'aliasing catalogue tourne APRÈS
+        # la boucle), le check IN+/IN-/OUT tirerait à faux sur chaque puce.
         manquantes = [
             p for p in _BROCHES_CRITIQUES.get(type_prefix, [])
             if broches.get(p, 'NC') == 'NC'
-        ]
+        ] if plan else []
         if manquantes:
             composants.warnings.append(
                 f"{ref} ({nom}): broches critiques non connectées : {', '.join(manquantes)}"
