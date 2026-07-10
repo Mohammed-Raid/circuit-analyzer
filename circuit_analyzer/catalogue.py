@@ -143,3 +143,19 @@ def identifier(type_, value):
         if re.fullmatch(rf"([A-Z0-9]*[A-Z])?{suffixe}[A-Z]*", v):
             return entree
     return None
+
+
+def appliquer_catalogue(comps):
+    """@brief Passe post-lecture : renomme les broches numérotées des puces
+    mono-unité identifiées (alias=True) vers leur rôle connu (741 -> AOP…).
+
+    Idempotente : une broche déjà fonctionnelle (clé absente du pinout
+    numéroté) est laissée telle quelle. Mutation en place ; renvoie comps.
+    """
+    for c in comps:
+        entree = identifier(getattr(c, "type", ""), getattr(c, "value", ""))
+        if not entree or not entree.get("alias") or not entree.get("broches"):
+            continue
+        broches = entree["broches"]
+        c.pins = {broches.get(num, num): net for num, net in c.pins.items()}
+    return comps

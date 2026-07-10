@@ -3,6 +3,7 @@
 import pytest
 
 from circuit_analyzer import catalogue
+from circuit_analyzer.composant import Composant
 
 
 @pytest.mark.parametrize("valeur,categorie", [
@@ -80,3 +81,30 @@ def test_suffixe_exige_prefixe_constructeur_ou_rien():
 def test_74hc_inconnu_ne_tombe_pas_dans_les_suffixes():
     # 74HC7805 est une ref logique inconnue -> repli 74HC, pas "Regulateur".
     assert catalogue.identifier("U", "74HC7805")["categorie"] == "Logique 74HC"
+
+
+def test_appliquer_catalogue_alias_741():
+    c = Composant(ref="U1", type="U", value="LM741",
+                  pins={"2": "NIN", "3": "GND", "6": "NOUT",
+                        "7": "VCC", "4": "VEE"})
+    catalogue.appliquer_catalogue([c])
+    assert c.pins == {"IN-": "NIN", "IN+": "GND", "OUT": "NOUT",
+                      "V+": "VCC", "V-": "VEE"}
+
+
+def test_appliquer_catalogue_ne_touche_pas_multi_unites_ni_inconnus():
+    c555 = Composant(ref="U2", type="U", value="NE555",
+                     pins={"2": "A", "3": "B"})
+    inconnu = Composant(ref="U3", type="U", value="XYZ",
+                        pins={"IN-": "A", "OUT": "B"})
+    catalogue.appliquer_catalogue([c555, inconnu])
+    assert c555.pins == {"2": "A", "3": "B"}          # multi-unité : intact
+    assert inconnu.pins == {"IN-": "A", "OUT": "B"}   # inconnu : intact
+
+
+def test_appliquer_catalogue_broche_deja_nommee_intacte():
+    # Fichier mixte : un 741 déjà saisi en broches fonctionnelles ne casse pas.
+    c = Composant(ref="U1", type="U", value="UA741",
+                  pins={"IN-": "A", "IN+": "B", "OUT": "C"})
+    catalogue.appliquer_catalogue([c])
+    assert c.pins == {"IN-": "A", "IN+": "B", "OUT": "C"}

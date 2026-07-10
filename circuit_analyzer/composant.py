@@ -376,10 +376,16 @@ def lire_netlist(chemin: str, bibliotheque: dict = None) -> list:
     """
     fmt = _detect_format(chemin)
     if fmt == 'spice':
-        return lire_spice(chemin, bibliotheque)
-    if fmt == 'kicad':
-        return lire_kicad_net(chemin, bibliotheque)
-    return _lire_netlist_texte(chemin, bibliotheque)
+        composants = lire_spice(chemin, bibliotheque)
+    elif fmt == 'kicad':
+        composants = lire_kicad_net(chemin, bibliotheque)
+    else:
+        composants = _lire_netlist_texte(chemin, bibliotheque)
+
+    from circuit_analyzer.catalogue import appliquer_catalogue
+    appliquer_catalogue(composants)
+
+    return composants
 
 
 def _lire_netlist_texte(chemin: str, bibliotheque: dict = None) -> list:

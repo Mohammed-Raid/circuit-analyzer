@@ -1202,6 +1202,9 @@ def lire_xml(chemin: str) -> list:
 
         composants.append(Component(ref=ref, type=type_prefix, pins=broches, value=elem['value']))
 
+    from circuit_analyzer.catalogue import appliquer_catalogue
+    appliquer_catalogue(composants)
+
     return composants
 
 
