@@ -2,7 +2,7 @@
 networkx>=3.0        # graphe du circuit
 customtkinter>=5.2   # interface graphique
 matplotlib>=3.8      # rendu des schémas (backend TkAgg)
-schemdraw>=0.18      # symboles électroniques
+schemdraw>=0.18,<0.23   # symboles électroniques — 0.23 vide ax.texts (casse ~30 tests rendu)
 Pillow>=10.0         # icônes de l'interface (gui/ui_kit.py, CTkImage)
 
 # ── Développement ────────────────────────────────────────────────────────────
