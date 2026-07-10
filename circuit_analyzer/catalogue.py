@@ -11,6 +11,7 @@ vers un rôle déjà connu de l'app (x741 -> AOP IN-/IN+/OUT ; régulateurs ->
 IN/GND/OUT). Les multi-unités (x458, LM393, 74HC00…) restent en fonctions de
 boîtier et passent par la boîte puce.
 """
+import functools
 import re
 
 
@@ -105,8 +106,13 @@ _EXACTS_D = {v: _e("Diode signal" if v == "1N4148" else "Diode redressement",
 _COULEURS_LED = {"ROUGE": "red", "VERT": "green", "BLEU": "blue"}
 
 
+@functools.lru_cache(maxsize=512)
 def identifier(type_, value):
     """@brief Entrée de catalogue d'un composant, ou None si inconnu.
+
+    Mémoïsée (revue Task 3) : appelée 11x par composant U par les détecteurs.
+    Les entrées renvoyées sont des dicts PARTAGÉS (déjà le cas pour les tables
+    module) — ne jamais les muter côté appelant.
 
     Priorité : exact > famille 74HC (précise, sinon repli — une valeur 74HCxx n'atteint jamais les suffixes) > suffixe libre.
     None = comportement actuel de l'app inchangé (compat totale).
