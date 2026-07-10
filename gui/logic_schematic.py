@@ -36,9 +36,14 @@ def _label_entree(in_label, net, n):
 
     None = standalone -> vrai nom de net. "" = fil interne de chaîne ->
     MASQUER (le `or net` historique le ressuscitait aux deux bouts du même
-    fil). Multi-entrées (n > 1) : toujours les vrais nets — un in_label
-    unique ('VIN') appliqué en masse étiquetterait deux nets distincts pareil.
+    fil). dict {net: label} = contrôle PAR NET (paire croisée : masquer la
+    seule entrée de feedback, garder S/R) — net absent -> vrai nom.
+    Multi-entrées (n > 1) : toujours les vrais nets — un in_label unique
+    ('VIN') appliqué en masse étiquetterait deux nets distincts pareil.
     """
+    if isinstance(in_label, dict):
+        v = in_label.get(net)
+        return net if v is None else v
     if n > 1:
         return net
     return net if in_label is None else in_label

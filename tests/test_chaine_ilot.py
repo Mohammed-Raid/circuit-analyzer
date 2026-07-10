@@ -943,3 +943,48 @@ def test_branched_couplage_complexe_affiche_boite_z():
     assert any("C01+(R01//L01)" in t for t in txts)
     assert any(set(hb[4]) == {"C01", "R01", "L01"}
                for hb in getattr(fig, "_z_hitboxes", []))
+
+
+# ── Paire croisée (latch SR) — audit D1 : « surtout latch sr » ──────────────
+
+def _latch_matches_ci():
+    comps = lire_xml("circuits_industriels/logic_latch_sr.xml")
+    res = analyser(construire_graphe(comps))
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    return [r for r in res if "CMOS" in r["circuit_type"]], ci
+
+
+def test_paire_croisee_reconnait_le_latch_sr():
+    matches, ci = _latch_matches_ci()
+    paire = cv._paire_croisee(matches, ci)
+    assert paire is not None
+    g1, g2 = paire
+    # sortie de chacune dans les entrees de l'autre (couplage croise)
+    i1, o1 = cv._io_montage(g1, ci)
+    i2, o2 = cv._io_montage(g2, ci)
+    assert o1 in i2 and o2 in i1
+    # ordre deterministe (net de sortie trie) : stable d'un rendu a l'autre
+    assert o1 <= o2
+
+
+def test_paire_croisee_rejette_une_chaine():
+    comps = lire_xml("circuits_industriels/logic_chaine_and.xml")
+    res = analyser(construire_graphe(comps))
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    matches = [r for r in res if "CMOS" in r["circuit_type"]]
+    assert cv._paire_croisee(matches, ci) is None
+
+
+def test_make_latch_fig_dessine_les_deux_portes():
+    # RED historique : le latch tombait dans l'echelle generique M1..M8
+    # (chaque NOR a une entree externe -> 2 sources -> profondeur 0 -> None).
+    matches, ci = _latch_matches_ci()
+    paire = cv._paire_croisee(matches, ci)
+    for detaille in (False, True):
+        fig = cv._make_latch_fig(paire, ci, matches=matches, detaille=detaille)
+        # les 8 MOSFET du latch sont cliquables (positions enregistrees)
+        for i in range(1, 9):
+            assert f"M{i}" in fig._comp_positions, f"M{i} absent ({detaille=})"
+        txts = [t.get_text() for ax in fig.axes for t in ax.texts]
+        assert sum("NOR(" in t for t in txts) == 2, \
+            f"les 2 expressions NOR doivent etre annotees : {txts}"

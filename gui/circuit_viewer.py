@@ -780,11 +780,15 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     _deux = (_reseau_deux_bornes_ilot(ilot, graph)
              if (principal is None and _sp is None and _pont is None
                  and _derive is None) else None)
-    _chaine = _branches = None
+    _chaine = _branches = _paire = None
     if (principal is None and _sp is None and _pont is None and _derive is None
             and _deux is None):
-        _chaine = _ordonner_montages_flux(_matches_for_island(ilot, results), comp_info)
-        if _chaine is None:                # pas linéaire -> essai DAG en couches (PID…)
+        # Paire croisée (latch SR) AVANT la chaîne : le layout par flux rejette
+        # ce motif (2 sources -> profondeur 0) -> échelle générique (audit D1).
+        _paire = _paire_croisee(_matches_for_island(ilot, results), comp_info)
+        if _paire is None:
+            _chaine = _ordonner_montages_flux(_matches_for_island(ilot, results), comp_info)
+        if _paire is None and _chaine is None:   # pas linéaire -> essai DAG en couches (PID…)
             _branches = _layers_montages_flux(_matches_for_island(ilot, results), comp_info)
     def construire_fig(detaille):
         """@brief Construit la figure du schéma selon la stratégie de rendu de
@@ -820,6 +824,10 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
             _arbre, _a, _b, _comps = _deux
             return impedance_schematic.dessiner_bloc(_arbre, _a, _b, _comps,
                                                      detaille=detaille)
+        if _paire is not None:
+            # Paire croisée (latch SR) : deux portes empilées, retours croisés.
+            return _make_latch_fig(_paire, comp_info,
+                                   matches=_matches_for_island(ilot, results), detaille=detaille)
         if _chaine is not None:
             # Îlot multi-AOP en chaîne : un seul grand schéma, étages reliés OUT->IN.
             return _make_chain_fig(_chaine, comp_info,
@@ -1688,6 +1696,96 @@ def _make_branched_fig(layers, comp_info, matches=None, detaille: bool = False):
     return fig
 
 
+def _draw_paire_croisee(d, paire, ci):
+    """@brief Deux portes empilées + contre-réactions croisées (latch SR).
+
+    Chaque porte est dessinée par SON drawer (vue Z ou détaillée selon
+    d._mode_detaille). Entrées de feedback masquées via in_label dict (le nom
+    du net est déjà porté par la sortie de l'autre porte) ; entrées externes
+    (S/R) et sorties (Q/Q̄) gardent leur vrai nom. Le croisement unique des
+    deux fils de retour est le « X » classique du latch — croisement
+    PERPENDICULAIRE assumé (cf. légende connexion).
+    """
+    g_haut, g_bas = paire
+    _ih, o_haut = _io_montage(g_haut, ci)
+    _ib, o_bas = _io_montage(g_bas, ci)
+    dy = 6.0 if getattr(d, "_mode_detaille", False) else 2.2
+    res_h = _dessiner_montage_a(d, g_haut, ci, (4.5, dy), {o_bas: ""}, None)
+    res_b = _dessiner_montage_a(d, g_bas, ci, (4.5, -dy), {o_haut: ""}, None)
+    _annoter_etage(d, res_h, g_haut)
+    # Porte basse : expression seule. Son titre serait dans la bande médiane
+    # (zone des retours croisés) et répéterait celui de la porte haute.
+    gain_b = _texte_gain(g_bas, None)
+    if gain_b:
+        out_b = res_b["out"]
+        d.add(elm.Label().at((out_b[0] + 1.4, out_b[1] - 0.85)).label(
+            gain_b, color=_GAIN_COLOR, fontsize=8))
+
+    # Canaux verticaux AU-DELÀ du texte des étiquettes d'entrée (~2 unités à
+    # gauche du dot) : à x_ins-1.0 ils barraient « NET1 »/« NET5 » (audit D1).
+    x_l = min(p[0] for r in (res_h, res_b) for p in r["ins"].values()) - 2.6
+    for res_src, res_dst, net, y_gap, x_gauche in (
+            (res_h, res_b, o_haut, +0.45, x_l),
+            (res_b, res_h, o_bas, -0.45, x_l - 0.6)):
+        out_pt = res_src["out"]
+        in_pt = res_dst["ins"][net]
+        # descente/montée VERTICALE depuis le dot de sortie (jamais vers la
+        # droite : le label du net y est posé et serait barré par le fil)
+        d.add(elm.Line().at(out_pt).to((out_pt[0], y_gap)))
+        d.add(elm.Line().at((out_pt[0], y_gap)).to((x_gauche, y_gap)))
+        d.add(elm.Line().at((x_gauche, y_gap)).to((x_gauche, in_pt[1])))
+        d.add(elm.Line().at((x_gauche, in_pt[1])).to(in_pt))
+
+
+def _make_latch_fig(paire, comp_info, matches=None, detaille: bool = False):
+    """@brief Figure d'une paire croisée (latch SR) : deux portes empilées,
+    retours croisés — à la place de l'échelle générique (audit D1).
+
+    @param paire (g_haut, g_bas) de _paire_croisee.
+    @return matplotlib.figure.Figure (porte fig._z_hitboxes).
+    """
+    fig = Figure(figsize=(8, 6))
+    ax = fig.add_subplot(111)
+    fig.patch.set_facecolor(SCH_BG)
+    ax.set_facecolor(SCH_BG)
+    ax.axis("off")
+    ax.set_aspect("equal")
+    fig._z_hitboxes = []
+    fig._comp_positions = {}
+    try:
+        with schemdraw.Drawing(canvas=ax, show=False) as d:
+            d.config(fontsize=12, inches_per_unit=0.5)
+            d._z_hitboxes = []
+            d._comp_positions = {}
+            d._mode_detaille = detaille
+            _draw_paire_croisee(d, paire, comp_info)
+            fig._z_hitboxes = list(d._z_hitboxes)
+            fig._comp_positions = dict(d._comp_positions)
+            try:
+                bb = d.get_bbox()
+                x0, x1 = bb.xmin - 1.5, bb.xmax + 1.8
+                y0, y1 = bb.ymin - 0.9, bb.ymax + 0.9
+                ax.set_xlim(x0, x1)
+                ax.set_ylim(y0, y1)
+                w, h = (x1 - x0), (y1 - y0)
+                if w > 0 and h > 0:
+                    scale = 0.45
+                    fig.set_size_inches(min(40.0, w * scale), min(20.0, h * scale))
+            except Exception:
+                _log.debug("ajustement de taille de figure ignoré", exc_info=True)
+    except Exception as e:
+        _log.warning("rendu du schéma échoué", exc_info=True)
+        ax.text(0.5, 0.5, f"Schéma non disponible\n{e}", ha="center", va="center",
+                transform=ax.transAxes, fontsize=12, color="#64748b")
+    ax.margins(0.04)
+    try:
+        fig.tight_layout(pad=0.4)
+    except Exception:
+        _log.debug("tight_layout ignoré", exc_info=True)
+    ajuster_labels(fig)
+    return fig
+
+
 def _make_island_fig(model, matches=None, detaille: bool = False):
     """@brief Construit un vrai rendu schematique d'un ilot.
 
@@ -2017,6 +2115,29 @@ def _layers_montages_flux(matches, ci=None):
     for m in stages:                       # ordre d'apparition préservé dans chaque couche
         couches[layer[id(m)]].append(m)
     return couches
+
+
+def _paire_croisee(matches, ci):
+    """@brief Deux portes CMOS bouclées l'une sur l'autre (latch SR), ou None.
+
+    Le layout par flux rejette ce motif : chaque porte a une entrée EXTERNE
+    (S/R) donc les deux sont « sources » en couche 0 -> profondeur 0 -> repli
+    échelle générique (audit D1). Reconnaissance : exactement 2 étages, la
+    sortie de chacun figure dans les entrées de l'autre.
+
+    @return (g_haut, g_bas) ordonnée par net de sortie (déterministe), ou None.
+    """
+    stages = [m for m in matches if not _est_couplage(m)]
+    if len(stages) != 2:
+        return None
+    if any(m.get("circuit_type") not in _MONTAGES_PORTES_CMOS for m in stages):
+        return None
+    (i1, o1), (i2, o2) = (_io_montage(m, ci) for m in stages)
+    if not o1 or not o2 or o1 == o2:
+        return None
+    if o1 not in (i2 or []) or o2 not in (i1 or []):
+        return None
+    return tuple(sorted(stages, key=lambda m: _io_montage(m, ci)[1]))
 
 
 _NC_NAMES = {"NC", "N/C", "NRELIEE", ""}
