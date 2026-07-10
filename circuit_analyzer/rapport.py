@@ -28,9 +28,13 @@ def generer_rapport(resultats, fichier: str,
     @param total_composants Nombre total de composants dans le circuit.
     @param tous_refs Liste de toutes les références (pour afficher les non-classifiés).
     @param composants Liste de Composant (optionnel) — pour la section « Composants
-        réels identifiés » (catalogue). Aucun match n'est produit pour les puces
-        (pas de détection de montages) : c'est ici, et sur le titre de la figure
-        îlot, que leur catégorie est surfacée (déviation actée vs spec §5).
+        réels identifiés » (catalogue). Les puces NON aliasées (555, 74HC…) ne
+        produisent aucun match (pas de détection de montages) : cette section et
+        le titre de la figure îlot sont les seuls endroits où leur catégorie
+        apparaît (déviation actée vs spec §5). Une puce ALIASÉE (741, régulateurs)
+        peut en revanche figurer AUSSI dans un match (ex. « Amplificateur
+        inverseur (AOP) : U1 ») — double mention voulue : le match dit le
+        MONTAGE, cette section dit la RÉFÉRENCE constructeur.
     @return str Rapport texte complet (compatible cp1252).
     """
     # Compter par catégorie fonctionnelle
@@ -87,9 +91,10 @@ def generer_rapport(resultats, fichier: str,
 
     lignes.append(_SEP)
 
-    # Composants réels identifiés (catalogue) — les puces ne produisent aucun
-    # match (pas de détection de montages), leur catégorie n'apparaît donc
-    # nulle part ailleurs dans le rapport.
+    # Composants réels identifiés (catalogue). Complémentaire des matches :
+    # une puce aliasée (741) apparaît aussi dans son montage ci-dessus (double
+    # mention voulue, cf. docstring) ; une puce non aliasée (555, 74HC…)
+    # n'apparaît QUE ici.
     if composants:
         from circuit_analyzer.catalogue import identifier
         lignes_reelles = []

@@ -87,3 +87,17 @@ def test_aucun_faux_warning_broches_critiques(fichier):
     # formes a plan nomme (AOP historique).
     warnings = lire_xml(fichier).warnings
     assert not any("broches critiques" in w for w in warnings), warnings
+
+
+def test_rapport_double_mention_voulue_pour_puce_aliasee():
+    # Revue Task 7 : un 741 aliase figure DANS son match AOP ET dans la
+    # section "Composants reels identifies" — double mention VOULUE (le
+    # match dit le montage, la section dit la reference constructeur).
+    from circuit_analyzer.rapport import generate
+    comps = lire_xml("circuits_industriels/reel_741_inverseur.xml")
+    res = analyser(construire_graphe(comps))
+    texte = generate(res, "reel_741_inverseur.xml", len(comps),
+                     all_refs=[c.ref for c in comps], composants=comps)
+    assert "Amplificateur inverseur (AOP)" in texte
+    assert "Composants reels identifies :" in texte
+    assert "AOP (741)" in texte
