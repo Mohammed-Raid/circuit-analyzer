@@ -114,6 +114,35 @@ def test_detaille_pile_serie_pas_de_court_circuit_out_rail():
     assert _n_verticals_touchant_oy(d_nor, ox, oy, "haut") == 1
 
 
+def test_dessin_invariant_a_la_direction_du_stylo():
+    # Bug D4 (audit visuel) : schemdraw fait heriter la direction COURANTE du
+    # dessin a tout element sans orientation explicite. En chaine/DAG le routeur
+    # laisse le stylo vertical -> FET/porte pivotes de 90 degres (VDD flottant,
+    # fils a travers les transistors). Invariant : apres un fil .up(), le dessin
+    # d'une porte est IDENTIQUE (a translation pres) au dessin sur toile vierge.
+    import schemdraw.elements as elm
+
+    def _fets(d):
+        return [e for e in d.elements if hasattr(e, "gate") and hasattr(e, "drain")]
+
+    for detaille in (False, True):
+        with schemdraw.Drawing(show=False) as d:
+            d._comp_positions = {}
+            d._z_hitboxes = []
+            d._mode_detaille = detaille
+            d.add(elm.Line().at((0, 0)).up(2))     # stylo laisse VERTICAL
+            logic_schematic.dessiner_porte(d, NAND2, CI)
+        if detaille:
+            for f in _fets(d):
+                assert f.gate[0] < f.drain[0] and f.gate[0] < f.source[0], \
+                    "FET pivote par la direction heritee du stylo"
+        else:
+            porte = next(e for e in d.elements if hasattr(e, "anchors")
+                         and "out" in getattr(e, "anchors", {}))
+            assert porte.out[0] > porte.in1[0], \
+                "symbole de porte pivote par la direction heritee du stylo"
+
+
 def test_detaille_fets_grille_a_gauche():
     # Piège NFet/PFet schemdraw 0.22 : grille à DROITE par défaut → .reverse().
     # Garde : les x des grilles sont STRICTEMENT à gauche des x drain/source.

@@ -49,7 +49,10 @@ def _porte_symbole(d, result, ci, origin, titre, in_label, out_label):
     sortie = result["nodes"]["sortie"]
     cls = _SYMBOLES[nom_fn]
     n = len(entrees)
-    porte = cls().at(origin) if n <= 1 else cls(inputs=n).at(origin)
+    # .right() : orientation EXPLICITE -- sans elle l'element herite la
+    # direction courante du stylo (verticale apres un fil de routeur de
+    # chaine/DAG) et la porte sort pivotee de 90 degres (bug D4).
+    porte = cls().right().at(origin) if n <= 1 else cls(inputs=n).right().at(origin)
     d.add(porte)
 
     # Ancres ABSOLUES (post .at()) -- jamais porte.start/porte.end (cf.
@@ -116,7 +119,8 @@ def _porte_transistors(d, result, ci, origin, titre, in_label, out_label):
         poses = []
         for k, ref in enumerate(refs):
             x = ox + k * _PAS_X
-            e = d.add(fet_cls().at((x, y0)).reverse())
+            # .right() : ne pas heriter la direction du stylo (bug D4).
+            e = d.add(fet_cls().right().at((x, y0)).reverse())
             _enregistrer_position(d, ref, (x, y0))
             poses.append((ref, e))
         return poses
@@ -127,7 +131,8 @@ def _porte_transistors(d, result, ci, origin, titre, in_label, out_label):
         poses = []
         y = y0
         for ref in refs:
-            e = d.add(fet_cls().at((ox, y)).reverse())
+            # .right() : ne pas heriter la direction du stylo (bug D4).
+            e = d.add(fet_cls().right().at((ox, y)).reverse())
             _enregistrer_position(d, ref, (ox, y))
             poses.append((ref, e))
             y -= _PAS_Y
@@ -176,7 +181,8 @@ def _porte_transistors(d, result, ci, origin, titre, in_label, out_label):
         d.add(elm.Line().at(e_bas.source).to((e_bas.source[0], y_gnd)))
     xs_b = [e.drain[0] for _r, e in bas]
     d.add(elm.Line().at((min(xs_b), y_gnd)).to((max(xs_b), y_gnd)))
-    d.add(elm.Ground().at(((min(xs_b) + max(xs_b)) / 2.0, y_gnd)))
+    # theta=0 explicite : Ground herite aussi la direction du stylo (bug D4).
+    d.add(elm.Ground().theta(0).at(((min(xs_b) + max(xs_b)) / 2.0, y_gnd)))
 
     # Barre OUT (relie les colonnes/rangées au niveau oy) + stub à droite.
     x_max = max(xs + xs_b)
