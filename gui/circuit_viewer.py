@@ -563,7 +563,13 @@ def _circuit_principal_ilot(ilot, graph, results):
 def _puce_ilot(ilot, graph):
     """@brief Îlot dont l'unique actif est une puce identifiée non-AOP ->
     (ref, entrée catalogue), sinon None. Branché AVANT la grille générique :
-    une puce identifiée ne tombe JAMAIS en vue générique."""
+    une puce identifiée ne tombe JAMAIS en vue générique.
+
+    Miroir de `detecteur._u_candidat_aop` : seule la catégorie AOP est
+    exclue (ses détecteurs dédiés IN+/IN-/OUT la traitent). Un régulateur
+    aliasé (7805/LM317…) N'A PAS de détecteur AOP/comparateur qui matche
+    IN/GND/OUT -> sans cette boîte puce il retombait en grille générique
+    (régle dure violée, cf. revue Task 5)."""
     from circuit_analyzer.catalogue import identifier
     raw = getattr(graph, "graph", {}).get("components", {}) or {}
     refs = [r for r in ilot.get("composants", []) if r in raw]
@@ -575,7 +581,7 @@ def _puce_ilot(ilot, graph):
     if comp.type != "U":
         return None
     entree = identifier("U", getattr(comp, "value", ""))
-    if entree is None or entree.get("alias"):
+    if entree is None or entree.get("categorie") == "AOP":
         return None          # inconnu -> comportement actuel ; 741 -> AOP
     return (actifs[0], entree)
 

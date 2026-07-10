@@ -3,6 +3,7 @@
 jamais de grille générique pour un îlot à puce identifiée."""
 import matplotlib
 matplotlib.use("Agg")
+import pytest
 import schemdraw
 
 from circuit_analyzer import catalogue
@@ -65,12 +66,29 @@ def test_make_puce_fig_deux_vues_et_z_cliquables():
           for c in comps}
     ref, entree = cv._puce_ilot(ilot, g)
     matches = cv._matches_for_island(ilot, res)
+    figs = {}
     for detaille in (False, True):
         fig = cv._make_puce_fig(ref, entree, ci, matches, detaille=detaille)
         assert "U1" in fig._comp_positions, f"puce non cliquable ({detaille=})"
         txts = [t.get_text() for ax in fig.axes for t in ax.texts]
         assert any("TRIG" in t for t in txts), "broches étiquetées par fonction"
         assert any("NE555" in t or "Timer" in t for t in txts), "titre puce"
+        figs[detaille] = fig
+    # Vue simplifiee : le reseau de temporisation R/C du 555 est cable en
+    # couplages locaux (_dessiner_z_locales) -> boites Z cliquables
+    # (drill-down). Hitbox = (x0, x1, y0, y1, refs, composition), cf.
+    # `_enregistrer_hitbox`/`_z_box` -- refs (5e element) porte les refs
+    # composant reelles du bloc.
+    hb_simple = figs[False]._z_hitboxes
+    assert len(hb_simple) >= 1, "aucune boite Z cliquable en vue simplifiee"
+    for hb in hb_simple:
+        assert len(hb) == 6
+        refs = hb[4]
+        assert refs, "hitbox sans ref de composant (5e element vide)"
+    # Vue detaillee : `_enregistrer_hitbox` est un no-op explicite quand
+    # `d._mode_detaille` (cf. gui/circuit_viewer.py) -- les reseaux R/C sont
+    # deja depliés en symboles reels, donc rien a "drill-down" en plus.
+    assert figs[True]._z_hitboxes == []
 
 
 # ── Filtre broches câblées (revue contrôleur) ────────────────────────────
@@ -110,3 +128,24 @@ def test_74hc00_ne_dessine_que_les_broches_cablees():
         d._mode_detaille = False
         res = puce_schematic.dessiner_puce(d, "U1", entree, ci)
     assert set(res["nets"]) == {"SIGA", "SIGB", "SIGY", "GND", "VCC"}
+
+
+# ── Regulateurs alias -> boite puce (revue Task 5, CRITIQUE) ─────────────
+
+@pytest.mark.parametrize("fichier,attendu", [
+    ("reel_7805_alim.xml", "7805"), ("reel_lm317_variable.xml", "LM317")])
+def test_regulateurs_ont_la_boite_puce_jamais_generique(fichier, attendu):
+    # CRITICAL revue Task 5 : alias=True excluait les regulateurs de la boite
+    # puce ALORS QU'aucun detecteur ne matche IN/GND/OUT -> grille generique
+    # (regle dure violee). Seule la categorie AOP est exclue.
+    comps = lire_xml(f"circuits_industriels/{fichier}")
+    g = construire_graphe(comps)
+    res = analyser(g)
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    trouve = cv._puce_ilot(ilot, g)
+    assert trouve is not None, "regulateur identifie -> boite puce obligatoire"
+    ref, entree = trouve
+    assert attendu in entree["nom"]
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    fig = cv._make_puce_fig(ref, entree, ci, cv._matches_for_island(ilot, res))
+    assert ref in fig._comp_positions
