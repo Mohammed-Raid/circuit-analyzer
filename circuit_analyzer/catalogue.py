@@ -108,7 +108,7 @@ _COULEURS_LED = {"ROUGE": "red", "VERT": "green", "BLEU": "blue"}
 def identifier(type_, value):
     """@brief Entrée de catalogue d'un composant, ou None si inconnu.
 
-    Priorité : exact > famille 74HC précise > suffixe libre > repli 74HC.
+    Priorité : exact > famille 74HC (précise, sinon repli — une valeur 74HCxx n'atteint jamais les suffixes) > suffixe libre.
     None = comportement actuel de l'app inchangé (compat totale).
 
     @param type_ Lettre de type BoardSCH ("U", "Q", "M", "D"…).
@@ -140,6 +140,6 @@ def identifier(type_, value):
         return _REPLI_74HC
     for suffixe, entree in sorted(_SUFFIXES_U.items(),
                                   key=lambda kv: -len(kv[0])):
-        if re.fullmatch(rf"[A-Z0-9]*{suffixe}[A-Z]*", v):
+        if re.fullmatch(rf"([A-Z0-9]*[A-Z])?{suffixe}[A-Z]*", v):
             return entree
     return None

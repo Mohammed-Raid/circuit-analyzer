@@ -68,3 +68,15 @@ def test_broches_et_alias():
     e458 = catalogue.identifier("U", "MC1458")
     assert e458["alias"] is False                      # multi-unité : jamais aliasé
     assert catalogue.identifier("Q", "2N2222")["broches"] is None
+
+
+def test_suffixe_exige_prefixe_constructeur_ou_rien():
+    # "7741" n'est PAS un 741 (le prefixe d'un constructeur finit par une lettre)
+    assert catalogue.identifier("U", "7741") is None
+    assert catalogue.identifier("U", "LM741")["categorie"] == "AOP"
+    assert catalogue.identifier("U", "7805")["categorie"] == "Regulateur +5 V"
+
+
+def test_74hc_inconnu_ne_tombe_pas_dans_les_suffixes():
+    # 74HC7805 est une ref logique inconnue -> repli 74HC, pas "Regulateur".
+    assert catalogue.identifier("U", "74HC7805")["categorie"] == "Logique 74HC"
