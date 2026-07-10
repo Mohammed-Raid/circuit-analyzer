@@ -193,6 +193,56 @@ def test_detaille_fan_in_jamais_quasi_colineaire(match, ci):
                     f"se recouvrent sur x [{max(a1, b1):.2f},{min(a2, b2):.2f}]"
 
 
+def _textes_rendus(match, ci, detaille, in_label, out_label):
+    from matplotlib.figure import Figure
+    fig = Figure(figsize=(8, 6))
+    ax = fig.add_subplot(111)
+    ax.axis("off")
+    with schemdraw.Drawing(canvas=ax, show=False) as d:
+        d._comp_positions = {}
+        d._z_hitboxes = []
+        d._mode_detaille = detaille
+        logic_schematic.dessiner_porte(d, match, ci, titre=False,
+                                       in_label=in_label, out_label=out_label)
+    return [t.get_text() for t in ax.texts]
+
+
+@pytest.mark.parametrize("detaille", [False, True], ids=["z", "detaille"])
+def test_chaine_multi_entrees_jamais_le_meme_label_partout(detaille):
+    # Bug D2 (audit visuel) : la chaine passe in_label='VIN' au 1er montage et
+    # le drawer l'appliquait a CHAQUE entree -> 'VIN' sur les 2 entrees de la
+    # NAND (nets distincts !). Multi-entrees = toujours les vrais noms de nets.
+    textes = _textes_rendus(NAND2, CI, detaille, in_label="VIN", out_label="")
+    assert textes.count("VIN") == 0, f"in_label applique en masse : {textes}"
+    assert "A" in textes and "B" in textes
+
+
+@pytest.mark.parametrize("detaille", [False, True], ids=["z", "detaille"])
+def test_chaine_label_vide_masque_vraiment(detaille):
+    # Bug D3 (audit visuel) : in/out_label='' (= masquer, convention des fils
+    # internes de chaine) etait ressuscite par `or net` -> 'NET2' aux DEUX
+    # bouts du meme fil. '' explicite = aucun texte pour ce net.
+    nand = _textes_rendus(NAND2, CI, detaille, in_label=None, out_label="")
+    assert "OUT" not in nand, f"out_label='' doit masquer la sortie : {nand}"
+    not_ = _textes_rendus(NOT1, CI_NOT, detaille, in_label="", out_label="")
+    assert "A" not in not_ and "OUT" not in not_, \
+        f"labels '' doivent masquer entree et sortie : {not_}"
+
+
+NOT1 = {
+    "circuit_type": "Inverseur (CMOS)",
+    "components": ["M1", "M2"],
+    "nodes": {"entrees": ["A"], "sortie": "OUT", "vdd": "VDD", "gnd": "GND"},
+    "io": {"ins": ["A"], "out": "OUT"},
+    "polarites": {"M1": "P", "M2": "N"},
+    "arbres": {"pull_up": ("feuille", "M1"), "pull_down": ("feuille", "M2")},
+    "fonction": ("NOT", ["A"]),
+    "expression": "OUT = NOT(A)",
+}
+CI_NOT = {"M1": {"type": "M", "value": "", "pins": {"G": "A"}},
+          "M2": {"type": "M", "value": "", "pins": {"G": "A"}}}
+
+
 def test_dessin_invariant_a_la_direction_du_stylo():
     # Bug D4 (audit visuel) : schemdraw fait heriter la direction COURANTE du
     # dessin a tout element sans orientation explicite. En chaine/DAG le routeur

@@ -31,6 +31,27 @@ _PAS_X = 2.2      # écart horizontal entre branches parallèles
 _STUB_GAUCHE = 2.4  # longueur du rail de grille vers les stubs d'entrée (NOT)
 
 
+def _label_entree(in_label, net, n):
+    """@brief Libellé d'une entrée (convention chaîne, audit D2/D3).
+
+    None = standalone -> vrai nom de net. "" = fil interne de chaîne ->
+    MASQUER (le `or net` historique le ressuscitait aux deux bouts du même
+    fil). Multi-entrées (n > 1) : toujours les vrais nets — un in_label
+    unique ('VIN') appliqué en masse étiquetterait deux nets distincts pareil.
+    """
+    if n > 1:
+        return net
+    return net if in_label is None else in_label
+
+
+def _dot_etiquete(d, pt, texte, loc):
+    """@brief Dot avec label optionnel ('' ou None = point nu)."""
+    dot = elm.Dot().at(pt)
+    if texte:
+        dot = dot.label(texte, loc=loc)
+    d.add(dot)
+
+
 def dessiner_porte(d, result, ci, origin=(3, 0), titre=True,
                    in_label=None, out_label=None):
     """@brief Point d'entrée UNIQUE enregistré dans cv._DRAWERS pour les trois
@@ -71,11 +92,11 @@ def _porte_symbole(d, result, ci, origin, titre, in_label, out_label):
         broche = in_pts[i - 1]
         stub = (broche[0] - 0.8, broche[1])
         d.add(elm.Line().at(broche).to(stub))
-        d.add(elm.Dot().at(stub).label(in_label or net, loc="left"))
+        _dot_etiquete(d, stub, _label_entree(in_label, net, n), "left")
         nets[net] = stub
     out_pt = (out_pt_gate[0] + 0.8, out_pt_gate[1])
     d.add(elm.Line().at(out_pt_gate).to(out_pt))
-    d.add(elm.Dot().at(out_pt).label(out_label or sortie, loc="right"))
+    _dot_etiquete(d, out_pt, sortie if out_label is None else out_label, "right")
     nets[sortie] = out_pt
 
     ymax = max(p[1] for p in in_pts + [out_pt_gate]) + 0.5
@@ -188,7 +209,7 @@ def _porte_transistors(d, result, ci, origin, titre, in_label, out_label):
     d.add(elm.Line().at((min(xs + xs_b), oy)).to((x_max, oy)))
     out_pt = (x_max + 1.0, oy)
     d.add(elm.Line().at((x_max, oy)).to(out_pt))
-    d.add(elm.Dot().at(out_pt).label(out_label or sortie, loc="right"))
+    _dot_etiquete(d, out_pt, sortie if out_label is None else out_label, "right")
 
     # Rails de grilles. Deux régimes :
     #
@@ -221,7 +242,7 @@ def _porte_transistors(d, result, ci, origin, titre, in_label, out_label):
         if touche_haut and touche_bas:
             d.add(elm.Line().at((x_stub, y_h)).to((x_stub, y_b)))
         pt = (x_stub, y_h if touche_haut else y_b)
-        d.add(elm.Dot().at(pt).label(in_label or net, loc="left"))
+        _dot_etiquete(d, pt, _label_entree(in_label, net, n), "left")
         nets[net] = pt
     else:
         # Fan-in multi-entrées, re-routée (audit D5) : les anciens taps à
@@ -282,7 +303,7 @@ def _porte_transistors(d, result, ci, origin, titre, in_label, out_label):
             y_pt = pts[0] if pts else oy
             d.add(elm.Line().at((x_lab, y_pt)).to((x_i, y_pt)))
             pt = (x_lab, y_pt)
-            d.add(elm.Dot().at(pt).label(in_label or net, loc="left"))
+            _dot_etiquete(d, pt, _label_entree(in_label, net, n), "left")
             nets[net] = pt
 
     title_pt = (ox, y_vdd + 0.8)
