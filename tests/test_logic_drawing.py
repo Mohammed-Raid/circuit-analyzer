@@ -20,15 +20,18 @@ NAND2 = {
     "fonction": ("NAND", ["A", "B"]),
     "expression": "OUT = NAND(A, B)",
 }
-CI = {f"M{i}": {"type": "M", "value": "", "pins": {}} for i in range(1, 5)}
+# Broches G reelles (NAND2 et NOR2 partagent le mapping M1/M3->A, M2/M4->B) :
+# sans elles grille_de est vide et la fan-in n'est jamais dessinee (tests vides).
+CI = {f"M{i}": {"type": "M", "value": "", "pins": {"G": g}}
+      for i, g in [(1, "A"), (2, "B"), (3, "A"), (4, "B")]}
 
 
-def _dessiner(match, detaille=False):
+def _dessiner(match, detaille=False, ci=None):
     with schemdraw.Drawing(show=False) as d:
         d._comp_positions = {}
         d._z_hitboxes = []
         d._mode_detaille = detaille
-        res = logic_schematic.dessiner_porte(d, match, CI)
+        res = logic_schematic.dessiner_porte(d, match, ci or CI)
     return d, res
 
 
@@ -112,6 +115,82 @@ def test_detaille_pile_serie_pas_de_court_circuit_out_rail():
     assert _n_verticals_touchant_oy(d_nand, ox, oy, "bas") == 1
     d_nor, _ = _dessiner(NOR2, detaille=True)       # pull-up PMOS série
     assert _n_verticals_touchant_oy(d_nor, ox, oy, "haut") == 1
+
+
+NAND3 = {
+    "circuit_type": "Porte NAND (CMOS)",
+    "components": ["M1", "M2", "M3", "M4", "M5", "M6"],
+    "nodes": {"entrees": ["A", "B", "C"], "sortie": "OUT",
+              "vdd": "VDD", "gnd": "GND"},
+    "io": {"ins": ["A", "B", "C"], "out": "OUT"},
+    "polarites": {"M1": "P", "M2": "P", "M3": "P",
+                  "M4": "N", "M5": "N", "M6": "N"},
+    "arbres": {"pull_down": ("serie", [("feuille", "M4"), ("feuille", "M5"),
+                                       ("feuille", "M6")]),
+               "pull_up": ("parallele", [("feuille", "M1"), ("feuille", "M2"),
+                                         ("feuille", "M3")])},
+    "fonction": ("NAND", ["A", "B", "C"]),
+    "expression": "OUT = NAND(A, B, C)",
+}
+CI3 = {f"M{i}": {"type": "M", "value": "",
+                 "pins": {"G": g}} for i, g in
+       [(1, "A"), (2, "B"), (3, "C"), (4, "A"), (5, "B"), (6, "C")]}
+
+
+def _segments_horizontaux(d):
+    import schemdraw.elements as elm
+    segs = []
+    for e in d.elements:
+        if not isinstance(e, elm.Line):
+            continue
+        (x1, y1), (x2, y2) = tuple(e.start), tuple(e.end)
+        if abs(y1 - y2) < 1e-6 and abs(x1 - x2) > 1e-6:
+            segs.append((min(x1, x2), max(x1, x2), y1))
+    return segs
+
+
+def _corps_fets(d):
+    """Boites englobantes (approx) des CORPS de transistors poses."""
+    corps = []
+    for e in d.elements:
+        if hasattr(e, "gate") and hasattr(e, "drain"):
+            cx = (e.drain[0] + e.source[0]) / 2.0
+            cy = (e.drain[1] + e.source[1]) / 2.0
+            corps.append((cx - 0.55, cx + 0.55, cy - 0.65, cy + 0.65))
+    return corps
+
+
+@pytest.mark.parametrize("match,ci", [(NAND2, CI), (NOR2, CI), (NAND3, CI3)],
+                         ids=["nand2", "nor2", "nand3"])
+def test_detaille_fan_in_ne_traverse_aucun_corps(match, ci):
+    # Bug D5 (audit visuel) : les taps de grille multi-entrees couraient a
+    # gy +/- 0.13 -> EN PLEIN dans les corps des transistors a gauche de leur
+    # cible. Invariant : aucun fil horizontal ne traverse l'interieur d'un corps.
+    d, _ = _dessiner(match, detaille=True, ci=ci)
+    for x1, x2, y in _segments_horizontaux(d):
+        for bx1, bx2, by1, by2 in _corps_fets(d):
+            traverse = x1 < bx1 and x2 > bx2 and by1 < y < by2
+            assert not traverse, \
+                f"fil horizontal y={y:.2f} [{x1:.2f},{x2:.2f}] traverse un corps " \
+                f"[{bx1:.2f},{bx2:.2f}]x[{by1:.2f},{by2:.2f}]"
+
+
+@pytest.mark.parametrize("match,ci", [(NAND2, CI), (NOR2, CI), (NAND3, CI3)],
+                         ids=["nand2", "nor2", "nand3"])
+def test_detaille_fan_in_jamais_quasi_colineaire(match, ci):
+    # Bug D5 (suite) : deux taps d'entrees differentes a 0.26 l'un de l'autre
+    # avec recouvrement en x = illisible (quelle entree pilote quelle grille ?).
+    # Invariant : deux segments horizontaux qui se recouvrent en x sont soit
+    # confondus (meme fil), soit separes d'au moins 0.3 en y.
+    d, _ = _dessiner(match, detaille=True, ci=ci)
+    segs = _segments_horizontaux(d)
+    for i, (a1, a2, ya) in enumerate(segs):
+        for b1, b2, yb in segs[i + 1:]:
+            recouvre = min(a2, b2) - max(a1, b1) > 0.15
+            if recouvre and abs(ya - yb) > 1e-6:
+                assert abs(ya - yb) >= 0.3, \
+                    f"taps quasi-colineaires : y={ya:.2f} et y={yb:.2f} " \
+                    f"se recouvrent sur x [{max(a1, b1):.2f},{min(a2, b2):.2f}]"
 
 
 def test_dessin_invariant_a_la_direction_du_stylo():

@@ -29,7 +29,6 @@ _SYMBOLES = {"NOT": slogic.Not, "NAND": slogic.Nand, "NOR": slogic.Nor}
 _PAS_Y = 1.7      # écart vertical entre transistors empilés (série)
 _PAS_X = 2.2      # écart horizontal entre branches parallèles
 _STUB_GAUCHE = 2.4  # longueur du rail de grille vers les stubs d'entrée (NOT)
-_PAS_LABEL = 1.35   # pas vertical des labels d'entrée en fan-in aérée (>=1.2)
 
 
 def dessiner_porte(d, result, ci, origin=(3, 0), titre=True,
@@ -197,17 +196,9 @@ def _porte_transistors(d, result, ci, origin, titre, in_label, out_label):
     #    par le coordinateur, à garder pixel-identique) -- deux brins dans la
     #    fine bande `jeu` autour de oy, reliés par un court tronçon vertical.
     #
-    #  - PLUSIEURS entrées (NAND/NOR…) : fan-in AÉRÉE. Toute la tuyauterie de
-    #    grille reste STRICTEMENT à gauche de la barre OUT (qui commence à
-    #    x=min(xs+xs_b) : les tronçons verticaux sont à x < ce bord et les taps
-    #    horizontaux se terminent sur les ancres de grille (x = transistor − 1.37),
-    #    donc AUCUN fil de grille n'est colinéaire avec / ne recouvre la barre
-    #    OUT (défaut #1 signalé). Chaque tap est routé à la hauteur PROPRE de sa
-    #    grille (loin du niveau oy), avec un petit décalage `off` par entrée pour
-    #    que deux grilles d'une même rangée parallèle ne se recouvrent pas. Les
-    #    ÉTIQUETTES sont empilées en escalier (x décalé) ET espacées de
-    #    _PAS_LABEL en y (>=1.2) au-dessus des grilles PMOS : « jamais de labels
-    #    collés » (défaut #2), et jamais au niveau de la barre OUT.
+    #  - PLUSIEURS entrées (NAND/NOR…) : voir le commentaire du bloc `else`
+    #    ci-dessous (re-routage audit D5 : rail série droit + détour par la
+    #    bande claire pour la cible parallèle, une colonne par entrée).
     nets = {sortie: out_pt}
     tous = list(haut) + list(bas)
     n = len(entrees)
@@ -233,23 +224,64 @@ def _porte_transistors(d, result, ci, origin, titre, in_label, out_label):
         d.add(elm.Dot().at(pt).label(in_label or net, loc="left"))
         nets[net] = pt
     else:
-        base_top = max(e.gate[1] for _r, e in haut)   # hauteur des grilles PMOS
-        x0 = min(xs + xs_b) - _STUB_GAUCHE - 1.6       # colonne poussée à gauche
-        for i, net in enumerate(entrees):
-            x_i = x0 - i * 1.3                          # escalier horizontal
-            y_lab = base_top + 0.9 + i * _PAS_LABEL     # labels aérés vers le haut
-            off = (i - (n - 1) / 2.0) * 0.26            # anti-recouvrement rangée
-            cibles = [e for ref, e in tous if grille_de.get(ref) == net]
-            y_taps = []
-            for e in cibles:
+        # Fan-in multi-entrées, re-routée (audit D5) : les anciens taps à
+        # gy±0.13 couraient EN PLEIN dans les corps des transistors à gauche
+        # de leur cible et se confondaient entre eux. Nouveau schéma :
+        #  - cible SÉRIE : rail droit (x_i, gy) -> ancre de grille. Les étages
+        #    série ont des hauteurs distinctes (_PAS_Y) => rails jamais
+        #    quasi-colinéaires, et l'ancre (x = transistor - 1.37) est à
+        #    gauche de tous les corps.
+        #  - cible PARALLÈLE : détour par la bande CLAIRE au-delà de la rangée
+        #    (au-dessus des PMOS / au-dessous des NMOS, sous le rail VDD/GND)
+        #    puis descente dans le couloir entre les corps (x = ancre grille).
+        #    Le rang d'élévation croît avec le x de la cible => zéro
+        #    croisement entre détours ; les croisements restants (rails
+        #    d'alimentation) sont PERPENDICULAIRES, jamais colinéaires.
+        #  - une colonne x_i PAR entrée (ordonnée par étage série) : deux
+        #    colonnes confondues relieraient électriquement deux nets.
+        par_haut = genre_haut in ("parallele", "feuille")
+        serie_de, par_de = {}, {}
+        for ref, e in haut:
+            (par_de if par_haut else serie_de).setdefault(
+                grille_de.get(ref), []).append(e)
+        for ref, e in bas:
+            (serie_de if par_haut else par_de).setdefault(
+                grille_de.get(ref), []).append(e)
+        x0 = min(xs + xs_b) - _STUB_GAUCHE
+        signe = 1.0 if par_haut else -1.0
+        eleves = sorted((net for net in entrees if par_de.get(net)),
+                        key=lambda net: max(e.gate[0] for e in par_de[net]))
+        rang_elev = {net: k for k, net in enumerate(eleves)}
+        # colonne la plus à DROITE pour l'étage série le plus haut : le rail
+        # profond passe alors SOUS les colonnes courtes sans les croiser.
+        profondeur = sorted(
+            entrees,
+            key=lambda net: -min((e.gate[1] * signe for e in serie_de.get(net, [])),
+                                 default=float("-inf")))
+        col = {net: x0 - k * 0.55 for k, net in enumerate(profondeur)}
+        # Étiquettes sur une abscisse COMMUNE, à gauche de TOUTES les colonnes :
+        # une colonne traverse forcément les hauteurs des autres rails (elle va
+        # de son rail à la bande d'élévation), donc un label posé sur sa propre
+        # colonne serait TRAVERSÉ par le texte des voisines. Le prolongement
+        # rail->label croise les colonnes PERPENDICULAIREMENT (fil, pas texte).
+        x_lab = min(col.values()) - 0.45
+        for net in entrees:
+            x_i, pts = col[net], []
+            for e in serie_de.get(net, []):
                 gx, gy = e.gate
-                y_tap = gy + off
-                d.add(elm.Line().at((x_i, y_tap)).to((gx, y_tap)))
-                d.add(elm.Line().at((gx, y_tap)).to((gx, gy)))
-                y_taps.append(y_tap)
-            y_lo, y_hi = min(y_taps + [y_lab]), max(y_taps + [y_lab])
-            d.add(elm.Line().at((x_i, y_lo)).to((x_i, y_hi)))
-            pt = (x_i, y_lab)
+                d.add(elm.Line().at((x_i, gy)).to((gx, gy)))
+                pts.append(gy)
+            for e in par_de.get(net, []):
+                gx, gy = e.gate
+                y_elev = gy + signe * (0.95 + rang_elev[net] * 0.35)
+                d.add(elm.Line().at((x_i, y_elev)).to((gx, y_elev)))
+                d.add(elm.Line().at((gx, y_elev)).to((gx, gy)))
+                pts.append(y_elev)
+            if len(pts) > 1:
+                d.add(elm.Line().at((x_i, min(pts))).to((x_i, max(pts))))
+            y_pt = pts[0] if pts else oy
+            d.add(elm.Line().at((x_lab, y_pt)).to((x_i, y_pt)))
+            pt = (x_lab, y_pt)
             d.add(elm.Dot().at(pt).label(in_label or net, loc="left"))
             nets[net] = pt
 
