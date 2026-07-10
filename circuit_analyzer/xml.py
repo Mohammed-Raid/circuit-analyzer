@@ -213,6 +213,46 @@ _FORME: Dict[str, dict] = {
     },
 }
 
+
+def _forme_puce(n):
+    """@brief Forme « PuceN » : boîtier DIP générique à n broches NUMÉROTÉES.
+
+    Pour les puces du catalogue (NE555, 74HC…, cf. circuit_analyzer.catalogue)
+    dont les broches sont des numéros de boîtier : colonne gauche 1..n/2 de
+    haut en bas, colonne droite n/2+1..n de bas en haut (convention DIP).
+    Corps rectangulaire minimal ; la lecture repasse les Pname tels quels
+    (plan vide dans _NOM_VERS_TYPE), donc le round-trip préserve les numéros.
+    """
+    demi = n // 2
+    pas = 24
+    haut = (demi - 1) * pas
+    pins = {}
+    for i in range(demi):                    # gauche : 1..demi, haut -> bas
+        pins[str(i + 1)] = (-72, -haut // 2 + i * pas, i)
+    for i in range(demi):                    # droite : demi+1..n, bas -> haut
+        pins[str(demi + 1 + i)] = (72, haut // 2 - i * pas, demi + i)
+    y0, y1 = -haut // 2 - 12, haut // 2 + 12
+    poly = "".join(
+        f"\n        <DataPolygon><point><X>{x}</X><Y>{y}</Y></point>"
+        f"<Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>"
+        for x, y in ((-48, y0), (48, y0), (48, y1), (-48, y1)))
+    seg = "".join(
+        f"\n        <DataSegment><Spoint><X>{sx}</X><Y>{y}</Y></Spoint>"
+        f"<Epoint><X>{ex}</X><Y>{y}</Y></Epoint><ESelected>false</ESelected>"
+        f"<SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap>"
+        f"<SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>"
+        for (sx, ex, y) in (
+            [(-72, -48, p[1]) for nom, p in pins.items() if p[0] < 0]
+            + [(48, 72, p[1]) for nom, p in pins.items() if p[0] > 0]))
+    return {"pins": pins, "polygon": poly, "segment": seg}
+
+
+# Tailles de boîtier DIP couvertes par le catalogue v1 (4/8/14/16 broches).
+_TAILLES_PUCE = (4, 8, 14, 16)
+for _n in _TAILLES_PUCE:
+    _FORME[f"Puce{_n}"] = _forme_puce(_n)
+
+
 # Alias noms utilisés par lire_xml → noms dans _FORME
 _ALIAS = {
     "Résistance": "Résistance", "Resistance": "Résistance",
@@ -776,6 +816,16 @@ def generer_xml(composants, resultats=None, results=None) -> str:
     ref_vers_map = {}
     for i, comp in enumerate(composants):
         spec = _TYPE_VERS_FORME.get(comp.type)
+        # Puce du catalogue (broches TOUTES numérotées, ex. NE555/74HC00) :
+        # la forme statique "AOP" 3 broches nommées perdrait chaque net
+        # (plan sans clé numérique -> broches silencieusement non émises).
+        # -> forme DIP générique PuceN, plan identité. Un U à broches
+        # nommées (IN+/IN-/OUT) garde la forme AOP historique.
+        if comp.type == "U" and comp.pins and all(k.isdigit() for k in comp.pins):
+            n = next((t for t in _TAILLES_PUCE
+                      if t >= max(int(k) for k in comp.pins)), None)
+            if n is not None:
+                spec = (f"Puce{n}", {k: k for k in comp.pins})
         if spec is None:
             continue
         nom_forme, plan_broches = spec
@@ -951,6 +1001,12 @@ _NOM_VERS_TYPE = {
     'LED':         ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K'}),
     'Zener':       ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K'}),
     'TVS':         ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K'}),
+    # ── Puces génériques à broches numérotées (catalogue, plan vide =
+    #    passthrough : broche_lib = Pname tel quel) ─────────────────────────
+    'Puce4':       ('U', {}),
+    'Puce8':       ('U', {}),
+    'Puce14':      ('U', {}),
+    'Puce16':      ('U', {}),
     # ── AOP ──────────────────────────────────────────────────────────────────
     'AOP':         ('U', {'+': 'IN+', '-': 'IN-', 's': 'OUT'}),
     'OpAmp':       ('U', {'+': 'IN+', '-': 'IN-', 's': 'OUT'}),
@@ -1186,7 +1242,12 @@ def lire_xml(chemin: str) -> list:
             broche_lib = plan.get(pnom, pnom)
             net = broche_vers_net.get((cid, pidx), 'NC')
             broches[broche_lib] = net
-        if type_prefix == 'U':
+        # Broches AOP standard par défaut — UNIQUEMENT pour les formes à plan
+        # nommé (AOP historique). Une puce numérotée (plan vide, forme PuceN)
+        # ne doit PAS recevoir IN+/IN-/OUT en NC : ça créerait le mix
+        # numéroté/nommé interdit par appliquer_catalogue (un 741 aliasé
+        # verrait "2"->"IN-" collisionner avec le IN-='NC' injecté).
+        if type_prefix == 'U' and plan:
             for std in ('IN+', 'IN-', 'OUT', 'V+', 'V-'):
                 broches.setdefault(std, 'NC')
 
