@@ -3,7 +3,8 @@
 import pytest
 
 from circuit_analyzer import catalogue
-from circuit_analyzer.composant import Composant
+from circuit_analyzer.composant import Composant, construire_graphe
+from circuit_analyzer.detecteur import analyser
 
 
 @pytest.mark.parametrize("valeur,categorie", [
@@ -108,3 +109,37 @@ def test_appliquer_catalogue_broche_deja_nommee_intacte():
                   pins={"IN-": "A", "IN+": "B", "OUT": "C"})
     catalogue.appliquer_catalogue([c])
     assert c.pins == {"IN-": "A", "IN+": "B", "OUT": "C"}
+
+
+def _r(ref, a, b, val="10k"):
+    return Composant(ref=ref, type="R", pins={"1": a, "2": b}, value=val)
+
+
+def test_555_nest_jamais_detecte_comme_aop():
+    # Un NE555 câblé pour RESSEMBLER à un inverseur AOP (broches renommées
+    # exprès IN-/OUT par le fichier) ne doit PAS matcher : U identifié non-AOP.
+    u = Composant(ref="U1", type="U", value="NE555",
+                  pins={"IN-": "N1", "IN+": "GND", "OUT": "N2"})
+    comps = [u, _r("R1", "VIN", "N1"), _r("R2", "N1", "N2")]
+    res = analyser(construire_graphe(comps))
+    assert not any("(AOP)" in m["circuit_type"] for m in res)
+
+
+def test_741_alias_est_detecte_inverseur():
+    # Bout-en-bout : broches NUMÉROTÉES + value LM741 -> aliasing (simulé ici
+    # par appliquer_catalogue, comme le fait lire_xml) -> matcher AOP existant.
+    u = Composant(ref="U1", type="U", value="LM741",
+                  pins={"2": "N1", "3": "GND", "6": "N2", "7": "VCC", "4": "VEE"})
+    comps = catalogue.appliquer_catalogue(
+        [u, _r("R1", "VIN", "N1"), _r("R2", "N1", "N2")])
+    res = analyser(construire_graphe(comps))
+    assert any(m["circuit_type"] == "Amplificateur inverseur (AOP)" for m in res)
+
+
+def test_u_inconnu_reste_candidat_aop():
+    # Compat : un U sans value cataloguée garde le comportement historique.
+    u = Composant(ref="U1", type="U", value="",
+                  pins={"IN-": "N1", "IN+": "GND", "OUT": "N2"})
+    comps = [u, _r("R1", "VIN", "N1"), _r("R2", "N1", "N2")]
+    res = analyser(construire_graphe(comps))
+    assert any(m["circuit_type"] == "Amplificateur inverseur (AOP)" for m in res)

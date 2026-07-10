@@ -37,6 +37,20 @@ is_gnd   = is_ground_net
 is_power = is_power_net
 
 
+def _u_candidat_aop(comp):
+    """@brief Un composant U entre dans les détecteurs AOP/comparateur ssi il
+    n'est pas identifié comme une AUTRE puce du catalogue (NE555, 74HC…).
+
+    U inconnu -> True (comportement historique). U aliasé mono-AOP (x741) ->
+    True : ses broches sont déjà IN-/IN+/OUT après appliquer_catalogue.
+    """
+    if comp.type != 'U':
+        return False
+    from circuit_analyzer.catalogue import identifier
+    entree = identifier('U', getattr(comp, 'value', ''))
+    return entree is None or entree['categorie'] == 'AOP'
+
+
 def _est_rail(noeud) -> bool:
     """@brief Vrai si le nœud est une masse, une alimentation ou une terre de protection.
 
@@ -115,7 +129,7 @@ def detecter_amplificateur_inverseur(graphe):
     composants = graphe.graph.get('components', {})
 
     for ref_aop, comp in composants.items():
-        if comp.type != 'U':
+        if not _u_candidat_aop(comp):
             continue
 
         entree_neg = comp.pins.get('IN-')
@@ -169,7 +183,7 @@ def detecter_amplificateur_non_inverseur(graphe):
     composants = graphe.graph.get('components', {})
 
     for ref_aop, comp in composants.items():
-        if comp.type != 'U':
+        if not _u_candidat_aop(comp):
             continue
 
         entree_neg = comp.pins.get('IN-')
@@ -222,7 +236,7 @@ def detecter_suiveur_tension(graphe):
     composants = graphe.graph.get('components', {})
 
     for ref_aop, comp in composants.items():
-        if comp.type != 'U':
+        if not _u_candidat_aop(comp):
             continue
 
         entree_neg = comp.pins.get('IN-')
@@ -300,7 +314,7 @@ def detecter_integrateur(graphe):
     composants = graphe.graph.get('components', {})
 
     for ref_aop, comp in composants.items():
-        if comp.type != 'U':
+        if not _u_candidat_aop(comp):
             continue
 
         entree_neg = comp.pins.get('IN-')
@@ -375,7 +389,7 @@ def detecter_derivateur(graphe):
     composants = graphe.graph.get('components', {})
 
     for ref_aop, comp in composants.items():
-        if comp.type != 'U':
+        if not _u_candidat_aop(comp):
             continue
 
         entree_neg = comp.pins.get('IN-')
@@ -418,7 +432,7 @@ def detecter_derivateur_partiel(graphe):
     resultats = []
     composants = graphe.graph.get('components', {})
     for ref_aop, comp in composants.items():
-        if comp.type != 'U':
+        if not _u_candidat_aop(comp):
             continue
         entree_neg = comp.pins.get('IN-')
         sortie = comp.pins.get('OUT')
@@ -460,7 +474,7 @@ def detecter_correcteur_pi(graphe):
     resultats = []
     composants = graphe.graph.get('components', {})
     for ref_aop, comp in composants.items():
-        if comp.type != 'U':
+        if not _u_candidat_aop(comp):
             continue
         entree_neg = comp.pins.get('IN-')
         sortie = comp.pins.get('OUT')
@@ -510,7 +524,7 @@ def detecter_bascule_schmitt(graphe):
     composants = graphe.graph.get('components', {})
 
     for ref_aop, comp in composants.items():
-        if comp.type != 'U':
+        if not _u_candidat_aop(comp):
             continue
 
         entree_pos = comp.pins.get('IN+')
@@ -570,7 +584,7 @@ def detecter_comparateur(graphe):
     composants = graphe.graph.get('components', {})
 
     for ref_aop, comp in composants.items():
-        if comp.type != 'U':
+        if not _u_candidat_aop(comp):
             continue
 
         entree_pos = comp.pins.get('IN+')
@@ -617,7 +631,7 @@ def detecter_amplificateur_differentiel(graphe):
     composants = graphe.graph.get('components', {})
 
     for ref_aop, comp in composants.items():
-        if comp.type != 'U':
+        if not _u_candidat_aop(comp):
             continue
 
         entree_pos = comp.pins.get('IN+')
@@ -675,7 +689,7 @@ def detecter_amplificateur_sommateur(graphe):
     composants = graphe.graph.get('components', {})
 
     for ref_aop, comp in composants.items():
-        if comp.type != 'U':
+        if not _u_candidat_aop(comp):
             continue
 
         entree_neg = comp.pins.get('IN-')
