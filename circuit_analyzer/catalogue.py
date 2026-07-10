@@ -151,6 +151,13 @@ def appliquer_catalogue(comps):
 
     Idempotente : une broche déjà fonctionnelle (clé absente du pinout
     numéroté) est laissée telle quelle. Mutation en place ; renvoie comps.
+
+    INVARIANT (revue Task 2) : suppose des broches uniformément numérotées OU
+    uniformément nommées par composant, jamais mélangées — un mix
+    {"2": netA, "IN-": netB} sur un 741 collisionnerait sur "IN-" et perdrait
+    silencieusement un net. Aucun chemin de lecture actuel ne produit ce mix
+    (les U reconnus par plan de symbole sortent nommés, les inconnus sortent
+    en type X) ; à garantir si un plan de symbole 741 dédié est ajouté.
     """
     for c in comps:
         entree = identifier(getattr(c, "type", ""), getattr(c, "value", ""))
