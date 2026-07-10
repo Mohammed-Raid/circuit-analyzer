@@ -19,7 +19,7 @@
       <datapin>
       <DataPin>
         <Pname>1</Pname><Pnumber>1</Pnumber>
-        <NodeL><string>0_0_0_2</string></NodeL>
+        <NodeL><string>0_0_0_3</string></NodeL>
         <Pin><X>-72</X><Y>-36</Y></Pin>
         <PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>
         <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
@@ -33,14 +33,14 @@
         <VltgP>0</VltgP><typ>50</typ>
       </DataPin>      <DataPin>
         <Pname>3</Pname><Pnumber>3</Pnumber>
-        <NodeL></NodeL>
+        <NodeL><string>0_2_0_2</string></NodeL>
         <Pin><X>-72</X><Y>12</Y></Pin>
         <PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>
         <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP><typ>51</typ>
       </DataPin>      <DataPin>
         <Pname>4</Pname><Pnumber>4</Pnumber>
-        <NodeL><string>0_3_1_3</string></NodeL>
+        <NodeL><string>0_3_1_4</string></NodeL>
         <Pin><X>-72</X><Y>36</Y></Pin>
         <PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>
         <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
@@ -68,14 +68,14 @@
         <VltgP>0</VltgP><typ>55</typ>
       </DataPin>      <DataPin>
         <Pname>8</Pname><Pnumber>8</Pnumber>
-        <NodeL><string>0_7_1_5</string></NodeL>
+        <NodeL><string>0_7_1_6</string></NodeL>
         <Pin><X>72</X><Y>-36</Y></Pin>
         <PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>
         <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP><typ>56</typ>
       </DataPin>
       </datapin>
-      <PinCL><string>0_0_0_2</string><string>0_1_0_0</string><string>0_3_1_3</string><string>0_7_1_5</string></PinCL>
+      <PinCL><string>0_0_0_3</string><string>0_1_0_0</string><string>0_2_0_2</string><string>0_3_1_4</string><string>0_7_1_6</string></PinCL>
       <CtrIem><X>250</X><Y>250</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap><TL><X>50</X><Y>25</Y></TL><BR><X>210</X><Y>121</Y></BR>
       <angle>0</angle><id>0</id><GpId>0</GpId>
@@ -109,14 +109,14 @@
         <VltgP>0</VltgP><typ>50</typ>
       </DataPin>      <DataPin>
         <Pname>1</Pname><Pnumber>1</Pnumber>
-        <NodeL><string>1_1_1_6</string></NodeL>
+        <NodeL><string>1_1_1_7</string></NodeL>
         <Pin><X>80</X><Y>0</Y></Pin>
         <PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>
         <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP><typ>49</typ>
       </DataPin>
       </datapin>
-      <PinCL><string>1_0_1_0</string><string>1_0_0_1</string><string>1_1_1_6</string></PinCL>
+      <PinCL><string>1_0_1_0</string><string>1_0_0_1</string><string>1_1_1_7</string></PinCL>
       <CtrIem><X>570</X><Y>250</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap><TL><X>50</X><Y>25</Y></TL><BR><X>210</X><Y>121</Y></BR>
       <angle>0</angle><id>1</id><GpId>0</GpId>
@@ -143,7 +143,7 @@
       <datapin>
       <DataPin>
         <Pname>2</Pname><Pnumber>2</Pnumber>
-        <NodeL><string>2_0_1_4</string></NodeL>
+        <NodeL><string>2_0_1_5</string></NodeL>
         <Pin><X>-80</X><Y>0</Y></Pin>
         <PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>
         <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
@@ -157,7 +157,7 @@
         <VltgP>0</VltgP><typ>49</typ>
       </DataPin>
       </datapin>
-      <PinCL><string>2_0_1_4</string><string>2_1_1_1</string></PinCL>
+      <PinCL><string>2_0_1_5</string><string>2_1_1_1</string></PinCL>
       <CtrIem><X>890</X><Y>250</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap><TL><X>50</X><Y>25</Y></TL><BR><X>210</X><Y>121</Y></BR>
       <angle>0</angle><id>2</id><GpId>0</GpId>
@@ -184,24 +184,65 @@
       <datapin>
       <DataPin>
         <Pname>2</Pname><Pnumber>2</Pnumber>
-        <NodeL><string>3_0_1_2</string></NodeL>
+        <NodeL><string>3_0_1_3</string></NodeL>
         <Pin><X>-80</X><Y>0</Y></Pin>
         <PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>
         <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP><typ>50</typ>
       </DataPin>      <DataPin>
         <Pname>1</Pname><Pnumber>1</Pnumber>
-        <NodeL><string>3_1_1_7</string></NodeL>
+        <NodeL><string>3_1_1_8</string></NodeL>
         <Pin><X>80</X><Y>0</Y></Pin>
         <PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>
         <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP><typ>49</typ>
       </DataPin>
       </datapin>
-      <PinCL><string>3_0_1_2</string><string>3_1_1_7</string></PinCL>
+      <PinCL><string>3_0_1_3</string><string>3_1_1_8</string></PinCL>
       <CtrIem><X>1210</X><Y>250</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap><TL><X>50</X><Y>25</Y></TL><BR><X>210</X><Y>121</Y></BR>
       <angle>0</angle><id>3</id><GpId>0</GpId>
+      <zmH>1</zmH><zmV>1</zmV><FlipX>0</FlipX><FlipY>0</FlipY>
+      <typ>82</typ>
+      <Bottom>false</Bottom><selected>false</selected><focus>false</focus>
+      <Visible>true</Visible><Top>true</Top><Begrp>false</Begrp><freeze>false</freeze>
+    </DataItem>
+    <DataItem>
+      <Name>Résistance</Name><Group /><reference /><value>1k</value>
+      <datapolygon>
+        <DataPolygon><point><X>45</X><Y>-22</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
+        <DataPolygon><point><X>-45</X><Y>-22</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
+        <DataPolygon><point><X>-45</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
+        <DataPolygon><point><X>-80</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
+        <DataPolygon><point><X>-80</X><Y>2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
+        <DataPolygon><point><X>-45</X><Y>2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
+        <DataPolygon><point><X>-45</X><Y>22</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
+        <DataPolygon><point><X>45</X><Y>22</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
+        <DataPolygon><point><X>45</X><Y>2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
+        <DataPolygon><point><X>80</X><Y>2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
+        <DataPolygon><point><X>80</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>
+        <DataPolygon><point><X>45</X><Y>-2</Y></point><Selected>false</Selected><PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon></datapolygon><datasegment></datasegment><dataarc></dataarc>
+      <datapin>
+      <DataPin>
+        <Pname>2</Pname><Pnumber>2</Pnumber>
+        <NodeL><string>4_0_1_2</string></NodeL>
+        <Pin><X>-80</X><Y>0</Y></Pin>
+        <PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>
+        <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
+        <VltgP>0</VltgP><typ>50</typ>
+      </DataPin>      <DataPin>
+        <Pname>1</Pname><Pnumber>1</Pnumber>
+        <NodeL><string>4_1_1_9</string></NodeL>
+        <Pin><X>80</X><Y>0</Y></Pin>
+        <PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>
+        <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
+        <VltgP>0</VltgP><typ>49</typ>
+      </DataPin>
+      </datapin>
+      <PinCL><string>4_0_1_2</string><string>4_1_1_9</string></PinCL>
+      <CtrIem><X>250</X><Y>510</Y></CtrIem>
+      <pgap><X>0</X><Y>0</Y></pgap><TL><X>50</X><Y>25</Y></TL><BR><X>210</X><Y>121</Y></BR>
+      <angle>0</angle><id>4</id><GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV><FlipX>0</FlipX><FlipY>0</FlipY>
       <typ>82</typ>
       <Bottom>false</Bottom><selected>false</selected><focus>false</focus>
@@ -217,17 +258,17 @@
       <datapin>
       <DataPin>
         <Pname>GND</Pname><Pnumber>GND</Pnumber>
-        <NodeL><string>4_0_0_3</string><string>4_0_0_4</string></NodeL>
+        <NodeL><string>5_0_0_4</string><string>5_0_0_5</string></NodeL>
         <Pin><X>0</X><Y>-48</Y></Pin>
         <PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>
         <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP><typ>71</typ>
       </DataPin>
       </datapin>
-      <PinCL><string>4_0_0_3</string><string>4_0_0_4</string></PinCL>
+      <PinCL><string>5_0_0_4</string><string>5_0_0_5</string></PinCL>
       <CtrIem><X>494</X><Y>356</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap><TL><X>50</X><Y>25</Y></TL><BR><X>210</X><Y>121</Y></BR>
-      <angle>0</angle><id>4</id><GpId>0</GpId>
+      <angle>0</angle><id>5</id><GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV><FlipX>0</FlipX><FlipY>0</FlipY>
       <typ>71</typ>
       <Bottom>false</Bottom><selected>false</selected><focus>false</focus>
@@ -242,17 +283,42 @@
       <datapin>
       <DataPin>
         <Pname>VCC</Pname><Pnumber>VCC</Pnumber>
-        <NodeL><string>5_0_0_5</string><string>5_0_0_6</string><string>5_0_0_7</string></NodeL>
+        <NodeL><string>6_0_0_6</string><string>6_0_0_7</string><string>6_0_0_8</string></NodeL>
         <Pin><X>0</X><Y>48</Y></Pin>
         <PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>
         <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP><typ>86</typ>
       </DataPin>
       </datapin>
-      <PinCL><string>5_0_0_5</string><string>5_0_0_6</string><string>5_0_0_7</string></PinCL>
+      <PinCL><string>6_0_0_6</string><string>6_0_0_7</string><string>6_0_0_8</string></PinCL>
       <CtrIem><X>754</X><Y>134</Y></CtrIem>
       <pgap><X>0</X><Y>0</Y></pgap><TL><X>50</X><Y>25</Y></TL><BR><X>210</X><Y>121</Y></BR>
-      <angle>0</angle><id>5</id><GpId>0</GpId>
+      <angle>0</angle><id>6</id><GpId>0</GpId>
+      <zmH>1</zmH><zmV>1</zmV><FlipX>0</FlipX><FlipY>0</FlipY>
+      <typ>86</typ>
+      <Bottom>false</Bottom><selected>false</selected><focus>false</focus>
+      <Visible>true</Visible><Top>true</Top><Begrp>false</Begrp><freeze>false</freeze>
+    </DataItem>
+    <DataItem>
+      <Name>VCC+</Name><Group /><reference /><value>VIN</value>
+      <datapolygon></datapolygon><datasegment>
+        <DataSegment><Spoint><X>-60</X><Y>24</Y></Spoint><Epoint><X>60</X><Y>24</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>0</X><Y>48</Y></Spoint><Epoint><X>0</X><Y>24</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment>
+        <DataSegment><Spoint><X>-40</X><Y>8</Y></Spoint><Epoint><X>40</X><Y>8</Y></Epoint><ESelected>false</ESelected><SSelected>false</SSelected><EPtGap><X>0</X><Y>0</Y></EPtGap><SPtGap><X>0</X><Y>0</Y></SPtGap></DataSegment></datasegment><dataarc></dataarc>
+      <datapin>
+      <DataPin>
+        <Pname>VCC</Pname><Pnumber>VCC</Pnumber>
+        <NodeL><string>7_0_0_9</string></NodeL>
+        <Pin><X>0</X><Y>48</Y></Pin>
+        <PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>
+        <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
+        <VltgP>0</VltgP><typ>86</typ>
+      </DataPin>
+      </datapin>
+      <PinCL><string>7_0_0_9</string></PinCL>
+      <CtrIem><X>330</X><Y>430</Y></CtrIem>
+      <pgap><X>0</X><Y>0</Y></pgap><TL><X>50</X><Y>25</Y></TL><BR><X>210</X><Y>121</Y></BR>
+      <angle>0</angle><id>7</id><GpId>0</GpId>
       <zmH>1</zmH><zmV>1</zmV><FlipX>0</FlipX><FlipY>0</FlipY>
       <typ>86</typ>
       <Bottom>false</Bottom><selected>false</selected><focus>false</focus>
@@ -275,43 +341,57 @@
       <BeIngrp>false</BeIngrp><VltgL>0</VltgL>
     </Line>
     <Line>
-      <CFirst>0_0_0_2</CFirst><CLast>3_0_1_2</CLast>
+      <CFirst>0_2_0_2</CFirst><CLast>4_0_1_2</CLast>
+      <LP><PointF><X>178</X><Y>262</Y></PointF><PointF><X>170</X><Y>510</Y></PointF></LP>
+      <pGap /><ID>0</ID><idF>0</idF><idL>0</idL><GpId>0</GpId>
+      <Visible>true</Visible><select>false</select><Top>true</Top><Bottom>false</Bottom>
+      <BeIngrp>false</BeIngrp><VltgL>0</VltgL>
+    </Line>
+    <Line>
+      <CFirst>0_0_0_3</CFirst><CLast>3_0_1_3</CLast>
       <LP><PointF><X>178</X><Y>214</Y></PointF><PointF><X>1130</X><Y>250</Y></PointF></LP>
       <pGap /><ID>0</ID><idF>0</idF><idL>0</idL><GpId>0</GpId>
       <Visible>true</Visible><select>false</select><Top>true</Top><Bottom>false</Bottom>
       <BeIngrp>false</BeIngrp><VltgL>0</VltgL>
     </Line>
     <Line>
-      <CFirst>4_0_0_3</CFirst><CLast>0_3_1_3</CLast>
+      <CFirst>5_0_0_4</CFirst><CLast>0_3_1_4</CLast>
       <LP><PointF><X>494</X><Y>308</Y></PointF><PointF><X>178</X><Y>286</Y></PointF></LP>
       <pGap /><ID>0</ID><idF>0</idF><idL>0</idL><GpId>0</GpId>
       <Visible>true</Visible><select>false</select><Top>true</Top><Bottom>false</Bottom>
       <BeIngrp>false</BeIngrp><VltgL>0</VltgL>
     </Line>
     <Line>
-      <CFirst>4_0_0_4</CFirst><CLast>2_0_1_4</CLast>
+      <CFirst>5_0_0_5</CFirst><CLast>2_0_1_5</CLast>
       <LP><PointF><X>494</X><Y>308</Y></PointF><PointF><X>810</X><Y>250</Y></PointF></LP>
       <pGap /><ID>0</ID><idF>0</idF><idL>0</idL><GpId>0</GpId>
       <Visible>true</Visible><select>false</select><Top>true</Top><Bottom>false</Bottom>
       <BeIngrp>false</BeIngrp><VltgL>0</VltgL>
     </Line>
     <Line>
-      <CFirst>5_0_0_5</CFirst><CLast>0_7_1_5</CLast>
+      <CFirst>6_0_0_6</CFirst><CLast>0_7_1_6</CLast>
       <LP><PointF><X>754</X><Y>182</Y></PointF><PointF><X>322</X><Y>214</Y></PointF></LP>
       <pGap /><ID>0</ID><idF>0</idF><idL>0</idL><GpId>0</GpId>
       <Visible>true</Visible><select>false</select><Top>true</Top><Bottom>false</Bottom>
       <BeIngrp>false</BeIngrp><VltgL>0</VltgL>
     </Line>
     <Line>
-      <CFirst>5_0_0_6</CFirst><CLast>1_1_1_6</CLast>
+      <CFirst>6_0_0_7</CFirst><CLast>1_1_1_7</CLast>
       <LP><PointF><X>754</X><Y>182</Y></PointF><PointF><X>650</X><Y>250</Y></PointF></LP>
       <pGap /><ID>0</ID><idF>0</idF><idL>0</idL><GpId>0</GpId>
       <Visible>true</Visible><select>false</select><Top>true</Top><Bottom>false</Bottom>
       <BeIngrp>false</BeIngrp><VltgL>0</VltgL>
     </Line>
     <Line>
-      <CFirst>5_0_0_7</CFirst><CLast>3_1_1_7</CLast>
+      <CFirst>6_0_0_8</CFirst><CLast>3_1_1_8</CLast>
       <LP><PointF><X>754</X><Y>182</Y></PointF><PointF><X>1290</X><Y>250</Y></PointF></LP>
+      <pGap /><ID>0</ID><idF>0</idF><idL>0</idL><GpId>0</GpId>
+      <Visible>true</Visible><select>false</select><Top>true</Top><Bottom>false</Bottom>
+      <BeIngrp>false</BeIngrp><VltgL>0</VltgL>
+    </Line>
+    <Line>
+      <CFirst>7_0_0_9</CFirst><CLast>4_1_1_9</CLast>
+      <LP><PointF><X>330</X><Y>478</Y></PointF><PointF><X>330</X><Y>510</Y></PointF></LP>
       <pGap /><ID>0</ID><idF>0</idF><idL>0</idL><GpId>0</GpId>
       <Visible>true</Visible><select>false</select><Top>true</Top><Bottom>false</Bottom>
       <BeIngrp>false</BeIngrp><VltgL>0</VltgL>

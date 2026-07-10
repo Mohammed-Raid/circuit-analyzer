@@ -109,8 +109,12 @@ def dessiner_puce(d, ref, entree, ci, origin=(4.0, 0), titre=True):
     cablees = [(num, broches.get(num, num)) for num in sorted(
         pins_nets, key=lambda n: (len(n), n))
         if _broche_cablee(pins_nets.get(num), partages)]
-    ic_pins = [ic.IcPin(name=fonction, pin=num, side=_cote(fonction),
-                        anchorname=f"p{num}")
+    # pin= n'affiche le numéro de boîtier QUE s'il est numérique : sur une
+    # puce ALIASÉE (7805…), les clés de broches sont déjà les noms
+    # fonctionnels -> "GND" s'affichait en triple (numéro + fonction + net),
+    # audit A4.
+    ic_pins = [ic.IcPin(name=fonction, pin=num if num.isdigit() else None,
+                        side=_cote(fonction), anchorname=f"p{num}")
                for num, fonction in cablees]
     # pas de kwargs de padding (non garantis en 0.22) -- taille explicite
     # (cf. _taille_ic) pour éviter les noms de fonction gauche/droite
@@ -153,8 +157,13 @@ def dessiner_puce(d, ref, entree, ci, origin=(4.0, 0), titre=True):
         d.add(elm.Line().at(a).to(bout))
         # Chaque broche câblée garde SON étiquette (même réseau que la
         # broche d'alimentation : dire "VCC" sur RESET est correct et
-        # évite un point sans nom en bout de fil).
-        d.add(elm.Dot().at(bout).label(net, loc=locs[cote], fontsize=9))
+        # évite un point sans nom en bout de fil) — SAUF si le net porte
+        # exactement le nom de la fonction (GND sur la broche GND) : le
+        # répéter au dot empilait "GND" trois fois (audit A4).
+        dot = elm.Dot().at(bout)
+        if net != fonction:
+            dot = dot.label(net, loc=locs[cote], fontsize=9)
+        d.add(dot)
         nets.setdefault(net, bout)
         cotes.setdefault(net, cote)
     haut = max((p[1] for p in nets.values()), default=origin[1]) + 0.8
@@ -211,13 +220,26 @@ def dessiner_z_locales(d, res, z_matches, ci):
         offsets[net] = idx + 1
         perp = (-uy, ux)          # étalement perpendiculaire si plusieurs Z partagent le net
         ax, ay = nets[net]
-        # 1.7 (pas 1.1) : laisse de la place à l'étiquette de VALEUR au-dessus
-        # de chaque boîte (label_loc="top" en gauche/droite) -- sinon la
-        # 2e Z d'un même net (ex. pont diviseur R1/R2 sur l'entrée d'un
-        # comparateur) chevauche l'étiquette de la 1re.
-        base = (ax + perp[0] * idx * 1.7, ay + perp[1] * idx * 1.7)
+        # Pas d'étalement par CÔTÉ : en gauche/droite les étiquettes de
+        # valeur sont au-dessus des boîtes (label_loc="top") -> 1.7 suffit ;
+        # en haut/bas elles s'étendent HORIZONTALEMENT (label_loc="right",
+        # « C1 = 10 uF » ~2.2 unités) -> 2.8 sinon deux Z voisines d'un même
+        # rail se chevauchent (audit A5, 3 Z sous le GND du 555).
+        pas = 1.7 if cote in ("left", "right") else 2.8
+        base = (ax + perp[0] * idx * pas, ay + perp[1] * idx * pas)
         if idx:
-            d.add(elm.Line().at((ax, ay)).to(base).color(_BUS))
+            # Riser d'étalement DÉCALÉ de la colonne des dots (audit A1 :
+            # sur le LM317 il passait PAR le dot de la broche IN -> lecture
+            # court-circuit ADJ-IN, un dot = jonction). Coude de 0.35 DANS le
+            # stub (colinéaire, invisible), riser sur la colonne décalée (il
+            # croise les stubs voisins PERPENDICULAIREMENT, couvert par la
+            # légende « croisement sans point »), retour sur base.
+            rentre = (ax - ux * 0.35, ay - uy * 0.35)
+            bas_riser = (rentre[0] + perp[0] * idx * pas,
+                         rentre[1] + perp[1] * idx * pas)
+            d.add(elm.Line().at((ax, ay)).to(rentre).color(_BUS))
+            d.add(elm.Line().at(rentre).to(bas_riser).color(_BUS))
+            d.add(elm.Line().at(bas_riser).to(base).color(_BUS))
         # Départ plus large à gauche/droite qu'en haut/bas : l'étiquette de
         # net de la broche elle-même (loc=cote) s'étend horizontalement sur
         # une largeur de TEXTE (souvent > 0.5 unité, ex. "NET1") alors

@@ -171,3 +171,55 @@ def test_led_dessinee_en_led_coloree():
                 + [p.get_edgecolor() for p in ax.patches])
     assert any(mcolors.to_rgba(c) == rouge for c in couleurs), \
         "aucun trait rouge : la LED n'est pas dessinée en LED colorée"
+
+
+def _dots_et_lignes(fichier):
+    import schemdraw
+    comps = lire_xml(f"circuits_industriels/{fichier}")
+    g = construire_graphe(comps)
+    res = analyser(g)
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+    ref, entree = cv._puce_ilot(ilot, g)
+    from gui import puce_schematic
+    import schemdraw.elements as elm
+    with schemdraw.Drawing(show=False) as d:
+        d._comp_positions = {}
+        d._z_hitboxes = []
+        d._mode_detaille = False
+        r = puce_schematic.dessiner_puce(d, ref, entree, ci)
+        matches = cv._matches_for_island(ilot, res)
+        puce_schematic.dessiner_z_locales(d, r, matches, ci)
+        dots = [tuple(e.absanchors["center"]) for e in d.elements
+                if isinstance(e, elm.Dot) and not e._userparams.get("open")]
+        lignes = [(tuple(e.start), tuple(e.end)) for e in d.elements
+                  if isinstance(e, elm.Line)]
+    return dots, lignes
+
+
+def _dot_strictement_dans(dot, seg):
+    (x1, y1), (x2, y2) = seg
+    dx, dy = round(x2 - x1, 3), round(y2 - y1, 3)
+    px, py = round(dot[0] - x1, 3), round(dot[1] - y1, 3)
+    if dx == 0 and dy == 0:
+        return False
+    # colinéaire ?
+    if abs(px * dy - py * dx) > 1e-2:
+        return False
+    t = (px * dx + py * dy) / (dx * dx + dy * dy)
+    return 0.05 < t < 0.95      # strictement interne (pas une extrémité)
+
+
+@pytest.mark.parametrize("fichier", ["reel_lm317_variable.xml",
+                                     "reel_555_astable.xml",
+                                     "reel_lm393_seuil.xml"])
+def test_aucun_fil_ne_traverse_le_dot_d_une_autre_broche(fichier):
+    # Audit A1 : le riser d'étalement des Z passait PAR le dot d'une autre
+    # broche du même côté (LM317 : lecture court-circuit ADJ-IN, un dot est
+    # une JONCTION). Invariant : aucun dot plein n'est strictement interne
+    # à un segment de fil.
+    dots, lignes = _dots_et_lignes(fichier)
+    for dot in dots:
+        for seg in lignes:
+            assert not _dot_strictement_dans(dot, seg), \
+                f"fil {seg} traverse le dot {dot}"

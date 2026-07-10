@@ -143,3 +143,11 @@ def test_u_inconnu_reste_candidat_aop():
     comps = [u, _r("R1", "VIN", "N1"), _r("R2", "N1", "N2")]
     res = analyser(construire_graphe(comps))
     assert any(m["circuit_type"] == "Amplificateur inverseur (AOP)" for m in res)
+
+
+def test_led_nom_francais_pour_le_rapport():
+    # Audit A3 : le rapport affichait "LED (LED (red))" (doublon + anglais).
+    # nom = mot FR seul -> "LED (rouge)".
+    assert catalogue.identifier("D", "LED rouge")["nom"] == "rouge"
+    assert catalogue.identifier("D", "LED verte")["nom"] == "verte"
+    assert catalogue.identifier("D", "LED bleue")["nom"] == "bleue"

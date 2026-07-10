@@ -103,7 +103,9 @@ _EXACTS_D = {v: _e("Diode signal" if v == "1N4148" else "Diode redressement",
                    v, None, symbole=None)
              for v in ("1N4148", "1N4007")}
 
-_COULEURS_LED = {"ROUGE": "red", "VERT": "green", "BLEU": "blue"}
+# clé normalisée -> (couleur matplotlib, mot français pour le rapport)
+_COULEURS_LED = {"ROUGE": ("red", "rouge"), "VERT": ("green", "verte"),
+                 "BLEU": ("blue", "bleue")}
 
 
 @functools.lru_cache(maxsize=512)
@@ -125,9 +127,11 @@ def identifier(type_, value):
     if not v:
         return None
     if type_ == "D":
-        for cle, couleur in _COULEURS_LED.items():
+        for cle, (couleur, fr) in _COULEURS_LED.items():
             if cle in v:            # "LEDROUGE", "ROUGE", "LEDVERTE"…
-                e = dict(_e("LED", f"LED ({couleur})", None, symbole="led"))
+                # nom = mot FR seul : le rapport affiche "categorie (nom)",
+                # "LED (LED (red))" doublait et anglicisait (audit A3).
+                e = dict(_e("LED", fr, None, symbole="led"))
                 e["couleur"] = couleur
                 return e
         return _EXACTS_D.get(v)
