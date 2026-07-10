@@ -560,6 +560,26 @@ def _circuit_principal_ilot(ilot, graph, results):
     return m
 
 
+def _puce_ilot(ilot, graph):
+    """@brief Îlot dont l'unique actif est une puce identifiée non-AOP ->
+    (ref, entrée catalogue), sinon None. Branché AVANT la grille générique :
+    une puce identifiée ne tombe JAMAIS en vue générique."""
+    from circuit_analyzer.catalogue import identifier
+    raw = getattr(graph, "graph", {}).get("components", {}) or {}
+    refs = [r for r in ilot.get("composants", []) if r in raw]
+    actifs = [r for r in refs
+              if len(getattr(raw.get(r), "pins", {}) or {}) > 2]
+    if len(actifs) != 1:
+        return None
+    comp = raw[actifs[0]]
+    if comp.type != "U":
+        return None
+    entree = identifier("U", getattr(comp, "value", ""))
+    if entree is None or entree.get("alias"):
+        return None          # inconnu -> comportement actuel ; 741 -> AOP
+    return (actifs[0], entree)
+
+
 def _arbre_serie_parallele_ilot(ilot, graph):
     """@brief Arbre série/parallèle d'un îlot réductible entre VIN et VOUT.
 
@@ -780,9 +800,14 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     _deux = (_reseau_deux_bornes_ilot(ilot, graph)
              if (principal is None and _sp is None and _pont is None
                  and _derive is None) else None)
-    _chaine = _branches = _paire = None
+    _chaine = _branches = _paire = _puce = None
     if (principal is None and _sp is None and _pont is None and _derive is None
             and _deux is None):
+        # Puce identifiée (NE555, 74HC…, LM393, PC817…) AVANT la paire/chaîne :
+        # une puce identifiée ne tombe JAMAIS en vue générique (règle projet).
+        _puce = _puce_ilot(ilot, graph)
+    if (principal is None and _sp is None and _pont is None and _derive is None
+            and _deux is None and _puce is None):
         # Paire croisée (latch SR) AVANT la chaîne : le layout par flux rejette
         # ce motif (2 sources -> profondeur 0) -> échelle générique (audit D1).
         _paire = _paire_croisee(_matches_for_island(ilot, results), comp_info)
@@ -824,6 +849,12 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
             _arbre, _a, _b, _comps = _deux
             return impedance_schematic.dessiner_bloc(_arbre, _a, _b, _comps,
                                                      detaille=detaille)
+        if _puce is not None:
+            # Puce identifiée non-AOP : boîte puce (elm.Ic) + Z cliquables
+            # autour, jamais la grille générique (règle projet).
+            _ref_puce, _entree_puce = _puce
+            return _make_puce_fig(_ref_puce, _entree_puce, comp_info,
+                                  _matches_for_island(ilot, results), detaille=detaille)
         if _paire is not None:
             # Paire croisée (latch SR) : deux portes empilées, retours croisés.
             return _make_latch_fig(_paire, comp_info,
@@ -1759,6 +1790,73 @@ def _make_latch_fig(paire, comp_info, matches=None, detaille: bool = False):
             d._comp_positions = {}
             d._mode_detaille = detaille
             _draw_paire_croisee(d, paire, comp_info)
+            fig._z_hitboxes = list(d._z_hitboxes)
+            fig._comp_positions = dict(d._comp_positions)
+            try:
+                bb = d.get_bbox()
+                x0, x1 = bb.xmin - 1.5, bb.xmax + 1.8
+                y0, y1 = bb.ymin - 0.9, bb.ymax + 0.9
+                ax.set_xlim(x0, x1)
+                ax.set_ylim(y0, y1)
+                w, h = (x1 - x0), (y1 - y0)
+                if w > 0 and h > 0:
+                    scale = 0.45
+                    fig.set_size_inches(min(40.0, w * scale), min(20.0, h * scale))
+            except Exception:
+                _log.debug("ajustement de taille de figure ignoré", exc_info=True)
+    except Exception as e:
+        _log.warning("rendu du schéma échoué", exc_info=True)
+        ax.text(0.5, 0.5, f"Schéma non disponible\n{e}", ha="center", va="center",
+                transform=ax.transAxes, fontsize=12, color="#64748b")
+    ax.margins(0.04)
+    try:
+        fig.tight_layout(pad=0.4)
+    except Exception:
+        _log.debug("tight_layout ignoré", exc_info=True)
+    ajuster_labels(fig)
+    return fig
+
+
+def _make_puce_fig(ref, entree, comp_info, matches, detaille: bool = False):
+    """@brief Figure d'un îlot « 1 puce identifiée + Z autour » — boîte puce
+    (elm.Ic, cf. gui.puce_schematic) et boîtes Z cliquables pour les réseaux
+    passifs voisins (charges/couplages), à la place de la grille générique.
+
+    @param ref Référence de la puce (ex. "U1").
+    @param entree Entrée catalogue (cf. circuit_analyzer.catalogue.identifier).
+    @return matplotlib.figure.Figure (porte fig._z_hitboxes/_comp_positions).
+    """
+    fig = Figure(figsize=(8, 6))
+    ax = fig.add_subplot(111)
+    fig.patch.set_facecolor(SCH_BG)
+    ax.set_facecolor(SCH_BG)
+    ax.axis("off")
+    ax.set_aspect("equal")
+    fig._z_hitboxes = []
+    fig._comp_positions = {}
+    try:
+        with schemdraw.Drawing(canvas=ax, show=False) as d:
+            d.config(fontsize=12, inches_per_unit=0.5)
+            d._z_hitboxes = []
+            d._comp_positions = {}
+            d._mode_detaille = detaille
+            from gui import puce_schematic
+            # Titre différé (titre=False) : les Z locales dessinées ensuite
+            # peuvent dépasser au-dessus des broches du HAUT (ex. VCC) — le
+            # titre est replacé APRÈS, au-dessus de la bbox réelle, pour ne
+            # jamais chevaucher une boîte Z (cf. dessiner_z_locales).
+            res = puce_schematic.dessiner_puce(d, ref, entree, comp_info,
+                                               titre=False)
+            coupl = [m for m in (matches or []) if _est_couplage(m)]
+            puce_schematic.dessiner_z_locales(d, res, coupl, comp_info)
+            try:
+                bb_titre = d.get_bbox()
+                title_pt = (res["title"][0], bb_titre.ymax + 0.4)
+            except Exception:
+                title_pt = res["title"]
+            d.add(elm.Label().at(title_pt).label(
+                f"{entree['categorie']} ({entree['nom']})",
+                color=_TITRE_COLOR, fontsize=11))
             fig._z_hitboxes = list(d._z_hitboxes)
             fig._comp_positions = dict(d._comp_positions)
             try:

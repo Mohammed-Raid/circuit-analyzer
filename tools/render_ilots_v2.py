@@ -100,6 +100,11 @@ def _fig_for_ilot(ilot, graph, comp_info, results, detaille=False):
         arbre, a, b, comps = deux
         return impedance_schematic.dessiner_bloc(arbre, a, b, comps, detaille=detaille)
 
+    puce = cv._puce_ilot(ilot, graph)
+    if puce is not None:
+        return cv._make_puce_fig(puce[0], puce[1], comp_info,
+                                 matches, detaille=detaille)
+
     paire = cv._paire_croisee(matches, comp_info)
     if paire is not None:
         return cv._make_latch_fig(
