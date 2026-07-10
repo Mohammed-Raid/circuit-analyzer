@@ -268,7 +268,8 @@ class TabAnalyze:
             graph    = build_graph(comps)
             results  = match_patterns(graph)
             all_refs = [c.ref for c in comps]
-            report   = generate(results, path, len(comps), all_refs=all_refs)
+            report   = generate(results, path, len(comps), all_refs=all_refs,
+                               composants=comps)
             drc      = verifier_drc(results, graph)
 
             self._report_text    = report

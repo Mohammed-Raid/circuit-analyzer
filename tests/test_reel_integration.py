@@ -70,6 +70,15 @@ def test_555_du_corpus_identifie_et_pas_daop():
     assert not any("(AOP)" in m["circuit_type"] for m in res)
 
 
+def test_rapport_liste_les_composants_reels():
+    from circuit_analyzer.rapport import generate
+    comps = lire_xml("circuits_industriels/reel_555_astable.xml")
+    res = analyser(construire_graphe(comps))
+    texte = generate(res, "reel_555_astable.xml", len(comps),
+                     all_refs=[c.ref for c in comps], composants=comps)
+    assert "U1" in texte and "Timer" in texte and "NE555" in texte
+
+
 @pytest.mark.parametrize("fichier", FICHIERS)
 def test_aucun_faux_warning_broches_critiques(fichier):
     # Critical revue Task 4 : le check IN+/IN-/OUT tournait AVANT l'aliasing,

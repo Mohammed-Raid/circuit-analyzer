@@ -18,7 +18,8 @@ _PLAFOND_SUPPRIMES = 50
 
 
 def generer_rapport(resultats, fichier: str,
-                    total_composants: int, tous_refs: list[str] = None) -> str:
+                    total_composants: int, tous_refs: list[str] = None,
+                    composants=None) -> str:
     """
     @brief Génère un rapport texte enrichi à partir des résultats de analyser().
 
@@ -26,6 +27,10 @@ def generer_rapport(resultats, fichier: str,
     @param fichier Nom du fichier analysé.
     @param total_composants Nombre total de composants dans le circuit.
     @param tous_refs Liste de toutes les références (pour afficher les non-classifiés).
+    @param composants Liste de Composant (optionnel) — pour la section « Composants
+        réels identifiés » (catalogue). Aucun match n'est produit pour les puces
+        (pas de détection de montages) : c'est ici, et sur le titre de la figure
+        îlot, que leur catégorie est surfacée (déviation actée vs spec §5).
     @return str Rapport texte complet (compatible cp1252).
     """
     # Compter par catégorie fonctionnelle
@@ -81,6 +86,22 @@ def generer_rapport(resultats, fichier: str,
         a_verifier.extend((s['ref'], ct, s['reason']) for s in possibles)
 
     lignes.append(_SEP)
+
+    # Composants réels identifiés (catalogue) — les puces ne produisent aucun
+    # match (pas de détection de montages), leur catégorie n'apparaît donc
+    # nulle part ailleurs dans le rapport.
+    if composants:
+        from circuit_analyzer.catalogue import identifier
+        lignes_reelles = []
+        for c in composants:
+            e = identifier(getattr(c, 'type', ''), getattr(c, 'value', ''))
+            if e:
+                lignes_reelles.append(
+                    f"    {c.ref} - {e['categorie']} ({e['nom']})")
+        if lignes_reelles:
+            lignes.append('Composants reels identifies :')
+            lignes.extend(lignes_reelles)
+            lignes += ['', _SEP]
 
     # Structure en étages (îlots fonctionnels)
     ilots = getattr(resultats, 'ilots', [])
@@ -174,7 +195,8 @@ def generer_rapport(resultats, fichier: str,
 
 
 # Alias anglais pour la compatibilité
-def generate(results, input_file, total_components, all_refs=None, format='txt'):
+def generate(results, input_file, total_components, all_refs=None, format='txt',
+             composants=None):
     """@brief Alias anglais de generer_rapport() avec sélection de format.
 
     @param results Sortie de detecteur.analyser().
@@ -182,9 +204,11 @@ def generate(results, input_file, total_components, all_refs=None, format='txt')
     @param total_components Nombre total de composants.
     @param all_refs Liste de toutes les références (optionnel).
     @param format Format de sortie ; seul 'txt' est implémenté.
+    @param composants Liste de Composant (optionnel) — cf. generer_rapport().
     @return str Rapport texte.
     @throws ValueError Si le format demandé n'est pas supporté.
     """
     if format == 'txt':
-        return generer_rapport(results, input_file, total_components, all_refs)
+        return generer_rapport(results, input_file, total_components, all_refs,
+                               composants)
     raise ValueError(f"Format non supporté : {format}")
