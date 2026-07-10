@@ -3015,6 +3015,12 @@ def _draw_esd(d, result, ci):
     d.add(_symbole_diode(diode, ci).right().label(_lbl(diode, ci), loc="top"))
     d.add(elm.Line().down(1.5))
     d.add(elm.Ground())
+    # Net SIG (borne non-masse de la diode) : ancre pour les Impédances Z
+    # restantes de l'îlot (ex. R série de limitation) -- sinon un satellite
+    # connecté à SIG n'est jamais dessiné (cf. `_dessiner_impedances_locales`).
+    sig_net = next((n for n in result.get("nodes", ()) if n and not is_ground_net(n)),
+                    None)
+    return {"nets": {sig_net: sig_pt} if sig_net else {}, "absorbed_refs": {diode}}
 
 
 # ── AOP patterns ─────────────────────────────────────────────────────────────

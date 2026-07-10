@@ -31,6 +31,7 @@ _CORPUS = sorted(
     # de rejet : ilot de MOSFET non matches, reserve aux tests unitaires).
     + [f for f in glob.glob("circuits_industriels/logic_*.xml")
        if "non_dual" not in f]
+    + glob.glob("circuits_industriels/reel_*.xml")
 )
 
 ## @brief Exclusions EXPLICITES : composant reellement absent du dessin dans

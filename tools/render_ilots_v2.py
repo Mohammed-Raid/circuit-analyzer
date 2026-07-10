@@ -49,6 +49,7 @@ def _xml_files() -> list[Path]:
         # (fichier de rejet : ilot de MOSFET non matches, reserve aux
         # tests unitaires).
         + [f for f in ci.glob("logic_*.xml") if "non_dual" not in f.name]
+        + list(ci.glob("reel_*.xml"))
     )
 
 

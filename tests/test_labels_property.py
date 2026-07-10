@@ -38,7 +38,8 @@ def _circuit_files():
             # (fichier de rejet : ilot de MOSFET non matches, reserve aux
             # tests unitaires).
             + sorted(f for f in ci.glob("logic_*.xml")
-                     if "non_dual" not in f.name))
+                     if "non_dual" not in f.name)
+            + sorted(ci.glob("reel_*.xml")))
 
 
 def _figs_for_file(path, detaille):
