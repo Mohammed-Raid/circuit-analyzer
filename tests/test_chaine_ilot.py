@@ -488,6 +488,24 @@ def test_dessiner_montage_a_differentiel_expose_deux_ins():
     assert set(res["ins"]) == {"E1", "E2"}
 
 
+def test_dessiner_montage_a_darlington_ins_reste_le_stub_externe():
+    # Non-regression (finding review Task 9) : le routage par net (res["nets"])
+    # est reserve aux portes CMOS. Pour un Darlington (famille historique),
+    # res["nets"][base] pointe le noeud INTERNE apres Rb ; res["ins"] doit rester
+    # le stub d'entree externe (res["in"]), sinon un consommateur aval se
+    # cablerait en court-circuitant Rb.
+    ci = {"Q1": {"type": "Q", "pins": {"B": "NB", "C": "VCC", "E": "NE1"}},
+          "Q2": {"type": "Q", "pins": {"B": "NE1", "C": "NOUT", "E": "GND"}},
+          "Rb": {"type": "R", "value": "10k", "pins": {"1": "IN", "2": "NB"}}}
+    match = {"circuit_type": "Paire Darlington",
+             "components": ["Q1", "Q2", "Rb"], "nodes": ["NB", "VCC", "GND"]}
+    with schemdraw.Drawing(show=False) as d:
+        d._z_hitboxes = []
+        res = cv._dessiner_montage_a(d, match, ci, (5.0, 0), "IN", "OUT")
+    assert set(res["ins"]) == {"NB"}
+    assert res["ins"]["NB"] == res["in"], "l'entree pointe le stub externe, pas le noeud apres Rb"
+
+
 def test_suiveur_dessine_le_pont_diviseur_sur_in_plus():
     # IN+ alimente par un pont VCC-VREF_IN-GND : le suiveur dessine les 2 Z + VCC.
     result = {"circuit_type": "Suiveur de tension (AOP)",

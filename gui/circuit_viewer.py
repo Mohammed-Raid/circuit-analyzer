@@ -3539,13 +3539,18 @@ def _dessiner_montage_a(d, match, ci, origin, in_label, out_label):
         res = _DRAWERS[ct](d, match, ci, origin=origin, titre=False,
                            in_label=in_label, out_label=out_label)
         ins, _out = _io_montage(match, ci)
-        # Les portes CMOS exposent un point réel par net (res["nets"], posé
-        # par gui.logic_schematic._porte_symbole/_porte_transistors) -- une
+        # SEULES les portes CMOS exposent un point réel par net (res["nets"],
+        # posé par gui.logic_schematic._porte_symbole/_porte_transistors) : une
         # porte à N entrées (NAND/NOR) ne doit pas les collapser toutes sur
-        # l'unique point res["in"] (première entrée) comme les montages
-        # transistor mono-entrée.
-        nets = res.get("nets") or {}
-        res["ins"] = {n: nets.get(n, res["in"]) for n in ins}
+        # l'unique point res["in"] (première entrée). Les familles transistor
+        # mono-entrée restent sur le stub externe res["in"] : leur res["nets"]
+        # pointe des nœuds INTERNES (ex. base du Darlington après Rb), qu'un
+        # consommateur aval court-circuiterait s'il s'y raccordait.
+        if ct in _MONTAGES_PORTES_CMOS:
+            nets = res.get("nets") or {}
+            res["ins"] = {n: nets.get(n, res["in"]) for n in ins}
+        else:
+            res["ins"] = {n: res["in"] for n in ins}
         return res
 
     # Montages ancrés "center" (à router avant les branches Zin/Zg) :
