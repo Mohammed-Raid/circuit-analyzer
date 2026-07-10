@@ -1,10 +1,17 @@
 """@file test_reel_integration.py
 @brief Corpus reel_* : identification + aliasing + non-régression détection."""
+import glob
 import os
 import tempfile
 
-from circuit_analyzer.composant import Composant
+import pytest
+
+from circuit_analyzer import catalogue
+from circuit_analyzer.composant import Composant, construire_graphe
+from circuit_analyzer.detecteur import analyser
 from circuit_analyzer.xml import generer_xml, lire_xml
+
+FICHIERS = sorted(glob.glob("circuits_industriels/reel_*.xml"))
 
 
 def test_round_trip_u_broches_numerotees():
@@ -32,3 +39,32 @@ def test_round_trip_u_broches_numerotees():
     # isolation : la broche 5 (en l'air) ne partage son net avec AUCUNE autre
     autres = [n for k, n in u.pins.items() if k != "5"] + list(relus["R1"].pins.values())
     assert u.pins["5"] not in autres
+
+
+def test_corpus_present():
+    assert len(FICHIERS) == 8
+
+
+@pytest.mark.parametrize("fichier", FICHIERS)
+def test_lecture_et_analyse_sans_exception(fichier):
+    comps = lire_xml(fichier)
+    res = analyser(construire_graphe(comps))
+    assert res is not None
+
+
+def test_741_du_corpus_detecte_inverseur():
+    comps = lire_xml("circuits_industriels/reel_741_inverseur.xml")
+    # l'aliasing a eu lieu DANS lire_xml :
+    u = next(c for c in comps if c.type == "U")
+    assert "IN-" in u.pins and "OUT" in u.pins
+    res = analyser(construire_graphe(comps))
+    assert any(m["circuit_type"] == "Amplificateur inverseur (AOP)" for m in res)
+
+
+def test_555_du_corpus_identifie_et_pas_daop():
+    comps = lire_xml("circuits_industriels/reel_555_astable.xml")
+    u = next(c for c in comps if c.type == "U")
+    assert catalogue.identifier(u.type, u.value)["categorie"] == "Timer"
+    assert "2" in u.pins                      # multi-unité/non-alias : intact
+    res = analyser(construire_graphe(comps))
+    assert not any("(AOP)" in m["circuit_type"] for m in res)
