@@ -149,3 +149,25 @@ def test_regulateurs_ont_la_boite_puce_jamais_generique(fichier, attendu):
     ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
     fig = cv._make_puce_fig(ref, entree, ci, cv._matches_for_island(ilot, res))
     assert ref in fig._comp_positions
+
+
+# ── LED coloree (Task 6) ──────────────────────────────────────────────────
+
+def test_led_dessinee_en_led_coloree():
+    comps = lire_xml("circuits_industriels/reel_led_r.xml")
+    g = construire_graphe(comps)
+    res = analyser(g)
+    ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
+    from tools.render_ilots_v2 import _fig_for_ilot   # via sys.path tools/
+    ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins}
+          for c in comps}
+    fig = _fig_for_ilot(ilot, g, ci, res, detaille=True)
+    # au moins un élément LED (schemdraw pose des flèches de rayonnement :
+    # on vérifie par la couleur rouge d'un patch/ligne de l'axe)
+    import matplotlib.colors as mcolors
+    rouge = mcolors.to_rgba("red")
+    ax = fig.axes[0]
+    couleurs = ([l.get_color() for l in ax.lines]
+                + [p.get_edgecolor() for p in ax.patches])
+    assert any(mcolors.to_rgba(c) == rouge for c in couleurs), \
+        "aucun trait rouge : la LED n'est pas dessinée en LED colorée"

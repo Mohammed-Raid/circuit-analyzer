@@ -2892,6 +2892,21 @@ def _ref_on_net(refs, comp_info, net, fallback=None):
 
 # ── Drawing functions ─────────────────────────────────────────────────────────
 
+def _symbole_diode(ref, ci):
+    """@brief elm.LED coloré si la D est identifiée LED, sinon elm.Diode.
+
+    @param ref Référence du composant D (peut être None/absente de `ci`).
+    @param ci Dict des infos composants (ref -> {type, value, pins}).
+    @return Élément schemdraw non orienté (à chaîner avec .right()/.up()...).
+    """
+    from circuit_analyzer.catalogue import identifier
+    info = ci.get(ref, {}) or {}
+    entree = identifier("D", info.get("value", ""))
+    if entree and entree.get("symbole") == "led":
+        return elm.LED().color(entree["couleur"])
+    return elm.Diode()
+
+
 def _draw_impedance(d, result, ci):
     """@brief Dessine une « Impédance Z » : boîte Z entre ses deux bornes.
 
@@ -2924,7 +2939,7 @@ def _draw_impedance(d, result, ci):
 def _draw_half_wave(d, result, ci):
     """@brief Dessine le schéma « Redresseur simple alternance »."""
     diode = _ref(result, ci, "D"); r = _ref(result, ci, "R")
-    d += elm.Diode().right().label(_lbl(diode, ci), loc="top")
+    d += _symbole_diode(diode, ci).right().label(_lbl(diode, ci), loc="top")
     d.push()
     d += elm.Resistor().down().label(_lbl(r, ci), loc="right")
     d += elm.Ground()
@@ -2935,7 +2950,7 @@ def _draw_half_wave(d, result, ci):
 def _draw_peak_detector(d, result, ci):
     """@brief Dessine le schéma « Détecteur de crête »."""
     diode = _ref(result, ci, "D"); c = _ref(result, ci, "C")
-    d += elm.Diode().right().label(_lbl(diode, ci), loc="top")
+    d += _symbole_diode(diode, ci).right().label(_lbl(diode, ci), loc="top")
     d.push()
     d += elm.Capacitor().down().label(_lbl(c, ci), loc="right")
     d += elm.Ground()
@@ -2961,17 +2976,17 @@ def _draw_bridge_rectifier(d, result, ci):
     d.add(elm.Dot().at((0, 0)).label("DC−", loc="left"))
     # Diode labels omitted — node labels (AC1/DC+/DC−) are sufficient;
     # component refs are shown in the header chip badges.
-    d.add(elm.Diode().up().at((0, 0)))   # D3
+    d.add(_symbole_diode(ds[2], ci).up().at((0, 0)))   # D3
     d.add(elm.Dot().label("AC1", loc="left"))
-    d.add(elm.Diode().up())              # D1
+    d.add(_symbole_diode(ds[0], ci).up())              # D1
     dc_plus_y = d.here[1]
     d.add(elm.Dot().label("DC+", loc="left"))
 
     # ── Right column ──────────────────────────────────────────────
     d.add(elm.Dot().at((COL, 0)).label("DC−", loc="right"))
-    d.add(elm.Diode().up().at((COL, 0)))  # D4
+    d.add(_symbole_diode(ds[3], ci).up().at((COL, 0)))  # D4
     d.add(elm.Dot().label("AC2", loc="right"))
-    d.add(elm.Diode().up())               # D2
+    d.add(_symbole_diode(ds[1], ci).up())               # D2
     d.add(elm.Dot().label("DC+", loc="right"))
 
     # ── Connecting rails ──────────────────────────────────────────
@@ -2983,7 +2998,7 @@ def _draw_flyback(d, result, ci):
     """@brief Dessine le schéma « Diode de roue libre »."""
     diode = result["components"][0]
     d += elm.Line().right(0.5).label("SW", loc="start")
-    d += elm.Diode().right().label(_lbl(diode, ci), loc="top")
+    d += _symbole_diode(diode, ci).right().label(_lbl(diode, ci), loc="top")
     d += elm.Line().right(0.5).label("VCC", loc="end")
 
 
@@ -2997,7 +3012,7 @@ def _draw_esd(d, result, ci):
     d.add(elm.Line().right(0.5).label("SIG", loc="start"))
     sig_pt = d.here
     d.add(elm.Dot().at(sig_pt))
-    d.add(elm.Diode().right().label(_lbl(diode, ci), loc="top"))
+    d.add(_symbole_diode(diode, ci).right().label(_lbl(diode, ci), loc="top"))
     d.add(elm.Line().down(1.5))
     d.add(elm.Ground())
 
@@ -4924,7 +4939,7 @@ def _draw_relay_driver(d, result, ci):
         d1_ref = cand[0] if cand else None
     diode_lbl = _lbl(dbs[0], ci) if dbs else ""
     d.add(elm.Line().at(coil_bot).right(1.6))
-    diode_el = d.add(elm.Diode().up(coil_len).label(diode_lbl, loc="right"))
+    diode_el = d.add(_symbole_diode(d1_ref, ci).up(coil_len).label(diode_lbl, loc="right"))
     _enregistrer_position(d, d1_ref, diode_el.center)
     d.add(elm.Line().tox(coil_top[0]))
 
