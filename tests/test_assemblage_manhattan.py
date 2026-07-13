@@ -112,3 +112,61 @@ def test_aucun_repli_fil_en_z_sur_le_corpus_chaines(caplog):
                 _fig(nom, det)
     replis = [r for r in caplog.records if "repli _fil_en_z" in r.getMessage()]
     assert not replis, [r.getMessage() for r in replis[:5]]
+
+
+# Ilots multi-montages en DAG BRANCHE (couches multi-bandes, Task 5).
+BRANCHES = ["pid_controller.xml", "ilot_branche_ce_fanout.xml",
+            "ilot_reel_fanout_filtres_rlc.xml", "logic_dag_2vers1.xml"]
+
+# Meme filtre que test_fils_interetages_orthogonaux (leçon Task 4) : seules
+# les Line2D 2-points coloriees _WIRE/_BUS sont du cablage inter-etages pose
+# par ce module (_raccord/_tracer_polyligne/_fil_canal...) ; les formes de
+# symboles (triangle AOP 7 points+NaN, zigzag Resistor, spirale Inductor2,
+# fleche BjtNpn 2 points NOIRS) ne sont pas des fils et sont hors perimetre.
+def _lignes_cablage(fig):
+    for ax in fig.axes:
+        for line in ax.lines:
+            xy = line.get_xydata()
+            if len(xy) != 2 or line.get_color() not in _WIRE_COLORS:
+                continue
+            yield line, xy
+
+
+@pytest.mark.parametrize("nom", BRANCHES)
+@pytest.mark.parametrize("detaille", [False, True], ids=["z", "det"])
+def test_dag_fils_orthogonaux_hors_slots(nom, detaille):
+    # RED reel (avant impl. Task 5, voir rapport) : PAS le contrat
+    # d'orthogonalite lui-meme -- le cablage _fil_canal actuel (canal
+    # vertical) est deja purement orthogonal segment par segment. Le RED
+    # attendu par le brief (cablage DAG non route par la grille+A*) se
+    # constate plutot via test_routage_deterministe_dag / le corpus de repli
+    # ci-dessous : ce test-ci sert de garde-fou perenne post-implementation.
+    fig = _fig(nom, detaille)
+    for _line, xy in _lignes_cablage(fig):
+        for (xa, ya), (xb, yb) in zip(xy[:-1], xy[1:]):
+            assert abs(xa - xb) < 1e-6 or abs(ya - yb) < 1e-6, (
+                f"{nom}: segment oblique ({xa},{ya})->({xb},{yb})")
+
+
+def test_routage_deterministe_dag():
+    a = _fig("pid_controller.xml", True)
+    b = _fig("pid_controller.xml", True)
+    la = [tuple(map(tuple, l.get_xydata())) for ax in a.axes for l in ax.lines]
+    lb = [tuple(map(tuple, l.get_xydata())) for ax in b.axes for l in ax.lines]
+    assert len(la) == len(lb)
+    for xa, xb in zip(la, lb):
+        assert _xy_eq_nan(xa, xb), (xa, xb)
+
+
+def test_aucun_repli_sur_le_corpus_dag(caplog):
+    """Equivalent DAG de test_aucun_repli_fil_en_z_sur_le_corpus_chaines :
+    le repli _fil_canal (cablage DAG non route) est LEGAL mais doit rester
+    inatteignable sur le corpus BRANCHES -- meme piege potentiel que Task 4
+    (port pose a l'interieur d'un slot-obstacle)."""
+    import logging
+    with caplog.at_level(logging.WARNING, logger="gui.circuit_viewer"):
+        for nom in BRANCHES:
+            for det in (False, True):
+                _fig(nom, det)
+    replis = [r for r in caplog.records if "repli" in r.getMessage()]
+    assert not replis, [r.getMessage() for r in replis[:5]]

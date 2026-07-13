@@ -108,33 +108,32 @@ def test_branched_edges_pid_forward_only():
     assert len(edges) == 4          # D, I, P -> sommateur ; sommateur -> buffer
 
 
-def test_branched_fanin_channels_follow_input_order(monkeypatch):
-    # Dans un fan-in ordonne bas -> haut, les entrees basses doivent prendre les
-    # canaux les plus a droite. Sinon le long fil de la branche basse traverse
-    # la zone des autres sorties avant d'entrer dans le sommateur.
-    import schemdraw
-
+def test_branched_fanin_sommateur_route_sans_repli(monkeypatch):
+    # Les 3 entrees (P, I, D) du sommateur doivent toutes arriver au schema.
+    # Historiquement (avant la migration grille+routeur Manhattan, Task 5)
+    # ce test verifiait l'ordre des canaux _fil_canal assignes manuellement
+    # (entrees basses -> canaux les plus a droite) pour eviter qu'une branche
+    # basse ne traverse la zone d'une autre sortie. Ce mecanisme est retire :
+    # c'est desormais l'evitement d'obstacles du routeur A* (schema_router)
+    # qui garantit structurellement qu'aucune arete routee ne traverse le
+    # slot d'un autre etage -- _fil_canal ne subsiste que comme repli
+    # (journalise) si l'A* echoue. Le contrat pertinent est donc : les 3
+    # entrees du fan-in sont bien la, et aucune ne replie.
     comps = lire_xml("circuits_industriels/pid_controller.xml")
     res = analyser(construire_graphe(comps))
     ilot = max(res.ilots, key=lambda i: len(i["composants"]))
     layers = cv._layers_montages_flux(cv._matches_for_island(ilot, res))
     ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
 
-    routes = []
+    edges = cv._branched_edges(layers)
+    fanin_sommateur = [e for e in edges
+                       if e[1]["circuit_type"] == "Amplificateur sommateur (AOP)"]
+    assert len(fanin_sommateur) == 3
 
-    def capture_route(_d, out_pt, in_pt, channel_x):
-        routes.append((out_pt, in_pt, channel_x))
-
-    monkeypatch.setattr(cv, "_fil_canal", capture_route)
-    d = schemdraw.Drawing(show=False)
-    d._z_hitboxes = []
-    cv._draw_branched_chain(d, layers, ci)
-
-    fanin = [r for r in routes if abs(r[1][0] - 12.7) < 1e-6]
-    assert len(fanin) == 3
-    fanin.sort(key=lambda r: r[1][1])       # entree basse -> entree haute
-    xs = [r[2] for r in fanin]
-    assert xs == sorted(xs, reverse=True)
+    replis = []
+    monkeypatch.setattr(cv, "_fil_canal", lambda *a, **k: replis.append(a))
+    cv._make_branched_fig(layers, ci)
+    assert not replis, "le fan-in du sommateur ne doit pas replier sur _fil_canal"
 
 
 def test_z_label_anchor_is_clear_of_component_body():

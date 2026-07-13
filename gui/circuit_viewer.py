@@ -4100,13 +4100,24 @@ def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0, bloque_bas=False):
 _MESURES = {}
 
 
-def _mesurer_montage(match, ci):
+def _mesurer_montage(match, ci, detaille=False):
     """@brief (largeur, hauteur, ancrage_x) de la bbox du drawer de `match`.
 
     Dry-run : dessine le montage dans un Drawing jetable a l'origine
     (0, _oy_for(match)), sans titre, et mesure d.get_bbox(). Memoise par
-    (circuit_type, refs) — un meme montage n'est jamais mesure deux fois.
-    ancrage_x = 0 - bbox.xmin (decalage origine -> bord gauche).
+    (circuit_type, refs, detaille) — un meme montage/mode n'est jamais
+    mesure deux fois. ancrage_x = 0 - bbox.xmin (decalage origine -> bord
+    gauche).
+
+    @param detaille Doit refleter le MODE REEL du rendu appelant (`d.
+        _mode_detaille`) : une porte CMOS (entre autres) est nettement plus
+        HAUTE en vue detaillee (transistors) qu'en vue Z (symbole compact)
+        — mesurer toujours en mode Z (comme avant Task 5) sous-estime la
+        hauteur reelle des BANDES d'un DAG multi-rangees en vue detaillee,
+        et deux etages parallèles se chevauchent visuellement (audit
+        visuel logic_dag_2vers1, Task 5 : titre/VDD du 2e inverseur
+        percutant le 1er). La chaîne lineaire (une seule bande) n'exposait
+        pas ce piège : ses etages AOP ne varient qu'en LARGEUR entre modes.
 
     Le Drawing jetable est ouvert via `with` (et non juste instancié) :
     schemdraw empile le Drawing "actif" dans un registre GLOBAL
@@ -4121,11 +4132,11 @@ def _mesurer_montage(match, ci):
     jetable le temps du dry-run, l'isolant du Drawing réel.
     """
     cle = (match.get("circuit_type", ""),
-           tuple(sorted(match.get("components") or [])))
+           tuple(sorted(match.get("components") or [])), bool(detaille))
     if cle in _MESURES:
         return _MESURES[cle]
     with schemdraw.Drawing(show=False) as d:
-        d._mode_detaille = False
+        d._mode_detaille = bool(detaille)
         _dessiner_montage_a(d, match, ci, (0.0, _oy_for(match)), "", "")
         bb = d.get_bbox()
     mesure = (float(bb.xmax - bb.xmin), float(bb.ymax - bb.ymin),
@@ -4149,9 +4160,10 @@ def _draw_island_chain(d, ordered, ci, couplages=None):
     """
     from gui import schema_grid, schema_router
     n = len(ordered)
+    mode_detaille = getattr(d, "_mode_detaille", False)
     etages = []
     for i, match in enumerate(ordered):
-        larg, haut, ancr = _mesurer_montage(match, ci)
+        larg, haut, ancr = _mesurer_montage(match, ci, detaille=mode_detaille)
         etages.append(schema_grid.EtageMesure(
             cle=f"{i:03d}", colonne=i, bande=0, largeur=larg,
             hauteur=haut, ancrage_x=ancr, ancrage_y=_oy_for(match)))
@@ -4313,9 +4325,6 @@ def _fil_canal(d, out_pt, in_pt, channel_x):
     d.add(elm.Line().at((channel_x, out_pt[1])).to((channel_x, in_pt[1])).color(_WIRE))
     d.add(elm.Line().at((channel_x, in_pt[1])).to(in_pt).color(_WIRE))
 
-
-_BRANCHE_ROW_GAP = 9.0     # écart vertical entre étages parallèles d'une même couche
-_BRANCHE_DX = 13.0         # pas horizontal entre couches (large : place pour les canaux)
 
 _ROLE_ETAGE = {
     "Amplificateur différentiel (AOP)":  "Différentiel",
@@ -4510,16 +4519,18 @@ def _branched_edges(layers, ci=None, matches=None):
 
 
 def _draw_branched_chain(d, layers, ci, couplages=None):
-    """@brief Dessine un îlot multi-AOP branché en couches (cf. _layers_montages_flux).
+    """@brief Dessine un îlot multi-AOP branché en couches (cf. _layers_montages_flux),
+    posé sur la grille absolue (schema_grid) et câblé par le routeur Manhattan
+    (schema_router) — même architecture que `_draw_island_chain` (spec 2026-07-13),
+    généralisée aux couches multi-bandes (colonne = couche, bande = position dans
+    la couche) et au fan-out (une arête routée par consommateur).
 
-    Couche = colonne (x croissant) ; étages parallèles empilés verticalement. Chaque
-    arête avant relie producteur.out -> consommateur.ins[net] via un canal vertical
-    dédié (étalé par consommateur) pour éviter les chevauchements du fan-in.
+    `_fil_canal` ne subsiste que comme REPLI (router -> None), journalisé.
 
     @param layers list[list[match]] couches ordonnées entrée->sortie.
     @param ci Dict {ref → {type, value}}.
     """
-    ancres = {}                            # id(match) -> ancres ("out","ins",...)
+    from gui import schema_grid, schema_router
     dernier = len(layers) - 1
     # Plusieurs sorties parallèles dans la dernière couche -> labels distincts
     # (VOUT1, VOUT2…) pour lever l'ambiguïté ; une seule sortie reste « VOUT ».
@@ -4527,11 +4538,23 @@ def _draw_branched_chain(d, layers, ci, couplages=None):
     # sans label, le point d'entrée du fan-out restait anonyme (audit D5).
     n_sorties = len(layers[dernier]) if layers else 0
     n_entrees = len(layers[0]) if layers else 0
+
+    mode_detaille = getattr(d, "_mode_detaille", False)
+    cle_of = {}
+    etages = []
     for lx, couche in enumerate(layers):
-        m = len(couche)
         for ry, match in enumerate(couche):
-            y_row = (ry - (m - 1) / 2.0) * _BRANCHE_ROW_GAP
-            origin = (4.5 + lx * _BRANCHE_DX, y_row + _oy_for(match))
+            cle = f"{lx:02d}_{ry:02d}"
+            cle_of[id(match)] = cle
+            larg, haut, ancr = _mesurer_montage(match, ci, detaille=mode_detaille)
+            etages.append(schema_grid.EtageMesure(
+                cle=cle, colonne=lx, bande=ry, largeur=larg, hauteur=haut,
+                ancrage_x=ancr, ancrage_y=_oy_for(match)))
+    plan = schema_grid.poser(etages)
+
+    ancres = {}                            # id(match) -> ancres ("out","ins",...)
+    for lx, couche in enumerate(layers):
+        for ry, match in enumerate(couche):
             if lx != dernier:
                 out_label = ""
             elif n_sorties > 1:
@@ -4544,31 +4567,95 @@ def _draw_branched_chain(d, layers, ci, couplages=None):
                 in_label = f"VIN{ry + 1}"
             else:
                 in_label = "VIN"
+            origin = plan.origines[cle_of[id(match)]]
             ancres[id(match)] = _dessiner_montage_a(d, match, ci, origin,
                                                     in_label, out_label)
             _annoter_etage(d, ancres[id(match)], match)
 
-    # Câblage : un canal vertical distinct par entrée d'un même consommateur (fan-in).
-    par_conso = {}
-    for prod, cons, net in _branched_edges(layers, ci, matches=couplages):
-        par_conso.setdefault(id(cons), []).append((prod, cons, net))
     coupl = [m for m in (couplages or []) if _est_couplage(m)]
     find = _couplage_find(couplages or [])
-    couplages_utilises = set()
-    for groupe in par_conso.values():
-        groupe.sort(key=lambda e: ancres[id(e[1])]["ins"][e[2]][1])
-        for k, (prod, cons, net) in enumerate(groupe):
-            in_pt = ancres[id(cons)]["ins"][net]
-            channel_x = in_pt[0] - 2.4 - k * 1.4
-            cc = _couplage_entre(prod, cons, coupl, find, ci)
-            if cc is not None:
-                couplages_utilises.add(id(cc))
-                _fil_canal_avec_couplage(d, ancres[id(prod)]["out"], in_pt,
-                                         channel_x, cc, ci)
-            else:
-                _fil_canal(d, ancres[id(prod)]["out"], in_pt, channel_x)
     flat = [m for couche in layers for m in couche]
     flat_ancres = [ancres[id(m)] for m in flat]
+
+    # Nets à router : une arête PAR consommateur (fan-out non partagé, cf. spec
+    # §4.2/brief Task 5 — lisibilité, chaque branche reste indépendamment
+    # écartable par le routeur). Ports PROJETÉS sur la FRONTIÈRE des slots
+    # (x1 côté sortie, x0 côté entrée), jamais l'ancre snappée brute (cf.
+    # _draw_island_chain / piège Task 4 : une ancre est INTÉRIEURE à son
+    # slot-obstacle, l'A* ne peut pas en sortir). Tri par (couche du
+    # producteur, nom) avant routage -> déterminisme des réservations d'arêtes.
+    layer_of = {id(m): lx for lx, couche in enumerate(layers) for m in couche}
+    edges = _branched_edges(layers, ci, matches=couplages)
+
+    def _nom_net(prod, cons, net):
+        return f"{net}_{id(prod)}_{id(cons)}"
+
+    edges = sorted(edges, key=lambda e: (layer_of[id(e[0])], _nom_net(*e)))
+    par_producteur = {}
+    for prod, _cons, _net in edges:
+        par_producteur[id(prod)] = par_producteur.get(id(prod), 0) + 1
+    dots_poses = set()
+
+    # Couplage par arête, résolu AVANT le calcul des obstacles : un couplage
+    # consommé ici (dessiné EN LIGNE sur le fil routé) ne doit pas être aussi
+    # réservé comme Z locale par `_obstacles_stubs` -- sinon un même couplage
+    # (ex. Cc collecteur->base d'un fan-out à 2 branches) se retrouve compté
+    # deux fois (index 0 et 1 empilés au même point) et condamne le SEUL
+    # chemin d'échappement du départ commun à une unique direction, que 2
+    # arêtes distinctes (non partageables) ne peuvent plus emprunter toutes
+    # les deux -- 2 replis constatés sur ilot_branche_ce_fanout/ilot_reel_
+    # fanout_filtres_rlc (revue Task 5).
+    cc_par_arete = {}
+    couplages_utilises = set()
+    for prod, cons, net in edges:
+        cc = _couplage_entre(prod, cons, coupl, find, ci)
+        cc_par_arete[(id(prod), id(cons), net)] = cc
+        if cc is not None:
+            couplages_utilises.add(id(cc))
+    coupl_locaux = [z for z in coupl if id(z) not in couplages_utilises]
+    obstacles = list(plan.obstacles) + _obstacles_stubs(flat, flat_ancres,
+                                                        coupl_locaux, ci)
+
+    nets = []
+    for prod, cons, net in edges:
+        s_out = plan.slots[cle_of[id(prod)]]
+        s_in = plan.slots[cle_of[id(cons)]]
+        out_pt = ancres[id(prod)]["out"]
+        in_pt = ancres[id(cons)]["ins"][net]
+        nets.append((_nom_net(prod, cons, net),
+                     (s_out.x1, schema_grid.snap(out_pt[1])),
+                     (s_in.x0, schema_grid.snap(in_pt[1]))))
+    routes = schema_router.router(nets, obstacles)
+
+    for prod, cons, net in edges:
+        nom = _nom_net(prod, cons, net)
+        out_pt, in_pt = ancres[id(prod)]["out"], ancres[id(cons)]["ins"][net]
+        # Départ commun d'un fan-out (>1 consommateur) : un Dot rend le
+        # branchement explicite, posé une seule fois par producteur.
+        if par_producteur.get(id(prod), 0) > 1 and id(prod) not in dots_poses:
+            d.add(elm.Dot().at(out_pt).color(_WIRE))
+            dots_poses.add(id(prod))
+        poly = routes.get(nom)
+        cc = cc_par_arete[(id(prod), id(cons), net)]
+        if poly is None:
+            _log.warning("routage Manhattan impossible pour %s ; "
+                         "repli _fil_canal", nom)
+            channel_x = (out_pt[0] + in_pt[0]) / 2
+            if cc is not None:
+                couplages_utilises.add(id(cc))
+                _fil_canal_avec_couplage(d, out_pt, in_pt, channel_x, cc, ci)
+            else:
+                _fil_canal(d, out_pt, in_pt, channel_x)
+            continue
+        # Raccords port réel -> premier/dernier point snappé (droits, courts).
+        _raccord(d, out_pt, poly[0])
+        _raccord(d, in_pt, poly[-1])
+        if cc is not None:
+            couplages_utilises.add(id(cc))
+            _polyligne_avec_couplage(d, poly, cc, ci)
+        else:
+            _tracer_polyligne(d, poly)
+
     _dessiner_impedances_locales(d, flat, flat_ancres, coupl, couplages_utilises, ci)
 
 
