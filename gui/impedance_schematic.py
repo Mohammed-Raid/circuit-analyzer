@@ -15,7 +15,7 @@ import schemdraw.elements as elm
 from matplotlib.figure import Figure
 
 from gui.schema_labels import ajuster_labels
-from gui.theme import BLUE_HOVER
+from gui.theme import SCHEMA_COLORS
 
 _log = logging.getLogger(__name__)
 
@@ -113,18 +113,18 @@ def agencer(arbre):
 
 # --- Couleurs de rendu — alignées tokens (canvas clair préservé, cf. brief) -
 # Directive boss : le canvas reste CLAIR (fond #fafafa, standard de schéma).
-# Seul l'accent qui coïncide exactement avec un token du thème (_Z_EDGE)
-# pointe vers ce token ; le reste (fonds clairs, encre) reste en hex, ce sont
-# des couleurs de canvas clair et non des tokens de surface sombre.
-SCH_BG = "#fafafa"   # fond clair standard de schéma (idem circuit_viewer)
-_WIRE = "#1e293b"    # fils/encre — slate foncé, lisible sur SCH_BG
-_BUS = "#475569"     # bus/nets — gris ardoise moyen, lisible sur clair
+# Toutes les couleurs sont lues depuis theme.SCHEMA_COLORS (source unique,
+# Task 3) ; le reste (fonds clairs, encre) sont des couleurs de canvas clair
+# et non des tokens de surface sombre — mais leur VALEUR vit dans theme.py.
+SCH_BG = SCHEMA_COLORS["SCH_BG"]   # fond clair standard de schéma (idem circuit_viewer)
+_WIRE = SCHEMA_COLORS["WIRE"]      # fils/encre — slate foncé, lisible sur SCH_BG
+_BUS = SCHEMA_COLORS["BUS"]        # bus/nets — gris ardoise moyen, lisible sur clair
 
 # Boîtes Z : bleu rempli (idem circuit_viewer) — lisibilité + affordance du clic.
-_Z_FILL = "#dbeafe"        # remplissage clair (canvas clair, non touché)
-_Z_EDGE = BLUE_HOVER       # alignée tokens = theme.BLUE_HOVER (#2563eb)
+_Z_FILL = SCHEMA_COLORS["Z_FILL"]  # remplissage clair (canvas clair, non touché)
+_Z_EDGE = SCHEMA_COLORS["Z_EDGE"]  # alignée tokens = theme.BLUE_HOVER (#2563eb)
 # Couleur des symboles par type (idem palette _COMP_COLORS de l'app).
-_COMP_COLORS = {"R": "#1d4ed8", "C": "#0891b2", "L": "#059669"}
+_COMP_COLORS = {k: SCHEMA_COLORS["COMP"][k] for k in ("R", "C", "L")}
 
 # Symbole schemdraw par type de composant ; défaut = boîte Z générique.
 _SYMB = {

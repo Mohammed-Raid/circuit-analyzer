@@ -39,3 +39,33 @@ CARD  = RAISED
 CARD2 = SURFACE
 MUTED = TEXT_DIM
 BLUE_D = BLUE_PRESS
+
+# Neutres / accents supplémentaires (Task 3 — dé-hardcodage circuit_viewer)
+WHITE        = "#ffffff"
+NEUTRAL      = "#374151"
+NEUTRAL_HOVER = "#4b5563"
+SUCCESS_SOFT = "#34d399"
+
+from types import MappingProxyType
+
+# ── Schémas (canvas CLAIR — invariant boss : ne jamais assombrir) ──────────
+SCHEMA_COLORS = MappingProxyType({
+    "SCH_BG":     "#fafafa",   # fond canvas schémas (CLAIR, invariant)
+    "WIRE":       "#1e293b",   # fils/encre
+    "BUS":        "#475569",   # bus/nets satellites
+    "Z_FILL":     "#dbeafe",   # remplissage boîte Z
+    "Z_EDGE":     BLUE_HOVER,  # bord boîte Z
+    "OPAMP_FILL": "#eef2ff",   # triangle AOP
+    "TITRE":      OVERLAY,     # rôle de l'étage
+    "GAIN":       "#0f766e",   # gain (teal)
+    "LEGENDE":    "#64748b",   # légendes/notes discrètes
+    "COMP": MappingProxyType({
+        "R": "#1d4ed8", "C": "#0891b2", "L": "#059669", "D": "#dc2626",
+        "Q": "#7c3aed", "M": "#6d28d9", "U": "#b45309", "F": "#374151",
+    }),
+})
+
+SCHEMA_DIMS = MappingProxyType({
+    "PAS": 0.5, "MARGE": 1.0, "CANAL_H": 2.0, "CANAL_V": 2.0,
+    "X0": 4.5, "PENALITE_COUDE": 1.5,
+})

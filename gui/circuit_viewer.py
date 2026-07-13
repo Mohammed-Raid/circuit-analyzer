@@ -32,32 +32,29 @@ from gui.theme import BLUE_HOVER, OVERLAY
 
 _log = logging.getLogger(__name__)
 
-SCH_BG  = "#fafafa"   # light background — standard for schematics
+SCH_BG  = theme.SCHEMA_COLORS["SCH_BG"]   # light background — standard for schematics
 
-_COMP_COLORS = {
-    "R": "#1d4ed8", "C": "#0891b2", "L": "#059669",
-    "D": "#dc2626", "Q": "#7c3aed", "M": "#6d28d9",
-    "U": "#b45309", "F": "#374151",
-}
+_COMP_COLORS = dict(theme.SCHEMA_COLORS["COMP"])
 
 # --- Couleurs de rendu du schéma — alignées tokens --------------------------
 # Directive boss : le canvas des schémas reste CLAIR (fond SCH_BG #fafafa,
-# standard pour les schémas électroniques). On aligne uniquement les ACCENTS
-# qui coïncident exactement avec un token du thème (traçabilité) ; les fonds
-# clairs et l'encre (_WIRE, _Z_FILL, _OPAMP_FILL) restent des hex en dur —
-# ce sont des couleurs de canvas clair, pas des tokens de surface sombre.
-_BUS = "#475569"           # bus/nets — gris ardoise moyen, lisible sur clair
-_WIRE = "#1e293b"          # fils/encre — slate foncé, lisible sur SCH_BG
+# standard pour les schémas électroniques). Toutes les couleurs sont lues
+# depuis theme.SCHEMA_COLORS (source unique, Task 3) ; les fonds clairs et
+# l'encre (_WIRE, _Z_FILL, _OPAMP_FILL) restent des couleurs de canvas clair,
+# pas des tokens de surface sombre — mais leur VALEUR vit désormais dans
+# theme.py, pas ici.
+_BUS = theme.SCHEMA_COLORS["BUS"]           # bus/nets — gris ardoise moyen, lisible sur clair
+_WIRE = theme.SCHEMA_COLORS["WIRE"]         # fils/encre — slate foncé, lisible sur SCH_BG
 _LBL_OFST = 0.25           # décalage des labels de net pour les décoller des symboles
 
 # Boîtes Z : remplissage bleu clair + contour bleu. Double rôle — rend le
 # schéma plus lisible ET signale visuellement que la boîte est cliquable.
-_Z_FILL = "#dbeafe"        # remplissage clair (canvas clair, non touché)
-_Z_EDGE = BLUE_HOVER       # alignée tokens = theme.BLUE_HOVER (#2563eb)
-_OPAMP_FILL = "#eef2ff"    # triangle AOP légèrement teinté (canvas clair, non touché)
+_Z_FILL = theme.SCHEMA_COLORS["Z_FILL"]     # remplissage clair (canvas clair, non touché)
+_Z_EDGE = theme.SCHEMA_COLORS["Z_EDGE"]     # alignée tokens = theme.BLUE_HOVER (#2563eb)
+_OPAMP_FILL = theme.SCHEMA_COLORS["OPAMP_FILL"]   # triangle AOP légèrement teinté (canvas clair, non touché)
 
-_TITRE_COLOR = OVERLAY     # rôle de l'étage — alignée tokens = theme.OVERLAY (#1e293b, slate foncé lisible sur clair)
-_GAIN_COLOR = "#0f766e"    # gain de l'étage (teal) — inchangé, déjà lisible
+_TITRE_COLOR = theme.SCHEMA_COLORS["TITRE"]   # rôle de l'étage — alignée tokens = theme.OVERLAY (#1e293b, slate foncé lisible sur clair)
+_GAIN_COLOR = theme.SCHEMA_COLORS["GAIN"]     # gain de l'étage (teal) — inchangé, déjà lisible
 
 
 def _figure_pixel_size(fig):
@@ -441,28 +438,28 @@ def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
     hdr.pack_propagate(False)
     ctk.CTkLabel(hdr, text=f"⚡  {name}",
                  font=ctk.CTkFont("Segoe UI", 14, "bold"),
-                 text_color="#f1f5f9").pack(side="left", padx=18, pady=14)
+                 text_color=theme.TEXT).pack(side="left", padx=18, pady=14)
     _gain_txt = _texte_gain(result, graph)
     if _gain_txt:
         ctk.CTkLabel(hdr, text=_gain_txt,
                      font=ctk.CTkFont("Consolas", 12, "bold"),
-                     text_color="#34d399").pack(side="right", padx=18)
+                     text_color=theme.SUCCESS_SOFT).pack(side="right", padx=18)
 
     # Component chips
     chips = ctk.CTkFrame(popup, fg_color=theme.SURFACE)
     chips.pack(fill="x", padx=14, pady=(8, 2))
     ctk.CTkLabel(chips, text="Composants :",
                  font=ctk.CTkFont("Segoe UI", 10),
-                 text_color="#64748b").pack(side="left")
+                 text_color=theme.TEXT_DIM).pack(side="left")
     for ref in result["components"]:
         info = comp_info.get(ref, {})
         val  = info.get("value", "")
         typ  = info.get("type", "?")
         txt  = f" {ref} {val} ".strip()
-        color = _COMP_COLORS.get(typ, "#374151")
+        color = _COMP_COLORS.get(typ, theme.NEUTRAL)
         ctk.CTkLabel(chips, text=txt,
                      font=ctk.CTkFont("Consolas", 10, "bold"),
-                     fg_color=color, text_color="#ffffff",
+                     fg_color=color, text_color=theme.WHITE,
                      corner_radius=4).pack(side="left", padx=3)
 
     # Schematic area
@@ -494,13 +491,13 @@ def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
     ctk.CTkButton(bar, text="💾  Exporter PNG",
                   width=140, height=30, corner_radius=6,
                   font=ctk.CTkFont("Segoe UI", 11),
-                  fg_color="#1d4ed8", hover_color="#2563eb",
+                  fg_color=theme.BLUE_PRESS, hover_color=theme.BLUE_HOVER,
                   command=lambda: _export(fig, name, popup)).pack(
                       side="left", padx=12, pady=7)
     ctk.CTkButton(bar, text="Fermer",
                   width=90, height=30, corner_radius=6,
                   font=ctk.CTkFont("Segoe UI", 11),
-                  fg_color="#374151", hover_color="#4b5563",
+                  fg_color=theme.NEUTRAL, hover_color=theme.NEUTRAL_HOVER,
                   command=popup.destroy).pack(side="right", padx=12, pady=7)
 
 
@@ -1574,15 +1571,15 @@ def _make_fig(result, comp_info, drawer_fn, matches=None, detaille: bool = False
             ax.text(0.5, 0.5, f"Schéma non disponible\n{e}",
                     ha="center", va="center",
                     transform=ax.transAxes,
-                    fontsize=12, color="#64748b")
+                    fontsize=12, color=theme.TEXT_DIM)
     else:
         ax.text(0.5, 0.6, result["circuit_type"],
                 ha="center", va="center", transform=ax.transAxes,
-                fontsize=14, fontweight="bold", color="#1e293b")
+                fontsize=14, fontweight="bold", color=theme.OVERLAY)
         ax.text(0.5, 0.45,
                 "  ·  ".join(result["components"]),
                 ha="center", va="center", transform=ax.transAxes,
-                fontsize=11, color="#64748b", fontfamily="monospace")
+                fontsize=11, color=theme.TEXT_DIM, fontfamily="monospace")
 
     # Astuce de découvrabilité : si le schéma comporte des boîtes Z cliquables,
     # on l'indique (sinon l'utilisateur ne sait pas qu'il peut déplier les Z).
@@ -1592,7 +1589,7 @@ def _make_fig(result, comp_info, drawer_fn, matches=None, detaille: bool = False
     rect = (0, 0, 1, 1)
     if fig._z_hitboxes:
         fig.text(0.01, 0.012, "Astuce : cliquez une boîte Z pour voir le détail R/L/C",
-                 fontsize=9, color="#64748b", va="bottom", ha="left")
+                 fontsize=9, color=theme.TEXT_DIM, va="bottom", ha="left")
         rect = (0, 0.05, 1, 1)
 
     # Marge réduite : le tracé occupe presque toute la figure (lisibilité).
@@ -1662,10 +1659,10 @@ def _make_chain_fig(ordered, comp_info, matches=None, detaille: bool = False):
     except Exception as e:
         _log.warning("rendu du schéma échoué", exc_info=True)
         ax.text(0.5, 0.5, f"Schéma non disponible\n{e}", ha="center", va="center",
-                transform=ax.transAxes, fontsize=12, color="#64748b")
+                transform=ax.transAxes, fontsize=12, color=theme.TEXT_DIM)
     if fig._z_hitboxes:
         ax.text(0.005, 0.01, "Astuce : cliquez une boîte Z pour voir le détail R/L/C",
-                transform=ax.transAxes, fontsize=9, color="#64748b", va="bottom", ha="left")
+                transform=ax.transAxes, fontsize=9, color=theme.TEXT_DIM, va="bottom", ha="left")
     ax.margins(0.04)
     try:
         fig.tight_layout(pad=0.4)
@@ -1719,10 +1716,10 @@ def _make_branched_fig(layers, comp_info, matches=None, detaille: bool = False):
     except Exception as e:
         _log.warning("rendu du schéma échoué", exc_info=True)
         ax.text(0.5, 0.5, f"Schéma non disponible\n{e}", ha="center", va="center",
-                transform=ax.transAxes, fontsize=12, color="#64748b")
+                transform=ax.transAxes, fontsize=12, color=theme.TEXT_DIM)
     if fig._z_hitboxes:
         ax.text(0.005, 0.01, "Astuce : cliquez une boîte Z pour voir le détail R/L/C",
-                transform=ax.transAxes, fontsize=9, color="#64748b", va="bottom", ha="left")
+                transform=ax.transAxes, fontsize=9, color=theme.TEXT_DIM, va="bottom", ha="left")
     ax.margins(0.04)
     try:
         fig.tight_layout(pad=0.4)
@@ -1813,7 +1810,7 @@ def _make_latch_fig(paire, comp_info, matches=None, detaille: bool = False):
     except Exception as e:
         _log.warning("rendu du schéma échoué", exc_info=True)
         ax.text(0.5, 0.5, f"Schéma non disponible\n{e}", ha="center", va="center",
-                transform=ax.transAxes, fontsize=12, color="#64748b")
+                transform=ax.transAxes, fontsize=12, color=theme.TEXT_DIM)
     ax.margins(0.04)
     try:
         fig.tight_layout(pad=0.4)
@@ -1880,7 +1877,7 @@ def _make_puce_fig(ref, entree, comp_info, matches, detaille: bool = False):
     except Exception as e:
         _log.warning("rendu du schéma échoué", exc_info=True)
         ax.text(0.5, 0.5, f"Schéma non disponible\n{e}", ha="center", va="center",
-                transform=ax.transAxes, fontsize=12, color="#64748b")
+                transform=ax.transAxes, fontsize=12, color=theme.TEXT_DIM)
     ax.margins(0.04)
     try:
         fig.tight_layout(pad=0.4)
@@ -1925,7 +1922,7 @@ def _make_island_fig(model, matches=None, detaille: bool = False):
 
     if not components:
         ax.text(0.5, 0.5, "Ilot vide", ha="center", va="center",
-                transform=ax.transAxes, fontsize=13, color="#64748b")
+                transform=ax.transAxes, fontsize=13, color=theme.TEXT_DIM)
         ajuster_labels(fig)
         return fig
 
@@ -1940,16 +1937,16 @@ def _make_island_fig(model, matches=None, detaille: bool = False):
         _log.warning("schéma automatique de l'îlot indisponible", exc_info=True)
         ax.text(0.5, 0.56, model.get("label", "Ilot"),
                 ha="center", va="center", transform=ax.transAxes,
-                fontsize=14, fontweight="bold", color="#1e293b")
+                fontsize=14, fontweight="bold", color=theme.OVERLAY)
         ax.text(0.5, 0.44, f"Schema automatique indisponible\n{exc}",
                 ha="center", va="center", transform=ax.transAxes,
-                fontsize=10, color="#64748b")
+                fontsize=10, color=theme.TEXT_DIM)
 
     caption = plan["caption"]
     if hitboxes:
         caption += "   ·   cliquez un Z pour voir sa composition (R/L/C)"
     ax.text(0.01, 0.01, caption, transform=ax.transAxes,
-            fontsize=8, color="#64748b", va="bottom", ha="left")
+            fontsize=8, color=theme.TEXT_DIM, va="bottom", ha="left")
     ax.margins(0.16)
     fig.subplots_adjust(left=0.03, right=0.97, top=0.96, bottom=0.06)
     # Après margins/subplots_adjust (cf. commentaire de _make_fig).

@@ -8,8 +8,9 @@ colineaire ; croisement perpendiculaire libre).
 import heapq
 
 from gui.schema_grid import PAS, Rect, snap
+from gui.theme import SCHEMA_DIMS
 
-PENALITE_COUDE = 1.5   # 3 * PAS — favorise les longs segments droits
+PENALITE_COUDE = SCHEMA_DIMS["PENALITE_COUDE"]   # 3 * PAS — favorise les longs segments droits
 _MAX_NOEUDS = 20000    # garde-fou : au-dela, on abandonne (repli appelant)
 _DIRS = ((PAS, 0.0), (-PAS, 0.0), (0.0, PAS), (0.0, -PAS))
 

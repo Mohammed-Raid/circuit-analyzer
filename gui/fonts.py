@@ -26,3 +26,7 @@ def register_fonts() -> str:
         if ok:
             FONT_FAMILY = "Inter"
     return FONT_FAMILY
+
+
+# Tailles de police des schémas (valeurs historiques, juste nommées).
+SCHEMA_FONTSIZES = {"label": 9, "titre": 11, "gain": 8, "legende": 9}

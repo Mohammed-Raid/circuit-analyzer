@@ -6,13 +6,14 @@ entrees = mesures fournies par l'appelant, sorties = positions/rectangles.
 import math
 from dataclasses import dataclass, field
 
-# Constantes de grille — déplacées vers theme.SCHEMA_DIMS en Task 3
-# (schema_grid les REimportera depuis theme à ce moment-là).
-PAS = 0.5
-MARGE = 1.0
-CANAL_H = 2.0
-CANAL_V = 2.0
-X0 = 4.5
+from gui.theme import SCHEMA_DIMS
+
+# Constantes de grille — lues depuis theme.SCHEMA_DIMS (Task 3).
+PAS = SCHEMA_DIMS["PAS"]
+MARGE = SCHEMA_DIMS["MARGE"]
+CANAL_H = SCHEMA_DIMS["CANAL_H"]
+CANAL_V = SCHEMA_DIMS["CANAL_V"]
+X0 = SCHEMA_DIMS["X0"]
 
 
 def snap(v: float) -> float:
