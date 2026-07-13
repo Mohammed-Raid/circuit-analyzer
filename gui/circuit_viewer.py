@@ -879,7 +879,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
     # section 3 du design). Les trois sont reecrits ENSEMBLE a chaque
     # (re)montage, jamais partiellement.
     etat = {"fig": None, "canvas": None, "cids": []}
-    mode = {"detaille": False}
+    mode = {"detaille": True}
     zoom = {"facteur": 1.0}
 
     canvas_frame = ctk.CTkFrame(popup, fg_color=SCH_BG, corner_radius=10)
@@ -920,8 +920,13 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         # interne vient d'etre detruit ci-dessus explicitement).
         for enfant in canvas_frame.winfo_children():
             enfant.destroy()
+        # Les figures du cache bimode (`etat["figs"]`) survivent au demontage
+        # d'un remontage (toggle/zoom) : seule la fermeture du popup (`_fermer`)
+        # les clf() -- sinon un toggle vers l'autre mode viderait la figure
+        # qu'on s'apprete a reafficher au prochain retour (cf. cache bimode).
         ancienne_fig = etat.get("fig")
-        if ancienne_fig is not None:
+        if ancienne_fig is not None and ancienne_fig not in (
+                etat.get("figs") or {}).values():
             ancienne_fig.clf()
         etat["canvas"] = None
         etat["cids"] = []
@@ -1191,19 +1196,43 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
             etat["puces"].append(
                 {"texte": txt, "dispo": dispo, "candidats": candidats})
 
+    # Cache bimode : une figure par valeur de `mode["detaille"]`, construite
+    # au plus une fois chacune (construction paresseuse -- le toggle ne
+    # reconstruit jamais une figure deja vue, il la reaffiche). `base` memorise
+    # la taille NATIVE (facteur 1.0) de chaque figure au moment de sa
+    # construction : indispensable pour le zoom (cf. piege ci-dessous),
+    # `nb_constructions` sert de sonde de test (une construction reelle par
+    # mode, jamais plus).
+    etat.setdefault("figs", {False: None, True: None})
+    etat.setdefault("base", {False: None, True: None})
+    etat.setdefault("nb_constructions", 0)
+
     def _rendre():
         """@brief Chemin de reconstruction partagé par le toggle vue détaillée
         et les boutons de zoom : chacun conserve l'état de l'autre (le toggle
         redessine au zoom courant, le zoom conserve le mode courant).
 
-        Reconstruit une figure fraîche via `construire_fig` (mémorise ses
-        base_w/base_h natifs), lui applique le facteur de zoom courant puis
-        la remonte via `monter_canvas` — qui démonte d'abord l'ancienne
-        (encore dans `etat["fig"]` a cet instant : `monter_canvas` en a
-        besoin pour le teardown avant qu'on l'ecrase ci-dessous).
+        Reutilise la figure du cache bimode `etat["figs"][det]` si elle existe
+        deja (toggle aller-retour = pas de reconstruction), sinon la construit
+        via `construire_fig` et la memorise.
+
+        PIEGE zoom : `set_size_inches` MUTE la figure -- si on relit sa taille
+        courante via `get_size_inches()` pour en deriver le prochain facteur,
+        deux zooms successifs sur une figure REUTILISEE du cache se
+        composeraient (base deja x1.25 -> x1.25 a nouveau -> x1.5625 au lieu
+        de x1.25). La taille NATIVE de chaque mode est donc figee UNE FOIS
+        (`etat["base"][det]`, a la premiere construction de ce mode) et
+        relue -- jamais recalculee depuis la figure courante, qui peut porter
+        un zoom/tassage d'un rendu precedent.
         """
-        nouvelle_fig = construire_fig(mode["detaille"])
-        base_w, base_h = nouvelle_fig.get_size_inches()
+        det = mode["detaille"]
+        nouvelle_fig = etat["figs"][det]
+        if nouvelle_fig is None:
+            nouvelle_fig = construire_fig(det)
+            etat["figs"][det] = nouvelle_fig
+            etat["nb_constructions"] += 1
+            etat["base"][det] = nouvelle_fig.get_size_inches()
+        base_w, base_h = etat["base"][det]
         # Mémorisés AVANT tassage/zoom (taille native au facteur 1.0) — sert
         # au bouton « Ajuster à la fenêtre » (`_ajuster`) sans reconstruire de
         # figure juste pour mesurer.
@@ -1221,6 +1250,13 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
             ratio = base_w / _ISLAND_DEFILE_WIDTH_IN
             if ratio <= 1.15:
                 nouvelle_fig.set_size_inches(base_w / ratio, base_h / ratio)
+            else:
+                nouvelle_fig.set_size_inches(base_w, base_h)
+        else:
+            # Facteur 100 % sans tassage : reset explicite a la taille native
+            # -- `nouvelle_fig` peut etre une figure REUTILISEE du cache qui
+            # porte encore un zoom/tassage d'un rendu precedent sur ce mode.
+            nouvelle_fig.set_size_inches(base_w, base_h)
         monter_canvas(nouvelle_fig, facteur)
         etat["fig"] = nouvelle_fig
         _maj_bouton_pct()
@@ -1245,7 +1281,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         toggle_btn.configure(
             text="Vue simplifiée Z" if mode["detaille"] else "Vue détaillée R/L/C")
 
-    toggle_btn = ui_kit.SecondaryButton(bar, text="Vue détaillée R/L/C", icon_name="layers",
+    toggle_btn = ui_kit.SecondaryButton(bar, text="Vue simplifiée Z", icon_name="layers",
                   width=170, height=30,
                   command=_toggle_detaille)
     toggle_btn.pack(side="left", padx=(0, 12), pady=7)
@@ -1283,7 +1319,16 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         """@brief Fermeture du popup (bouton Fermer ET WM_DELETE_WINDOW) : meme
         teardown déterministe qu'un remontage (cf. `_demonter_contexte`) AVANT
         `popup.destroy()` — sinon le dernier contexte affiché ne serait jamais
-        démonté explicitement (seul le GC cyclique l'aurait récupéré, un jour)."""
+        démonté explicitement (seul le GC cyclique l'aurait récupéré, un jour).
+
+        Vide aussi le cache bimode (`etat["figs"]`) : celui-ci protège les DEUX
+        figures d'un `clf()` prématuré pendant la vie du popup (cf.
+        `_demonter_contexte`), mais a la fermeture il n'y a plus de retour
+        possible vers l'autre mode -- les DEUX doivent etre liberees ici."""
+        for f in (etat.get("figs") or {}).values():
+            if f is not None:
+                f.clf()
+        etat["figs"] = {False: None, True: None}
         _demonter_contexte()
         popup.destroy()
 
@@ -1324,6 +1369,7 @@ def show_island(ilot: dict, graph, comp_info: dict, parent=None, results=None):
         "mode": mode,
         "zoom": zoom,
         "canvas_frame": canvas_frame,
+        "toggle_btn": toggle_btn,
         "toggle": _toggle_detaille,
         "zoom_in": lambda: _zoom("in"),
         "zoom_out": lambda: _zoom("out"),

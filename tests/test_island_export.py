@@ -75,6 +75,13 @@ def test_export_png_est_cadre_centre_sur_un_ilot_reel_asymetrique(ctk_root, tmp_
     # dans le PNG exporte.
     popup = _ouvrir(ctk_root, "ilot_reel_ce_suiveur_sortie_rlc.xml")
     t = popup._etat_test
+    # Le cas d'asymetrie corrige (rapport chips-export section B) a ete
+    # calibre sur la vue Z (boites Impedance) -- la vue depliee par defaut
+    # (Task 6) dessine des symboles R/L/C reels avec un cadrage different,
+    # hors perimetre de ce test. Bascule explicite plutot que de dependre du
+    # mode par defaut.
+    t["toggle"]()
+    ctk_root.update()
     fig = t["etat"]["fig"]
 
     png = tmp_path / "export.png"

@@ -57,27 +57,28 @@ def test_toggle_ne_modifie_pas_le_zoom_et_zoom_ne_modifie_pas_le_mode(ctk_root):
     t = popup._etat_test
     mode, zoom = t["mode"], t["zoom"]
 
-    assert mode["detaille"] is False
+    # Vue depliee par defaut (Task 6) -> mode["detaille"] demarre a True.
+    assert mode["detaille"] is True
     assert zoom["facteur"] == 1.0
 
     t["zoom_in"]()
     ctk_root.update()
     assert zoom["facteur"] == pytest.approx(1.25)
-    assert mode["detaille"] is False, "le zoom ne doit pas toucher le mode"
-
-    t["toggle"]()
-    ctk_root.update()
-    assert mode["detaille"] is True
-    assert zoom["facteur"] == pytest.approx(1.25), "le toggle ne doit pas toucher le zoom"
-
-    t["zoom_out"]()
-    ctk_root.update()
-    assert zoom["facteur"] == pytest.approx(1.0)
     assert mode["detaille"] is True, "le zoom ne doit pas toucher le mode"
 
     t["toggle"]()
     ctk_root.update()
     assert mode["detaille"] is False
+    assert zoom["facteur"] == pytest.approx(1.25), "le toggle ne doit pas toucher le zoom"
+
+    t["zoom_out"]()
+    ctk_root.update()
+    assert zoom["facteur"] == pytest.approx(1.0)
+    assert mode["detaille"] is False, "le zoom ne doit pas toucher le mode"
+
+    t["toggle"]()
+    ctk_root.update()
+    assert mode["detaille"] is True
     assert zoom["facteur"] == pytest.approx(1.0)
 
     popup.destroy()
@@ -156,6 +157,14 @@ def test_scrollregion_couvre_exactement_la_figure_zoomee(ctk_root):
 # ── Section 3 : demontage deterministe (zero fuite) ──────────────────────────
 
 def test_aucune_fuite_de_figure_sur_cycles_toggle_zoom(ctk_root):
+    """Depuis le cache bimode (Task 6), les figures des DEUX modes restent
+    volontairement vivantes pendant toute la vie du popup (evite de
+    reconstruire a chaque toggle -- `etat["figs"]`) : il n'y a donc plus
+    « une figure remplacee = collectee immediatement » pour chaque action,
+    mais deux invariants plus forts : jamais plus de 2 figures distinctes
+    vues sur tout le cycle toggle/zoom, et la fermeture du popup (`_fermer`)
+    les libere TOUTES LES DEUX (cf. `test_fermeture_popup_demonte_le_dernier_contexte`
+    pour la derniere affichee seule)."""
     popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
     t = popup._etat_test
 
@@ -165,23 +174,101 @@ def test_aucune_fuite_de_figure_sur_cycles_toggle_zoom(ctk_root):
     ]
     assert len(actions) >= 8
 
-    refs = []
-    old_fig = None
+    vues_par_id = {}
     for action in actions:
-        old_fig = t["etat"]["fig"]
-        refs.append(weakref.ref(old_fig))
         action()
         ctk_root.update()
+        vues_par_id[id(t["etat"]["fig"])] = t["etat"]["fig"]
 
-    del old_fig
+    assert len(vues_par_id) == 2, (
+        "le cache bimode ne doit jamais depasser 2 figures distinctes "
+        f"(trouve {len(vues_par_id)})")
+
+    refs = [weakref.ref(f) for f in vues_par_id.values()]
+    vues_par_id.clear()
+    del action
+    gc.collect()
+    assert all(r() is not None for r in refs), (
+        "les 2 figures du cache doivent rester vivantes tant que le popup vit")
+
+    t["fermer"]()
+    ctk_root.update()
     gc.collect()
 
-    vivantes = [i for i, r in enumerate(refs) if r() is not None]
+    assert all(r() is None for r in refs), (
+        "les figures du cache doivent etre liberees a la fermeture du popup")
+
+
+# ── Task 6 : vue depliee par defaut + cache bimode des figures ───────────────
+
+def test_ouverture_en_vue_depliee(ctk_root):
+    # show_island doit demarrer en mode detaille (spec Task 6).
+    popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
+    t = popup._etat_test
+
+    assert t["mode"]["detaille"] is True
+    assert "Vue simplifiée Z" in t["toggle_btn"].cget("text")
+
     popup.destroy()
-    assert not vivantes, (
-        f"{len(vivantes)}/{len(refs)} figures remplacees non collectees "
-        f"apres gc.collect() (indices {vivantes})"
-    )
+
+
+def test_toggle_aller_retour_ne_reconstruit_pas_deux_fois(ctk_root):
+    """Un toggle -> toggle (retour a la vue depliee de depart) ne doit
+    reconstruire chaque figure qu'UNE SEULE fois (une par mode) : le retour
+    a un mode deja vu reutilise la figure du cache, pas une reconstruction."""
+    popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
+    t = popup._etat_test
+
+    assert t["etat"]["nb_constructions"] == 1, "construction initiale (vue depliee)"
+
+    t["toggle"]()
+    ctk_root.update()
+    assert t["etat"]["nb_constructions"] == 2, "construction de la vue Z (premier passage)"
+
+    t["toggle"]()
+    ctk_root.update()
+    assert t["etat"]["nb_constructions"] == 2, (
+        "retour a la vue depliee : figure du cache reutilisee, pas de reconstruction")
+
+    popup.destroy()
+
+
+def test_zoom_apres_toggle_ne_compose_pas_le_facteur(ctk_root):
+    """Piege zoom (Task 6) : `set_size_inches` mute la figure cachee. Si
+    `_rendre` relisait la taille COURANTE d'une figure reutilisee du cache
+    pour deriver le facteur suivant, deux zooms successifs sur un
+    aller-retour de mode se composeraient. La taille native doit rester
+    figee (`etat["base"]`) et le facteur s'appliquer dessus, jamais sur une
+    taille deja zoomee."""
+    popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
+    t = popup._etat_test
+
+    fig_native = t["etat"]["fig"]
+    # Reference NATIVE via `etat["base"]` (Task 6), pas `get_size_inches()`
+    # de la figure affichee : celle-ci peut deja etre TASSEE au facteur 1.0
+    # (depassement marginal du viewport, cf. `_rendre`), auquel cas mesurer
+    # sa taille courante donnerait une reference plus petite que la vraie
+    # taille native memorisee -- faussant le calcul attendu ci-dessous.
+    base_w, base_h = t["etat"]["base"][True]
+
+    t["zoom_in"]()
+    ctk_root.update()
+    facteur = t["zoom"]["facteur"]
+    assert facteur != 1.0
+
+    t["toggle"]()          # -> vue Z (construction + zoom au meme facteur)
+    ctk_root.update()
+    t["toggle"]()           # -> retour vue depliee : figure REUTILISEE du cache
+    ctk_root.update()
+
+    fig = t["etat"]["fig"]
+    assert fig is fig_native, "figure du cache reutilisee (meme objet)"
+    w, h = fig.get_size_inches()
+    assert w == pytest.approx(base_w * facteur, rel=0.02), (
+        "le zoom compose : taille recalculee a partir de la figure DEJA zoomee")
+    assert h == pytest.approx(base_h * facteur, rel=0.02)
+
+    popup.destroy()
 
 
 # ── Task 1 : bouton « Ajuster à la fenêtre » ──────────────────────────────────
@@ -256,13 +343,16 @@ def test_ajuster_preserve_le_mode_detaille(ctk_root):
     popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
     t = popup._etat_test
 
+    # Depart deplie par defaut (Task 6) : on bascule d'abord vers la vue Z
+    # (mode non-defaut) pour verifier qu'Ajuster preserve bien la valeur
+    # COURANTE du mode, pas seulement le defaut.
     t["toggle"]()
     ctk_root.update()
-    assert t["mode"]["detaille"] is True
+    assert t["mode"]["detaille"] is False
 
     t["ajuster"]()
     ctk_root.update()
-    assert t["mode"]["detaille"] is True, "Ajuster ne doit pas toucher le mode"
+    assert t["mode"]["detaille"] is False, "Ajuster ne doit pas toucher le mode"
 
     popup.destroy()
 
@@ -309,10 +399,13 @@ def test_clic_puce_focus_zoome_centre_et_affiche_puis_efface_l_anneau(ctk_root):
     t["cliquer_composant"](ref)
     ctk_root.update()
 
-    # Focus : zoom monte au facteur cible, figure remplacee.
+    # Focus : zoom monte au facteur cible, figure re-rendue. Depuis le cache
+    # bimode (Task 6), le mode ne change pas ici -> meme objet Figure que
+    # `fig_avant`, simplement redimensionne et remonte (nouveau canvas
+    # defilant) plutot que reconstruit de zero.
     assert t["zoom"]["facteur"] == pytest.approx(cv._CHIP_FOCUS_FACTEUR)
     fig = t["etat"]["fig"]
-    assert fig is not fig_avant, "le focus doit re-rendre la figure"
+    assert fig is fig_avant, "meme mode -> figure du cache reutilisee (redimensionnee)"
     canvas = t["etat"]["canvas"]
     view = getattr(canvas, "_scroll_view", None)
     assert view is not None, "au facteur focus la vue doit etre defilante"
@@ -360,13 +453,9 @@ def test_bandeau_puces_refs_reelles_en_vue_detaillee(ctk_root):
     t = popup._etat_test
     ilot, _graph, ci, _res = _premier_ilot("ilot_reel_fanout_filtres_rlc.xml")
 
-    textes_z = [p["texte"] for p in t["etat"]["puces"]]
-    assert any(x.startswith("Z") for x in textes_z), "vue Z : puces de modele"
-
-    t["toggle"]()
-    ctk_root.update()
+    # Vue depliee par defaut (Task 6) : le bandeau initial est deja detaille.
     textes_det = [p["texte"] for p in t["etat"]["puces"]]
-    assert textes_det, "bandeau reconstruit apres toggle"
+    assert textes_det, "bandeau construit a l'ouverture"
     assert not any(x.startswith("Z") for x in textes_det), (
         "vue detaillee : plus de puce Z")
     reels = {r for r in ilot["composants"]
@@ -376,8 +465,13 @@ def test_bandeau_puces_refs_reelles_en_vue_detaillee(ctk_root):
 
     t["toggle"]()
     ctk_root.update()
-    assert [p["texte"] for p in t["etat"]["puces"]] == textes_z, (
-        "retour vue Z : bandeau d'origine")
+    textes_z = [p["texte"] for p in t["etat"]["puces"]]
+    assert any(x.startswith("Z") for x in textes_z), "vue Z : puces de modele"
+
+    t["toggle"]()
+    ctk_root.update()
+    assert [p["texte"] for p in t["etat"]["puces"]] == textes_det, (
+        "retour vue detaillee : bandeau d'origine")
 
     popup.destroy()
 
@@ -451,6 +545,11 @@ def test_clic_puce_apres_toggle_survit_au_remontage_de_figure(ctk_root):
     popup = _ouvrir(ctk_root, "ilot_reel_darlington_relais_rlc.xml")
     t = popup._etat_test
 
+    # Depart deplie par defaut (Task 6) : un aller-retour (toggle x2) exerce
+    # bien un remontage de figure (cache bimode -> figure REUTILISEE, pas
+    # neuve) tout en revenant en vue detaillee, comme le titre du test l'exige.
+    t["toggle"]()
+    ctk_root.update()
     t["toggle"]()
     ctk_root.update()
     fig_apres_toggle = t["etat"]["fig"]
@@ -481,14 +580,16 @@ def test_fenetre_ilot_porte_nand_toggle_et_expression(ctk_root):
     toggle simplifié/détaillé sans exception, puces M cliquables."""
     popup = _ouvrir(ctk_root, "logic_cmos_nand2.xml")
     t = popup._etat_test
+    # Vue depliee par defaut (Task 6) : deja "détaillé" ici.
     assert t["etat"]["fig"] is not None
+    assert t["mode"]["detaille"] is True
     refs = [p["texte"] for p in t["etat"]["puces"]]
     assert any(r.startswith("M") for r in refs)
-    assert all(p["dispo"] for p in t["etat"]["puces"]), "aucune puce grisée"
+    assert all(p["dispo"] for p in t["etat"]["puces"]), "détaillé : chaque M dessiné"
     t["toggle"]()
     ctk_root.update()
-    assert t["mode"]["detaille"] is True
-    assert all(p["dispo"] for p in t["etat"]["puces"]), "détaillé : chaque M dessiné"
+    assert t["mode"]["detaille"] is False
+    assert all(p["dispo"] for p in t["etat"]["puces"]), "simplifié : aucune puce grisée"
     popup.destroy()
 
 
