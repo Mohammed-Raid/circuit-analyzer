@@ -3951,13 +3951,16 @@ def _dessiner_symbole_couplage(d, p1, p2, cc, ci):
 
 
 def _iter_z_locales(stages, ancres, z_matches, ci):
-    """@brief (ancre, z, other_net, index) de chaque Impédance Z locale
-    attribuée à un étage, SANS dessiner.
+    """@brief (ancre, z, other_net, index, bloque_bas) de chaque Impédance Z
+    locale attribuée à un étage, SANS dessiner.
 
-    Logique d'ATTRIBUTION (quel étage/net/index reçoit quelle Z) — POINT DE
-    VÉRITÉ UNIQUE partagé par `_dessiner_impedances_locales` (dessin réel) et
+    Logique d'ATTRIBUTION (quel étage/net/index reçoit quelle Z) ET détection
+    géométrique `bloque_bas` (un élément de l'étage sous l'ancre force la
+    boîte EN LIGNE, cf. `_dessiner_z_locale`) — POINT DE VÉRITÉ UNIQUE
+    partagé par `_dessiner_impedances_locales` (dessin réel) et
     `_obstacles_stubs` (rects prévisionnels pour le routeur) : toute
-    évolution de cette attribution doit se faire ICI, jamais dupliquée.
+    évolution ici, jamais dupliquée (revue Task 4 : `bloque_bas` calculé côté
+    dessin seulement laissait `_obstacles_stubs` protéger une case vide).
     """
     offsets = {}
     for z in z_matches:
@@ -3975,25 +3978,18 @@ def _iter_z_locales(stages, ancres, z_matches, ci):
             other = next((n for n in znets if n != net), "")
             key = (id(stage), net)
             offsets[key] = offsets.get(key, 0) + 1
-            yield net_pts[net], z, other, offsets[key] - 1
+            pos = net_pts[net]
+            bloque_bas = any(abs(p[0] - pos[0]) < 0.3 and p[1] < pos[1] - 0.3
+                             for p in net_pts.values() if p != pos)
+            yield pos, z, other, offsets[key] - 1, bloque_bas
             break
 
 
 def _dessiner_impedances_locales(d, stages, ancres, z_matches, z_utilises, ci):
     """@brief Dessine les Impedances Z locales connectees aux nets d'un etage."""
     restants = [z for z in z_matches if id(z) not in z_utilises]
-    for pos, z, other, index in _iter_z_locales(stages, ancres, restants, ci):
-        # Un stub vertical percute un élément de l'étage aligné SOUS l'ancre
-        # (cas collecteur au-dessus de l'émetteur) -> boîte en ligne. On
-        # retrouve le dict nets de l'étage propriétaire par sa coordonnée
-        # (identique à l'ancre attribuée par _iter_z_locales) — pas de
-        # duplication de la logique d'attribution ci-dessus, juste une
-        # relecture locale pour ce test géométrique.
-        ax0, ay0 = pos
-        net_pts = next((a.get("nets", {}) for a in ancres
-                        if pos in a.get("nets", {}).values()), {})
-        bloque_bas = any(abs(p[0] - ax0) < 0.3 and p[1] < ay0 - 0.3
-                         for p in net_pts.values() if p != pos)
+    for pos, z, other, index, bloque_bas in _iter_z_locales(
+            stages, ancres, restants, ci):
         _dessiner_z_locale(d, pos, other, z, ci, index, bloque_bas=bloque_bas)
 
 
@@ -4215,8 +4211,9 @@ def _draw_island_chain(d, ordered, ci, couplages=None):
 
 
 def _raccord(d, reel, snappe):
-    """@brief Petit fil L entre l'ancre reelle d'un drawer et son point de
-    grille (dx, dy < PAS chacun) : horizontal puis vertical."""
+    """@brief Fil en L entre l'ancre reelle d'un drawer et son port de grille
+    (frontiere du slot) : horizontal puis vertical. dx couvre la traversee de
+    la marge du slot (jusqu'a ~2 unites), dy < PAS (residu de snap)."""
     if reel == tuple(snappe):
         return
     coin = (snappe[0], reel[1])
@@ -4258,11 +4255,18 @@ def _obstacles_stubs(stages, ancres, coupl, ci):
     (test corpus : aucun fil route ne traverse un stub)."""
     from gui.schema_grid import Rect
     rects = []
-    for pos, z, other_net, index in _iter_z_locales(stages, ancres, coupl, ci):
+    for pos, z, other_net, index, bloque_bas in _iter_z_locales(
+            stages, ancres, coupl, ci):
         ax, ay = pos
         dx = index * 1.8
         extra = 1.2   # borne haute de _z_locale_extra (previsionnel)
-        if other_net == "VCC":
+        if bloque_bas and other_net != "VCC":
+            # Boite EN LIGNE sur le fil de sortie (cf. _dessiner_z_locale) :
+            # p1=(ax+0.4+dx, ay) -> p2=(ax+1.4+dx+extra, ay), demi-hauteur
+            # de boite ~0.4 (revue Task 4 : ce cas protegeait une case vide).
+            rects.append(Rect(ax + 0.4 + dx, ay - 0.4,
+                              ax + 1.4 + dx + extra, ay + 0.4))
+        elif other_net == "VCC":
             rects.append(Rect(ax + dx - 0.6, ay, ax + dx + 0.6,
                               ay + 2.0 + extra))
         else:
