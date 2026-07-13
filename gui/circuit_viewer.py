@@ -28,7 +28,7 @@ from circuit_analyzer.patterns.base import (
 from gui import theme
 from gui import ui_kit
 from gui.schema_labels import ajuster_labels, obtenir_renderer
-from gui.theme import BLUE_HOVER, OVERLAY
+from gui.theme import BLUE_HOVER
 
 _log = logging.getLogger(__name__)
 
@@ -1571,15 +1571,15 @@ def _make_fig(result, comp_info, drawer_fn, matches=None, detaille: bool = False
             ax.text(0.5, 0.5, f"Schéma non disponible\n{e}",
                     ha="center", va="center",
                     transform=ax.transAxes,
-                    fontsize=12, color=theme.TEXT_DIM)
+                    fontsize=12, color=theme.SCHEMA_COLORS["LEGENDE"])
     else:
         ax.text(0.5, 0.6, result["circuit_type"],
                 ha="center", va="center", transform=ax.transAxes,
-                fontsize=14, fontweight="bold", color=theme.OVERLAY)
+                fontsize=14, fontweight="bold", color=theme.SCHEMA_COLORS["TITRE"])
         ax.text(0.5, 0.45,
                 "  ·  ".join(result["components"]),
                 ha="center", va="center", transform=ax.transAxes,
-                fontsize=11, color=theme.TEXT_DIM, fontfamily="monospace")
+                fontsize=11, color=theme.SCHEMA_COLORS["LEGENDE"], fontfamily="monospace")
 
     # Astuce de découvrabilité : si le schéma comporte des boîtes Z cliquables,
     # on l'indique (sinon l'utilisateur ne sait pas qu'il peut déplier les Z).
@@ -1589,7 +1589,7 @@ def _make_fig(result, comp_info, drawer_fn, matches=None, detaille: bool = False
     rect = (0, 0, 1, 1)
     if fig._z_hitboxes:
         fig.text(0.01, 0.012, "Astuce : cliquez une boîte Z pour voir le détail R/L/C",
-                 fontsize=9, color=theme.TEXT_DIM, va="bottom", ha="left")
+                 fontsize=9, color=theme.SCHEMA_COLORS["LEGENDE"], va="bottom", ha="left")
         rect = (0, 0.05, 1, 1)
 
     # Marge réduite : le tracé occupe presque toute la figure (lisibilité).
@@ -1659,10 +1659,10 @@ def _make_chain_fig(ordered, comp_info, matches=None, detaille: bool = False):
     except Exception as e:
         _log.warning("rendu du schéma échoué", exc_info=True)
         ax.text(0.5, 0.5, f"Schéma non disponible\n{e}", ha="center", va="center",
-                transform=ax.transAxes, fontsize=12, color=theme.TEXT_DIM)
+                transform=ax.transAxes, fontsize=12, color=theme.SCHEMA_COLORS["LEGENDE"])
     if fig._z_hitboxes:
         ax.text(0.005, 0.01, "Astuce : cliquez une boîte Z pour voir le détail R/L/C",
-                transform=ax.transAxes, fontsize=9, color=theme.TEXT_DIM, va="bottom", ha="left")
+                transform=ax.transAxes, fontsize=9, color=theme.SCHEMA_COLORS["LEGENDE"], va="bottom", ha="left")
     ax.margins(0.04)
     try:
         fig.tight_layout(pad=0.4)
@@ -1716,10 +1716,10 @@ def _make_branched_fig(layers, comp_info, matches=None, detaille: bool = False):
     except Exception as e:
         _log.warning("rendu du schéma échoué", exc_info=True)
         ax.text(0.5, 0.5, f"Schéma non disponible\n{e}", ha="center", va="center",
-                transform=ax.transAxes, fontsize=12, color=theme.TEXT_DIM)
+                transform=ax.transAxes, fontsize=12, color=theme.SCHEMA_COLORS["LEGENDE"])
     if fig._z_hitboxes:
         ax.text(0.005, 0.01, "Astuce : cliquez une boîte Z pour voir le détail R/L/C",
-                transform=ax.transAxes, fontsize=9, color=theme.TEXT_DIM, va="bottom", ha="left")
+                transform=ax.transAxes, fontsize=9, color=theme.SCHEMA_COLORS["LEGENDE"], va="bottom", ha="left")
     ax.margins(0.04)
     try:
         fig.tight_layout(pad=0.4)
@@ -1810,7 +1810,7 @@ def _make_latch_fig(paire, comp_info, matches=None, detaille: bool = False):
     except Exception as e:
         _log.warning("rendu du schéma échoué", exc_info=True)
         ax.text(0.5, 0.5, f"Schéma non disponible\n{e}", ha="center", va="center",
-                transform=ax.transAxes, fontsize=12, color=theme.TEXT_DIM)
+                transform=ax.transAxes, fontsize=12, color=theme.SCHEMA_COLORS["LEGENDE"])
     ax.margins(0.04)
     try:
         fig.tight_layout(pad=0.4)
@@ -1877,7 +1877,7 @@ def _make_puce_fig(ref, entree, comp_info, matches, detaille: bool = False):
     except Exception as e:
         _log.warning("rendu du schéma échoué", exc_info=True)
         ax.text(0.5, 0.5, f"Schéma non disponible\n{e}", ha="center", va="center",
-                transform=ax.transAxes, fontsize=12, color=theme.TEXT_DIM)
+                transform=ax.transAxes, fontsize=12, color=theme.SCHEMA_COLORS["LEGENDE"])
     ax.margins(0.04)
     try:
         fig.tight_layout(pad=0.4)
@@ -1922,7 +1922,7 @@ def _make_island_fig(model, matches=None, detaille: bool = False):
 
     if not components:
         ax.text(0.5, 0.5, "Ilot vide", ha="center", va="center",
-                transform=ax.transAxes, fontsize=13, color=theme.TEXT_DIM)
+                transform=ax.transAxes, fontsize=13, color=theme.SCHEMA_COLORS["LEGENDE"])
         ajuster_labels(fig)
         return fig
 
@@ -1937,16 +1937,16 @@ def _make_island_fig(model, matches=None, detaille: bool = False):
         _log.warning("schéma automatique de l'îlot indisponible", exc_info=True)
         ax.text(0.5, 0.56, model.get("label", "Ilot"),
                 ha="center", va="center", transform=ax.transAxes,
-                fontsize=14, fontweight="bold", color=theme.OVERLAY)
+                fontsize=14, fontweight="bold", color=theme.SCHEMA_COLORS["TITRE"])
         ax.text(0.5, 0.44, f"Schema automatique indisponible\n{exc}",
                 ha="center", va="center", transform=ax.transAxes,
-                fontsize=10, color=theme.TEXT_DIM)
+                fontsize=10, color=theme.SCHEMA_COLORS["LEGENDE"])
 
     caption = plan["caption"]
     if hitboxes:
         caption += "   ·   cliquez un Z pour voir sa composition (R/L/C)"
     ax.text(0.01, 0.01, caption, transform=ax.transAxes,
-            fontsize=8, color=theme.TEXT_DIM, va="bottom", ha="left")
+            fontsize=8, color=theme.SCHEMA_COLORS["LEGENDE"], va="bottom", ha="left")
     ax.margins(0.16)
     fig.subplots_adjust(left=0.03, right=0.97, top=0.96, bottom=0.06)
     # Après margins/subplots_adjust (cf. commentaire de _make_fig).
