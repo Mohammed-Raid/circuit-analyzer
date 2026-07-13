@@ -3950,12 +3950,17 @@ def _dessiner_symbole_couplage(d, p1, p2, cc, ci):
     _z_box(d, p1, p2, "Zc", _bloc_couplage(cc), ci)
 
 
-def _dessiner_impedances_locales(d, stages, ancres, z_matches, z_utilises, ci):
-    """@brief Dessine les Impedances Z locales connectees aux nets d'un etage."""
+def _iter_z_locales(stages, ancres, z_matches, ci):
+    """@brief (ancre, z, other_net, index) de chaque Impédance Z locale
+    attribuée à un étage, SANS dessiner.
+
+    Logique d'ATTRIBUTION (quel étage/net/index reçoit quelle Z) — POINT DE
+    VÉRITÉ UNIQUE partagé par `_dessiner_impedances_locales` (dessin réel) et
+    `_obstacles_stubs` (rects prévisionnels pour le routeur) : toute
+    évolution de cette attribution doit se faire ICI, jamais dupliquée.
+    """
     offsets = {}
     for z in z_matches:
-        if id(z) in z_utilises:
-            continue
         zrefs = set(_refs_couplage(z))
         znets = [n for n in z.get("nodes", []) if n]
         for stage, a in zip(stages, ancres):
@@ -3970,14 +3975,26 @@ def _dessiner_impedances_locales(d, stages, ancres, z_matches, z_utilises, ci):
             other = next((n for n in znets if n != net), "")
             key = (id(stage), net)
             offsets[key] = offsets.get(key, 0) + 1
-            # Un stub vertical percute un élément de l'étage aligné SOUS l'ancre
-            # (cas collecteur au-dessus de l'émetteur) -> boîte en ligne.
-            ax0, ay0 = net_pts[net]
-            bloque_bas = any(abs(p[0] - ax0) < 0.3 and p[1] < ay0 - 0.3
-                             for m, p in net_pts.items() if m != net)
-            _dessiner_z_locale(d, net_pts[net], other, z, ci,
-                               offsets[key] - 1, bloque_bas=bloque_bas)
+            yield net_pts[net], z, other, offsets[key] - 1
             break
+
+
+def _dessiner_impedances_locales(d, stages, ancres, z_matches, z_utilises, ci):
+    """@brief Dessine les Impedances Z locales connectees aux nets d'un etage."""
+    restants = [z for z in z_matches if id(z) not in z_utilises]
+    for pos, z, other, index in _iter_z_locales(stages, ancres, restants, ci):
+        # Un stub vertical percute un élément de l'étage aligné SOUS l'ancre
+        # (cas collecteur au-dessus de l'émetteur) -> boîte en ligne. On
+        # retrouve le dict nets de l'étage propriétaire par sa coordonnée
+        # (identique à l'ancre attribuée par _iter_z_locales) — pas de
+        # duplication de la logique d'attribution ci-dessus, juste une
+        # relecture locale pour ce test géométrique.
+        ax0, ay0 = pos
+        net_pts = next((a.get("nets", {}) for a in ancres
+                        if pos in a.get("nets", {}).values()), {})
+        bloque_bas = any(abs(p[0] - ax0) < 0.3 and p[1] < ay0 - 0.3
+                         for p in net_pts.values() if p != pos)
+        _dessiner_z_locale(d, pos, other, z, ci, index, bloque_bas=bloque_bas)
 
 
 def _z_locale_extra(d, z, base):
@@ -4082,46 +4099,176 @@ def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0, bloque_bas=False):
                          color=_BUS, fontsize=9))
 
 
+# Cache module des mesures de drawers : cle hashable (circuit_type, refs) ;
+# un dict simple (pas de lru_cache : `match` est un dict non hashable).
+_MESURES = {}
+
+
+def _mesurer_montage(match, ci):
+    """@brief (largeur, hauteur, ancrage_x) de la bbox du drawer de `match`.
+
+    Dry-run : dessine le montage dans un Drawing jetable a l'origine
+    (0, _oy_for(match)), sans titre, et mesure d.get_bbox(). Memoise par
+    (circuit_type, refs) — un meme montage n'est jamais mesure deux fois.
+    ancrage_x = 0 - bbox.xmin (decalage origine -> bord gauche).
+
+    Le Drawing jetable est ouvert via `with` (et non juste instancié) :
+    schemdraw empile le Drawing "actif" dans un registre GLOBAL
+    (`drawing_stack`) pour permettre `elm.X()` sans `d.add()` explicite.
+    `_mesurer_montage` est toujours appelé DEPUIS l'intérieur du `with
+    schemdraw.Drawing(canvas=ax) as d:` réel de `_make_chain_fig` — sans
+    `with` ici, ce Drawing jetable ne serait jamais poussé sur la pile, le
+    Drawing RÉEL resterait "actif", et les éléments du dry-run (labels des
+    entrées non câblées type "NET3", notamment) FUITERAIENT sur le schéma
+    réel (dédoublement constaté à l'audit visuel Task 4, 2026-07-13 —
+    `tests/test_labels_property.py` l'attrapait). `with` empile CE Drawing
+    jetable le temps du dry-run, l'isolant du Drawing réel.
+    """
+    cle = (match.get("circuit_type", ""),
+           tuple(sorted(match.get("components") or [])))
+    if cle in _MESURES:
+        return _MESURES[cle]
+    with schemdraw.Drawing(show=False) as d:
+        d._mode_detaille = False
+        _dessiner_montage_a(d, match, ci, (0.0, _oy_for(match)), "", "")
+        bb = d.get_bbox()
+    mesure = (float(bb.xmax - bb.xmin), float(bb.ymax - bb.ymin),
+              float(0.0 - bb.xmin))
+    _MESURES[cle] = mesure
+    return mesure
+
+
 def _draw_island_chain(d, ordered, ci, couplages=None):
-    """@brief Dessine une chaîne de montages reliés OUT(N) -> IN(N+1).
+    """@brief Chaîne de montages posee sur la grille absolue (schema_grid)
+    et cablee par le routeur Manhattan (schema_router). Spec 2026-07-13.
+    `_fil_en_z` ne subsiste que comme REPLI (router -> None), journalise.
 
     Si un couplage AC (Impédance Z 2 nœuds) relie deux étages, il est dessiné
-    sur le fil.
-
-    Chaque montage est posé à un x croissant ; un fil en Z relie la sortie d'un
-    bloc à l'entrée du suivant. Premier bloc étiqueté VIN, dernier VOUT, internes
-    sans libellé. Les boîtes Z poussent leurs hitboxes (coords absolues) -> le
+    sur le fil. Premier bloc étiqueté VIN, dernier VOUT, internes sans
+    libellé. Les boîtes Z poussent leurs hitboxes (coords absolues) -> le
     drill-down R/L/C reste cliquable.
 
     @param ordered Montages triés par flux (cf. _ordonner_montages_flux).
     @param ci Dict {ref → {type, value}}.
     """
+    from gui import schema_grid, schema_router
     n = len(ordered)
+    etages = []
+    for i, match in enumerate(ordered):
+        larg, haut, ancr = _mesurer_montage(match, ci)
+        etages.append(schema_grid.EtageMesure(
+            cle=f"{i:03d}", colonne=i, bande=0, largeur=larg,
+            hauteur=haut, ancrage_x=ancr, ancrage_y=_oy_for(match)))
+    plan = schema_grid.poser(etages)
+
     ancres = []
     for i, match in enumerate(ordered):
         in_label = "VIN" if i == 0 else ""
         out_label = "VOUT" if i == n - 1 else ""
-        # y de l'origine : la sortie de chaque AOP doit tomber sur la même ligne
-        # (y=0) pour aligner les triangles. Inverseur/intég/dériv sont ancrés par
-        # IN- (broche du haut) -> on monte de +dy ; non-inverseur/suiveur ancrés
-        # par IN+ (broche du bas) -> on descend de -dy.
-        origin = (4.5 + i * _CHAINE_DX, _oy_for(match))
-        ancres.append(_dessiner_montage_a(d, match, ci, origin, in_label, out_label))
+        origin = plan.origines[f"{i:03d}"]
+        ancres.append(_dessiner_montage_a(d, match, ci, origin,
+                                          in_label, out_label))
         _annoter_etage(d, ancres[-1], match)
 
     coupl = [m for m in (couplages or []) if _est_couplage(m)]
     find = _couplage_find(couplages or [])
     couplages_utilises = set()
+    obstacles = list(plan.obstacles) + _obstacles_stubs(ordered, ancres,
+                                                        coupl, ci)
+    nets = []
     for i in range(n - 1):
-        out_pt = ancres[i]["out"]
-        in_pt = ancres[i + 1]["in"]
+        # Ports PROJETES sur la FRONTIERE des slots (x1 cote sortie, x0 cote
+        # entree), pas l'ancre snappee brute : une ancre est INTERIEURE a son
+        # slot-obstacle, et l'A* (interieur strict interdit) ne peut pas en
+        # sortir -- le milieu du premier pas est deja strictement dans le
+        # slot. 24 replis _fil_en_z sur le corpus au premier render Task 4 ;
+        # la frontiere, elle, est praticable par contrat (spec 4.1).
+        s_out = plan.slots[f"{i:03d}"]
+        s_in = plan.slots[f"{i + 1:03d}"]
+        nets.append((f"lien{i}",
+                     (s_out.x1, schema_grid.snap(ancres[i]["out"][1])),
+                     (s_in.x0, schema_grid.snap(ancres[i + 1]["in"][1]))))
+    routes = schema_router.router(nets, obstacles)
+    for i in range(n - 1):
+        out_pt, in_pt = ancres[i]["out"], ancres[i + 1]["in"]
+        poly = routes.get(f"lien{i}")
         cc = _couplage_entre(ordered[i], ordered[i + 1], coupl, find, ci)
+        if poly is None:
+            _log.warning("routage Manhattan impossible pour lien%d ; "
+                         "repli _fil_en_z", i)
+            if cc is not None:
+                couplages_utilises.add(id(cc))
+                _fil_avec_couplage(d, out_pt, in_pt, cc, ci)
+            else:
+                _fil_en_z(d, out_pt, in_pt)
+            continue
+        # Raccords port reel -> premier/dernier point snappe (droits, courts)
+        _raccord(d, out_pt, poly[0])
+        _raccord(d, in_pt, poly[-1])
         if cc is not None:
             couplages_utilises.add(id(cc))
-            _fil_avec_couplage(d, out_pt, in_pt, cc, ci)
+            _polyligne_avec_couplage(d, poly, cc, ci)
         else:
-            _fil_en_z(d, out_pt, in_pt)
-    _dessiner_impedances_locales(d, ordered, ancres, coupl, couplages_utilises, ci)
+            _tracer_polyligne(d, poly)
+    _dessiner_impedances_locales(d, ordered, ancres, coupl,
+                                 couplages_utilises, ci)
+
+
+def _raccord(d, reel, snappe):
+    """@brief Petit fil L entre l'ancre reelle d'un drawer et son point de
+    grille (dx, dy < PAS chacun) : horizontal puis vertical."""
+    if reel == tuple(snappe):
+        return
+    coin = (snappe[0], reel[1])
+    if coin != tuple(reel):
+        d.add(elm.Line().at(reel).to(coin).color(_WIRE))
+    if coin != tuple(snappe):
+        d.add(elm.Line().at(coin).to(snappe).color(_WIRE))
+
+
+def _tracer_polyligne(d, poly, couleur=None):
+    """@brief Trace une polyligne orthogonale du routeur, segment par segment."""
+    c = couleur or _WIRE
+    for p, q in zip(poly, poly[1:]):
+        d.add(elm.Line().at(p).to(q).color(c))
+
+
+def _polyligne_avec_couplage(d, poly, cc, ci):
+    """@brief Pose le couplage (C serie...) au MILIEU du plus long segment
+    horizontal de la polyligne (garanti >= 4*PAS par les couloirs CANAL_H)."""
+    segs = [(p, q) for p, q in zip(poly, poly[1:]) if p[1] == q[1]]
+    p, q = max(segs, key=lambda s: abs(s[1][0] - s[0][0]))
+    milieu = ((p[0] + q[0]) / 2, p[1])
+    demi = 0.9
+    a, b = (milieu[0] - demi, milieu[1]), (milieu[0] + demi, milieu[1])
+    for s, e in zip(poly, poly[1:]):
+        if (s, e) == (p, q):
+            d.add(elm.Line().at(s).to(a).color(_WIRE))
+            _z_box(d, a, b, "Zc", _bloc_couplage(cc), ci)
+            d.add(elm.Line().at(b).to(e).color(_WIRE))
+        else:
+            d.add(elm.Line().at(s).to(e).color(_WIRE))
+
+
+def _obstacles_stubs(stages, ancres, coupl, ci):
+    """@brief Rects previsionnels des stubs Z locales (spec §3.3) — MEME
+    geometrie que _dessiner_z_locale (largeur boite 1.2 centree sur l'ancre
+    + index*1.8, hauteur 1.65+extra au-dessus (VCC) ou en dessous (autres)).
+    Toute evolution de _dessiner_z_locale doit mettre a jour cette fonction
+    (test corpus : aucun fil route ne traverse un stub)."""
+    from gui.schema_grid import Rect
+    rects = []
+    for pos, z, other_net, index in _iter_z_locales(stages, ancres, coupl, ci):
+        ax, ay = pos
+        dx = index * 1.8
+        extra = 1.2   # borne haute de _z_locale_extra (previsionnel)
+        if other_net == "VCC":
+            rects.append(Rect(ax + dx - 0.6, ay, ax + dx + 0.6,
+                              ay + 2.0 + extra))
+        else:
+            rects.append(Rect(ax + dx - 0.6, ay - 2.05 - extra,
+                              ax + dx + 0.6, ay))
+    return rects
 
 
 def _oy_for(match):

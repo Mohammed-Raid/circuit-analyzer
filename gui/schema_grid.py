@@ -26,6 +26,11 @@ def snap_ceil(v: float) -> float:
     return math.ceil(v / PAS - 1e-9) * PAS
 
 
+def snap_point(p):
+    """@brief Snappe un point (x, y) sur la grille."""
+    return (snap(p[0]), snap(p[1]))
+
+
 @dataclass(frozen=True)
 class Rect:
     """@brief Rectangle axis-aligned (x0<=x1, y0<=y1) en unites schemdraw."""
