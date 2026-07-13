@@ -30,16 +30,13 @@ TOLERANCE_PX2 = 1.0
 
 
 def _circuit_files():
+    # TOUT le corpus de demo (audit 2026-07-13 : les circuits hors prefixes
+    # ilot_/tr_/aop_/logic_/reel_ echappaient au contrat, d'ou des collisions
+    # de labels jamais detectees, ex. buffer_reference en mode Z).
+    # logic_non_dual reste EXCLU (fichier de rejet : ilot de MOSFET non
+    # matches, reserve aux tests unitaires).
     ci = ROOT / "circuits_industriels"
-    return (sorted(ci.glob("ilot_*.xml"))
-            + sorted(ci.glob("tr_*.xml"))
-            + sorted(ci.glob("aop_*.xml"))
-            # Portes CMOS -- logic_non_dual est EXCLU des contrats visuels
-            # (fichier de rejet : ilot de MOSFET non matches, reserve aux
-            # tests unitaires).
-            + sorted(f for f in ci.glob("logic_*.xml")
-                     if "non_dual" not in f.name)
-            + sorted(ci.glob("reel_*.xml")))
+    return sorted(f for f in ci.glob("*.xml") if "non_dual" not in f.name)
 
 
 def _figs_for_file(path, detaille):

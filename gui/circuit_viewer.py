@@ -3348,20 +3348,29 @@ def _z_reseau(d, p1, p2, bloc, ci, label_loc="top", wire_color=_WIRE) -> bool:
         else:
             ha = "center"
             va = "bottom" if sign * ny > 0 else "top"
-        d.add(elm.Label().at((lx, ly)).label(
+        if not valeur:
+            d.add(elm.Label().at((lx, ly)).label(
+                ref_txt, halign=ha, valign=va,
+                fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
+            continue
+        # Regle ref/valeur (design section 1), re-adaptee a l'audit ilots
+        # 2026-07-13 : ref et valeur COTE A COTE le long de la branche, au
+        # MEME degagement perpendiculaire. L'empilement en profondeur (valeur
+        # un cran plus loin vers l'axe) faisait converger les labels des DEUX
+        # branches d'un parallele non compact au meme x median : colonne
+        # fusionnee illisible "R2 / 10 kΩ / 10 nF / C1" (Zf des inverseurs),
+        # voire chevauchement reel avec un satellite voisin (pid_controller).
+        # L'espace LE LONG de la branche appartient a la branche elle-meme :
+        # y etaler ses deux textes ne mord sur aucun voisin.
+        dist_b = math.hypot(sdx, sdy) or 1.0
+        ux, uy = sdx / dist_b, sdy / dist_b
+        shift = min(0.8, 0.28 * dist_b)
+        d.add(elm.Label().at((lx - shift * ux, ly - shift * uy)).label(
             ref_txt, halign=ha, valign=va,
             fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
-        # Regle ref/valeur (design section 1), adaptee ici comme pour le
-        # reseau decale ci-dessus : la valeur est empilee un cran plus loin
-        # QUE la ref, dans la MEME direction (sign, nx, ny) plutot que du
-        # cote oppose -- le cote oppose est "vers l'exterieur", precisement
-        # le territoire qu'on evite (cf. commentaire ci-dessus). Ecart au
-        # brief assume et documente.
-        if valeur:
-            lx2, ly2 = lx + sign * nx * clear, ly + sign * ny * clear
-            d.add(elm.Label().at((lx2, ly2)).label(
-                valeur, halign=ha, valign=va,
-                fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
+        d.add(elm.Label().at((lx + shift * ux, ly + shift * uy)).label(
+            valeur, halign=ha, valign=va,
+            fontsize=_Z_DETAIL_LABEL_FONTSIZE, color=coul))
     for pa, pb in fils:
         d.add(elm.Line().at(pa).to(pb).color(wire_color))
     return True
@@ -3412,7 +3421,16 @@ def _z_box(d, p1, p2, name, bloc, ci, label_loc="top", wire_color=_WIRE):
             coul = _COMP_COLORS.get(typ, _WIRE)
             vfmt = impedance.formater_valeur(info.get("value", ""), typ)
             label = f"{ref}\n{vfmt}" if vfmt else ref
-            d.add(cls().at(p1).to(p2).color(coul).label(label, fontsize=9, color=coul))
+            # Label place via _z_label_anchor : honore le label_loc choisi par
+            # le drawer appelant (audits fenetre), la ou le .label() schemdraw
+            # tournait avec l'element -- sur une boite VERTICALE, le defaut
+            # retombait a GAUCHE meme quand le caller demandait "right"
+            # (audit ilots 2026-07-13, Zg du differentiel sur pid_controller).
+            anc = _z_label_anchor(p1, p2, label_loc)
+            d.add(cls().at(p1).to(p2).color(coul))
+            d.add(elm.Label().at(anc["pos"]).label(
+                label, halign=anc["ha"], valign=anc["va"],
+                fontsize=9, color=coul))
             _enregistrer_position(d, ref, centre_boite)
             dessine = True
         elif _z_reseau(d, p1, p2, bloc, ci, label_loc=label_loc, wire_color=wire_color):
@@ -3537,6 +3555,11 @@ def _draw_aop_inverseur_zin_zf(d, imp, ci, origin=(4.5, 0), in_label="IN", out_l
     d.add(elm.Ground().color(_WIRE))
     # Zf : contre-réaction nœud -> OUT (riser à gauche, dans le vide, puis par le haut)
     above_y = in1[1] + 2.0
+    if getattr(d, "_mode_detaille", False) and len(zf.get("refs") or []) > 1:
+        # Réseau composite déplié : la branche basse d'un parallèle descend
+        # ~1.2 sous l'axe et frôlait le sommet du triangle (audit ilots
+        # 2026-07-13, Zf = R//C des inverseurs). On relève d'autant.
+        above_y += 1.2
     d.add(elm.Line().at(noeud).up(above_y - noeud[1]).color(_WIRE))
     zf_p1, zf_p2 = (noeud[0], above_y), (out[0], above_y)
     _z_box(d, zf_p1, zf_p2, "Zf", zf, ci)
@@ -3734,13 +3757,20 @@ def _draw_follower(d, result, ci, origin=(4.5, 0), in_label="IN", out_label="OUT
         npt = (op.in2[0] - 1.2, op.in2[1])
         d.add(elm.Line().at(op.in2).to(npt).color(_WIRE))
         d.add(elm.Dot().at(npt).color(_WIRE))
-        # Jambe haute -> alim
+        # Jambe haute -> alim. Labels LATERAUX (audit ilots 2026-07-13) : en
+        # "top"/"bottom" ils tombaient au BOUT des boites, le label de Z1
+        # ecrasant celui du rail VCC juste au-dessus.
         ztop = (npt[0], npt[1] + 1.7)
-        _z_box(d, npt, ztop, "Z1", haut, ci)
-        d.add(elm.Line().at(ztop).up(0.4).color(_WIRE).label("VCC", loc="top", color=_WIRE))
+        _z_box(d, npt, ztop, "Z1", haut, ci, label_loc="left")
+        d.add(elm.Line().at(ztop).up(0.4).color(_WIRE))
+        # Label VCC pose explicitement AU-DESSUS du fil : .label(loc="top")
+        # sur un fil vertical tourne avec lui et retombe a gauche, dans le
+        # territoire du label lateral de Z1.
+        d.add(elm.Label().at((ztop[0], ztop[1] + 0.55)).label(
+            "VCC", halign="center", valign="bottom", color=_WIRE))
         # Jambe basse -> masse
         zbot = (npt[0], npt[1] - 1.7)
-        _z_box(d, npt, zbot, "Z2", bas, ci, label_loc="bottom")
+        _z_box(d, npt, zbot, "Z2", bas, ci, label_loc="left")
         d.add(elm.Line().at(zbot).down(0.4).color(_WIRE))
         d.add(elm.Ground().color(_WIRE))
         in_pt = npt
@@ -4011,7 +4041,12 @@ def _dessiner_z_locale(d, anchor, other_net, z, ci, index=0, bloque_bas=False):
         p1, p2 = (ax + dx, ay + 0.45), (ax + dx, ay + 1.65 + extra)
         d.add(elm.Line().at(anchor).to(p1).color(_BUS))
         _z_box(d, p1, p2, "Z", _bloc_couplage(z), ci, label_loc="right", wire_color=_BUS)
-        d.add(elm.Line().at(p2).up(0.35).label("VCC", loc="top").color(_BUS))
+        d.add(elm.Line().at(p2).up(0.35).color(_BUS))
+        # Label VCC explicitement AU-DESSUS du stub : .label(loc="top") sur un
+        # fil vertical tourne avec lui et retombait a GAUCHE, a moitie sous la
+        # boite Z voisine (audit ilots 2026-07-13, darlington relais).
+        d.add(elm.Label().at((p2[0], p2[1] + 0.5)).label(
+            "VCC", halign="center", valign="bottom", color=_WIRE))
     elif other_net == "GND":
         extra = _z_locale_extra(d, z, 1.2)
         p1, p2 = (ax + dx, ay - 0.45), (ax + dx, ay - 1.65 - extra)
