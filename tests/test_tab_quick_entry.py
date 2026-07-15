@@ -78,3 +78,24 @@ def test_analyser_sans_nom_ne_contamine_pas_le_chemin_courant(racine, tmp_path, 
                         lambda: str(tmp_path / "tmp.xml"))
     tab._analyser()
     assert tab._chemin_courant is None   # le temp n'est pas devenu le fichier courant
+
+
+def test_app_window_a_l_onglet_saisie():
+    # L'app expose 5 onglets et le 5e (après Composants) est la Saisie
+    # (spec §2.1), branché sur TabQuickEntry (pattern TabDraw).
+    from gui.app_window import AppWindow
+
+    try:
+        app = AppWindow()
+    except Exception:
+        pytest.skip("pas de display Tk")
+    try:
+        assert len(app._frames) == 5
+        assert len(app._nav_btns) == 5
+        assert app._nav_btns[4]._lbl.cget("text") == "Saisie"
+
+        from gui.tab_quick_entry import TabQuickEntry as _TabQuickEntry
+        assert isinstance(app._tab_s, _TabQuickEntry)
+        assert app._frames[4] is app._tab_s.frame
+    finally:
+        app.root.destroy()

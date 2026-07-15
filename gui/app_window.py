@@ -9,6 +9,7 @@ from gui.tab_analyze import TabAnalyze
 from gui.tab_circuits import TabCircuits
 from gui.tab_components import TabComponents
 from gui.tab_draw import TabDraw
+from gui.tab_quick_entry import TabQuickEntry
 import gui.ui_kit as ui_kit
 
 ctk.set_appearance_mode("dark")
@@ -18,7 +19,7 @@ from gui.theme import BG, SURFACE, CARD, BORDER, TEXT, MUTED, BLUE, BLUE_D
 
 
 class AppWindow:
-    """@brief Fenêtre principale de l'application (barre latérale + 4 onglets)."""
+    """@brief Fenêtre principale de l'application (barre latérale + 5 onglets)."""
 
     def __init__(self):
         """@brief Construit la fenêtre, ses dimensions et son contenu."""
@@ -79,6 +80,7 @@ class AppWindow:
             ("pen-tool", "Schéma",     "Dessiner un circuit"),
             ("zap",      "Circuits",   "Patterns personnalisés"),
             ("wrench",   "Composants", "Bibliothèque"),
+            ("file-text", "Saisie",    "Netlist clavier"),
         ]
         for i, (icon, label, sub) in enumerate(items):
             btn = _NavButton(nav_frame, icon, label, sub,
@@ -126,7 +128,19 @@ class AppWindow:
 
         tab_p = TabComponents(content, on_save=_on_lib_change)
 
-        self._frames = [tab_a.frame, tab_d.frame, tab_c.frame, tab_p.frame]
+        tab_s = TabQuickEntry(
+            content,
+            on_analyze=lambda path: (
+                tab_a._file_path.set(path),
+                tab_a._analyze(),
+                self._switch(0),
+            ),
+            on_saved=lambda: tab_c.refresh_circuits(),
+        )
+        self._tab_s = tab_s
+
+        self._frames = [tab_a.frame, tab_d.frame, tab_c.frame, tab_p.frame,
+                        tab_s.frame]
         for f in self._frames:
             f.grid(row=0, column=0, sticky="nsew")
 
@@ -135,7 +149,7 @@ class AppWindow:
     def _switch(self, idx: int):
         """@brief Active l'onglet d'indice idx et met à jour la navigation.
 
-        @param idx Indice de l'onglet à afficher (0=Analyser, 1=Schéma, 2=Circuits, 3=Composants).
+        @param idx Indice de l'onglet à afficher (0=Analyser, 1=Schéma, 2=Circuits, 3=Composants, 4=Saisie).
         @return None
         """
         self._active = idx
