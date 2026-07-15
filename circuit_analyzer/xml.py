@@ -1090,7 +1090,7 @@ def _analyser_ref_noeud(nid: str) -> tuple:
         raise ValueError(f"Référence de nœud invalide : {nid!r}")
 
 
-def lire_xml(chemin: str) -> list:
+def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     """
     @brief Lit un fichier BoardSCH XML et retourne une liste de Composant.
 
@@ -1098,6 +1098,9 @@ def lire_xml(chemin: str) -> list:
     à partir des fils (lignes) du schéma.
 
     @param chemin Chemin du fichier .xml BoardSCH.
+    @param alias_catalogue False = lecture BRUTE, sans renommage des broches
+    par le catalogue — utilisé par l'onglet Saisie pour éditer le fichier
+    tel quel.
     @return ListeComposantsXML Composants lus, avec l'attribut .warnings.
     @throws ValueError Si le fichier XML est invalide.
     """
@@ -1272,8 +1275,9 @@ def lire_xml(chemin: str) -> list:
 
         composants.append(Component(ref=ref, type=type_prefix, pins=broches, value=elem['value']))
 
-    from circuit_analyzer.catalogue import appliquer_catalogue
-    appliquer_catalogue(composants)
+    if alias_catalogue:
+        from circuit_analyzer.catalogue import appliquer_catalogue
+        appliquer_catalogue(composants)
 
     return composants
 

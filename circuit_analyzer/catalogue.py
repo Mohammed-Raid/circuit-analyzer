@@ -176,3 +176,28 @@ def appliquer_catalogue(comps):
         broches = entree["broches"]
         c.pins = {broches.get(num, num): net for num, net in c.pins.items()}
     return comps
+
+
+def entrees_catalogue():
+    """@brief Itère (type_, value, entree) sur tout le catalogue affichable.
+
+    Source UNIQUE : les tables du module (aucune liste dupliquée). `value`
+    est la chaîne telle qu'un utilisateur la saisirait (re-identifiable par
+    `identifier()`). Consommé par l'onglet Saisie (« + Puce réelle »).
+    """
+    for v, e in _EXACTS_U.items():
+        yield "U", v, e
+    for suffixe, e in _FAMILLES_74HC.items():
+        yield "U", f"74HC{suffixe}", e
+    for suffixe, e in _SUFFIXES_U.items():
+        yield "U", suffixe, e
+    for v, e in _EXACTS_Q.items():
+        yield "Q", v, e
+    for v, e in _EXACTS_M.items():
+        yield "M", v, e
+    for v, e in _EXACTS_D.items():
+        yield "D", v, e
+    for cle, (couleur, fr) in _COULEURS_LED.items():
+        e = dict(_e("LED", fr, None, symbole="led"))
+        e["couleur"] = couleur
+        yield "D", f"LED {fr}", e
