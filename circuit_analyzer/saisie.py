@@ -76,6 +76,18 @@ class ModeleSaisie:
     def supprimer(self, index):
         del self.lignes[index]
 
+    def changer_type(self, index, type_):
+        """@brief Change le type d'une ligne EN PLACE (ref/value conservées).
+
+        Les broches sont RECONSTRUITES pour le nouveau type (anciens nets et
+        fonctions catalogue perdus : plus de sens une fois le type changé).
+        """
+        ligne = self.lignes[index]
+        ligne.type = type_
+        ligne.pins = {p: "" for p in self._broches_du_type(type_)}
+        ligne.fonctions = {}
+        return ligne
+
     def nets_connus(self):
         """@brief Rails d'abord (ordre fixe), puis nets saisis triés."""
         vus = {n for l in self.lignes for n in l.pins.values() if n}

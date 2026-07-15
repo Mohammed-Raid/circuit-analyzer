@@ -40,6 +40,21 @@ def test_ajouter_catalogue_ne555_et_led():
     assert led.value == "LED rouge" and list(led.pins) == ["A", "K"]
 
 
+def test_changer_type_remplace_les_broches_et_garde_ref_et_value():
+    m = ModeleSaisie()
+    ligne = m.ajouter("R", value="10k")
+    ligne.pins["1"] = "VIN"
+    ref_avant = ligne.ref
+    m.changer_type(0, "Q")
+    assert m.lignes[0] is ligne
+    assert ligne.ref == ref_avant          # ref conservée
+    assert ligne.type == "Q"
+    assert ligne.value == "10k"            # value conservée
+    assert list(ligne.pins) == ["B", "C", "E"]
+    assert all(v == "" for v in ligne.pins.values())  # anciens nets perdus
+    assert ligne.fonctions == {}
+
+
 def test_valider_bloquants_et_avertissements():
     m = ModeleSaisie()
     r1 = m.ajouter("R"); r1.pins["1"] = "VIN"; r1.pins["2"] = "NET1"
