@@ -49,6 +49,44 @@ def editor_to_dict(comps, wires, counters, next_id) -> dict:
     }
 
 
+def type_reel(comp_type: str) -> tuple:
+    """@brief Sépare la convention "U::NE555" -> ("U", "NE555").
+
+    Les puces catalogue de la palette portent leur référence dans le
+    comp_type (spec 2026-07-15 §5) : le .circ les stocke tels quels, tout
+    EXPORT (netlist/Composant) doit re-séparer. Type simple -> value "".
+    """
+    if "::" in comp_type:
+        t, _, v = comp_type.partition("::")
+        return t, v
+    return comp_type, ""
+
+
+def _pin_monde(comp, pin, defs):
+    from gui.schematic_symbols import rotate_pin
+    dx, dy = defs[comp.comp_type]["pins"][pin]
+    rdx, rdy = rotate_pin(dx, dy, comp.rotation)
+    return (comp.cx + rdx, comp.cy + rdy)
+
+
+def points_jonction(comps, wires, defs) -> list:
+    """@brief Points monde où >= 3 extrémités de fils coïncident (spec §4).
+
+    Une extrémité = la broche (monde, rotation appliquée) d'un bout de fil.
+    Deux fils qui se REJOIGNENT sur une même broche = >= 3 extrémités au
+    même point — le seuil >= 3 évite le point sur une simple liaison à 2.
+    """
+    from collections import Counter
+    compte = Counter()
+    for w in wires:
+        ca, cb = comps.get(w.from_comp_id), comps.get(w.to_comp_id)
+        if not ca or not cb:
+            continue
+        compte[_pin_monde(ca, w.from_pin, defs)] += 1
+        compte[_pin_monde(cb, w.to_pin, defs)] += 1
+    return sorted(p for p, n in compte.items() if n >= 3)
+
+
 def _ref_number(ref: str, type_: str) -> int:
     """@brief Numéro de fin de référence (R12 → 12), 0 si absent."""
     suffix = ref[len(type_):] if ref.startswith(type_) else ""

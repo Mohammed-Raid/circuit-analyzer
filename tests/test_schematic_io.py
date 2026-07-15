@@ -6,7 +6,8 @@ import pytest
 
 from dataclasses import dataclass
 
-from gui.schematic_io import editor_to_dict, build_from_components
+from gui.schematic_io import (editor_to_dict, build_from_components,
+                              points_jonction, type_reel)
 from gui.schematic_editor import COMP_DEFS
 
 
@@ -90,7 +91,48 @@ def test_editor_to_dict_forme():
     assert d["next_id"] == 3
 
 
-# ── load_dict (nécessite un root Tk) ──────────────────────────────────────────
+# ── type_reel / points_jonction (Task 2) ──────────────────────────────────────
+
+def _mk_comp(id_, t, cx, cy):
+    from gui.schematic_editor import CompInst
+    return CompInst(id=id_, ref=f"{t}{id_}", comp_type=t, value="",
+                    cx=cx, cy=cy)
+
+
+def _mk_wire(i, a, pa, b, pb):
+    from gui.schematic_editor import WireInst
+    return WireInst(id=i, from_comp_id=a, from_pin=pa,
+                    to_comp_id=b, to_pin=pb)
+
+
+DEFS = {"R": {"w": 80, "h": 40, "pins": {"1": (-40, 0), "2": (40, 0)}}}
+
+
+def test_type_reel():
+    assert type_reel("U::NE555") == ("U", "NE555")
+    assert type_reel("R") == ("R", "")
+
+
+def test_points_jonction_trois_fils():
+    # R1.2, R2.1, R3.1 au même point monde (200,100) -> 1 jonction.
+    comps = {1: _mk_comp(1, "R", 160, 100), 2: _mk_comp(2, "R", 240, 100),
+             3: _mk_comp(3, "R", 240, 180)}
+    # NB : rotation 0 partout ; on fait CONVERGER les fils sur la broche 2
+    # de R1 (200,100).
+    wires = [_mk_wire(1, 1, "2", 2, "1"),
+             _mk_wire(2, 1, "2", 3, "1"),
+             _mk_wire(3, 2, "1", 3, "1")]
+    pts = points_jonction(comps, wires, DEFS)
+    assert (200, 100) in pts    # >= 3 extrémités de fils y coïncident
+
+
+def test_points_jonction_deux_fils_aucune():
+    comps = {1: _mk_comp(1, "R", 160, 100), 2: _mk_comp(2, "R", 240, 100)}
+    wires = [_mk_wire(1, 1, "2", 2, "1")]
+    assert points_jonction(comps, wires, DEFS) == []
+
+
+# ── load_dict / to_netlist (nécessitent un root Tk) ───────────────────────────
 
 @pytest.fixture
 def ctk_root():
@@ -124,6 +166,23 @@ def test_roundtrip_to_dict_load_dict(ctk_root):
     ed2.load_dict(d)
     assert ed2.comp_count() == ed.comp_count() == 2
     assert len(ed2._wires) == len(ed._wires) == 1
+
+
+def test_to_netlist_separe_type_reel_u_ref(ctk_root):
+    """Un comp_type "U::NE555" exporte sa référence catalogue comme value."""
+    from gui.schematic_editor import CompInst, SchematicEditor
+
+    ed = SchematicEditor(ctk_root)
+    # Enregistre une def catalogue "U::NE555" (comme le fera la palette Task 5)
+    # et injecte l'instance directement — pas de dépendance au placement.
+    ed._defs["U::NE555"] = {"label": "NE555", "color": "#888888",
+                            "w": 80, "h": 40, "pins": {"1": (-40, 0)},
+                            "default_value": ""}
+    ed._comps[1] = CompInst(id=1, ref="U1", comp_type="U::NE555", value="",
+                            cx=100, cy=100)
+    lignes = [l for l in ed.to_netlist().splitlines() if l.startswith("U1 ")]
+    assert len(lignes) == 1
+    assert lignes[0].endswith(" NE555")     # value exportée = partie après ::
 
 
 def test_load_dict_rejette_format_inconnu(ctk_root):

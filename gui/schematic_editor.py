@@ -11,7 +11,7 @@ from typing import Optional
 
 from circuit_analyzer.composant import charger_bibliotheque
 from gui.fonts import FONT_FAMILY
-from gui.schematic_io import editor_to_dict
+from gui.schematic_io import editor_to_dict, type_reel
 from gui.schematic_symbols import rotate_pin as _rotate_pin
 from gui.theme import (SURFACE, RAISED, OVERLAY, BORDER, TEXT, TEXT_MUTED,
                         TEXT_DIM, BLUE, ERROR)
@@ -1207,7 +1207,8 @@ class SchematicEditor(tk.Frame):
         for comp in real_comps.values():
             pins = self._defs[comp.comp_type]["pins"]
             nets = " ".join(net_of(f"{comp.id}:{pn}") for pn in pins)
-            lines.append(f"{comp.ref} {nets} {comp.value}")
+            _t, v = type_reel(comp.comp_type)
+            lines.append(f"{comp.ref} {nets} {v or comp.value}")
 
         return "\n".join(lines)
 
