@@ -68,3 +68,13 @@ def test_ref_dupliquee_grise_analyser(racine):
     tab._modele.lignes[1].ref = "R1"
     tab._rafraichir_validation()
     assert tab._btn_analyser.cget("state") == "disabled"
+
+
+def test_analyser_sans_nom_ne_contamine_pas_le_chemin_courant(racine, tmp_path, monkeypatch):
+    tab = TabQuickEntry(racine, on_analyze=lambda p: None)
+    tab._ajouter_type("R")
+    tab._modele.lignes[0].pins.update({"1": "VIN", "2": "GND"})
+    monkeypatch.setattr(tab, "_chemin_analyse",
+                        lambda: str(tmp_path / "tmp.xml"))
+    tab._analyser()
+    assert tab._chemin_courant is None   # le temp n'est pas devenu le fichier courant

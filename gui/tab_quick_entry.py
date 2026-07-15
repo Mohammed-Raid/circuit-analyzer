@@ -387,7 +387,7 @@ class TabQuickEntry:
 
     # ── Enregistrer / Analyser / Ouvrir ─────────────────────────────────────
 
-    def _enregistrer(self, chemin=None):
+    def _enregistrer(self, chemin=None, *, memoriser=True):
         bloquants, _ = self._modele.valider()
         if bloquants:
             messagebox.showwarning(
@@ -407,10 +407,11 @@ class TabQuickEntry:
 
         Path(chemin).write_text(
             generer_xml(self._modele.vers_composants()), encoding="utf-8")
-        self._chemin_courant = chemin
-        self._rafraichir_validation()
-        if self._on_saved:
-            self._on_saved()
+        if memoriser:
+            self._chemin_courant = chemin
+            self._rafraichir_validation()
+            if self._on_saved:
+                self._on_saved()
         return chemin
 
     def _chemin_analyse(self):
@@ -422,7 +423,8 @@ class TabQuickEntry:
         return self._analyse_tmp
 
     def _analyser(self):
-        chemin = self._enregistrer(self._chemin_courant or self._chemin_analyse())
+        chemin = self._enregistrer(self._chemin_courant or self._chemin_analyse(),
+                                   memoriser=self._chemin_courant is not None)
         if chemin and self._on_analyze:
             self._on_analyze(chemin)
 
