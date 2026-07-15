@@ -25,7 +25,7 @@ def _arete(p, q):
 
 
 def _zone(nets, obstacles):
-    """@brief Bbox englobante (ports + obstacles) dilatee de 2 canaux."""
+    """@brief Bbox englobante (ports + obstacles) dilatee de 4*PAS (un canal)."""
     xs, ys = [], []
     for _n, dep, arr in nets:
         xs += [dep[0], arr[0]]; ys += [dep[1], arr[1]]
@@ -60,7 +60,7 @@ def _astar(dep, arr, obstacles, zone, reservees):
     def h(p):
         return abs(p[0] - arr[0]) + abs(p[1] - arr[1])
 
-    def praticable(p, exempt):
+    def praticable(p):
         if not (zone.x0 <= p[0] <= zone.x1 and zone.y0 <= p[1] <= zone.y1):
             return False
         if p in (dep, arr):
@@ -89,7 +89,7 @@ def _astar(dep, arr, obstacles, zone, reservees):
             return list(reversed(chemin))
         for dx, dy in _DIRS:
             q = _cle((p[0] + dx, p[1] + dy))
-            if not praticable(q, (dep, arr)):
+            if not praticable(q):
                 continue
             # Arete bloquee si son milieu est STRICTEMENT dans un obstacle
             mx, my = (p[0] + q[0]) / 2, (p[1] + q[1]) / 2

@@ -4216,6 +4216,7 @@ def _draw_island_chain(d, ordered, ci, couplages=None):
     plan = schema_grid.poser(etages)
 
     ancres = []
+    rects_io = []
     for i, match in enumerate(ordered):
         in_label = "VIN" if i == 0 else ""
         out_label = "VOUT" if i == n - 1 else ""
@@ -4223,12 +4224,16 @@ def _draw_island_chain(d, ordered, ci, couplages=None):
         ancres.append(_dessiner_montage_a(d, match, ci, origin,
                                           in_label, out_label))
         _annoter_etage(d, ancres[-1], match)
+        rects_io += _rects_ports_etiquetes(ancres[-1], in_label, out_label)
 
     coupl = [m for m in (couplages or []) if _est_couplage(m)]
     find = _couplage_find(couplages or [])
     couplages_utilises = set()
     obstacles = list(plan.obstacles) + _obstacles_stubs(ordered, ancres,
                                                         coupl, ci)
+    for a, m in zip(ancres, ordered):
+        obstacles += _rects_annotations(a, m)
+    obstacles += rects_io
     nets = []
     for i in range(n - 1):
         # Ports PROJETES sur la FRONTIERE des slots (x1 cote sortie, x0 cote
@@ -4292,6 +4297,11 @@ def _polyligne_avec_couplage(d, poly, cc, ci):
     """@brief Pose le couplage (C serie...) au MILIEU du plus long segment
     horizontal de la polyligne (garanti >= 4*PAS par les couloirs CANAL_H)."""
     segs = [(p, q) for p, q in zip(poly, poly[1:]) if p[1] == q[1]]
+    if not segs:
+        # Inatteignable aujourd'hui (colonnes distinctes => au moins un
+        # segment horizontal) mais garde explicite : repli sur le plus long
+        # segment tout court (couplage pose verticalement).
+        segs = list(zip(poly, poly[1:]))
     p, q = max(segs, key=lambda s: abs(s[1][0] - s[0][0]))
     milieu = ((p[0] + q[0]) / 2, p[1])
     demi = 0.9
@@ -4515,23 +4525,74 @@ def _charge_verticale(d, ref, ci, longueur=1.1):
           .label(_lbl(ref, ci), fontsize=9, halign="left"))
 
 
+def _points_annotation(ancres, match):
+    """@brief (title_pt, gain_pt|None) d'un étage — POINT DE VÉRITÉ UNIQUE
+    partagé par `_annoter_etage` (dessin) et `_rects_annotations` (obstacles
+    prévisionnels du routeur, revue finale Task 7)."""
+    out = ancres.get("out")
+    if not out:
+        return None, None
+    title_pt = ancres.get("title") or (out[0] + 1.4, out[1] + 0.85)
+    gain_pt = (out[0] + 1.4, out[1] - 0.85) if _texte_gain(match, None) else None
+    return title_pt, gain_pt
+
+
+def _rects_annotations(ancres, match):
+    """@brief Rects prévisionnels couvrant le rôle et le gain d'un étage,
+    à réserver comme OBSTACLES du routeur Manhattan.
+
+    Les annotations vivent dans le couloir CANAL_H, plus étroit que leurs
+    textes : un bus vertical routé les traversait et le moteur anti-collision
+    oscillait entre les deux bus encadrants (itérations épuisées — revue
+    finale Task 7, pid_controller). Les rects laissent libre la bande y du
+    port de sortie (à out.y, ENTRE titre et gain) pour ne pas réintroduire le
+    piège Task 4 (départ enfermé dans un obstacle)."""
+    from gui.schema_grid import Rect, snap
+    title_pt, gain_pt = _points_annotation(ancres, match)
+    rects = []
+    for pt, demi_h in ((title_pt, 0.4), (gain_pt, 0.35)):
+        if pt is None:
+            continue
+        rects.append(Rect(snap(pt[0] - 1.5), snap(pt[1] - demi_h),
+                          snap(pt[0] + 1.5), snap(pt[1] + demi_h)))
+    return rects
+
+
+def _rects_ports_etiquetes(ancres, in_label, out_label):
+    """@brief Rects-obstacles des labels de ports (VIN/VOUT/VINx/VOUTx).
+
+    Un bus routé qui contourne par l'extérieur passait SUR le label d'une
+    entrée (revue finale Task 7, 'VIN3' de pid_controller). Sans risque de
+    ré-enfermer un port routé : une entrée étiquetée (couche 0) n'est jamais
+    une arrivée de routage, une sortie étiquetée (dernière couche) jamais un
+    départ."""
+    from gui.schema_grid import Rect, snap
+    rects = []
+    p = ancres.get("in")
+    if in_label and p is not None:
+        rects.append(Rect(snap(p[0] - 1.9), snap(p[1] - 0.45),
+                          snap(p[0]), snap(p[1] + 0.45)))
+    p = ancres.get("out")
+    if out_label and p is not None:
+        rects.append(Rect(snap(p[0]), snap(p[1] - 0.45),
+                          snap(p[0] + 1.9), snap(p[1] + 0.45)))
+    return rects
+
+
 def _annoter_etage(d, ancres, match):
     """@brief Étiquette un étage : rôle au-dessus de sa sortie, gain en dessous.
 
     Placé à droite de l'AOP (espace inter-étages) pour ne pas percuter le réseau
     Zf/Zg. Purement additif : aucun impact sur le câblage ni les ancres.
     """
-    out = ancres.get("out")
-    if not out:
+    title_pt, gain_pt = _points_annotation(ancres, match)
+    if title_pt is None:
         return
-    title_pt = ancres.get("title") or (out[0] + 1.4, out[1] + 0.85)
     d.add(elm.Label().at(title_pt).label(
         _titre_etage(match), color=_TITRE_COLOR, fontsize=11))
-    gain = _texte_gain(match, None)
-    if gain:
-        x = out[0] + 1.4
-        d.add(elm.Label().at((x, out[1] - 0.85)).label(
-            gain, color=_GAIN_COLOR, fontsize=8))
+    if gain_pt is not None:
+        d.add(elm.Label().at(gain_pt).label(
+            _texte_gain(match, None), color=_GAIN_COLOR, fontsize=8))
 
 
 def _branched_edges(layers, ci=None, matches=None):
@@ -4599,6 +4660,7 @@ def _draw_branched_chain(d, layers, ci, couplages=None):
     plan = schema_grid.poser(etages)
 
     ancres = {}                            # id(match) -> ancres ("out","ins",...)
+    rects_io = []
     for lx, couche in enumerate(layers):
         for ry, match in enumerate(couche):
             if lx != dernier:
@@ -4617,6 +4679,8 @@ def _draw_branched_chain(d, layers, ci, couplages=None):
             ancres[id(match)] = _dessiner_montage_a(d, match, ci, origin,
                                                     in_label, out_label)
             _annoter_etage(d, ancres[id(match)], match)
+            rects_io += _rects_ports_etiquetes(ancres[id(match)],
+                                               in_label, out_label)
 
     coupl = [m for m in (couplages or []) if _est_couplage(m)]
     find = _couplage_find(couplages or [])
@@ -4634,7 +4698,12 @@ def _draw_branched_chain(d, layers, ci, couplages=None):
     edges = _branched_edges(layers, ci, matches=couplages)
 
     def _nom_net(prod, cons, net):
-        return f"{net}_{id(prod)}_{id(cons)}"
+        # Cles de grille STABLES (cle_of, format "lx_ry" positionnel) plutot
+        # que id(prod)/id(cons) : id() varie d'un process Python a l'autre
+        # (adresse memoire), ce qui rendait le nom de net -- et donc le tri
+        # des aretes servant au routage -- non reproductible inter-process
+        # (revue finale Task 7, FIX 1).
+        return f"{net}_{cle_of[id(prod)]}_{cle_of[id(cons)]}"
 
     edges = sorted(edges, key=lambda e: (layer_of[id(e[0])], _nom_net(*e)))
     par_producteur = {}
@@ -4661,6 +4730,9 @@ def _draw_branched_chain(d, layers, ci, couplages=None):
     coupl_locaux = [z for z in coupl if id(z) not in couplages_utilises]
     obstacles = list(plan.obstacles) + _obstacles_stubs(flat, flat_ancres,
                                                         coupl_locaux, ci)
+    for m in flat:
+        obstacles += _rects_annotations(ancres[id(m)], m)
+    obstacles += rects_io
 
     nets = []
     for prod, cons, net in edges:

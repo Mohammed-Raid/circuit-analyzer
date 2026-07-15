@@ -170,3 +170,117 @@ def test_aucun_repli_sur_le_corpus_dag(caplog):
                 _fig(nom, det)
     replis = [r for r in caplog.records if "repli" in r.getMessage()]
     assert not replis, [r.getMessage() for r in replis[:5]]
+
+
+_DUMP_SCRIPT = """
+import json
+import matplotlib
+matplotlib.use("Agg")
+from circuit_analyzer import detecteur
+from circuit_analyzer.composant import construire_graphe
+from circuit_analyzer.xml import lire_xml
+from gui import theme
+from tools.render_ilots_v2 import _fig_for_ilot
+
+_WIRE_COLORS = {theme.SCHEMA_COLORS["WIRE"], theme.SCHEMA_COLORS["BUS"]}
+comps = lire_xml(r"%(fichier)s")
+graph = construire_graphe(comps)
+results = detecteur.analyser(graph)
+ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
+fig = _fig_for_ilot(results.ilots[0], graph, ci, results, detaille=True)
+lignes = []
+for ax in fig.axes:
+    for line in ax.lines:
+        xy = line.get_xydata()
+        if len(xy) != 2 or line.get_color() not in _WIRE_COLORS:
+            continue
+        lignes.append([[float(xy[0][0]), float(xy[0][1])],
+                        [float(xy[1][0]), float(xy[1][1])]])
+lignes.sort(key=lambda l: json.dumps(l))
+print(json.dumps(lignes))
+"""
+
+
+def test_routage_deterministe_dag_inter_process():
+    """Contrat FIX 1 (revue finale Task 7) : `_nom_net` (assemblage DAG
+    branche) utilisait `id(prod)`/`id(cons)` -- adresse memoire, NON stable
+    d'un process Python a l'autre -- pour construire le nom de net qui sert
+    de cle de tri des aretes avant routage (`sorted(edges, key=... _nom_net
+    ...)`). Deux process distincts rendant le MEME fichier doivent produire
+    EXACTEMENT le meme cablage (memes segments _WIRE/_BUS, dans le meme
+    ordre) : ce test lance deux sous-process Python separes (adresses
+    memoire garanties independantes, contrairement a deux appels dans le
+    meme process ou l'allocateur peut recycler des id() identiques et
+    masquer le probleme) et compare le JSON trie des Line2D de cablage.
+
+    Note (documente au sens du brief) : sur le corpus BRANCHES actuel, les
+    cles de net (`net` dans `_branched_edges`) sont deja toutes distinctes
+    par arete (verifie par instrumentation), y compris entre les 2 branches
+    d'un meme fan-out -- l'id() ne departageait donc JAMAIS une egalite de
+    tri sur ce corpus precis, et ce test ne pouvait pas etre mis au ROUGE
+    par le bug avant le fix (deux sous-process independants produisaient
+    deja la meme sortie). Il reste neanmoins utile : il fige EXPLICITEMENT
+    le contrat "determinisme inter-process" comme garde-fou perenne, pour
+    tout futur corpus ou deux aretes partageraient un nom de net dans la
+    meme couche (fan-out sur un noeud partage), cas ou l'ancien code aurait
+    trie differemment selon le process.
+    """
+    import json
+    import subprocess
+    import sys
+
+    fichier = str(ROOT / "circuits_industriels" / "pid_controller.xml")
+    script = _DUMP_SCRIPT % {"fichier": fichier}
+    sorties = []
+    for _ in range(2):
+        proc = subprocess.run([sys.executable, "-c", script],
+                               cwd=str(ROOT), capture_output=True, text=True,
+                               check=False)
+        assert proc.returncode == 0, proc.stderr
+        sorties.append(json.loads(proc.stdout))
+    assert sorties[0] == sorties[1]
+
+
+def _traversees_labels(fig):
+    """(texte, segment) pour chaque Text visible traverse par un fil de
+    cablage _WIRE/_BUS (bbox renderer vs segments echantillonnes)."""
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    canvas = FigureCanvasAgg(fig)
+    canvas.draw()
+    renderer = canvas.get_renderer()
+    hits = []
+    for ax in fig.axes:
+        textes = [t for t in ax.texts
+                  if t.get_visible() and t.get_text().strip()]
+        lignes = [l for l in ax.lines if l.get_color() in _WIRE_COLORS]
+        for t in textes:
+            bb = t.get_window_extent(renderer)
+            for line in lignes:
+                xy = ax.transData.transform(line.get_xydata())
+                touche = False
+                for (xa, ya), (xb, yb) in zip(xy[:-1], xy[1:]):
+                    n = 24
+                    if any(bb.x0 < xa + (xb - xa) * k / n < bb.x1
+                           and bb.y0 < ya + (yb - ya) * k / n < bb.y1
+                           for k in range(n + 1)):
+                        hits.append((t.get_text(),
+                                     (round(xa), round(ya),
+                                      round(xb), round(yb))))
+                        touche = True
+                        break
+                if touche:
+                    break
+    return hits
+
+
+@pytest.mark.parametrize("nom", ["pid_controller.xml",
+                                 "ilot_branche_ce_fanout.xml"])
+def test_aucun_fil_route_ne_traverse_un_label(nom):
+    """FIX 2 revue finale Task 7 : les bus verticaux routes passaient SUR les
+    labels de role/gain (pid_controller det : "Differentiel", "Integrateur"),
+    poses par _annoter_etage en plein couloir CANAL_H. Le moteur
+    anti-collision oscillait entre les DEUX bus encadrant le label (couloir
+    plus etroit que le texte) et epuisait ses 20 iterations. Fix racine :
+    les annotations sont des OBSTACLES du routeur (_rects_annotations)."""
+    hits = _traversees_labels(_fig(nom, True))
+    assert not hits, hits[:5]
