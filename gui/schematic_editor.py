@@ -12,7 +12,7 @@ from typing import Optional
 from circuit_analyzer.composant import charger_bibliotheque
 from gui.fonts import FONT_FAMILY
 from gui.schematic_io import editor_to_dict, type_reel
-from gui.schematic_symbols import rotate_pin as _rotate_pin
+from gui.schematic_symbols import primitives, rotate_pin as _rotate_pin
 from gui.theme import (SURFACE, RAISED, OVERLAY, BORDER, TEXT, TEXT_MUTED,
                         TEXT_DIM, BLUE, ERROR)
 
@@ -481,8 +481,11 @@ class SchematicEditor(tk.Frame):
         self._palette_btns[comp_type].configure(bg=BORDER, relief="groove")
         self._set_status(f"Clic pour\nplacer {comp_type}\nÉchap = annuler")
 
-    def _place_comp(self, wx: int, wy: int):
-        """Place un composant en coordonnées monde — reste en mode placing."""
+    def _place_at(self, wx: int, wy: int) -> "CompInst":
+        """Place un composant en coordonnées monde — reste en mode placing.
+
+        Extrait du handler de clic pour être appelable directement (tests).
+        """
         self._push_undo()
         t    = self._place_type
         defn = self._defs[t]
@@ -496,6 +499,11 @@ class SchematicEditor(tk.Frame):
         self._draw_comp(comp)
         # Reste en mode placing (Échap pour sortir)
         self._set_status(f"Placé {ref}\nClic = autre\nÉchap = stop")
+        return comp
+
+    def _place_comp(self, wx: int, wy: int):
+        """@brief Alias historique de `_place_at` (compat tests existants)."""
+        return self._place_at(wx, wy)
 
     # ── Rendu ────────────────────────────────────────────────────────────────
 
@@ -506,107 +514,77 @@ class SchematicEditor(tk.Frame):
         rot   = comp.rotation
         scx, scy = self._w2s(comp.cx, comp.cy)
         w2, h2   = defn["w"] // 2, defn["h"] // 2
-        # Pour 90°/270°, les dimensions s'échangent
-        rw2 = (w2 if rot % 180 == 0 else h2) * z
-        rh2 = (h2 if rot % 180 == 0 else w2) * z
         pr   = max(2, _PIN_R * z)
         tag  = f"comp_{comp.id}"
         self._canvas.delete(tag)
 
-        if comp.comp_type == "GND":
-            dx, dy = _rotate_pin(0, -20, rot)
-            spx, spy = scx + dx*z, scy + dy*z  # pin (haut)
-            d1x, d1y = _rotate_pin(0, -20, rot)
-            d2x, d2y = _rotate_pin(0, 0, rot)
-            self._canvas.create_line(scx+d1x*z, scy+d1y*z,
-                                     scx+d2x*z, scy+d2y*z,
-                                     fill=color, width=max(1, int(2*z)), tags=tag)
-            for i, hw in enumerate([16, 10, 5]):
-                bx, by = _rotate_pin(0, i*5, rot)
-                lx, ly = _rotate_pin(hw, i*5, rot)
-                rx, ry = _rotate_pin(-hw, i*5, rot)
-                self._canvas.create_line(
-                    scx+lx*z, scy+ly*z, scx+rx*z, scy+ry*z,
-                    fill=color, width=max(1, int(2*z)), tags=tag)
-            tx, ty = _rotate_pin(0, -28, rot)
-            self._canvas.create_text(scx+tx*z, scy+ty*z,
-                                     text="GND", fill=color,
-                                     font=("Consolas", max(7, int(8*z))), tags=tag)
-            # pin circle
-            pfill, pout = self._pin_style(comp.id, "1", color)
-            self._canvas.create_oval(spx-pr, spy-pr, spx+pr, spy+pr,
-                                     fill=pfill, outline=pout,
-                                     width=max(1, int(2*z)),
-                                     tags=(tag, f"pin_{comp.id}_1"))
+        # Symbole : primitives vectorielles (Task 1), rotation déjà appliquée.
+        prims = primitives(comp.comp_type, defn, rot, comp.value)
+        for p in prims:
+            if p[0] == "line":
+                flat = [c for x, y in p[1] for c in self._w2s(comp.cx + x, comp.cy + y)]
+                self._canvas.create_line(*flat, fill=color,
+                                         width=max(1, int(p[2] * z)),
+                                         joinstyle="round", tags=tag)
+            elif p[0] == "polygon":
+                flat = [c for x, y in p[1] for c in self._w2s(comp.cx + x, comp.cy + y)]
+                self._canvas.create_polygon(
+                    *flat, fill=color if p[2] else "",
+                    outline=color, width=max(1, int(2 * z)), tags=tag)
+            elif p[0] == "arc":
+                x0, y0, x1, y1 = p[1]
+                sx0, sy0 = self._w2s(comp.cx + x0, comp.cy + y0)
+                sx1, sy1 = self._w2s(comp.cx + x1, comp.cy + y1)
+                self._canvas.create_arc(sx0, sy0, sx1, sy1, start=p[2],
+                                        extent=p[3], style="arc",
+                                        outline=color,
+                                        width=max(1, int(2 * z)), tags=tag)
+            elif p[0] == "text":
+                sx, sy = self._w2s(comp.cx + p[1][0], comp.cy + p[1][1])
+                self._canvas.create_text(sx, sy, text=p[2], fill=color,
+                                         font=("Consolas", max(5, int(p[3] * z))),
+                                         anchor={"e": "e", "w": "w"}.get(p[4], "center"),
+                                         tags=tag)
 
-        elif comp.comp_type == "VCC":
-            dx, dy = _rotate_pin(0, 20, rot)
-            spx, spy = scx + dx*z, scy + dy*z  # pin (bas)
-            d1x, d1y = _rotate_pin(0, 20, rot)
-            d2x, d2y = _rotate_pin(0, 2, rot)
-            self._canvas.create_line(scx+d1x*z, scy+d1y*z,
-                                     scx+d2x*z, scy+d2y*z,
-                                     fill=color, width=max(1, int(2*z)), tags=tag)
-            # Flèche triangulaire
-            p0x, p0y = _rotate_pin(-10, 2, rot)
-            p1x, p1y = _rotate_pin(10, 2, rot)
-            p2x, p2y = _rotate_pin(0, -14, rot)
-            self._canvas.create_polygon(
-                scx+p0x*z, scy+p0y*z,
-                scx+p1x*z, scy+p1y*z,
-                scx+p2x*z, scy+p2y*z,
-                fill=color, outline="", tags=tag)
-            tx, ty = _rotate_pin(0, 30, rot)
+        # Textes : refs/valeurs horizontaux (position tournée, texte pas tourné,
+        # comme KiCad). Le nom de type n'est plus dessiné.
+        if comp.comp_type in ("GND", "VCC"):
+            # Le traceur n'émet pas de texte : "GND"/"VCC" (== comp.ref) reste ici.
+            toff = (0, -28) if comp.comp_type == "GND" else (0, 30)
+            tx, ty = _rotate_pin(*toff, rot)
             self._canvas.create_text(scx+tx*z, scy+ty*z,
-                                     text="VCC", fill=color,
+                                     text=comp.ref, fill=color,
                                      font=("Consolas", max(7, int(8*z))), tags=tag)
-            pfill, pout = self._pin_style(comp.id, "1", color)
-            self._canvas.create_oval(spx-pr, spy-pr, spx+pr, spy+pr,
-                                     fill=pfill, outline=pout,
-                                     width=max(1, int(2*z)),
-                                     tags=(tag, f"pin_{comp.id}_1"))
-
         else:
-            # Rectangle + labels
-            self._canvas.create_rectangle(
-                scx - rw2, scy - rh2, scx + rw2, scy + rh2,
-                fill="#0f172a", outline=color,
-                width=max(1, int(2*z)), tags=tag)
-            lbx, lby = _rotate_pin(-w2 + 6, -h2 + 8, rot)
-            self._canvas.create_text(
-                scx + lbx*z, scy + lby*z,
-                text=comp.comp_type, fill=color,
-                font=("Consolas", max(6, int(8*z)), "bold"),
-                anchor="center", tags=tag)
-            rx, ry = _rotate_pin(0, -8, rot)
+            rx, ry = _rotate_pin(0, -h2 - 10, rot)
             self._canvas.create_text(scx+rx*z, scy+ry*z,
                                      text=comp.ref, fill="#e2e8f0",
                                      font=("Consolas", max(7, int(9*z)), "bold"),
                                      tags=tag)
-            vx, vy = _rotate_pin(0, 8, rot)
+            vx, vy = _rotate_pin(0, h2 + 10, rot)
             self._canvas.create_text(scx+vx*z, scy+vy*z,
                                      text=comp.value, fill="#64748b",
                                      font=("Consolas", max(6, int(8*z))),
                                      tags=tag)
 
-            # Pins
-            nb_pins = len(defn["pins"])
-            for pn, (pdx, pdy) in defn["pins"].items():
-                rdx, rdy = _rotate_pin(pdx, pdy, rot)
-                spx = scx + rdx * z
-                spy = scy + rdy * z
-                pfill, pout = self._pin_style(comp.id, pn, color)
-                self._canvas.create_oval(spx-pr, spy-pr, spx+pr, spy+pr,
-                                         fill=pfill, outline=pout,
-                                         width=max(1, int(2*z)),
-                                         tags=(tag, f"pin_{comp.id}_{pn}"))
-                if nb_pins > 2:
-                    anch = "e" if rdx < 0 else "w"
-                    ox = -8*z if rdx < 0 else 8*z
-                    self._canvas.create_text(spx+ox, spy,
-                                             text=pn, fill="#475569",
-                                             font=("Consolas", max(5, int(7*z))),
-                                             anchor=anch, tags=tag)
+        # Pastilles de broches + labels (>2 broches)
+        nb_pins = len(defn["pins"])
+        for pn, (pdx, pdy) in defn["pins"].items():
+            rdx, rdy = _rotate_pin(pdx, pdy, rot)
+            spx = scx + rdx * z
+            spy = scy + rdy * z
+            pfill, pout = self._pin_style(comp.id, pn, color)
+            self._canvas.create_oval(spx-pr, spy-pr, spx+pr, spy+pr,
+                                     fill=pfill, outline=pout,
+                                     width=max(1, int(2*z)),
+                                     tags=(tag, f"pin_{comp.id}_{pn}"))
+            if nb_pins > 2:
+                anch = "e" if rdx < 0 else "w"
+                ox = -8*z if rdx < 0 else 8*z
+                self._canvas.create_text(spx+ox, spy,
+                                         text=pn, fill="#475569",
+                                         font=("Consolas", max(5, int(7*z))),
+                                         anchor=anch, tags=tag)
 
     def _draw_wire(self, wire: WireInst):
         ca = self._comps.get(wire.from_comp_id)
@@ -700,7 +678,7 @@ class SchematicEditor(tk.Frame):
         swx, swy = self._snap(wx, wy)
 
         if self._state == "placing":
-            self._place_comp(swx, swy)
+            self._place_at(swx, swy)
             return
 
         if self._state == "wiring":

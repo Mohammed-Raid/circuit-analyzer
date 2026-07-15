@@ -101,7 +101,10 @@ def _tr_q(d):
         ("line", [(-8, -8), (30, -30)], 2),
         ("line", [(-8, 8), (30, 30)], 2),
         ("polygon", [(18, 20), (30, 30), (16, 28)], True),   # flèche émetteur
-        ("arc", (-24, -24, 24, 24), 0, 360),
+        # Cercle en 2 demi-arcs : tk n'affiche rien pour un "arc" 360° d'un
+        # seul tenant (extent 360 == 0 visuellement, verifie empiriquement).
+        ("arc", (-24, -24, 24, 24), 0, 180),
+        ("arc", (-24, -24, 24, 24), 180, 180),
     ]
 
 
