@@ -12,6 +12,7 @@ from typing import Optional
 from circuit_analyzer.composant import charger_bibliotheque
 from gui.fonts import FONT_FAMILY
 from gui.schematic_io import editor_to_dict
+from gui.schematic_symbols import rotate_pin as _rotate_pin
 from gui.theme import (SURFACE, RAISED, OVERLAY, BORDER, TEXT, TEXT_MUTED,
                         TEXT_DIM, BLUE, ERROR)
 
@@ -118,14 +119,6 @@ def _compute_defs() -> dict:
 _PIN_R = 5     # rayon visuel pin
 _HIT_R = 12   # rayon détection clic sur pin
 _PIN_OFF = "#ef4444"   # contour des broches NON connectées (rouge = à câbler)
-
-
-def _rotate_pin(dx: int, dy: int, rotation: int) -> tuple[int, int]:
-    """Tourne un vecteur (dx,dy) de `rotation` degrés dans le sens horaire."""
-    if rotation == 90:  return (dy, -dx)
-    if rotation == 180: return (-dx, -dy)
-    if rotation == 270: return (-dy, dx)
-    return (dx, dy)
 
 
 def _dist_to_segment(px, py, ax, ay, bx, by) -> float:
