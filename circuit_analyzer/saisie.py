@@ -49,7 +49,13 @@ class ModeleSaisie:
         return list(info.get("pins") or ("1", "2"))
 
     def ajouter(self, type_, value="", pins=None, fonctions=None):
-        """@brief Ajoute une ligne ; broches du type si `pins` absent."""
+        """@brief Ajoute une ligne ; broches du type si `pins` absent.
+
+        `value` vide → pré-remplie avec la valeur par défaut du type
+        (spec §2.2, mêmes défauts que la palette du canvas).
+        """
+        if not value:
+            value = self._bibliotheque.get(type_, {}).get("default_value", "")
         if pins is None:
             pins = {p: "" for p in self._broches_du_type(type_)}
         ligne = LigneSaisie(ref=self.ref_auto(type_), type=type_,

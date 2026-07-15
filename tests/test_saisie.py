@@ -22,6 +22,13 @@ def test_ref_auto_par_prefixe_de_type():
     assert m.ajouter("U").ref == "U1"   # index libéré réutilisé
 
 
+def test_ajouter_pre_remplit_la_valeur_par_defaut_du_type():
+    m = ModeleSaisie()
+    assert m.ajouter("R").value == "10k"
+    assert m.ajouter("C").value == "100n"
+    assert m.ajouter("R", value="4.7k").value == "4.7k"   # explicite prioritaire
+
+
 def test_ajouter_expose_les_broches_du_type():
     m = ModeleSaisie()
     q = m.ajouter("Q")

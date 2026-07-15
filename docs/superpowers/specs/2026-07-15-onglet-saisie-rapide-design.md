@@ -126,10 +126,12 @@ class ModeleSaisie:
 ```
 
 Round-trip contractuel : `depuis_composants(lire_xml(generer_xml(
-m.vers_composants())))` reproduit refs/types/valeurs/nets câblés (les
-broches vides deviennent des nets singletons `NET#` à la génération —
-convention existante, assumée dans le contrat : à la RELECTURE d'un fichier
-généré, une broche `NET#` singleton est réaffichée comme vide).
+m.vers_composants())))` reproduit refs/types/valeurs et la TOPOLOGIE des
+nets câblés (quelles broches partagent le même net), PAS les noms de nets
+internes : le format BoardSCH ne porte aucun nom de net interne
+(`lire_xml`/`nom_net()` ne nomme que les rails, le reste redevient `NET#`
+à la relecture). Les broches vides ↔ nets singletons `NET#` re-masqués à
+la relecture restent tels quels (convention existante).
 
 ### 3.3 Lecture sans aliasing
 
