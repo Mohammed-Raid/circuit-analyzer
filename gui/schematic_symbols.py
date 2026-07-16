@@ -199,10 +199,25 @@ def _tr_boite(defn):
             prims.append(("line", [(bord, py), (px, py)], 2))
         fonction = (defn.get("fonctions") or {}).get(pn, "")
         libelle = f"{pn} {fonction}".strip()
-        ancre = "e" if px < 0 else "w"
+        # Ancre côté BORD (pas côté pin) : le libellé doit croître VERS
+        # l'intérieur du boîtier, jamais vers la broche/l'encoche (bug
+        # trouvé lors de la boucle visuelle Task 5 — "n FONCTION" débordait
+        # sur la pastille de broche pour les fonctions longues, ex. "RESET").
+        ancre = "w" if px < 0 else "e"
         tx = bord + (6 if px < 0 else -6)
         prims.append(("text", (tx, py), libelle, 7, ancre))
     return prims
+
+
+def est_boite_generique(comp_type: str) -> bool:
+    """@brief Vrai si `primitives()` rend ce type via `_tr_boite` (boîte à
+    encoche + libellés "n FONCTION" déjà dessinés dans les primitives).
+
+    Utilisé par l'éditeur pour éviter de superposer un second libellé de
+    broche générique (bare pin name) par-dessus celui de la boîte — les
+    deux se chevauchaient (ex. puces catalogue, spec §5).
+    """
+    return comp_type != "D" and comp_type not in _TRACEURS
 
 
 def primitives(comp_type, defn, rotation, value=""):

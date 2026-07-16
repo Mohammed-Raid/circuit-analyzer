@@ -82,3 +82,79 @@ def test_apercu_cablage_orthogonal(editeur):
     # L : 6 coordonnées (3 points), segments H puis V
     assert len(coords) == 6
     assert coords[1] == coords[3] or coords[0] == coords[2]
+
+
+# ── Task 5 : palette catalogue (« Puces réelles ») ──────────────────────────
+
+def test_placement_puce_catalogue(editeur):
+    editeur._activer_catalogue("U", "NE555")   # prépare le placement
+    c = editeur._place_at(400, 300)
+    assert c.comp_type == "U::NE555"
+    assert c.ref == "U1"          # revue Task 2 : jamais "U::NE5551"
+    defn = editeur._defs["U::NE555"]
+    assert len(defn["pins"]) == 8 and defn["fonctions"]["2"] == "TRIG"
+
+
+def test_placement_puce_74hc00_14_broches(editeur):
+    editeur._activer_catalogue("U", "74HC00")
+    c = editeur._place_at(200, 200)
+    assert c.comp_type == "U::74HC00"
+    assert c.ref == "U1"
+    assert len(editeur._defs["U::74HC00"]["pins"]) == 14
+
+
+def test_refs_uniques_types_catalogue_partagent_compteur_type_reel(editeur):
+    """Deux puces catalogue différentes (même lettre "U") ne doivent jamais
+    collisionner sur la même réf — le compteur est partagé par type réel."""
+    editeur._activer_catalogue("U", "NE555")
+    c1 = editeur._place_at(100, 100)
+    editeur._activer_catalogue("U", "74HC00")
+    c2 = editeur._place_at(300, 100)
+    assert {c1.ref, c2.ref} == {"U1", "U2"}
+
+
+def test_placement_led_rouge_value_imposee(editeur):
+    editeur._activer_catalogue("D", "LED rouge")
+    c = editeur._place_at(150, 150)
+    assert c.comp_type == "D"     # type intégré, pas de def dynamique
+    assert c.value == "LED rouge"
+    assert c.ref == "D1"
+
+
+def test_export_puce_catalogue_analysable(editeur):
+    editeur._activer_catalogue("U", "NE555")
+    editeur._place_at(400, 300)
+    comps = editeur.exporter_composants()
+    u = next(c for c in comps if c.type == "U")
+    assert u.value == "NE555"
+    from circuit_analyzer.catalogue import identifier
+    assert identifier(u.type, u.value)["nom"] == "NE555"
+
+
+def test_relecture_circ_regenere_def_puce_catalogue(editeur):
+    """Spec §4 : la def dynamique doit être régénérée AVANT tout redraw à la
+    relecture d'un .circ contenant une puce catalogue, sinon KeyError."""
+    editeur._activer_catalogue("U", "NE555")
+    editeur._place_at(200, 200)
+    doc = editeur.to_dict()
+    del editeur._defs["U::NE555"]   # simule un éditeur frais sans la def
+    editeur.load_dict(doc)          # ne doit pas lever KeyError
+    assert "U::NE555" in editeur._defs
+    comp = next(c for c in editeur._comps.values() if c.comp_type == "U::NE555")
+    assert editeur._canvas.find_withtag(f"comp_{comp.id}")
+
+
+def test_refresh_palette_conserve_def_puce_catalogue(editeur):
+    """Un refresh_palette() (édition de bibliothèque perso) ne doit pas purger
+    à tort une puce catalogue posée comme composant devenu 'inconnu'."""
+    editeur._activer_catalogue("U", "NE555")
+    c = editeur._place_at(200, 200)
+    editeur.refresh_palette()
+    assert "U::NE555" in editeur._defs
+    assert c.id in editeur._comps
+
+
+def test_palette_liste_puces_reelles_compacte(editeur):
+    assert hasattr(editeur, "_catalogue_listbox")
+    # ~30 entrées catalogue (5 U exacts + 6*74HC + 4 suffixes + 3 Q + 3 M + 2 D + 3 LED)
+    assert editeur._catalogue_listbox.size() >= 20

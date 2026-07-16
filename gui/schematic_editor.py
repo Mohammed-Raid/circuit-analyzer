@@ -9,10 +9,12 @@ import tkinter as tk
 from dataclasses import dataclass, field
 from typing import Optional
 
-from circuit_analyzer.composant import charger_bibliotheque
+from circuit_analyzer.catalogue import entrees_catalogue, identifier
+from circuit_analyzer.composant import charger_bibliotheque, Composant
 from gui.fonts import FONT_FAMILY
 from gui.schematic_io import editor_to_dict, points_jonction, type_reel
-from gui.schematic_symbols import primitives, rotate_pin as _rotate_pin
+from gui.schematic_symbols import (primitives, rotate_pin as _rotate_pin,
+                                    def_puce, est_boite_generique)
 from gui.theme import (SURFACE, RAISED, OVERLAY, BORDER, TEXT, TEXT_MUTED,
                         TEXT_DIM, BLUE, ERROR, SCHEMA_COLORS)
 
@@ -180,6 +182,10 @@ class SchematicEditor(tk.Frame):
 
         # presse-papier (Ctrl+C/V/D) : {type, value, rotation}
         self._clipboard: Optional[dict] = None
+        # valeur imposée par le catalogue pour le PROCHAIN placement (Task 5) —
+        # ex. "LED rouge" pour une entrée D du catalogue (les U catalogue n'en
+        # ont pas besoin : def_puce() range déjà la ref dans default_value).
+        self._place_value: Optional[str] = None
         # dernière position monde du curseur (cible du coller)
         self._cursor_w: tuple = (200, 200)
 
@@ -334,6 +340,9 @@ class SchematicEditor(tk.Frame):
             self._palette_btns[ct] = b
 
         tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=8, pady=8)
+        self._build_catalogue_section(parent)
+
+        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=8, pady=8)
 
         tk.Button(parent, text="🗑  Supprimer",
                   bg=OVERLAY, fg=ERROR, activebackground=BORDER,
@@ -362,6 +371,36 @@ class SchematicEditor(tk.Frame):
         )
         self._status_lbl.pack(padx=8, pady=4)
 
+    def _build_catalogue_section(self, parent):
+        """@brief Section « Puces réelles » : liste déroulante compacte (Task 5).
+
+        Une Listbox (pas un bouton par entrée — ~30 entrées, palette compacte)
+        alimentée par `entrees_catalogue()`, triée par valeur affichée. Simple
+        clic (sélection) -> `_activer_catalogue`.
+        """
+        tk.Label(parent, text="PUCES RÉELLES", fg=TEXT_DIM, bg=OVERLAY,
+                 font=(FONT_FAMILY, 8, "bold")).pack(pady=(0, 4), padx=8, anchor="w")
+
+        entries = sorted(entrees_catalogue(), key=lambda e: e[1])
+        self._catalogue_entries = entries
+
+        lb = tk.Listbox(parent, bg=SURFACE, fg=TEXT,
+                         selectbackground=BLUE, selectforeground=TEXT,
+                         highlightthickness=0, bd=0, exportselection=False,
+                         height=8, font=(FONT_FAMILY, 9))
+        for t, v, e in entries:
+            lb.insert("end", f"{v} — {e.get('categorie', '')}")
+        lb.pack(fill="x", padx=8, pady=(0, 4))
+
+        def _on_select(_evt=None):
+            sel = lb.curselection()
+            if sel:
+                t, v, _e = self._catalogue_entries[sel[0]]
+                self._activer_catalogue(t, v)
+
+        lb.bind("<<ListboxSelect>>", _on_select)
+        self._catalogue_listbox = lb
+
     def refresh_palette(self):
         """@brief Recharge la bibliothèque et reconstruit la palette.
 
@@ -371,6 +410,11 @@ class SchematicEditor(tk.Frame):
         fils) pour éviter un plantage au redessin.
         """
         self._defs = _compute_defs()
+        # Puces catalogue posées ("U::NE555"…) : def dynamique absente de
+        # _compute_defs() (elle ne vient pas de la bibliothèque perso) —
+        # régénérée sinon la purge ci-dessous les considère obsolètes à tort.
+        for c in self._comps.values():
+            self._ensure_dyn_def(c.comp_type)
 
         # Purge des composants dont le type n'existe plus dans la bibliothèque.
         obsoletes = {cid for cid, c in self._comps.items()
@@ -471,31 +515,76 @@ class SchematicEditor(tk.Frame):
 
     # ── Placement ────────────────────────────────────────────────────────────
 
+    def _ensure_dyn_def(self, comp_type: str):
+        """@brief Régénère la def dynamique d'une puce catalogue (Task 5, §4).
+
+        Un comp_type "T::VALEUR" ne fait PAS partie de `_compute_defs()` (il
+        n'existe que dans `self._defs`, construit à la volée) — après un
+        `refresh_palette()` ou la relecture d'un `.circ`, il faut le
+        reconstruire depuis le catalogue AVANT tout redessin, sinon
+        `_draw_comp` lève un KeyError. No-op si déjà présent ou non catalogue.
+        """
+        if comp_type in self._defs or not comp_type or "::" not in comp_type:
+            return
+        t, v = type_reel(comp_type)
+        entree = identifier(t, v)
+        broches = (entree or {}).get("broches")
+        if broches:
+            self._defs[comp_type] = def_puce(v, dict(broches))
+
+    def _activer_catalogue(self, type_: str, value: str):
+        """@brief Prépare le placement d'une entrée catalogue (Task 5).
+
+        U avec broches catalogue -> def DIP dynamique enregistrée sous
+        "U::VALEUR" (idempotent) et placement de ce type composite (la
+        réf/valeur suivent `def_puce`, pas besoin de valeur imposée). Sinon
+        (Q/M/D dont LED) -> type intégré existant, mais la valeur par défaut
+        du placement devient celle du catalogue (ex. "LED rouge").
+        """
+        entree = identifier(type_, value) if type_ == "U" else None
+        broches = (entree or {}).get("broches") if entree else None
+        if type_ == "U" and broches:
+            key = f"U::{value}"
+            if key not in self._defs:
+                self._defs[key] = def_puce(value, dict(broches))
+            self._start_placing(key)
+            return
+        self._start_placing(type_)
+        self._place_value = value
+
     def _start_placing(self, comp_type: str):
         self._cancel_wiring()
         self._deselect()
         self._state      = "placing"
         self._place_type = comp_type
+        self._place_value = None
         self._canvas.configure(cursor="crosshair")
-        # Feedback visuel dans la palette
+        # Feedback visuel dans la palette (une puce catalogue "U::NE555" n'a pas
+        # de bouton dédié — elle vient de la Listbox « Puces réelles »).
         for t, btn in self._palette_btns.items():
             btn.configure(bg=OVERLAY, relief="flat")
-        self._palette_btns[comp_type].configure(bg=BORDER, relief="groove")
+        if comp_type in self._palette_btns:
+            self._palette_btns[comp_type].configure(bg=BORDER, relief="groove")
         self._set_status(f"Clic pour\nplacer {comp_type}\nÉchap = annuler")
 
     def _place_at(self, wx: int, wy: int) -> "CompInst":
         """Place un composant en coordonnées monde — reste en mode placing.
 
         Extrait du handler de clic pour être appelable directement (tests).
+        Le compteur/la référence utilisent le type RÉEL (`type_reel`) : une
+        puce catalogue "U::NE555" numérote comme "U", ref "U1" — jamais
+        "U::NE5551" (revue Task 2) — et partage la séquence avec les autres U.
         """
         self._push_undo()
         t    = self._place_type
         defn = self._defs[t]
-        n    = self._counters.get(t, 0) + 1
-        self._counters[t] = n
+        tipo, _ = type_reel(t)
+        n    = self._counters.get(tipo, 0) + 1
+        self._counters[tipo] = n
         # GND et VCC n'ont pas de numéro affiché
-        ref  = f"{t}{n}" if t not in ("GND", "VCC") else t
-        comp = CompInst(self._next_id, ref, t, defn["default_value"], wx, wy)
+        ref   = f"{tipo}{n}" if tipo not in ("GND", "VCC") else tipo
+        value = self._place_value if self._place_value is not None else defn["default_value"]
+        comp = CompInst(self._next_id, ref, t, value, wx, wy)
         self._next_id += 1
         self._comps[comp.id] = comp
         self._draw_comp(comp)
@@ -571,6 +660,10 @@ class SchematicEditor(tk.Frame):
 
         # Pastilles de broches + labels (>2 broches)
         nb_pins = len(defn["pins"])
+        # Boîte générique (types perso, puces catalogue) : _tr_boite dessine
+        # déjà un libellé par broche dans ses primitives — un second libellé
+        # générique ici les superposerait (spec §5, défaut visuel Task 5).
+        boite = est_boite_generique(comp.comp_type)
         for pn, (pdx, pdy) in defn["pins"].items():
             rdx, rdy = _rotate_pin(pdx, pdy, rot)
             spx = scx + rdx * z
@@ -580,7 +673,7 @@ class SchematicEditor(tk.Frame):
                                      fill=pfill, outline=pout,
                                      width=max(1, int(2*z)),
                                      tags=(tag, f"pin_{comp.id}_{pn}"))
-            if nb_pins > 2:
+            if nb_pins > 2 and not boite:
                 anch = "e" if rdx < 0 else "w"
                 ox = -8*z if rdx < 0 else 8*z
                 self._canvas.create_text(spx+ox, spy,
@@ -812,9 +905,13 @@ class SchematicEditor(tk.Frame):
         """
         if comp_type not in self._defs:
             return None
-        n = self._counters.get(comp_type, 0) + 1
-        self._counters[comp_type] = n
-        ref = f"{comp_type}{n}" if comp_type not in ("GND", "VCC") else comp_type
+        # Type RÉEL pour la numérotation (revue Task 2) : "U::NE555" numérote
+        # comme "U" — ref "U1", jamais "U::NE5551" — et partage la séquence
+        # avec les autres composants "U".
+        tipo, _ = type_reel(comp_type)
+        n = self._counters.get(tipo, 0) + 1
+        self._counters[tipo] = n
+        ref = f"{tipo}{n}" if tipo not in ("GND", "VCC") else tipo
         comp = CompInst(self._next_id, ref, comp_type, value, wx, wy, rotation)
         self._next_id += 1
         self._comps[comp.id] = comp
@@ -1158,6 +1255,7 @@ class SchematicEditor(tk.Frame):
         max_id = 0
         for c in d.get("components", []):
             t = c.get("type")
+            self._ensure_dyn_def(t)           # puce catalogue "U::NE555" (§4)
             if t not in self._defs:
                 continue                      # type inconnu : ignoré
             ci = CompInst(int(c["id"]), c["ref"], t, c.get("value", ""),
@@ -1199,13 +1297,13 @@ class SchematicEditor(tk.Frame):
 
     # ── Export netlist ────────────────────────────────────────────────────────
 
-    def to_netlist(self) -> str:
-        """@brief Génère une netlist SPICE depuis le schéma courant."""
-        real_comps = {cid: c for cid, c in self._comps.items()
-                      if c.comp_type not in ("GND", "VCC")}
-        if not real_comps:
-            return ""
+    def _build_net_namer(self):
+        """@brief Nommeur de nœuds (Union-Find broche->réseau) partagé par
+        `to_netlist()` et `exporter_composants()`.
 
+        @return callable net_of(node: "id:broche") -> nom de réseau ("GND",
+                "VCC" ou "NET<n>").
+        """
         parent: dict[str, str] = {}
 
         def find(x: str) -> str:
@@ -1237,6 +1335,17 @@ class SchematicEditor(tk.Frame):
                 net_names[root] = f"NET{net_counter[0]}"
             return net_names[root]
 
+        return net_of
+
+    def to_netlist(self) -> str:
+        """@brief Génère une netlist SPICE depuis le schéma courant."""
+        real_comps = {cid: c for cid, c in self._comps.items()
+                      if c.comp_type not in ("GND", "VCC")}
+        if not real_comps:
+            return ""
+
+        net_of = self._build_net_namer()
+
         lines = ["* Schéma généré par Circuit Analyzer — éditeur interactif", ""]
         for comp in real_comps.values():
             pins = self._defs[comp.comp_type]["pins"]
@@ -1245,6 +1354,35 @@ class SchematicEditor(tk.Frame):
             lines.append(f"{comp.ref} {nets} {v or comp.value}")
 
         return "\n".join(lines)
+
+    def exporter_composants(self) -> list:
+        """@brief Exporte les composants réels en objets `Composant` (Task 5).
+
+        Contrairement à `to_netlist()` (netlist SPICE textuelle — pins
+        positionnelles limitées aux quelques broches génériques que
+        `circuit_analyzer.composant` connaît pour "U", ce qui tronquerait une
+        puce catalogue multi-broches à la relecture), cet export construit les
+        `Composant` directement en mémoire et garde les broches NOMMÉES
+        (ex. "1".."8" d'un NE555). `type_reel` sépare comp_type -> une puce
+        catalogue reste identifiable par `circuit_analyzer.catalogue.identifier`.
+
+        @return list[Composant] Composants réels (GND/VCC exclus).
+        """
+        real_comps = {cid: c for cid, c in self._comps.items()
+                      if c.comp_type not in ("GND", "VCC")}
+        if not real_comps:
+            return []
+
+        net_of = self._build_net_namer()
+
+        composants = []
+        for comp in real_comps.values():
+            pins = self._defs[comp.comp_type]["pins"]
+            t, v = type_reel(comp.comp_type)
+            broches = {pn: net_of(f"{comp.id}:{pn}") for pn in pins}
+            composants.append(Composant(ref=comp.ref, type=t, pins=broches,
+                                        value=v or comp.value))
+        return composants
 
     # ── Utilitaires ──────────────────────────────────────────────────────────
 
