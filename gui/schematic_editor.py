@@ -11,10 +11,10 @@ from typing import Optional
 
 from circuit_analyzer.composant import charger_bibliotheque
 from gui.fonts import FONT_FAMILY
-from gui.schematic_io import editor_to_dict, type_reel
+from gui.schematic_io import editor_to_dict, points_jonction, type_reel
 from gui.schematic_symbols import primitives, rotate_pin as _rotate_pin
 from gui.theme import (SURFACE, RAISED, OVERLAY, BORDER, TEXT, TEXT_MUTED,
-                        TEXT_DIM, BLUE, ERROR)
+                        TEXT_DIM, BLUE, ERROR, SCHEMA_COLORS)
 
 _log = logging.getLogger(__name__)
 
@@ -117,8 +117,9 @@ def _compute_defs() -> dict:
     return defs
 
 _PIN_R = 5     # rayon visuel pin
-_HIT_R = 12   # rayon détection clic sur pin
+_HIT_R = 12   # rayon détection clic sur pin (aussi : tolérance d'aimantation)
 _PIN_OFF = "#ef4444"   # contour des broches NON connectées (rouge = à câbler)
+_WIRE_COLOR = SCHEMA_COLORS["BUS"]   # couleur des fils/jonctions (== #475569 historique)
 
 
 def _dist_to_segment(px, py, ax, ay, bx, by) -> float:
@@ -462,6 +463,7 @@ class SchematicEditor(tk.Frame):
             self._draw_comp(comp)
         for wire in self._wires:
             self._draw_wire(wire)
+        self._redraw_jonctions()
         if self._selected_id is not None:
             sid = self._selected_id
             self._selected_id = None
@@ -605,13 +607,28 @@ class SchematicEditor(tk.Frame):
         self._canvas.delete(tag)
         lw = max(1, int(2 * self._zoom))
         self._canvas.create_line(sx1, sy1, sx2, sy1, sx2, sy2,
-                                  fill="#475569", width=lw,
+                                  fill=_WIRE_COLOR, width=lw,
                                   joinstyle="round", tags=tag)
 
     def _redraw_wires_of(self, comp_id: int):
         for w in self._wires:
             if w.from_comp_id == comp_id or w.to_comp_id == comp_id:
                 self._draw_wire(w)
+        self._redraw_jonctions()
+
+    def _redraw_jonctions(self):
+        """@brief Redessine les points de jonction (>=3 extrémités de fils, Task 2/4).
+
+        Disque plein, rayon 4*zoom, couleur du fil — posé APRÈS les fils pour
+        rester visible par-dessus (tag "jonction", purgé avant redessin).
+        """
+        self._canvas.delete("jonction")
+        r = 4 * self._zoom
+        for wx, wy in points_jonction(self._comps, self._wires, self._defs):
+            sx, sy = self._w2s(wx, wy)
+            self._canvas.create_oval(sx - r, sy - r, sx + r, sy + r,
+                                     fill=_WIRE_COLOR, outline=_WIRE_COLOR,
+                                     tags=("jonction",))
 
     def _pin_connected(self, comp_id: int, pin: str) -> bool:
         """@brief Vrai si au moins un fil est rattaché à cette broche."""
@@ -692,7 +709,7 @@ class SchematicEditor(tk.Frame):
         # IDLE : priorité pin > composant
         pin = self._find_pin_at(wx, wy)
         if pin:
-            self._start_wiring(pin)
+            self._start_wiring(*pin)
             return
 
         comp_id = self._find_comp_at(wx, wy)
@@ -727,17 +744,7 @@ class SchematicEditor(tk.Frame):
     def _on_motion(self, event):
         self._cursor_w = self._cw(event)
         if self._state == "wiring" and self._wire_src:
-            sx, sy = self._cc(event)
-            comp = self._comps.get(self._wire_src[0])
-            if comp:
-                dx, dy = self._defs[comp.comp_type]["pins"][self._wire_src[1]]
-                rdx, rdy = _rotate_pin(dx, dy, comp.rotation)
-                x1, y1 = self._w2s(comp.cx + rdx, comp.cy + rdy)
-                if self._rubber_band:
-                    self._canvas.delete(self._rubber_band)
-                self._rubber_band = self._canvas.create_line(
-                    x1, y1, sx, y1, sx, sy,
-                    fill="#4ade80", width=max(1, int(2*self._zoom)), dash=(5, 3))
+            self._update_wire_preview(*self._cursor_w)
 
     def _on_double_click(self, event):
         wx, wy  = self._cw(event)
@@ -890,40 +897,89 @@ class SchematicEditor(tk.Frame):
 
     # ── Câblage ──────────────────────────────────────────────────────────────
 
-    def _start_wiring(self, pin: tuple[int, str]):
+    def _start_wiring(self, comp_id: int, pin: str):
+        """Démarre un câblage depuis (comp_id, pin) — extrait pour tests directs."""
         self._state    = "wiring"
-        self._wire_src = pin
+        self._wire_src = (comp_id, pin)
         self._canvas.configure(cursor="crosshair")
-        comp = self._comps[pin[0]]
-        self._set_status(f"Fil depuis\n{comp.ref}.{pin[1]}\nClic = cible\nÉchap = annuler")
+        comp = self._comps[comp_id]
+        self._set_status(f"Fil depuis\n{comp.ref}.{pin}\nClic = cible\nÉchap = annuler")
 
-    def _complete_wire(self, dst: tuple[int, str]):
-        src_cid, src_pin = self._wire_src
-        dst_cid, dst_pin = dst
-        # éviter les doublons
+    def _update_wire_preview(self, wx: float, wy: float):
+        """@brief Aperçu de câblage en L (3 points) — extrait pour tests directs.
+
+        Coude orthogonal `(x1,y1) -> (ex,y1) -> (ex,ey)` (H puis V). Si une
+        broche libre se trouve à <= 12 px écran de (wx, wy), l'aperçu s'y
+        termine (aimantation) et un halo bleu la met en évidence.
+
+        @param wx, wy Point monde courant (curseur).
+        """
+        if self._state != "wiring" or not self._wire_src:
+            return
+        comp = self._comps.get(self._wire_src[0])
+        if not comp:
+            return
+        dx, dy = self._defs[comp.comp_type]["pins"][self._wire_src[1]]
+        rdx, rdy = _rotate_pin(dx, dy, comp.rotation)
+        x1, y1 = self._w2s(comp.cx + rdx, comp.cy + rdy)
+
+        # Aimantation : broche la plus proche (hors source) à <= 12 px écran.
+        target = self._find_pin_at(wx, wy)
+        halo_xy = None
+        if target and target != self._wire_src:
+            tcomp = self._comps[target[0]]
+            tdx, tdy = self._defs[tcomp.comp_type]["pins"][target[1]]
+            trdx, trdy = _rotate_pin(tdx, tdy, tcomp.rotation)
+            ex, ey = self._w2s(tcomp.cx + trdx, tcomp.cy + trdy)
+            halo_xy = (ex, ey)
+        else:
+            ex, ey = self._w2s(wx, wy)
+
+        z = self._zoom
+        self._canvas.delete("apercu")
+        self._rubber_band = self._canvas.create_line(
+            x1, y1, ex, y1, ex, ey,
+            fill="#4ade80", width=max(1, int(2*z)), dash=(5, 3), tags=("apercu",))
+        if halo_xy:
+            hx, hy = halo_xy
+            hr = _PIN_R * z + 4
+            self._canvas.create_oval(hx-hr, hy-hr, hx+hr, hy+hr,
+                                     outline=BLUE, width=max(1, int(2*z)),
+                                     tags=("apercu",))
+
+    def _add_wire(self, from_id: int, from_pin: str,
+                  to_id: int, to_pin: str) -> Optional['WireInst']:
+        """@brief Crée un fil broche-à-broche — extrait pour tests / `_complete_wire`.
+
+        @return WireInst créé, ou None si ce fil existe déjà (doublon silencieux).
+        """
         for w in self._wires:
-            if ({w.from_comp_id, w.from_pin} == {src_cid, src_pin} and
-                    {w.to_comp_id, w.to_pin} == {dst_cid, dst_pin}):
-                self._cancel_wiring()
-                return
+            if ({w.from_comp_id, w.from_pin} == {from_id, from_pin} and
+                    {w.to_comp_id, w.to_pin} == {to_id, to_pin}):
+                return None
         self._push_undo()
-        wire = WireInst(self._next_id, src_cid, src_pin, dst_cid, dst_pin)
+        wire = WireInst(self._next_id, from_id, from_pin, to_id, to_pin)
         self._next_id += 1
         self._wires.append(wire)
         self._draw_wire(wire)
         # Rafraîchit les broches des 2 composants (passent de « rouge » à pleines)
-        for cid in (src_cid, dst_cid):
+        for cid in (from_id, to_id):
             if cid in self._comps:
                 self._draw_comp(self._comps[cid])
                 self._redraw_wires_of(cid)
+        return wire
+
+    def _complete_wire(self, dst: tuple[int, str]):
+        src_cid, src_pin = self._wire_src
+        dst_cid, dst_pin = dst
+        self._add_wire(src_cid, src_pin, dst_cid, dst_pin)
         self._cancel_wiring()
 
     def _cancel_wiring(self):
         self._state    = "idle"
         self._wire_src = None
-        if self._rubber_band:
-            self._canvas.delete(self._rubber_band)
-            self._rubber_band = None
+        self._canvas.delete("apercu")
+        self._rubber_band = None
         self._canvas.configure(cursor="")
         self._set_status("Prêt")
 

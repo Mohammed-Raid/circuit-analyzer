@@ -48,3 +48,37 @@ def test_resistance_rendue_en_zigzag_pas_en_rectangle(editeur):
 def test_gnd_rendu_par_primitives(editeur):
     c = _place(editeur, "GND", 300, 300)
     assert editeur._canvas.find_withtag(f"comp_{c.id}")
+
+
+def test_jonction_dessinee_pour_trois_fils(editeur):
+    a = _place(editeur, "R", 160, 100)
+    b = _place(editeur, "R", 240, 100)
+    c = _place(editeur, "R", 240, 180)
+    for src, dst in [((a.id, "2"), (b.id, "1")),
+                     ((a.id, "2"), (c.id, "1")),
+                     ((b.id, "1"), (c.id, "1"))]:
+        editeur._add_wire(src[0], src[1], dst[0], dst[1])
+    editeur._redraw_all()
+    assert editeur._canvas.find_withtag("jonction")
+
+
+def test_deux_fils_convergents_meme_broche_pas_de_jonction(editeur):
+    """Revue Task 2 : 2 fils distincts convergeant sur UNE broche ne suffisent
+    pas — seuil >= 3 extrémités de FILS (spec §4), pas >= 2 fils."""
+    a = _place(editeur, "R", 100, 100)
+    b = _place(editeur, "R", 300, 100)
+    c = _place(editeur, "R", 100, 300)
+    editeur._add_wire(a.id, "2", b.id, "1")
+    editeur._add_wire(c.id, "2", b.id, "1")
+    editeur._redraw_all()
+    assert not editeur._canvas.find_withtag("jonction")
+
+
+def test_apercu_cablage_orthogonal(editeur):
+    a = _place(editeur, "R", 160, 100)
+    editeur._start_wiring(a.id, "2")
+    editeur._update_wire_preview(300, 220)   # point monde courant
+    coords = editeur._canvas.coords(editeur._rubber_band)
+    # L : 6 coordonnées (3 points), segments H puis V
+    assert len(coords) == 6
+    assert coords[1] == coords[3] or coords[0] == coords[2]
