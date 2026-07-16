@@ -15,7 +15,7 @@ from gui import ui_kit
 from gui.schematic_editor import SchematicEditor
 from gui.schematic_io import build_from_components
 from circuit_analyzer.composant import lire_netlist, construire_graphe
-from circuit_analyzer.xml import lire_xml
+from circuit_analyzer.xml import generer_xml, lire_xml
 
 
 class TabDraw:
@@ -178,11 +178,13 @@ class TabDraw:
     # ── Actions ───────────────────────────────────────────────────────────────
 
     def _export_netlist_file(self, prefix: str = "schema_editeur_"):
-        """@brief Exporte la netlist de l'éditeur dans un fichier temporaire .sp.
+        """@brief Exporte le circuit de l'éditeur dans un fichier temporaire XML.
 
         Contrôles « circuit vide » partagés par l'analyse et l'enregistrement de
-        pattern. N'affiche PAS l'avertissement de broches non câblées (spécifique
-        à l'analyse, géré par l'appelant).
+        pattern. L'XML BoardSCH conserve les noms et le nombre de broches des
+        puces du catalogue, contrairement à une netlist SPICE positionnelle.
+        N'affiche PAS l'avertissement de broches non câblées (spécifique à
+        l'analyse, géré par l'appelant).
 
         @param prefix Préfixe du fichier temporaire.
         @return str | None Chemin du fichier écrit, ou None si le circuit est vide.
@@ -193,18 +195,18 @@ class TabDraw:
                                    parent=self.frame)
             return None
 
-        netlist = self._editor.to_netlist()
-        if not netlist.strip():
+        composants = self._editor.exporter_composants()
+        if not composants:
             messagebox.showwarning("Circuit vide",
                                    "Aucun composant réel trouvé dans le schéma.",
                                    parent=self.frame)
             return None
 
         tmp = tempfile.NamedTemporaryFile(
-            suffix=".sp", mode="w", encoding="utf-8",
+            suffix=".xml", mode="w", encoding="utf-8",
             delete=False, prefix=prefix,
         )
-        tmp.write(netlist)
+        tmp.write(generer_xml(composants))
         tmp.close()
         return tmp.name
 
@@ -245,7 +247,7 @@ class TabDraw:
         """@brief Ouvre le wizard pour enregistrer le circuit dessiné comme pattern.
 
         Le geste naturel : « voici mon circuit, enregistre-le comme pattern ».
-        L'éditeur exporte sa netlist, on reconstruit le graphe, puis le
+        L'éditeur exporte son XML, on reconstruit le graphe, puis le
         PatternWizard pré-coche tous les composants et détecte automatiquement
         les conditions topologiques vraies (via suggest_conditions).
         """
@@ -254,7 +256,7 @@ class TabDraw:
             return
 
         try:
-            composants = lire_netlist(path)
+            composants = lire_xml(path)
             graph = construire_graphe(composants)
         except Exception as exc:
             messagebox.showerror(
