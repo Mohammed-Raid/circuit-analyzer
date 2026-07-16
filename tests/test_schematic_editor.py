@@ -193,3 +193,45 @@ def test_r_tourne_la_selection(editeur):
     editeur._selected_ids = {a.id}
     editeur._rotate_selection()
     assert editeur._comps[a.id].rotation == 90
+
+
+# -- Task 6 : revue des correctifs -------------------------------------------
+
+class _FakeWheelEvent:
+    """Evenement molette Windows factice : x/y ecran + delta (multiple de 120)."""
+    def __init__(self, delta, x=400, y=300):
+        self.delta = delta
+        self.x = x
+        self.y = y
+
+
+def test_zoom_molette_proportionnel_a_la_magnitude(editeur):
+    zoom0 = editeur._zoom
+    editeur._on_zoom(_FakeWheelEvent(delta=240))
+    assert editeur._zoom == pytest.approx(zoom0 * 1.1 ** 2, abs=1e-9)
+
+    zoom1 = editeur._zoom
+    editeur._on_zoom(_FakeWheelEvent(delta=-120))
+    assert editeur._zoom == pytest.approx(zoom1 / 1.1, abs=1e-9)
+
+
+def test_escape_vide_toujours_la_selection(editeur):
+    a = _place(editeur, "R", 100, 100)
+    editeur._select(a.id)
+    assert editeur._selected_ids == {a.id}
+    editeur._state = "wiring"
+    editeur._wire_src = (a.id, "1")
+    editeur._on_escape()
+    assert editeur._state == "idle"
+    assert editeur._selected_ids == set()
+
+
+def test_delete_comp_ne_deselectionne_que_lui_meme(editeur):
+    a = _place(editeur, "R", 100, 100)
+    b = _place(editeur, "C", 200, 100)
+    editeur._select(a.id)
+    editeur._select(b.id, append=True)
+    assert editeur._selected_ids == {a.id, b.id}
+    editeur._delete_comp(b.id)
+    assert b.id not in editeur._comps
+    assert editeur._selected_ids == {a.id}

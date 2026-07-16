@@ -374,9 +374,10 @@ class SchematicEditor(tk.Frame):
             parent,
             text="Clic = placer\nEspace/R = rotation\nCtrl+C/V = copier/coller\nCtrl+D = dupliquer\n"
                  "Ctrl+Z/Y = annuler/rétablir\nMolette = zoom · clic-milieu = pan\n"
-                 "Glisser sur fond = sélectionner · Suppr = effacer\nClic droit = menu · F = ajuster",
+                 "Glisser sur fond = sélectionner · Suppr = effacer\n"
+                 "Clic droit = menu · F = ajuster · Échap = annuler",
             fg=TEXT_DIM, bg=OVERLAY,
-            font=(FONT_FAMILY, 7), justify="center",
+            font=(FONT_FAMILY, 7), justify="center", wraplength=140,
         )
         self._status_lbl.pack(padx=8, pady=4)
 
@@ -504,7 +505,8 @@ class SchematicEditor(tk.Frame):
     # ── Zoom ─────────────────────────────────────────────────────────────────
 
     def _on_zoom(self, event):
-        factor = 1.15 if event.delta > 0 else (1 / 1.15)
+        n = event.delta / 120
+        factor = 1.1 ** n
         sx, sy = self._cc(event)
         self._zoom_wheel(factor, sx, sy)
 
@@ -898,7 +900,9 @@ class SchematicEditor(tk.Frame):
 
     def _on_pan_release(self, _=None):
         self._pan_start = None
-        if self._state == "idle":
+        if self._state in ("placing", "wiring"):
+            self._canvas.configure(cursor="crosshair")
+        else:
             self._canvas.configure(cursor="")
 
     def _on_double_click(self, event):
@@ -946,8 +950,7 @@ class SchematicEditor(tk.Frame):
             for btn in self._palette_btns.values():
                 btn.configure(bg=OVERLAY, relief="flat")
             self._set_status("Prêt")
-        else:
-            self._deselect()
+        self._deselect()
 
     def _on_rotate(self, _=None):
         if self._state == "placing":
@@ -1263,11 +1266,18 @@ class SchematicEditor(tk.Frame):
         self._redraw_all()
 
     def _delete_comp(self, comp_id: int):
+        """Supprime un seul composant (menu contextuel) sans toucher au reste
+        de la sélection en cours (revue Task 6 : supprimer B ne doit pas
+        désélectionner un A sans rapport)."""
         if comp_id not in self._comps:
             return
-        self._deselect()
-        self._select(comp_id)
-        self._delete_selection()
+        self._push_undo()
+        self._wires = [w for w in self._wires
+                       if w.from_comp_id != comp_id and w.to_comp_id != comp_id]
+        self._comps.pop(comp_id, None)
+        self._selected_ids.discard(comp_id)
+        self._canvas.delete(f"sel_{comp_id}")
+        self._redraw_all()
 
     def _delete_wire(self, wire_id: int):
         wire = next((w for w in self._wires if w.id == wire_id), None)
