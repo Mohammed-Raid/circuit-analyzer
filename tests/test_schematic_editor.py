@@ -158,3 +158,38 @@ def test_palette_liste_puces_reelles_compacte(editeur):
     assert hasattr(editeur, "_catalogue_listbox")
     # ~30 entrées catalogue (5 U exacts + 6*74HC + 4 suffixes + 3 Q + 3 M + 2 D + 3 LED)
     assert editeur._catalogue_listbox.size() >= 20
+
+
+# -- Task 6 : navigation et selection multi-composants ----------------------
+
+def test_zoom_molette_centre_sur_le_curseur(editeur):
+    editeur._zoom_wheel(1.25, sx=400, sy=300)
+    wx0, wy0 = editeur._s2w(400, 300)
+    editeur._zoom_wheel(1.25, sx=400, sy=300)
+    wx1, wy1 = editeur._s2w(400, 300)
+    assert abs(wx0 - wx1) < 1e-6
+    assert abs(wy0 - wy1) < 1e-6
+
+
+def test_selection_rectangle_et_suppression_groupee(editeur):
+    a = _place(editeur, "R", 100, 100)
+    b = _place(editeur, "C", 200, 100)
+    editeur._select_in_rect(60, 60, 260, 140)
+    assert editeur._selected_ids == {a.id, b.id}
+    editeur._delete_selection()
+    assert not editeur._comps
+
+
+def test_escape_annule_le_mode(editeur):
+    editeur._place_type = "R"
+    editeur._state = "placing"
+    editeur._on_escape()
+    assert editeur._state == "idle"
+    assert editeur._place_type is None
+
+
+def test_r_tourne_la_selection(editeur):
+    a = _place(editeur, "R", 100, 100)
+    editeur._selected_ids = {a.id}
+    editeur._rotate_selection()
+    assert editeur._comps[a.id].rotation == 90

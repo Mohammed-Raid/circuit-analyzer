@@ -163,17 +163,24 @@ class SchematicEditor(tk.Frame):
         self._next_id:  int                 = 1
         self._counters: dict[str, int]      = {}
         self._zoom:     float               = 1.0
+        self._ox:       float               = 0.0
+        self._oy:       float               = 0.0
 
         # machine à états : idle | placing | wiring
         self._state       = "idle"
         self._place_type: Optional[str]            = None
-        self._selected_id: Optional[int]           = None
+        self._place_rotation: int                   = 0
+        self._selected_ids: set[int]               = set()
         self._wire_src:   Optional[tuple[int, str]] = None
         self._rubber_band: Optional[int]           = None
 
         # drag
         self._drag_comp_id: Optional[int] = None
         self._drag_moved:   bool          = False
+        self._drag_origins: dict[int, tuple[int, int]] = {}
+        self._sel_rect_start: Optional[tuple[float, float]] = None
+        self._sel_rect: Optional[int] = None
+        self._pan_start: Optional[tuple[float, float, float, float]] = None
 
         # piles d'annulation/rétablissement (Ctrl+Z / Ctrl+Y)
         self._undo_stack: list = []
@@ -224,9 +231,10 @@ class SchematicEditor(tk.Frame):
         self._wires    = wires
         self._counters = counters
         self._next_id  = next_id
-        self._selected_id  = None
+        self._selected_ids.clear()
         self._drag_comp_id = None
         self._drag_moved   = False
+        self._drag_origins.clear()
         if self._state == "wiring":
             self._cancel_wiring()
         self._redraw_all()
@@ -253,11 +261,11 @@ class SchematicEditor(tk.Frame):
 
     def _w2s(self, wx, wy):
         """Monde → écran (canvas)."""
-        return wx * self._zoom, wy * self._zoom
+        return wx * self._zoom + self._ox, wy * self._zoom + self._oy
 
     def _s2w(self, sx, sy):
         """Écran → monde."""
-        return sx / self._zoom, sy / self._zoom
+        return (sx - self._ox) / self._zoom, (sy - self._oy) / self._zoom
 
     def _cc(self, event):
         """Coordonnées canvas (écran) depuis un événement."""
@@ -365,7 +373,8 @@ class SchematicEditor(tk.Frame):
         self._status_lbl = tk.Label(
             parent,
             text="Clic = placer\nEspace/R = rotation\nCtrl+C/V = copier/coller\nCtrl+D = dupliquer\n"
-                 "Ctrl+Z/Y = annuler/rétablir\nClic droit = menu\nF = ajuster · Ctrl+molette = zoom",
+                 "Ctrl+Z/Y = annuler/rétablir\nMolette = zoom · clic-milieu = pan\n"
+                 "Glisser sur fond = sélectionner · Suppr = effacer\nClic droit = menu · F = ajuster",
             fg=TEXT_DIM, bg=OVERLAY,
             font=(FONT_FAMILY, 7), justify="center",
         )
@@ -425,8 +434,7 @@ class SchematicEditor(tk.Frame):
                            and w.to_comp_id not in obsoletes]
             for cid in obsoletes:
                 self._comps.pop(cid, None)
-            if self._selected_id in obsoletes:
-                self._selected_id = None
+            self._selected_ids.difference_update(obsoletes)
             # Un instantané d'annulation pourrait contenir un type disparu :
             # on vide la pile plutôt que de risquer un redessin impossible.
             self._undo_stack.clear()
@@ -448,12 +456,12 @@ class SchematicEditor(tk.Frame):
         W = int(2400 * z)
         H = int(1800 * z)
         step = GRID * z
-        x = 0.0
+        x = self._ox % step
         while x <= W + 1:
             ix = int(x)
             self._canvas.create_line(ix, 0, ix, H, fill=RAISED, width=1, tags="grid")
             x += step
-        y = 0.0
+        y = self._oy % step
         while y <= H + 1:
             iy = int(y)
             self._canvas.create_line(0, iy, W, iy, fill=RAISED, width=1, tags="grid")
@@ -466,6 +474,9 @@ class SchematicEditor(tk.Frame):
         c.bind("<Button-1>",         self._on_click)
         c.bind("<B1-Motion>",        self._on_b1_motion)
         c.bind("<ButtonRelease-1>",  self._on_b1_release)
+        c.bind("<Button-2>",         self._on_pan_start)
+        c.bind("<B2-Motion>",        self._on_pan_motion)
+        c.bind("<ButtonRelease-2>",  self._on_pan_release)
         c.bind("<Motion>",           self._on_motion)
         c.bind("<Double-Button-1>",  self._on_double_click)
         c.bind("<Button-3>",         self._on_right_click)
@@ -487,16 +498,25 @@ class SchematicEditor(tk.Frame):
         c.bind("<Control-D>",        self._duplicate)
         c.bind("<f>",                self.fit_to_view)
         c.bind("<F>",                self.fit_to_view)
-        c.bind("<Control-MouseWheel>", self._on_zoom)
-        c.bind("<MouseWheel>",       lambda e: c.yview_scroll(int(-e.delta / 120), "units"))
-        c.bind("<Shift-MouseWheel>", lambda e: c.xview_scroll(int(-e.delta / 120), "units"))
+        c.bind("<MouseWheel>",       self._on_zoom)
         c.focus_set()
 
     # ── Zoom ─────────────────────────────────────────────────────────────────
 
     def _on_zoom(self, event):
         factor = 1.15 if event.delta > 0 else (1 / 1.15)
-        self._zoom = max(0.2, min(5.0, self._zoom * factor))
+        sx, sy = self._cc(event)
+        self._zoom_wheel(factor, sx, sy)
+
+    def _zoom_wheel(self, factor: float, sx: float, sy: float):
+        """Zoom cursor-centre : le point monde sous le curseur reste immobile."""
+        old = self._zoom
+        new = max(0.2, min(5.0, old * factor))
+        if new == old:
+            return
+        self._ox = sx - (sx - self._ox) * (new / old)
+        self._oy = sy - (sy - self._oy) * (new / old)
+        self._zoom = new
         self._redraw_all()
 
     def _redraw_all(self):
@@ -508,10 +528,10 @@ class SchematicEditor(tk.Frame):
         for wire in self._wires:
             self._draw_wire(wire)
         self._redraw_jonctions()
-        if self._selected_id is not None:
-            sid = self._selected_id
-            self._selected_id = None
-            self._select(sid)
+        selected = set(self._selected_ids)
+        self._selected_ids.clear()
+        for sid in selected:
+            self._select(sid, append=True)
 
     # ── Placement ────────────────────────────────────────────────────────────
 
@@ -557,6 +577,7 @@ class SchematicEditor(tk.Frame):
         self._deselect()
         self._state      = "placing"
         self._place_type = comp_type
+        self._place_rotation = 0
         self._place_value = None
         self._canvas.configure(cursor="crosshair")
         # Feedback visuel dans la palette (une puce catalogue "U::NE555" n'a pas
@@ -584,7 +605,8 @@ class SchematicEditor(tk.Frame):
         # GND et VCC n'ont pas de numéro affiché
         ref   = f"{tipo}{n}" if tipo not in ("GND", "VCC") else tipo
         value = self._place_value if self._place_value is not None else defn["default_value"]
-        comp = CompInst(self._next_id, ref, t, value, wx, wy)
+        comp = CompInst(self._next_id, ref, t, value, wx, wy,
+                        self._place_rotation)
         self._next_id += 1
         self._comps[comp.id] = comp
         self._draw_comp(comp)
@@ -807,37 +829,77 @@ class SchematicEditor(tk.Frame):
 
         comp_id = self._find_comp_at(wx, wy)
         if comp_id:
-            self._select(comp_id)
+            if comp_id not in self._selected_ids:
+                self._select(comp_id)
             self._drag_comp_id = comp_id
             self._drag_moved   = False
+            self._drag_origins = {
+                cid: (self._comps[cid].cx, self._comps[cid].cy)
+                for cid in self._selected_ids if cid in self._comps
+            }
         else:
             self._deselect()
+            self._sel_rect_start = (wx, wy)
+            sx, sy = self._w2s(wx, wy)
+            self._sel_rect = self._canvas.create_rectangle(
+                sx, sy, sx, sy, outline=BLUE, dash=(4, 3), tags="selrect")
 
     def _on_b1_motion(self, event):
         if self._state == "idle" and self._drag_comp_id is not None:
             wx, wy   = self._cw(event)
             swx, swy = self._snap(wx, wy)
-            comp = self._comps.get(self._drag_comp_id)
-            if comp and (comp.cx != swx or comp.cy != swy):
+            origin = self._drag_origins.get(self._drag_comp_id)
+            if origin and (origin[0] != swx or origin[1] != swy):
                 # Empile l'annulation une seule fois, au premier déplacement réel
                 # (un simple clic de sélection ne crée pas d'instantané).
                 if not self._drag_moved:
                     self._push_undo()
                     self._drag_moved = True
-                comp.cx, comp.cy = swx, swy
-                self._draw_comp(comp)
-                self._redraw_wires_of(self._drag_comp_id)
-                self._deselect()
-                self._select(self._drag_comp_id)
+                dx, dy = swx - origin[0], swy - origin[1]
+                for cid, (cx, cy) in self._drag_origins.items():
+                    comp = self._comps.get(cid)
+                    if comp:
+                        comp.cx, comp.cy = cx + dx, cy + dy
+                self._redraw_all()
+        elif self._state == "idle" and self._sel_rect_start:
+            wx, wy = self._cw(event)
+            sx0, sy0 = self._w2s(*self._sel_rect_start)
+            sx1, sy1 = self._w2s(wx, wy)
+            self._canvas.coords(self._sel_rect, sx0, sy0, sx1, sy1)
 
-    def _on_b1_release(self, _=None):
+    def _on_b1_release(self, event=None):
+        if self._sel_rect_start:
+            wx, wy = self._cw(event)
+            self._select_in_rect(*self._sel_rect_start, wx, wy)
+            self._canvas.delete("selrect")
+            self._sel_rect_start = None
+            self._sel_rect = None
         self._drag_comp_id = None
         self._drag_moved   = False
+        self._drag_origins.clear()
 
     def _on_motion(self, event):
         self._cursor_w = self._cw(event)
         if self._state == "wiring" and self._wire_src:
             self._update_wire_preview(*self._cursor_w)
+
+    def _on_pan_start(self, event):
+        sx, sy = self._cc(event)
+        self._pan_start = (sx, sy, self._ox, self._oy)
+        self._canvas.configure(cursor="fleur")
+
+    def _on_pan_motion(self, event):
+        if not self._pan_start:
+            return
+        sx, sy = self._cc(event)
+        x0, y0, ox, oy = self._pan_start
+        self._ox, self._oy = ox + sx - x0, oy + sy - y0
+        self._redraw_all()
+
+    def _on_pan_release(self, _=None):
+        self._pan_start = None
+        if self._state == "idle":
+            self._canvas.configure(cursor="")
 
     def _on_double_click(self, event):
         wx, wy  = self._cw(event)
@@ -888,8 +950,11 @@ class SchematicEditor(tk.Frame):
             self._deselect()
 
     def _on_rotate(self, _=None):
-        if self._selected_id is not None:
-            self._rotate_comp(self._selected_id)
+        if self._state == "placing":
+            self._place_rotation = (self._place_rotation + 90) % 360
+            self._set_status(f"Rotation {self._place_rotation}°\nClic = placer")
+        else:
+            self._rotate_selection()
 
     # ── Copier / coller / dupliquer ───────────────────────────────────────────
 
@@ -922,7 +987,7 @@ class SchematicEditor(tk.Frame):
 
     def _copy(self, _=None):
         """@brief Copie le composant sélectionné dans le presse-papier (Ctrl+C)."""
-        comp = self._comps.get(self._selected_id) if self._selected_id else None
+        comp = self._comps.get(next(iter(self._selected_ids), None))
         if not comp:
             return
         self._clipboard = {"type": comp.comp_type, "value": comp.value,
@@ -945,7 +1010,7 @@ class SchematicEditor(tk.Frame):
 
     def _duplicate(self, _=None):
         """@brief Duplique le composant sélectionné en décalé (Ctrl+D)."""
-        src = self._comps.get(self._selected_id) if self._selected_id else None
+        src = self._comps.get(next(iter(self._selected_ids), None))
         if not src:
             return
         self._clipboard = {"type": src.comp_type, "value": src.value,
@@ -964,6 +1029,7 @@ class SchematicEditor(tk.Frame):
         """@brief Ajuste le zoom et le défilement pour montrer tout le schéma (F)."""
         if not self._comps:
             self._zoom = 1.0
+            self._ox = self._oy = 0.0
             self._redraw_all()
             self._canvas.xview_moveto(0)
             self._canvas.yview_moveto(0)
@@ -982,14 +1048,11 @@ class SchematicEditor(tk.Frame):
         cw = self._canvas.winfo_width()  or 800
         ch = self._canvas.winfo_height() or 600
         self._zoom = max(0.2, min(3.0, min(cw / bw, ch / bh)))
+        self._ox = cw / 2 - ((minx + maxx) / 2) * self._zoom
+        self._oy = ch / 2 - ((miny + maxy) / 2) * self._zoom
         self._redraw_all()
-
-        # Centre la bbox dans la zone visible.
-        total_w, total_h = 2400 * self._zoom, 1800 * self._zoom
-        cx_s = ((minx + maxx) / 2) * self._zoom
-        cy_s = ((miny + maxy) / 2) * self._zoom
-        self._canvas.xview_moveto(max(0.0, (cx_s - cw / 2) / total_w))
-        self._canvas.yview_moveto(max(0.0, (cy_s - ch / 2) / total_h))
+        self._canvas.xview_moveto(0)
+        self._canvas.yview_moveto(0)
         self._set_status("Ajusté ⊡")
 
     # ── Câblage ──────────────────────────────────────────────────────────────
@@ -1082,11 +1145,14 @@ class SchematicEditor(tk.Frame):
 
     # ── Sélection ────────────────────────────────────────────────────────────
 
-    def _select(self, comp_id: int):
-        if self._selected_id == comp_id:
+    def _select(self, comp_id: int, append: bool = False):
+        if comp_id not in self._comps:
             return
-        self._deselect()
-        self._selected_id = comp_id
+        if not append:
+            self._deselect()
+        if comp_id in self._selected_ids:
+            return
+        self._selected_ids.add(comp_id)
         comp = self._comps.get(comp_id)
         if comp:
             defn  = self._defs[comp.comp_type]
@@ -1101,22 +1167,39 @@ class SchematicEditor(tk.Frame):
                 dash=(5, 3), tags=f"sel_{comp_id}")
 
     def _deselect(self):
-        if self._selected_id is not None:
-            self._canvas.delete(f"sel_{self._selected_id}")
-            self._selected_id = None
+        for comp_id in self._selected_ids:
+            self._canvas.delete(f"sel_{comp_id}")
+        self._selected_ids.clear()
+
+    def _select_in_rect(self, x0, y0, x1, y1):
+        """Sélectionne les composants dont le centre tombe dans le rectangle monde."""
+        minx, maxx = sorted((x0, x1))
+        miny, maxy = sorted((y0, y1))
+        self._deselect()
+        for comp in self._comps.values():
+            if minx <= comp.cx <= maxx and miny <= comp.cy <= maxy:
+                self._select(comp.id, append=True)
 
     # ── Édition / suppression ─────────────────────────────────────────────────
 
     def _rotate_comp(self, comp_id: int):
+        """Tourne un composant unique (menu contextuel)."""
         comp = self._comps.get(comp_id)
         if comp and comp.comp_type not in ("GND", "VCC"):
             self._push_undo()
             comp.rotation = (comp.rotation + 90) % 360
-            self._draw_comp(comp)
-            self._redraw_wires_of(comp_id)
-            if self._selected_id == comp_id:
-                self._deselect()
-                self._select(comp_id)
+            self._redraw_all()
+
+    def _rotate_selection(self):
+        """Tourne la sélection d'un quart de tour en une seule annulation."""
+        rotatables = [self._comps[cid] for cid in self._selected_ids
+                       if cid in self._comps and self._comps[cid].comp_type not in ("GND", "VCC")]
+        if not rotatables:
+            return
+        self._push_undo()
+        for comp in rotatables:
+            comp.rotation = (comp.rotation + 90) % 360
+        self._redraw_all()
 
     def _edit_comp(self, comp_id: int):
         comp = self._comps.get(comp_id)
@@ -1164,29 +1247,27 @@ class SchematicEditor(tk.Frame):
         dlg.bind("<Return>", lambda _: _save())
 
     def _delete_selected(self):
-        if self._selected_id is not None:
-            self._delete_comp(self._selected_id)
+        self._delete_selection()
+
+    def _delete_selection(self):
+        """Supprime la sélection et ses fils avec un unique instantané undo."""
+        ids = set(self._selected_ids)
+        if not ids:
+            return
+        self._push_undo()
+        self._wires = [w for w in self._wires
+                       if w.from_comp_id not in ids and w.to_comp_id not in ids]
+        for comp_id in ids:
+            self._comps.pop(comp_id, None)
+        self._deselect()
+        self._redraw_all()
 
     def _delete_comp(self, comp_id: int):
         if comp_id not in self._comps:
             return
-        self._push_undo()
-        if self._selected_id == comp_id:
-            self._canvas.delete(f"sel_{comp_id}")
-            self._selected_id = None
-        # Composants voisins dont une broche redeviendra non connectée.
-        voisins = set()
-        for w in [w for w in self._wires
-                  if w.from_comp_id == comp_id or w.to_comp_id == comp_id]:
-            voisins.add(w.to_comp_id if w.from_comp_id == comp_id else w.from_comp_id)
-            self._canvas.delete(f"wire_{w.id}")
-            self._wires.remove(w)
-        self._canvas.delete(f"comp_{comp_id}")
-        self._comps.pop(comp_id, None)
-        for cid in voisins:
-            if cid in self._comps:
-                self._draw_comp(self._comps[cid])
-                self._redraw_wires_of(cid)
+        self._deselect()
+        self._select(comp_id)
+        self._delete_selection()
 
     def _delete_wire(self, wire_id: int):
         wire = next((w for w in self._wires if w.id == wire_id), None)
@@ -1214,7 +1295,7 @@ class SchematicEditor(tk.Frame):
         self._counters.clear()
         self._next_id      = 1
         self._state        = "idle"
-        self._selected_id  = None
+        self._selected_ids.clear()
         self._wire_src     = None
         self._rubber_band  = None
         self._drag_comp_id = None
@@ -1288,7 +1369,7 @@ class SchematicEditor(tk.Frame):
         self._counters = {k: int(v) for k, v in d.get("counters", {}).items()}
         self._next_id  = next_id
         self._state        = "idle"
-        self._selected_id  = None
+        self._selected_ids.clear()
         self._wire_src     = None
         self._rubber_band  = None
         self._drag_comp_id = None
