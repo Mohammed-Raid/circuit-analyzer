@@ -1111,17 +1111,14 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         raise ValueError(f"Fichier XML invalide : {e}") from e
     racine = arbre.getroot()
 
-    # Étape 1 : extraire tous les composants du fichier
+    # Étape 1 : extraire tous les composants du fichier.
+    # Indexation par POSITION dans CmpntL (sémantique du C# ERetroDesign) :
+    # les vrais fichiers portent des <id> dupliqués (id=0 partout) qui
+    # écraseraient les entrées d'un dict indexé par id.
+    avertissements: list = []
     elements: Dict[int, dict] = {}
-    for item in racine.findall('.//CmpntL/DataItem'):
-        id_txt = item.findtext('id')
-        if id_txt is None:
-            continue
-        try:
-            comp_id = int(id_txt.strip())
-        except ValueError:
-            continue
-        nom   = (item.findtext('Name') or '').strip()
+    for idx, item in enumerate(racine.findall('.//CmpntL/DataItem')):
+        nom    = (item.findtext('Name') or '').strip()
         valeur = (item.findtext('value') or '').strip()
         broches = []
         for pidx, dp in enumerate(item.findall('.//datapin/DataPin')):
@@ -1130,8 +1127,10 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             # ERetroDesign : l'identité de broche vit dans Pnumber (Pname
             # souvent vide) ; les passifs n'ont ni l'un ni l'autre →
             # numérotation par position pour ne pas écraser les clés.
-            broches.append({'pname': pnum or pnom or str(pidx + 1)})
-        elements[comp_id] = {'id': comp_id, 'name': nom, 'value': valeur, 'pins': broches}
+            refs = [(s.text or '').strip() for s in dp.findall('NodeL/string')]
+            broches.append({'pname': pnum or pnom or str(pidx + 1),
+                            'refs': [r for r in refs if r]})
+        elements[idx] = {'id': idx, 'name': nom, 'value': valeur, 'pins': broches}
 
     # Étape 2 : Union-Find pour regrouper les broches reliées par des fils
     parent: Dict[tuple, tuple] = {}
@@ -1167,14 +1166,47 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         for pidx in range(len(comp['pins'])):
             trouver((cid, pidx))
 
+    # Index {chaîne de ref NodeL → (composant, broche)} : la connexité
+    # ERetroDesign se résout par égalité de chaînes (règle du C# lui-même),
+    # jamais en parsant le format packé (ambigu dans les vieux fichiers).
+    ref_vers_broche: Dict[str, tuple] = {}
+    for cid, comp in elements.items():
+        for pidx, b in enumerate(comp['pins']):
+            for r in b['refs']:
+                ref_vers_broche.setdefault(r, (cid, pidx))
+
+    def resoudre_extremite(ref):
+        """@brief (composant, broche) pour une extrémité de fil, ou None.
+
+        Égalité NodeL d'abord ; fallback sur le format i_j_u_v (dialecte
+        natif sans NodeL) avec garde d'existence.
+
+        @param ref Chaîne CFirst/CLast brute.
+        @return tuple|None (cid, pidx) valide, ou None si irrésoluble.
+        """
+        if not ref:
+            return None
+        broche = ref_vers_broche.get(ref)
+        if broche is not None:
+            return broche
+        try:
+            cid, pidx = _analyser_ref_noeud(ref)
+        except ValueError:
+            return None
+        if cid in elements and 0 <= pidx < len(elements[cid]['pins']):
+            return (cid, pidx)
+        return None
+
     for fil in racine.findall('.//lineL/Line'):
         cf = (fil.findtext('CFirst') or '').strip()
         cl = (fil.findtext('CLast') or '').strip()
-        if cf and cl:
-            try:
-                unir(_analyser_ref_noeud(cf), _analyser_ref_noeud(cl))
-            except ValueError:
-                pass
+        bf, bl = resoudre_extremite(cf), resoudre_extremite(cl)
+        if bf is not None and bl is not None:
+            unir(bf, bl)
+        elif cf or cl:
+            avertissements.append(
+                f"Fil non résolu : CFirst={cf!r}, CLast={cl!r}"
+            )
 
     # Étape 3 : regrouper les broches par nœud électrique
     groupes_nets: Dict[tuple, list] = {}
@@ -1225,6 +1257,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
 
     # Étape 5 : construire les objets Composant
     composants = ListeComposantsXML()
+    composants.warnings.extend(avertissements)
     compteurs_type: Dict[str, int] = {}
 
     for cid in sorted(elements):

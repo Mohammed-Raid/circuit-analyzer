@@ -141,3 +141,63 @@ def test_import_inconnu_reste_boite_x():
     x = next(c for c in comps if c.type == 'X')
     assert len(x.pins) == 4
     assert any('transfo' in w for w in comps.warnings)
+
+
+# ── Task 2 : connexité par égalité NodeL, indexation par position ────────────
+
+def test_connexite_refs_sans_underscore():
+    # Vieux format réel (SaveDiag.xml) : refs concaténées '1001'/'2011' —
+    # indécodables par parsing, résolues par égalité avec NodeL.
+    xml = _boardsch(
+        [_item('resistance trad', pins=[_pin(refs=['1001']), _pin()], comp_id=0),
+         _item('condo', pins=[_pin(refs=['2011']), _pin()], comp_id=0)],
+        [_fil('1001', '2011')],
+    )
+    comps = _lire(xml)
+    r = next(c for c in comps if c.type == 'R')
+    c = next(c for c in comps if c.type == 'C')
+    assert r.pins['1'] == c.pins['1']          # même net
+    assert r.pins['1'].startswith('NET')
+
+
+def test_id_zero_partout_indexation_par_position():
+    # 41 composants id=0 dans TestDiagram.xml : la clé <id> écraserait tout.
+    xml = _boardsch(
+        [_item('resistance trad', value='1k',
+               pins=[_pin(refs=['A']), _pin()], comp_id=0),
+         _item('resistance trad', value='2k',
+               pins=[_pin(refs=['B']), _pin()], comp_id=0),
+         _item('resistance trad', value='3k',
+               pins=[_pin(refs=['C']), _pin()], comp_id=0)],
+        [_fil('A', 'B'), _fil('B', 'C')],
+    )
+    comps = _lire(xml)
+    rs = [c for c in comps if c.type == 'R']
+    assert len(rs) == 3                        # aucun composant écrasé
+    assert {r.value for r in rs} == {'1k', '2k', '3k'}
+    # les trois broches 1 sont sur le même net via les deux fils
+    assert len({r.pins['1'] for r in rs}) == 1
+
+
+def test_fil_non_resolu_warning_sans_exception():
+    xml = _boardsch(
+        [_item('resistance trad', pins=[_pin(refs=['OK']), _pin()])],
+        [_fil('OK', 'REF_FANTOME')],
+    )
+    comps = _lire(xml)
+    assert len([c for c in comps if c.type == 'R']) == 1
+    assert any('REF_FANTOME' in w for w in comps.warnings)
+
+
+def test_dialecte_natif_round_trip_inchange():
+    # Non-régression ciblée : un fichier produit par notre générateur donne
+    # les mêmes nets qu'avant (la suite complète reste le vrai garde-fou).
+    from circuit_analyzer.xml_generator import BoardSCHGenerator
+    g = BoardSCHGenerator()
+    r1 = g.add('Résistance', '10k')
+    c1 = g.add('Capa', '100n')
+    g.connect(r1, '1', c1, '+')
+    comps = _lire(g.to_xml())
+    r = next(c for c in comps if c.type == 'R')
+    c = next(c for c in comps if c.type == 'C')
+    assert r.pins['1'] == c.pins['1']
