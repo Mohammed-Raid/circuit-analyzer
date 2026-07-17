@@ -73,3 +73,77 @@ def mapper_nom(nom: str):
     if identifier('U', nom) is not None:
         return ('U', {})
     return None
+
+
+def _lire_broches(item_et):
+    """@brief Broches d'un DataItem/CComp ElementTree, même forme que lire_xml.
+
+    ATTENTION : chemins DIRECTS ('datapin/DataPin', pas './/') — un CComp
+    contient des DataItem internes dont les broches ne doivent pas fuir dans
+    celles du boîtier.
+
+    @param item_et Élément <DataItem> ou <CComp>.
+    @return list[dict] [{'pname': str, 'refs': list[str]}].
+    """
+    broches = []
+    for pidx, dp in enumerate(item_et.findall('datapin/DataPin')):
+        pnum = (dp.findtext('Pnumber') or '').strip()
+        pnom = (dp.findtext('Pname') or '').strip()
+        refs = [(s.text or '').strip() for s in dp.findall('NodeL/string')]
+        broches.append({'pname': pnum or pnom or str(pidx + 1),
+                        'refs': [r for r in refs if r]})
+    return broches
+
+
+def extraire_composes(racine, prochain_idx):
+    """@brief Aplatit les puces composées (CCmpntL) d'un BoardSCH réel.
+
+    Décision spec §4 : DÉPLIER — les items internes deviennent des composants
+    à part entière ; le boîtier reste un pseudo-composant NON émis dont les
+    broches externes participent à l'Union-Find (les refs X partagées entre
+    NodeL externe et fils internes fusionnent les nets à travers le boîtier).
+    Un composé sans intérieur lisible dégrade en boîte noire émise (jamais
+    d'exception).
+
+    @param racine Élément racine <BoardSCH> parsé.
+    @param prochain_idx Premier index libre après les composants de CmpntL.
+    @return tuple (elements_sup, fils_sup, avertissements) :
+        elements_sup dict[int, dict] — entrées au format de lire_xml Étape 1,
+        enrichies de 'emettre' (bool) et 'puce' ((num, nom) ou None) ;
+        fils_sup list[(CFirst, CLast)] — fils internes CCLine ;
+        avertissements list[str].
+    """
+    elements_sup, fils_sup, avertissements = {}, [], []
+    idx = prochain_idx
+    for num, cc in enumerate(racine.findall('.//CCmpntL/CComp')):
+        nom_puce = (cc.findtext('Name') or '').strip() or f'Compose{num + 1}'
+        valeur   = (cc.findtext('value') or '').strip()
+        items_internes = cc.findall('DItemL/DataItem')
+        if not items_internes:
+            # Boîte noire : émise telle quelle avec ses broches externes.
+            elements_sup[idx] = {'id': idx, 'name': nom_puce, 'value': valeur,
+                                 'pins': _lire_broches(cc),
+                                 'emettre': True, 'puce': None}
+            idx += 1
+            avertissements.append(
+                f"Puce composée '{nom_puce}' sans intérieur lisible → boîte noire"
+            )
+            continue
+        # Boîtier pass-through : broches dans l'Union-Find, composant non émis.
+        elements_sup[idx] = {'id': idx, 'name': nom_puce, 'value': valeur,
+                             'pins': _lire_broches(cc),
+                             'emettre': False, 'puce': None}
+        idx += 1
+        for item in items_internes:
+            nom_int = (item.findtext('Name') or '').strip()
+            val_int = (item.findtext('value') or '').strip()
+            elements_sup[idx] = {'id': idx, 'name': nom_int, 'value': val_int,
+                                 'pins': _lire_broches(item),
+                                 'emettre': True, 'puce': (num, nom_puce)}
+            idx += 1
+        for fil in cc.findall('CCLine/Line'):
+            cf = (fil.findtext('CFirst') or '').strip()
+            cl = (fil.findtext('CLast') or '').strip()
+            if cf or cl:
+                fils_sup.append((cf, cl))
+    return elements_sup, fils_sup, avertissements

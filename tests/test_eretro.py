@@ -201,3 +201,67 @@ def test_dialecte_natif_round_trip_inchange():
     r = next(c for c in comps if c.type == 'R')
     c = next(c for c in comps if c.type == 'C')
     assert r.pins['1'] == c.pins['1']
+
+
+# ── Task 3 : puces composées ─────────────────────────────────────────────────
+
+def _ccomp(name, pins_ext=(), items_int=(), fils_int=()):
+    """@brief Fragment <CComp> : boîtier + items internes (DItemL) + fils internes (CCLine)."""
+    return (f'  <CComp>\n'
+            f'    <Name>{name}</Name><value />\n'
+            f'    <datapin>\n' + '\n'.join(pins_ext) + '\n    </datapin>\n'
+            f'    <id>0</id>\n'
+            f'    <DItemL>\n' + '\n'.join(items_int) + '\n    </DItemL>\n'
+            f'    <CCLine>\n' + '\n'.join(fils_int) + '\n    </CCLine>\n'
+            f'  </CComp>')
+
+
+def test_compose_aplati_en_items_internes():
+    # Une « puce » de 2 transistors internes reliés par un fil interne ; la
+    # broche externe est fusionnée au réseau interne par la ref X partagée
+    # (X1 apparaît dans le NodeL externe ET comme extrémité de CCLine).
+    ccomp = _ccomp(
+        'MODHYB',
+        pins_ext=[_pin(refs=['T0000', 'X1'])],
+        items_int=[
+            _item('npn', pins=[_pin(refs=['X1'], pnumber='B'),
+                               _pin(refs=['C10'], pnumber='C'),
+                               _pin(pnumber='E')]),
+            _item('npn', pins=[_pin(refs=['C11'], pnumber='B'),
+                               _pin(pnumber='C'), _pin(pnumber='E')]),
+        ],
+        fils_int=[_fil('C10', 'C11')],
+    )
+    xml = _boardsch(
+        [_item('resistance trad', pins=[_pin(refs=['R00']), _pin()])],
+        [_fil('R00', 'T0000')],
+        ccomps=ccomp,
+    )
+    comps = _lire(xml)
+    internes = [c for c in comps if '.' in c.ref]
+    assert len(internes) == 2
+    assert all(c.type == 'Q' for c in internes)
+    assert comps.groupes_puces == {internes[0].ref.split('.')[0]: 'MODHYB'}
+    # le signal traverse le boîtier : R → broche externe → X1 → base interne
+    r = next(c for c in comps if c.type == 'R')
+    q1 = next(c for c in internes if c.ref.endswith('.1'))
+    assert r.pins['1'] == q1.pins['B']
+    # le fil interne relie le collecteur de Q.1 à la base de Q.2
+    q2 = next(c for c in internes if c.ref.endswith('.2'))
+    assert q1.pins['C'] == q2.pins['B']
+
+
+def test_compose_sans_interieur_devient_boite_noire():
+    ccomp = _ccomp('MYSTERE', pins_ext=[_pin(refs=['T0000']), _pin()])
+    xml = _boardsch(
+        [_item('resistance trad', pins=[_pin(refs=['R00']), _pin()])],
+        [_fil('R00', 'T0000')],
+        ccomps=ccomp,
+    )
+    comps = _lire(xml)
+    boite = next(c for c in comps if c.ref.startswith('X') or c.type == 'U')
+    assert len(boite.pins) == 2
+    assert any('MYSTERE' in w for w in comps.warnings)
+    # la connexion externe est conservée
+    r = next(c for c in comps if c.type == 'R')
+    assert r.pins['1'] in boite.pins.values()

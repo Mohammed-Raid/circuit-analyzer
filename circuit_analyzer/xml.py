@@ -1065,6 +1065,7 @@ class ListeComposantsXML(list):
         """
         super().__init__(composants or [])
         self.warnings: list[str] = []
+        self.groupes_puces: dict[str, str] = {}
 
 _NET_ALIMENTATION: Dict[str, str] = {
     'GND': 'GND', 'AGND': 'GND', 'PGND': 'GND', 'DGND': 'GND',
@@ -1132,6 +1133,11 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
                             'refs': [r for r in refs if r]})
         elements[idx] = {'id': idx, 'name': nom, 'value': valeur, 'pins': broches}
 
+    # Étape 1 bis : puces composées ERetroDesign (CCmpntL) — dépliées.
+    elements_cc, fils_cc, avert_cc = eretro.extraire_composes(racine, len(elements))
+    elements.update(elements_cc)
+    avertissements.extend(avert_cc)
+
     # Étape 2 : Union-Find pour regrouper les broches reliées par des fils
     parent: Dict[tuple, tuple] = {}
 
@@ -1175,6 +1181,21 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             for r in b['refs']:
                 ref_vers_broche.setdefault(r, (cid, pidx))
 
+    # Fusion directe par ref partagée : une puce composée (CCmpntL) réutilise
+    # littéralement la même chaîne de NodeL sur la broche externe du boîtier
+    # ET sur la broche interne qu'elle recouvre (pas de Line entre les deux —
+    # la ref EST le nœud). Sans Line, ref_vers_broche ne garde que le premier
+    # propriétaire ; on unit ici explicitement toutes les broches partageant
+    # une même ref pour que le signal traverse le boîtier.
+    refs_partagees: Dict[str, list] = {}
+    for cid, comp in elements.items():
+        for pidx, b in enumerate(comp['pins']):
+            for r in b['refs']:
+                refs_partagees.setdefault(r, []).append((cid, pidx))
+    for broches_meme_ref in refs_partagees.values():
+        for autre in broches_meme_ref[1:]:
+            unir(broches_meme_ref[0], autre)
+
     def resoudre_extremite(ref):
         """@brief (composant, broche) pour une extrémité de fil, ou None.
 
@@ -1206,6 +1227,15 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         elif cf or cl:
             avertissements.append(
                 f"Fil non résolu : CFirst={cf!r}, CLast={cl!r}"
+            )
+
+    for cf, cl in fils_cc:
+        bf, bl = resoudre_extremite(cf), resoudre_extremite(cl)
+        if bf is not None and bl is not None:
+            unir(bf, bl)
+        elif cf or cl:
+            avertissements.append(
+                f"Fil interne de puce non résolu : CFirst={cf!r}, CLast={cl!r}"
             )
 
     # Étape 3 : regrouper les broches par nœud électrique
@@ -1259,10 +1289,37 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     composants = ListeComposantsXML()
     composants.warnings.extend(avertissements)
     compteurs_type: Dict[str, int] = {}
+    refs_puces: Dict[int, str] = {}     # num composé → ref boîtier ('U7')
+    compteurs_internes: Dict[int, int] = {}
+
+    def generer_ref(type_prefix, elem):
+        """@brief Réf du composant courant, partagée par les deux branches
+        (connue/inconnue) pour que les items internes d'une puce composée
+        reçoivent la même ref préfixée <boîtier>.<n> quel que soit leur type.
+
+        @param type_prefix Préfixe de type ('R', 'Q', 'X', ...).
+        @param elem Entrée elements[cid] courante (peut porter 'puce').
+        @return str Référence du composant.
+        """
+        puce = elem.get('puce')
+        if puce is not None:
+            num_puce, nom_puce = puce
+            if num_puce not in refs_puces:
+                compteurs_type['U'] = compteurs_type.get('U', 0) + 1
+                refs_puces[num_puce] = f'U{compteurs_type["U"]}'
+                composants.groupes_puces[refs_puces[num_puce]] = nom_puce
+            compteurs_internes[num_puce] = compteurs_internes.get(num_puce, 0) + 1
+            return f'{refs_puces[num_puce]}.{compteurs_internes[num_puce]}'
+        compteurs_type[type_prefix] = compteurs_type.get(type_prefix, 0) + 1
+        return f'{type_prefix}{compteurs_type[type_prefix]}'
 
     for cid in sorted(elements):
         elem = elements[cid]
         nom  = elem['name']
+
+        # Boîtier de puce composée : pass-through Union-Find, non émis.
+        if elem.get('emettre') is False:
+            continue
 
         # Symboles d'alimentation → ne sont pas des composants
         if nom in _NOMS_ALIMENTATION:
@@ -1271,8 +1328,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         correspondance = _NOM_VERS_TYPE.get(nom) or eretro.mapper_nom(nom)
         if correspondance is None:
             # Composant inconnu : on le garde sous type 'X' pour ne pas perdre ses connexions
-            compteurs_type['X'] = compteurs_type.get('X', 0) + 1
-            ref = f'X{compteurs_type["X"]}'
+            ref = generer_ref('X', elem)
             broches = {}
             for pidx, info_b in enumerate(elem['pins']):
                 net = broche_vers_net.get((cid, pidx), 'NC')
@@ -1284,8 +1340,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             continue
 
         type_prefix, plan = correspondance
-        compteurs_type[type_prefix] = compteurs_type.get(type_prefix, 0) + 1
-        ref = f'{type_prefix}{compteurs_type[type_prefix]}'
+        ref = generer_ref(type_prefix, elem)
         broches = {}
         for pidx, info_b in enumerate(elem['pins']):
             pnom = info_b['pname']
