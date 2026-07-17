@@ -1181,21 +1181,6 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             for r in b['refs']:
                 ref_vers_broche.setdefault(r, (cid, pidx))
 
-    # Fusion directe par ref partagée : une puce composée (CCmpntL) réutilise
-    # littéralement la même chaîne de NodeL sur la broche externe du boîtier
-    # ET sur la broche interne qu'elle recouvre (pas de Line entre les deux —
-    # la ref EST le nœud). Sans Line, ref_vers_broche ne garde que le premier
-    # propriétaire ; on unit ici explicitement toutes les broches partageant
-    # une même ref pour que le signal traverse le boîtier.
-    refs_partagees: Dict[str, list] = {}
-    for cid, comp in elements.items():
-        for pidx, b in enumerate(comp['pins']):
-            for r in b['refs']:
-                refs_partagees.setdefault(r, []).append((cid, pidx))
-    for broches_meme_ref in refs_partagees.values():
-        for autre in broches_meme_ref[1:]:
-            unir(broches_meme_ref[0], autre)
-
     def resoudre_extremite(ref):
         """@brief (composant, broche) pour une extrémité de fil, ou None.
 
@@ -1229,6 +1214,11 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
                 f"Fil non résolu : CFirst={cf!r}, CLast={cl!r}"
             )
 
+    # Fils internes des puces composées (CCLine) : nets internes ET ponts X —
+    # le C# (Form2.cs) relie une broche externe du boîtier à une broche
+    # interne par un CCLine PONT dont CFirst = ref X du NodeL externe et
+    # CLast = ref de la broche interne (extrémités toujours distinctes ;
+    # deux broches ne partagent jamais la même chaîne NodeL).
     for cf, cl in fils_cc:
         bf, bl = resoudre_extremite(cf), resoudre_extremite(cl)
         if bf is not None and bl is not None:

@@ -218,19 +218,22 @@ def _ccomp(name, pins_ext=(), items_int=(), fils_int=()):
 
 def test_compose_aplati_en_items_internes():
     # Une « puce » de 2 transistors internes reliés par un fil interne ; la
-    # broche externe est fusionnée au réseau interne par la ref X partagée
-    # (X1 apparaît dans le NodeL externe ET comme extrémité de CCLine).
+    # broche externe est pontée vers le réseau interne par un CCLine PONT
+    # (mécanisme réel du C#, Form2.cs) : CFirst = la ref X présente dans le
+    # NodeL de la broche EXTERNE du boîtier, CLast = la ref de la broche
+    # INTERNE — extrémités toujours distinctes, deux broches ne partagent
+    # jamais la même chaîne NodeL.
     ccomp = _ccomp(
         'MODHYB',
         pins_ext=[_pin(refs=['T0000', 'X1'])],
         items_int=[
-            _item('npn', pins=[_pin(refs=['X1'], pnumber='B'),
+            _item('npn', pins=[_pin(refs=['CB1'], pnumber='B'),
                                _pin(refs=['C10'], pnumber='C'),
                                _pin(pnumber='E')]),
             _item('npn', pins=[_pin(refs=['C11'], pnumber='B'),
                                _pin(pnumber='C'), _pin(pnumber='E')]),
         ],
-        fils_int=[_fil('C10', 'C11')],
+        fils_int=[_fil('X1', 'CB1'), _fil('C10', 'C11')],
     )
     xml = _boardsch(
         [_item('resistance trad', pins=[_pin(refs=['R00']), _pin()])],
