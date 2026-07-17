@@ -16,6 +16,7 @@ from html import escape as _esc
 from typing import Dict, List, Tuple
 import xml.etree.ElementTree as ET
 
+from circuit_analyzer import eretro
 from circuit_analyzer.composant import Composant as Component
 from circuit_analyzer.patterns.base import (
     is_gnd, is_power, is_ground_net, is_power_net, is_protective_earth_net
@@ -1122,8 +1123,14 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             continue
         nom   = (item.findtext('Name') or '').strip()
         valeur = (item.findtext('value') or '').strip()
-        broches = [{'pname': (dp.findtext('Pname') or '').strip()}
-                   for dp in item.findall('.//datapin/DataPin')]
+        broches = []
+        for pidx, dp in enumerate(item.findall('.//datapin/DataPin')):
+            pnum = (dp.findtext('Pnumber') or '').strip()
+            pnom = (dp.findtext('Pname') or '').strip()
+            # ERetroDesign : l'identité de broche vit dans Pnumber (Pname
+            # souvent vide) ; les passifs n'ont ni l'un ni l'autre →
+            # numérotation par position pour ne pas écraser les clés.
+            broches.append({'pname': pnum or pnom or str(pidx + 1)})
         elements[comp_id] = {'id': comp_id, 'name': nom, 'value': valeur, 'pins': broches}
 
     # Étape 2 : Union-Find pour regrouper les broches reliées par des fils
@@ -1228,7 +1235,8 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         if nom in _NOMS_ALIMENTATION:
             continue
 
-        if nom not in _NOM_VERS_TYPE:
+        correspondance = _NOM_VERS_TYPE.get(nom) or eretro.mapper_nom(nom)
+        if correspondance is None:
             # Composant inconnu : on le garde sous type 'X' pour ne pas perdre ses connexions
             compteurs_type['X'] = compteurs_type.get('X', 0) + 1
             ref = f'X{compteurs_type["X"]}'
@@ -1242,13 +1250,14 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             )
             continue
 
-        type_prefix, plan = _NOM_VERS_TYPE[nom]
+        type_prefix, plan = correspondance
         compteurs_type[type_prefix] = compteurs_type.get(type_prefix, 0) + 1
         ref = f'{type_prefix}{compteurs_type[type_prefix]}'
         broches = {}
         for pidx, info_b in enumerate(elem['pins']):
             pnom = info_b['pname']
-            broche_lib = plan.get(pnom, pnom)
+            # plan None (passif ERetroDesign) : broches par position.
+            broche_lib = str(pidx + 1) if plan is None else plan.get(pnom, pnom)
             net = broche_vers_net.get((cid, pidx), 'NC')
             broches[broche_lib] = net
         # Broches AOP standard par défaut — UNIQUEMENT pour les formes à plan
