@@ -383,7 +383,7 @@ class SchematicEditor(tk.Frame):
         Créé UNE fois dans `_build` (jamais reconstruit par `refresh_palette`,
         qui ne touche que la zone défilable). Deux labels SÉPARÉS :
         - `_status_lbl` : messages transitoires ("Placé R1", "Ajusté ⊡"…),
-          hauteur fixe 4 lignes pour que son contenu variable ne déplace pas
+          hauteur fixe 3 lignes pour que son contenu variable ne déplace pas
           la légende ;
         - `_legend_lbl` : légende des raccourcis, PERSISTANTE — jamais réécrite
           par `_set_status` (avant ce fix un seul label servait aux deux usages
