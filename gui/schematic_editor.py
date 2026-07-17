@@ -290,6 +290,15 @@ class SchematicEditor(tk.Frame):
         palette_outer.pack(side="left", fill="y")
         palette_outer.pack_propagate(False)
 
+        # Pied de palette FIXE (statut + légende) : HORS du canvas défilable,
+        # donc toujours visible même fenêtre courte (1280x820) — avant ce fix
+        # la légende sortait du cadre et n'apparaissait qu'après un défilement
+        # manuel. Packé AVANT le canvas (side="bottom") pour garder sa place.
+        footer = tk.Frame(palette_outer, bg=OVERLAY)
+        footer.pack(side="bottom", fill="x")
+        tk.Frame(footer, bg=BORDER, height=1).pack(fill="x", padx=8, pady=(0, 2))
+        self._build_footer(footer)
+
         pcanvas = tk.Canvas(palette_outer, bg=OVERLAY, highlightthickness=0,
                             bd=0, width=158)
         psb = tk.Scrollbar(palette_outer, orient="vertical", command=pcanvas.yview)
@@ -368,18 +377,42 @@ class SchematicEditor(tk.Frame):
                   font=(FONT_FAMILY, 9), cursor="hand2", padx=10,
                   command=self.fit_to_view).pack(fill="x", padx=4, pady=2)
 
-        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=8, pady=8)
+    def _build_footer(self, parent):
+        """@brief Pied de palette fixe : statut transitoire + légende raccourcis.
 
+        Créé UNE fois dans `_build` (jamais reconstruit par `refresh_palette`,
+        qui ne touche que la zone défilable). Deux labels SÉPARÉS :
+        - `_status_lbl` : messages transitoires ("Placé R1", "Ajusté ⊡"…),
+          hauteur fixe 4 lignes pour que son contenu variable ne déplace pas
+          la légende ;
+        - `_legend_lbl` : légende des raccourcis, PERSISTANTE — jamais réécrite
+          par `_set_status` (avant ce fix un seul label servait aux deux usages
+          et la légende disparaissait dès la première action).
+        """
         self._status_lbl = tk.Label(
+            parent, text="Prêt", fg=TEXT_DIM, bg=OVERLAY,
+            font=(FONT_FAMILY, 7), justify="center", wraplength=140, height=3,
+        )
+        self._status_lbl.pack(padx=8, pady=(1, 0))
+
+        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=8, pady=1)
+
+        # Lignes courtes (chacune tient dans wraplength=140 sans repli au
+        # milieu d'un raccourci — vérifié sur capture 1280x820).
+        self._legend_lbl = tk.Label(
             parent,
-            text="Clic = placer\nEspace/R = rotation\nCtrl+C/V = copier/coller\nCtrl+D = dupliquer\n"
-                 "Ctrl+Z/Y = annuler/rétablir\nMolette = zoom · clic-milieu = pan\n"
-                 "Glisser sur fond = sélectionner · Suppr = effacer\n"
-                 "Clic droit = menu · F = ajuster · Échap = annuler",
+            text="Clic = placer · Espace = rotation\n"
+                 "Ctrl+C/V = copier/coller\n"
+                 "Ctrl+D = dupliquer\n"
+                 "Ctrl+Z/Y = annuler/rétablir\n"
+                 "Molette = zoom · milieu = pan\n"
+                 "Glisser = sélection · Suppr = effacer\n"
+                 "Clic droit = menu · F = ajuster\n"
+                 "Échap = annuler",
             fg=TEXT_DIM, bg=OVERLAY,
             font=(FONT_FAMILY, 7), justify="center", wraplength=140,
         )
-        self._status_lbl.pack(padx=8, pady=4)
+        self._legend_lbl.pack(padx=8, pady=(0, 3))
 
     def _build_catalogue_section(self, parent):
         """@brief Section « Puces réelles » : liste déroulante compacte (Task 5).
@@ -1066,7 +1099,8 @@ class SchematicEditor(tk.Frame):
         self._wire_src = (comp_id, pin)
         self._canvas.configure(cursor="crosshair")
         comp = self._comps[comp_id]
-        self._set_status(f"Fil depuis\n{comp.ref}.{pin}\nClic = cible\nÉchap = annuler")
+        # 3 lignes max : le label de statut du pied de palette a height=3.
+        self._set_status(f"Fil depuis {comp.ref}.{pin}\nClic = cible\nÉchap = annuler")
 
     def _update_wire_preview(self, wx: float, wy: float):
         """@brief Aperçu de câblage en L (3 points) — extrait pour tests directs.

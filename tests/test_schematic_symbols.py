@@ -5,7 +5,8 @@ type trace, rotation coherente, DIP catalogue, purete d'import.
 import subprocess
 import sys
 
-from gui.schematic_symbols import def_puce, primitives, rotate_pin
+from gui.schematic_symbols import (def_puce, est_boite_generique, primitives,
+                                    rotate_pin)
 
 # Géométries minimales suffisantes pour tracer (pins réels de COMP_DEFS).
 DEFS = {
@@ -83,6 +84,16 @@ def test_def_puce_ne555_dip():
     assert all(px % 20 == 0 and py % 20 == 0 for px, py in pins.values())
     assert d["fonctions"]["2"] == "TRIG"
     assert d["default_value"] == "NE555"
+
+
+def test_est_boite_generique():
+    # Puce catalogue ("U::NE555") : pas dans _TRACEURS -> boîte générique.
+    assert est_boite_generique("U::NE555") is True
+    # Type perso (absent de _TRACEURS) -> boîte générique aussi.
+    assert est_boite_generique("MODULE_XYZ") is True
+    # Types tracés par une primitive dédiée -> pas une boîte.
+    assert est_boite_generique("R") is False
+    assert est_boite_generique("GND") is False
 
 
 def test_purete_import():

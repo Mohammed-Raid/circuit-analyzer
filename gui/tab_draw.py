@@ -75,7 +75,8 @@ class TabDraw:
             icon_name="save", width=140, height=34,
         ).pack(side="left", padx=(0, 14), pady=8)
 
-        # Légende raccourcis retirée ici : déjà affichée dans la palette (status_lbl).
+        # Légende raccourcis retirée ici : déjà affichée dans la palette (_legend_lbl,
+        # label dédié et persistant — séparé du statut transitoire _status_lbl).
         # Elle débordait et masquait le bouton « Enregistrer comme pattern ».
 
         ui_kit.PrimaryButton(

@@ -137,6 +137,44 @@ def test_export_analyse_puce_catalogue_reconnue(tab_draw):
     assert u_lu.pins["3"] in r_lu.pins.values()
 
 
+def test_export_r_led_analyse_detecte_un_ilot(tab_draw):
+    """Test 10 spec §8 (complément) : montage R + LED (D value "LED rouge")
+    alimenté VCC/GND, câblé dans un SchematicEditor réel -> export XML ->
+    lire_xml -> analyser(construire_graphe(...)) détecte au moins un îlot
+    (R et D partagent le net signal NET1, hors rails GND/VCC)."""
+    from circuit_analyzer.detecteur import analyser
+
+    ed = tab_draw._editor
+    ed._place_type = "R"
+    r = ed._place_at(200, 200)
+    ed._place_type = "D"
+    ed._place_value = "LED rouge"
+    d = ed._place_at(200, 300)
+    ed._place_value = None         # ne pas contaminer la valeur des rails
+    ed._place_type = "VCC"
+    vcc = ed._place_at(200, 100)
+    ed._place_type = "GND"
+    gnd = ed._place_at(200, 400)
+    ed._add_wire(vcc.id, "1", r.id, "1")
+    ed._add_wire(r.id, "2", d.id, "A")     # NET1 signal partagé par R et D
+    ed._add_wire(d.id, "K", gnd.id, "1")
+
+    path = tab_draw._export_netlist_file()
+    try:
+        assert path is not None and path.lower().endswith(".xml")
+        comps = lire_xml(path)
+    finally:
+        if path:
+            os.unlink(path)
+
+    res = analyser(construire_graphe(comps))
+    assert len(res.ilots) >= 1
+    # L'îlot fonctionnel regroupe R et D via leur net signal commun — les
+    # rails VCC/GND sont EXCLUS de la connexité d'îlot ; sans le fil R-D,
+    # chaque composant retomberait dans un singleton (assertion sensible).
+    assert any({"R1", "D1"} <= set(i["composants"]) for i in res.ilots)
+
+
 def test_export_circuit_simple_reste_analysable(tab_draw):
     """Non-régression : un schéma sans puce catalogue (R + GND) passe toujours
     par le même export XML et reste analysable."""
