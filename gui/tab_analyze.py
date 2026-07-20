@@ -141,6 +141,14 @@ class TabAnalyze:
         for sc in (self._s_total, self._s_groups, self._s_pct, self._s_unc):
             sc.pack(side="left", expand=True, padx=8, pady=12)
 
+        # Bandeau d'avertissements d'import (fichiers ERetroDesign réels) :
+        # créé une fois, montré seulement si lire_xml a produit des warnings.
+        self._warn_banner = ctk.CTkLabel(
+            self.frame, text="", anchor="w", justify="left",
+            text_color=ERROR, fg_color=BG, cursor="hand2")
+        self._warn_banner.bind("<Button-1>", self._voir_warnings)
+        self._warnings_import: list[str] = []
+
         # ── Content: empty state or results ──────────────────────────────────
         self._body = ctk.CTkFrame(self.frame, fg_color=BG,
                                   corner_radius=0)
@@ -292,6 +300,14 @@ class TabAnalyze:
             self._s_unc.value_label.configure(text=str(len(unclassified)))
 
             self._stats_row.pack(fill="x", padx=20, before=self._body)
+            self._warnings_import = list(getattr(comps, 'warnings', []) or [])
+            if self._warnings_import:
+                self._warn_banner.configure(
+                    text=f"⚠ {len(self._warnings_import)} avertissement(s) "
+                         f"d'import — cliquer pour le détail")
+                self._warn_banner.pack(fill="x", padx=20, before=self._body)
+            else:
+                self._warn_banner.pack_forget()
             self._scroll_outer.grid()
             self._btn_reseau.configure(state="normal")
             self._btn_imped.configure(state="normal")
@@ -305,6 +321,7 @@ class TabAnalyze:
         except FileNotFoundError:
             messagebox.showerror("Erreur", f"Fichier introuvable :\n{path}")
             self._stats_row.pack_forget()
+            self._warn_banner.pack_forget()
             self._scroll_outer.grid_remove()
             self._empty_state.grid()
             self._graph = None
@@ -312,6 +329,7 @@ class TabAnalyze:
         except ValueError as e:
             messagebox.showerror("Erreur netlist", str(e))
             self._stats_row.pack_forget()
+            self._warn_banner.pack_forget()
             self._scroll_outer.grid_remove()
             self._empty_state.grid()
             self._graph = None
@@ -320,12 +338,20 @@ class TabAnalyze:
             _log.exception("analyse échouée")
             messagebox.showerror("Erreur", str(e))
             self._stats_row.pack_forget()
+            self._warn_banner.pack_forget()
             self._scroll_outer.grid_remove()
             self._empty_state.grid()
             self._graph = None
             self._drc_violations = []
         finally:
             self._analyze_btn.configure(state="normal", text="Analyser")
+
+    def _voir_warnings(self, _evt=None):
+        """@brief Détail des avertissements d'import dans une boîte de dialogue."""
+        if self._warnings_import:
+            messagebox.showwarning(
+                "Avertissements d'import",
+                "\n".join(self._warnings_import[:60]))
 
     def _save(self):
         """@brief Sauvegarde le rapport texte courant dans un fichier choisi par l'utilisateur."""

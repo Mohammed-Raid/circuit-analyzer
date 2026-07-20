@@ -1092,6 +1092,30 @@ def _analyser_ref_noeud(nid: str) -> tuple:
         raise ValueError(f"Référence de nœud invalide : {nid!r}")
 
 
+def _analyser_ref_packee(nid: str) -> tuple:
+    """@brief Parse le vieux format de ref concaténée à 4 chiffres 'CPXX'
+    (ex. '2000') → (compId, pinIdx).
+
+    Milliers = index composant (position dans CmpntL), centaines = index
+    broche ; les 2 derniers chiffres sont un compteur/dédoublonnage du C#
+    ignoré ici (non porteur de sens électrique). Dialecte encore plus
+    ancien que i_j_u_v : observé sur les fichiers sans aucun NodeL
+    (ex. SaveDiag.xml). Volontairement réservé aux fils du schéma
+    principal (lineL/Line) — jamais aux fils internes de puce composée
+    (CCLine), où la même plage numérique désigne un tout autre référentiel
+    (adresses locales au boîtier) et où ce décodage produirait des unions
+    fausses et silencieuses.
+
+    @param nid Référence de nœud BoardSCH packée (exactement 4 chiffres).
+    @return tuple (compId, pinIdx) en entiers.
+    @throws ValueError Si la référence n'est pas composée de 4 chiffres.
+    """
+    if len(nid) != 4 or not nid.isdigit():
+        raise ValueError(f"Référence packée invalide : {nid!r}")
+    valeur = int(nid)
+    return valeur // 1000, (valeur % 1000) // 100
+
+
 def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     """
     @brief Lit un fichier BoardSCH XML et retourne une liste de Composant.
@@ -1184,13 +1208,16 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             for r in b['refs']:
                 ref_vers_broche.setdefault(r, (cid, pidx))
 
-    def resoudre_extremite(ref):
+    def resoudre_extremite(ref, autoriser_packe=False):
         """@brief (composant, broche) pour une extrémité de fil, ou None.
 
         Égalité NodeL d'abord ; fallback sur le format i_j_u_v (dialecte
-        natif sans NodeL) avec garde d'existence.
+        natif sans NodeL) avec garde d'existence ; puis, si autorisé, le
+        format packé à 4 chiffres des tout premiers fichiers (SaveDiag.xml).
 
         @param ref Chaîne CFirst/CLast brute.
+        @param autoriser_packe Autorise le fallback packé 'CPXX' (réservé
+        aux fils du schéma principal, jamais aux fils internes de puce).
         @return tuple|None (cid, pidx) valide, ou None si irrésoluble.
         """
         if not ref:
@@ -1201,7 +1228,12 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         try:
             cid, pidx = _analyser_ref_noeud(ref)
         except ValueError:
-            return None
+            if not autoriser_packe:
+                return None
+            try:
+                cid, pidx = _analyser_ref_packee(ref)
+            except ValueError:
+                return None
         if cid in elements and 0 <= pidx < len(elements[cid]['pins']):
             return (cid, pidx)
         return None
@@ -1209,7 +1241,8 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     for fil in racine.findall('.//lineL/Line'):
         cf = (fil.findtext('CFirst') or '').strip()
         cl = (fil.findtext('CLast') or '').strip()
-        bf, bl = resoudre_extremite(cf), resoudre_extremite(cl)
+        bf = resoudre_extremite(cf, autoriser_packe=True)
+        bl = resoudre_extremite(cl, autoriser_packe=True)
         if bf is not None and bl is not None:
             unir(bf, bl)
         elif cf or cl:
