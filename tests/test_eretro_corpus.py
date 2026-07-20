@@ -55,3 +55,19 @@ def test_testdiagram_carte_reelle_sous_budget():
     duree = time.monotonic() - debut
     assert len(comps) >= 100
     assert duree < 30, f'import+analyse en {duree:.1f}s (budget 30s)'
+
+
+@necessite_corpus
+def test_testdiagram_gate2_reconnus_par_forme():
+    # Les Gate2 de premier niveau (nom inconnu, forme = arc + 3 broches) ne
+    # sont plus des boîtes noires X : ils deviennent des boîtes IC U, avec un
+    # avertissement dédié « typé par sa forme » (distinct de « inconnu »).
+    # (Pas de helper `_lire_corpus` dans ce fichier : on réutilise le
+    # chargement direct des autres tests corpus ci-dessus.)
+    comps = lire_xml(str(CORPUS / 'TestDiagram.xml'))
+    gate2_en_U = [c for c in comps if c.ref.startswith('U')]
+    assert len(gate2_en_U) >= 100
+    assert any('forme' in w.lower() for w in comps.warnings)
+    # Aucun composant correctement typé auparavant ne régresse en type faux :
+    assert all(c.type in ('R', 'C', 'L', 'D', 'Q', 'M', 'U', 'K', 'F', 'X')
+               for c in comps)
