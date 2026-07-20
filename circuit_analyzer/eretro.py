@@ -24,6 +24,7 @@ puce composée (CCLine) ne sont JAMAIS décodés ainsi, même sur une plage à
 4 chiffres identique : c'est un autre référentiel (adresses locales au
 boîtier), vérifié empiriquement sur Diag2.xml.
 """
+import math
 import unicodedata
 
 
@@ -125,6 +126,138 @@ def extraire_geometrie(item_et):
     return {'segments': segments,
             'nb_arcs': len(item_et.findall('dataarc/DataArc')),
             'nb_broches': len(item_et.findall('datapin/DataPin'))}
+
+
+def _bbox(segs):
+    xs = [c for s in segs for c in (s[0], s[2])]
+    ys = [c for s in segs for c in (s[1], s[3])]
+    return (min(xs), min(ys), max(xs), max(ys)) if xs else (0.0, 0.0, 0.0, 0.0)
+
+
+def _diag(segs):
+    x0, y0, x1, y1 = _bbox(segs)
+    return math.hypot(x1 - x0, y1 - y0) or 1.0
+
+
+def _long(s):
+    return math.hypot(s[2] - s[0], s[3] - s[1])
+
+
+def _diagonal(s, ref):
+    """Segment ni horizontal ni vertical (|dx| et |dy| tous deux significatifs)."""
+    dx, dy = abs(s[2] - s[0]), abs(s[3] - s[1])
+    seuil = 0.06 * ref
+    return dx > seuil and dy > seuil
+
+
+def _forme_zigzag(segs):
+    """Corps de résistance : ≥4 segments diagonaux (le zigzag)."""
+    ref = _diag(segs)
+    return sum(1 for s in segs if _diagonal(s, ref)) >= 4
+
+
+def _plaques_fermees_en_boite(segs, a, b, a_horiz, ref):
+    """True si un autre segment referme l'écart entre a et b (boîte/rectangle
+    fermé, ex. boîtier de fusible/thermistance/varistance) : les pattes d'un
+    VRAI condensateur repartent vers l'EXTÉRIEUR de l'écart, elles ne le
+    referment jamais côté gauche ET droit (ou haut ET bas)."""
+    tol = 0.06 * ref
+    if a_horiz:
+        gap_lo, gap_hi = sorted(((a[1] + a[3]) / 2, (b[1] + b[3]) / 2))
+        bornes_x = [a[0], a[2], b[0], b[2]]
+    else:
+        gap_lo, gap_hi = sorted(((a[0] + a[2]) / 2, (b[0] + b[2]) / 2))
+        bornes_x = [a[1], a[3], b[1], b[3]]
+    for c in segs:
+        if c is a or c is b:
+            continue
+        if a_horiz:
+            quasi_vert = abs(c[2] - c[0]) < 0.15 * (_long(c) or 1.0)
+            c_lo, c_hi = sorted((c[1], c[3]))
+            centre_c = (c[0] + c[2]) / 2
+        else:
+            quasi_vert = abs(c[3] - c[1]) < 0.15 * (_long(c) or 1.0)
+            c_lo, c_hi = sorted((c[0], c[2]))
+            centre_c = (c[1] + c[3]) / 2
+        if not quasi_vert:
+            continue
+        couvre_ecart = c_lo <= gap_lo + tol and c_hi >= gap_hi - tol
+        pres_dun_bord = any(abs(centre_c - b_) < tol for b_ in bornes_x)
+        if couvre_ecart and pres_dun_bord:
+            return True
+    return False
+
+
+def _forme_paire_plaques(segs):
+    """Condensateur : 2 longs segments parallèles séparés par un vrai écart
+    (exclut 2 pattes colinéaires, écart ≈ 0, ET exclut un rectangle fermé
+    type boîtier de fusible/thermistance/varistance — cf. oracle Lib)."""
+    ref = _diag(segs)
+    longs = [s for s in segs if _long(s) > 0.35 * ref]
+    for i in range(len(longs)):
+        for j in range(i + 1, len(longs)):
+            a, b = longs[i], longs[j]
+            a_horiz = abs(a[3] - a[1]) < 0.15 * _long(a)
+            b_horiz = abs(b[3] - b[1]) < 0.15 * _long(b)
+            if a_horiz != b_horiz:
+                continue  # orientations différentes
+            if a_horiz:
+                ecart = abs((a[1] + a[3]) / 2 - (b[1] + b[3]) / 2)
+            else:
+                ecart = abs((a[0] + a[2]) / 2 - (b[0] + b[2]) / 2)
+            if 0.1 * ref < ecart < 0.45 * ref:
+                if _plaques_fermees_en_boite(segs, a, b, a_horiz, ref):
+                    continue  # boîte fermée (fusible/thermistance/varistance), pas un condo
+                return True
+    return False
+
+
+def _forme_triangle_barre(segs):
+    """Diode : deux segments convergeant en un sommet + une barre transverse
+    près de ce sommet."""
+    ref = _diag(segs)
+    prox = 0.12 * ref
+    for i in range(len(segs)):
+        for j in range(i + 1, len(segs)):
+            a, b = segs[i], segs[j]
+            # sommet = extrémités quasi confondues des deux segments
+            for pa in ((a[0], a[1]), (a[2], a[3])):
+                for pb in ((b[0], b[1]), (b[2], b[3])):
+                    if math.hypot(pa[0] - pb[0], pa[1] - pb[1]) < prox:
+                        apex_x = (pa[0] + pb[0]) / 2
+                        # barre = segment ~vertical proche de l'abscisse du sommet
+                        for c in segs:
+                            if c in (a, b):
+                                continue
+                            vertical = abs(c[2] - c[0]) < 0.15 * (_long(c) or 1.0)
+                            near = abs((c[0] + c[2]) / 2 - apex_x) < prox
+                            if vertical and near and _long(c) > 0.25 * ref:
+                                return True
+    return False
+
+
+def classer_par_forme(geo):
+    """@brief Type déduit de la forme du symbole, ou None (abstention).
+
+    Conservateur : ne classe que sur une forme franche, le nombre de broches
+    désambiguïse (14 broches d'AOP ≠ 2 d'une diode). Ambigu → None → boîte noire.
+    Ne classe que vers des types déjà pourvus d'un drawer (U/R/C/D).
+
+    @param geo dict de extraire_geometrie.
+    @return tuple(type, plan) ou None.
+    """
+    segs, arcs, nb = geo['segments'], geo['nb_arcs'], geo['nb_broches']
+    # Porte logique : arc + dos + exactement 3 broches (transistor = 0 arc → exclu).
+    if arcs >= 1 and nb == 3:
+        return ('U', {})
+    if nb == 2 and segs:
+        if _forme_triangle_barre(segs):
+            return ('D', _PLAN_D)
+        if _forme_zigzag(segs):
+            return ('R', None)
+        if _forme_paire_plaques(segs):
+            return ('C', None)
+    return None
 
 
 def classer_rail(typc, valeur, nb_broches):
