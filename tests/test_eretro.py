@@ -35,11 +35,22 @@ def _pin(refs=(), pnumber='', pname=''):
     return '\n'.join(morceaux)
 
 
-def _item(name, value='', pins=(), comp_id=0, typ=None):
-    """@brief Fragment <DataItem> ERetroDesign. pins = liste de fragments _pin()."""
+def _item(name, value='', pins=(), comp_id=0, typ=None, segments=(), nb_arcs=0):
+    """@brief Fragment <DataItem> ERetroDesign. pins = liste de fragments _pin().
+
+    @param segments Liste de (sx, sy, ex, ey) → <datasegment><DataSegment>...
+    @param nb_arcs Nombre d'arcs vides à émettre dans <dataarc> (pour classer_par_forme).
+    """
     typ_xml = f'<typ>{typ}</typ>' if typ is not None else ''
+    segs_xml = ''.join(
+        f'<DataSegment><Spoint><X>{sx}</X><Y>{sy}</Y></Spoint>'
+        f'<Epoint><X>{ex}</X><Y>{ey}</Y></Epoint></DataSegment>'
+        for (sx, sy, ex, ey) in segments)
+    arcs_xml = '<DataArc />' * nb_arcs
     return (f'  <DataItem>\n'
             f'    <Name>{name}</Name><value>{value}</value>\n'
+            f'    <datasegment>{segs_xml}</datasegment>\n'
+            f'    <dataarc>{arcs_xml}</dataarc>\n'
             f'    <datapin>\n' + '\n'.join(pins) + '\n    </datapin>\n'
             f'    <id>{comp_id}</id>{typ_xml}\n'
             f'  </DataItem>')
@@ -339,3 +350,24 @@ def test_ref_packee_non_numerique_rejetee():
 
 def test_ref_packee_4_chiffres_decodee():
     assert _analyser_ref_packee('2000') == (2, 0)
+
+
+# ── Task 3 : palier de reconnaissance par forme dans lire_xml ────────────────
+
+def test_inconnu_type_par_sa_forme_zigzag_devient_R():
+    # Nom inconnu + forme zigzag 2 broches → R, avec avertissement dédié.
+    segs = [(502, 500, 749, 500), (749, 500, 799, 402), (800, 401, 901, 596),
+            (903, 599, 997, 401), (999, 403, 1099, 601), (1101, 602, 1196, 402),
+            (1198, 401, 1249, 499), (1251, 499, 1499, 499)]
+    item = _item('ZigMachin', pins=[_pin(refs=['n1']), _pin(refs=['n2'])],
+                 segments=segs)
+    comps = _lire(_boardsch([item], []))
+    c = comps[0]
+    assert c.type == 'R'
+    assert any('forme' in w.lower() and 'ZigMachin' in w for w in comps.warnings)
+
+
+def test_inconnu_sans_forme_franche_reste_boite_noire():
+    item = _item('Truc', pins=[_pin(refs=['a']), _pin(refs=['b'])], segments=[])
+    comps = _lire(_boardsch([item], []))
+    assert comps[0].type == 'X'

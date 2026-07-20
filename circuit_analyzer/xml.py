@@ -1158,7 +1158,8 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         typ_txt = (item.findtext('typ') or '').strip()
         typc = chr(int(typ_txt)) if typ_txt.isdigit() and 0 < int(typ_txt) < 0x110000 else ''
         elements[idx] = {'id': idx, 'name': nom, 'value': valeur, 'pins': broches,
-                         'rail': eretro.classer_rail(typc, valeur, len(broches))}
+                         'rail': eretro.classer_rail(typc, valeur, len(broches)),
+                         'geo': eretro.extraire_geometrie(item)}
 
     # Étape 1 bis : puces composées ERetroDesign (CCmpntL) — dépliées.
     elements_cc, fils_cc, avert_cc = eretro.extraire_composes(racine, len(elements))
@@ -1362,6 +1363,16 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             continue
 
         correspondance = _NOM_VERS_TYPE.get(nom) or eretro.mapper_nom(nom)
+        par_forme = False
+        if correspondance is None:
+            # Nom inconnu : dernier recours avant la boîte noire — la forme
+            # du symbole (segments/arcs) est consultée UNIQUEMENT ici, jamais
+            # quand le nom a déjà résolu le type (non-régression dialecte natif).
+            geo = elem.get('geo')
+            forme = eretro.classer_par_forme(geo) if geo else None
+            if forme is not None:
+                correspondance, par_forme = forme, True
+
         if correspondance is None:
             # Composant inconnu : on le garde sous type 'X' pour ne pas perdre ses connexions
             ref = generer_ref('X', elem)
@@ -1407,6 +1418,11 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             )
 
         composants.append(Component(ref=ref, type=type_prefix, pins=broches, value=elem['value']))
+        if par_forme:
+            composants.warnings.append(
+                f"Composant '{nom}' (id={cid}) typé par sa forme (dessin) "
+                f"→ traité comme {type_prefix} ({ref})"
+            )
 
     if alias_catalogue:
         from circuit_analyzer.catalogue import appliquer_catalogue
