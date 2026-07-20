@@ -268,3 +268,54 @@ def test_compose_sans_interieur_devient_boite_noire():
     # la connexion externe est conservée
     r = next(c for c in comps if c.type == 'R')
     assert r.pins['1'] in boite.pins.values()
+
+
+# ── Task 4 : alimentations par champ typ ─────────────────────────────────────
+
+def test_alim_typ_g_devient_gnd():
+    # <typ> = code ASCII du char C# : 71 = 'G' (masse ERetroDesign).
+    xml = _boardsch(
+        [_item('resistance trad', pins=[_pin(refs=['R01']), _pin(refs=['R02'])]),
+         _item('MASSE1', pins=[_pin(refs=['G01'])], typ=71)],
+        [_fil('R02', 'G01')],
+    )
+    comps = _lire(xml)
+    r = next(c for c in comps if c.type == 'R')
+    assert r.pins['2'] == 'GND'
+    # le symbole d'alim n'est pas un composant
+    assert all('MASSE1' != getattr(c, 'value', '') for c in comps)
+    assert len([c for c in comps if c.type != 'R']) == 0
+
+
+def test_alim_typ_v_devient_vcc():
+    xml = _boardsch(
+        [_item('resistance trad', pins=[_pin(refs=['R01']), _pin(refs=['R02'])]),
+         _item('ALIM1', pins=[_pin(refs=['V01'])], typ=86)],   # 86 = 'V'
+        [_fil('R01', 'V01')],
+    )
+    comps = _lire(xml)
+    r = next(c for c in comps if c.type == 'R')
+    assert r.pins['1'] == 'VCC'
+
+
+def test_alim_typ_v_avec_rail_nomme_dans_value():
+    xml = _boardsch(
+        [_item('resistance trad', pins=[_pin(refs=['R01']), _pin(refs=['R02'])]),
+         _item('ALIM1', value='+12V', pins=[_pin(refs=['V01'])], typ=86)],
+        [_fil('R01', 'V01')],
+    )
+    comps = _lire(xml)
+    r = next(c for c in comps if c.type == 'R')
+    assert r.pins['1'] == '+12V'
+
+
+def test_typ_v_deux_broches_reste_composant():
+    # Garde anti-faux-positif : 2 broches = pas un symbole de rail (un vrai
+    # composant peut porter typ 'V' par accident d'encodage ord(nom[0])).
+    xml = _boardsch(
+        [_item('VARISTANCE', pins=[_pin(), _pin()], typ=86)],
+        [],
+    )
+    comps = _lire(xml)
+    assert len(comps) == 1
+    assert comps[0].type == 'R'    # mappé par Task 1, pas avalé comme rail

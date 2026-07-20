@@ -1131,7 +1131,10 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             refs = [(s.text or '').strip() for s in dp.findall('NodeL/string')]
             broches.append({'pname': pnum or pnom or str(pidx + 1),
                             'refs': [r for r in refs if r]})
-        elements[idx] = {'id': idx, 'name': nom, 'value': valeur, 'pins': broches}
+        typ_txt = (item.findtext('typ') or '').strip()
+        typc = chr(int(typ_txt)) if typ_txt.isdigit() and 0 < int(typ_txt) < 0x110000 else ''
+        elements[idx] = {'id': idx, 'name': nom, 'value': valeur, 'pins': broches,
+                         'rail': eretro.classer_rail(typc, valeur, len(broches))}
 
     # Étape 1 bis : puces composées ERetroDesign (CCmpntL) — dépliées.
     elements_cc, fils_cc, avert_cc = eretro.extraire_composes(racine, len(elements))
@@ -1259,6 +1262,9 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             if cnom in _NET_ALIMENTATION:
                 racine_vers_net[cle] = _NET_ALIMENTATION.get(cnom, cnom.upper())
                 return racine_vers_net[cle]
+            rail = elements[cid].get('rail')
+            if rail:
+                racine_vers_net[cle] = rail; return rail
             norm = cnom.lstrip('/').upper()
             # PE/EARTH/CHASSIS → gardés tels quels, PAS traités comme GND
             if is_protective_earth_net(norm):
@@ -1313,6 +1319,10 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
 
         # Symboles d'alimentation → ne sont pas des composants
         if nom in _NOMS_ALIMENTATION:
+            continue
+
+        # Symboles d'alimentation ERetroDesign (typ G/V/N, 1 broche)
+        if elem.get('rail'):
             continue
 
         correspondance = _NOM_VERS_TYPE.get(nom) or eretro.mapper_nom(nom)

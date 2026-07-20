@@ -95,6 +95,30 @@ def _lire_broches(item_et):
     return broches
 
 
+def classer_rail(typc, valeur, nb_broches):
+    """@brief Nom de net rail pour un symbole d'alimentation ERetroDesign, ou None.
+
+    Le C# marque les alims par le char typ : 'G' (masse), 'V' (alim
+    positive), 'N' (alim négative). Garde : un seul point de connexion —
+    un composant 2 broches n'est jamais un symbole de rail (le typ natif
+    est parfois ord(nom[0]), donc 'V' peut apparaître par accident).
+
+    @param typc Char typ décodé ('' si absent).
+    @param valeur Champ <value> (peut nommer le rail : '+12V', 'VMOT'…).
+    @param nb_broches Nombre de broches du composant.
+    @return str|None Nom de net ('GND', 'VCC', 'VSS', ou rail nommé), ou None.
+    """
+    if nb_broches != 1 or typc not in ('G', 'V', 'N'):
+        return None
+    if typc == 'G':
+        return 'GND'
+    from circuit_analyzer.patterns.base import is_gnd, is_power
+    val = (valeur or '').lstrip('/').upper()
+    if val and (is_power(val) or is_gnd(val)):
+        return val
+    return 'VCC' if typc == 'V' else 'VSS'
+
+
 def extraire_composes(racine, prochain_idx):
     """@brief Aplatit les puces composées (CCmpntL) d'un BoardSCH réel.
 
