@@ -106,6 +106,27 @@ def _lire_broches(item_et):
     return broches
 
 
+def extraire_geometrie(item_et):
+    """@brief Géométrie brute d'un DataItem (segments/arcs/broches).
+
+    Chemins DIRECTS : la géométrie interne d'une puce composée (DItemL/DataItem)
+    ne doit pas fuir dans celle du boîtier.
+
+    @param item_et Élément <DataItem>.
+    @return dict {'segments': list[(sx,sy,ex,ey)], 'nb_arcs': int, 'nb_broches': int}.
+    """
+    segments = []
+    for s in item_et.findall('datasegment/DataSegment'):
+        sx = float(s.findtext('Spoint/X') or 0.0)
+        sy = float(s.findtext('Spoint/Y') or 0.0)
+        ex = float(s.findtext('Epoint/X') or 0.0)
+        ey = float(s.findtext('Epoint/Y') or 0.0)
+        segments.append((sx, sy, ex, ey))
+    return {'segments': segments,
+            'nb_arcs': len(item_et.findall('dataarc/DataArc')),
+            'nb_broches': len(item_et.findall('datapin/DataPin'))}
+
+
 def classer_rail(typc, valeur, nb_broches):
     """@brief Nom de net rail pour un symbole d'alimentation ERetroDesign, ou None.
 
