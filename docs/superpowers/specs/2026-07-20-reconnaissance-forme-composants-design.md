@@ -97,13 +97,24 @@ et de la position sur la carte.
 ~12 règles en ordre de priorité, chacune exigeant une correspondance nette et
 un **nombre de broches cohérent** (le pin-count désambiguïse beaucoup) :
 
-| Forme franche | Broches | → Type | Plan |
-|---|---|---|---|
-| `arc_avec_dos_droit` | 3 | porte logique (`U`/gate) | positionnel |
-| `paire_longs_paralleles` | 2 | condensateur (`C`) | positionnel |
-| `zigzag` (≥6 segments) | 2 | résistance (`R`) | positionnel |
-| `triangle_et_barre` | 2 | diode (`D`) | A/K |
-| `bobine` | 2 | inductance (`L`) | positionnel |
+| Forme franche | Broches | → Type | Plan | Rendu |
+|---|---|---|---|---|
+| `arc_avec_dos_droit` | 3 | `U` (boîte IC) | passthrough | drawer puce (`gui/puce_schematic.py`) |
+| `paire_longs_paralleles` | 2 | condensateur (`C`) | positionnel | impédance Z |
+| `zigzag` (≥6 segments) | 2 | résistance (`R`) | positionnel | impédance Z |
+| `triangle_et_barre` | 2 | diode (`D`) | A/K | drawer diode |
+| `bobine` | 2 | inductance (`L`) | positionnel | impédance Z |
+
+**Précision importante sur la « porte » :** la forme franche (arc + dos droit
++ 3 broches) dit qu'on a affaire à un élément logique **mais pas lequel**
+(NAND ? NOR ? buffer ?). Nos drawers de portes du chantier CMOS dessinent des
+portes **détectées à partir de réseaux de transistors**, pas un composant
+`Gate2` isolé. On ne prétend donc PAS produire un symbole NAND/NOR précis
+depuis la forme : on classe `Gate2` en **`U` (boîte IC)** rendue par le drawer
+puce existant — une boîte étiquetée avec ses 3 broches. C'est honnête (on sait
+que c'est un composant à 3 broches typé, pas plus) et c'est déjà strictement
+mieux que l'état actuel, où le type X est dessiné en **résistance placeholder**
+(`xml.py:286`) — un vrai contresens visuel pour une porte.
 
 Toute entrée qui ne matche aucune règle nette, ou qui matche des features
 contradictoires, retourne `None` → boîte noire (comportement actuel inchangé).
