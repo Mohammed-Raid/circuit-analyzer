@@ -326,6 +326,7 @@ class TabAnalyze:
             self._empty_state.grid()
             self._graph = None
             self._drc_violations = []
+            self._warnings_import = []
         except ValueError as e:
             messagebox.showerror("Erreur netlist", str(e))
             self._stats_row.pack_forget()
@@ -334,6 +335,7 @@ class TabAnalyze:
             self._empty_state.grid()
             self._graph = None
             self._drc_violations = []
+            self._warnings_import = []
         except Exception as e:
             _log.exception("analyse échouée")
             messagebox.showerror("Erreur", str(e))
@@ -343,6 +345,7 @@ class TabAnalyze:
             self._empty_state.grid()
             self._graph = None
             self._drc_violations = []
+            self._warnings_import = []
         finally:
             self._analyze_btn.configure(state="normal", text="Analyser")
 
