@@ -9,9 +9,20 @@ par Pnumber (Pname souvent vide, parfois les deux absents), champ <typ> = code
 ASCII du char C#.
 
 Règle d'or (spec 2026-07-17 §3) : la connexité se résout par ÉGALITÉ DE
-CHAÎNES entre datapin/NodeL et Line.CFirst/CLast — on ne parse JAMAIS le
+CHAÎNES entre datapin/NodeL et Line.CFirst/CLast — on ne parse pas le
 format packé des refs (ambigu dans les vieux fichiers : '14001' est
 indécodable sans les largeurs de champs).
+
+Exception bornée (arbitrage patron 2026-07-20) : les refs d'EXACTEMENT
+4 chiffres portées par les fils du schéma principal (lineL/Line) d'un
+dialecte encore plus ancien, sans aucun NodeL (ex. SaveDiag.xml), sont
+décodées par `_analyser_ref_packee` (xml.py, milliers = index composant,
+centaines = index broche), avec garde d'existence sur le composant/la
+broche résultante. Les refs à 5 chiffres ou plus (type '14001') restent
+rejetées — ambiguës sans largeurs de champs connues. Les fils internes de
+puce composée (CCLine) ne sont JAMAIS décodés ainsi, même sur une plage à
+4 chiffres identique : c'est un autre référentiel (adresses locales au
+boîtier), vérifié empiriquement sur Diag2.xml.
 """
 import unicodedata
 

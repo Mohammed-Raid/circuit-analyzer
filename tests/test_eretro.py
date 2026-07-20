@@ -11,7 +11,7 @@ import tempfile
 import pytest
 
 from circuit_analyzer.eretro import normaliser_nom, mapper_nom
-from circuit_analyzer.xml import lire_xml
+from circuit_analyzer.xml import lire_xml, _analyser_ref_packee
 
 
 # ── Helpers fixtures ──────────────────────────────────────────────────────────
@@ -319,3 +319,23 @@ def test_typ_v_deux_broches_reste_composant():
     comps = _lire(xml)
     assert len(comps) == 1
     assert comps[0].type == 'R'    # mappé par Task 1, pas avalé comme rail
+
+
+# ── Task 5 (fix post-review) : cas limites du décodeur de refs packées ───────
+
+def test_ref_packee_5_chiffres_rejetee():
+    # Cas ambigu historique ('14001') : indécodable sans les largeurs de
+    # champs, doit rester rejeté (voir eretro.py, règle d'or + exception).
+    with pytest.raises(ValueError):
+        _analyser_ref_packee('14001')
+
+
+def test_ref_packee_non_numerique_rejetee():
+    with pytest.raises(ValueError):
+        _analyser_ref_packee('20a0')
+    with pytest.raises(ValueError):
+        _analyser_ref_packee('T400')
+
+
+def test_ref_packee_4_chiffres_decodee():
+    assert _analyser_ref_packee('2000') == (2, 0)

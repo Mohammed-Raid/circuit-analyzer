@@ -1200,8 +1200,11 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             trouver((cid, pidx))
 
     # Index {chaîne de ref NodeL → (composant, broche)} : la connexité
-    # ERetroDesign se résout par égalité de chaînes (règle du C# lui-même),
-    # jamais en parsant le format packé (ambigu dans les vieux fichiers).
+    # ERetroDesign se résout par égalité de chaînes (règle du C# lui-même).
+    # Exception bornée (arbitrage patron 2026-07-20) : les refs à
+    # EXACTEMENT 4 chiffres des fils lineL/Line sont décodées en dernier
+    # recours via _analyser_ref_packee (voir resoudre_extremite plus bas) ;
+    # les refs 5+ chiffres restent ambiguës et rejetées.
     ref_vers_broche: Dict[str, tuple] = {}
     for cid, comp in elements.items():
         for pidx, b in enumerate(comp['pins']):
