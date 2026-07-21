@@ -504,8 +504,196 @@ Ajouter l'entrée de clôture du chantier dans `.superpowers/sdd/progress.md`.
 
 ---
 
+### Task 5 : Rendu honnête d'une porte reconnue par forme (boîte IC, jamais AOP)
+
+**Contexte :** la boucle visuelle de Task 4 a révélé qu'un `Gate2`→`U` isolé et
+hors catalogue ne se rend PAS en boîte IC : `_puce_ilot` renvoie `None` (car
+`identifier('U','4000')` échoue), et l'îlot retombe sur la vue générique dont
+la table de symboles associe `"U"→"opamp"` → **triangle d'amplificateur
+opérationnel trompeur**. C'est pire qu'une boîte noire : ça affirme
+visuellement une fonction analogique non prouvée (viole « jamais de vue
+générique fausse »). Correctif chirurgical : marquer les composants reconnus
+par forme et les dégrader en boîte IC neutre étiquetée, SANS toucher le rendu
+des vrais AOP.
+
+**Files :**
+- Modify : `circuit_analyzer/composant.py` (champ `par_forme` sur `Composant`)
+- Modify : `circuit_analyzer/xml.py:1420` (propager `par_forme` au `Component`)
+- Modify : `gui/circuit_viewer.py` (`_puce_ilot` : dégrade en boîte IC neutre)
+- Test : `tests/test_eretro.py` (le marqueur traverse `lire_xml`)
+- Test : `tests/test_puce_drawing.py` (rendu boîte IC neutre + contraste)
+- Boucle visuelle : script scratch (hors dépôt), PNG inspectés.
+
+**Interfaces :**
+- Produces : `Composant.par_forme: bool` (défaut `False`) — `True` seulement
+  quand `classer_par_forme` a résolu le type (jamais pour un type résolu par
+  nom, donc jamais pour un vrai AOP). Survit dans le graphe car
+  `construire_graphe` stocke les instances `Composant` telles quelles.
+- `_puce_ilot` retourne désormais aussi `(ref, entree)` pour un `U` reconnu par
+  forme hors catalogue, avec `entree = {"categorie": "CI", "nom": <value|?>,
+  "broches": None}` — contrat `entree` accepté par `dessiner_puce`
+  (`entree.get("broches") or {n:n}`, `entree['categorie']`, `entree['nom']`).
+
+- [ ] **Step 1 : Test rouge — le marqueur `par_forme` existe et traverse `lire_xml`**
+
+```python
+# circuit_analyzer/composant.py : ce test échoue tant que le champ n'existe pas.
+# tests/test_eretro.py  (ajouter)
+def test_composant_par_forme_defaut_false():
+    from circuit_analyzer.composant import Composant
+    c = Composant(ref="R1", type="R", pins={"1": "a", "2": "b"})
+    assert c.par_forme is False
+
+
+def test_forme_reconnue_pose_le_marqueur_par_forme():
+    # Nom inconnu + zigzag 2 broches → R, marqué par_forme ; un nom connu ne l'est pas.
+    segs = [(502, 500, 749, 500), (749, 500, 799, 402), (800, 401, 901, 596),
+            (903, 599, 997, 401), (999, 403, 1099, 601), (1101, 602, 1196, 402),
+            (1198, 401, 1249, 499), (1251, 499, 1499, 499)]
+    inconnu = _item('ZigMachin', pins=[_pin(refs=['n1']), _pin(refs=['n2'])],
+                    segments=segs)
+    comps = _lire(_boardsch([inconnu], []))
+    zig = next(c for c in comps if c.type == 'R')
+    assert zig.par_forme is True
+```
+
+- [ ] **Step 2 : Vérifier l'échec**
+
+Run : `PYTHONUTF8=1 python -m pytest tests/test_eretro.py::test_composant_par_forme_defaut_false tests/test_eretro.py::test_forme_reconnue_pose_le_marqueur_par_forme -q`
+Expected : FAIL (`TypeError: __init__() got an unexpected keyword` puis `AttributeError`/`assert False` sur `par_forme`).
+
+- [ ] **Step 3 : Implémentation — champ + propagation**
+
+`circuit_analyzer/composant.py` — ajouter le champ à la dataclass (mettre à
+jour la docstring des attributs) :
+
+```python
+@dataclass
+class Composant:
+    # ... docstring : ajouter
+    #   par_forme : True si le type a été déduit de la forme du symbole
+    #               (jamais pour un type résolu par nom → jamais un vrai AOP)
+    ref:   str
+    type:  str
+    pins:  dict[str, str]
+    value: str = ''
+    par_forme: bool = False
+```
+
+`circuit_analyzer/xml.py` — à la création du `Component` typé (l.1420),
+propager le drapeau déjà calculé par le palier forme :
+
+```python
+        composants.append(Component(ref=ref, type=type_prefix, pins=broches,
+                                    value=elem['value'], par_forme=par_forme))
+```
+
+(La branche boîte noire type X, l.1383, garde le défaut `par_forme=False` :
+un inconnu non reconnu par forme n'est pas marqué.)
+
+- [ ] **Step 4 : Vérifier le vert (marqueur)**
+
+Run : `PYTHONUTF8=1 python -m pytest tests/test_eretro.py -q`
+Expected : PASS (dont les 2 nouveaux ; aucune régression des tests existants).
+
+- [ ] **Step 5 : Test rouge — `_puce_ilot` dégrade la porte en boîte IC neutre**
+
+```python
+# tests/test_puce_drawing.py  (ajouter ; imports Composant/construire_graphe déjà présents en tête)
+def test_puce_ilot_gate_par_forme_donne_boite_ic_neutre():
+    from circuit_analyzer.composant import Composant, construire_graphe
+    comp = Composant(ref="U1", type="U", pins={"1": "A", "2": "B", "3": "Y"},
+                     value="4000", par_forme=True)
+    g = construire_graphe([comp])
+    trouve = cv._puce_ilot({"composants": ["U1"]}, g)
+    assert trouve is not None                       # plus jamais None → opamp
+    ref, entree = trouve
+    assert ref == "U1"
+    assert entree["categorie"] != "AOP"             # boîte neutre, pas un AOP
+    # l'entrée neutre est bien dessinable par le drawer boîte IC existant
+    import schemdraw, schemdraw.elements as elm
+    from gui import puce_schematic
+    ci = {"U1": {"type": "U", "value": "4000", "pins": comp.pins}}
+    with schemdraw.Drawing(show=False) as d:
+        d._comp_positions = {}; d._z_hitboxes = []; d._mode_detaille = False
+        res = puce_schematic.dessiner_puce(d, ref, entree, ci)
+    assert set(res["nets"]) == {"A", "B", "Y"}      # 3 broches câblées, boîte IC
+    assert "U1" in d._comp_positions                # cliquable
+
+
+def test_puce_ilot_u_inconnu_sans_forme_reste_none():
+    # Contraste : sans le marqueur, comportement inchangé (retombe en vue générique).
+    from circuit_analyzer.composant import Composant, construire_graphe
+    comp = Composant(ref="U1", type="U", pins={"1": "A", "2": "B", "3": "Y"},
+                     value="4000", par_forme=False)
+    g = construire_graphe([comp])
+    assert cv._puce_ilot({"composants": ["U1"]}, g) is None
+```
+
+- [ ] **Step 6 : Vérifier l'échec**
+
+Run : `PYTHONUTF8=1 python -m pytest tests/test_puce_drawing.py::test_puce_ilot_gate_par_forme_donne_boite_ic_neutre -q`
+Expected : FAIL (`_puce_ilot` renvoie `None` pour le `U` par_forme hors catalogue).
+
+- [ ] **Step 7 : Implémentation — dégradation dans `_puce_ilot`**
+
+`gui/circuit_viewer.py::_puce_ilot` — remplacer la fin de la fonction :
+
+```python
+    comp = raw[actifs[0]]
+    if comp.type != "U":
+        return None
+    entree = identifier("U", getattr(comp, "value", ""))
+    if entree is not None and entree.get("categorie") == "AOP":
+        return None                     # 741… → détecteurs AOP dédiés
+    if entree is None:
+        if getattr(comp, "par_forme", False):
+            # Reconnu par forme (arc + 3 broches = porte logique), hors
+            # catalogue : boîte IC NEUTRE honnête (jamais le triangle d'AOP de
+            # la vue générique "U"→"opamp"). Le vrai AOP passe par le nom, pas
+            # par la forme, donc n'est jamais marqué par_forme → intact.
+            val = getattr(comp, "value", "") or "?"
+            return (actifs[0], {"categorie": "CI", "nom": val, "broches": None})
+        return None                     # inconnu ordinaire → comportement actuel
+    return (actifs[0], entree)
+```
+
+- [ ] **Step 8 : Vérifier le vert (rendu)**
+
+Run : `PYTHONUTF8=1 python -m pytest tests/test_puce_drawing.py -q`
+Expected : PASS (dont les 2 nouveaux ; `test_puce_ilot_ignore_les_aop_et_inconnus` — le 741 → `None` — reste vert : non-régression AOP).
+
+- [ ] **Step 9 : Boucle visuelle (exigence boss)**
+
+Script scratch (dossier scratch hors dépôt) réutilisant le pipeline réel
+(`lire_xml` → `construire_graphe` → `analyser` → `tools/render_ilots_v2._fig_for_ilot`) :
+1. Rendre en PNG un échantillon des 26 îlots `Gate2`→`U` de `TestDiagram.xml`
+   (refs U des composants marqués `par_forme`). VÉRIFIER sur les images :
+   **boîte IC rectangulaire** étiquetée `CI (…)` à 3 broches câblées, canvas
+   clair, aucun triangle d'AOP, aucun symbole en vrac.
+2. Rendre `circuits_industriels/reel_741_inverseur.xml` (vrai AOP) : VÉRIFIER
+   qu'il se rend TOUJOURS en triangle d'AOP (non-régression du rendu AOP).
+Décrire ce qui est vu dans le rapport. Supprimer PNG/scripts après inspection
+(jamais committés).
+
+- [ ] **Step 10 : Suite complète + commit**
+
+Run : `PYTHONUTF8=1 python -m pytest -q` (relancer `test_500_portes_sous_budget` isolé si flake).
+Expected : tout vert.
+
+```bash
+git add circuit_analyzer/composant.py circuit_analyzer/xml.py gui/circuit_viewer.py tests/test_eretro.py tests/test_puce_drawing.py
+git commit -m "feat(eretro): rendu boite IC neutre pour une porte reconnue par forme (jamais un AOP)"
+```
+
+- [ ] **Step 11 : Ledger**
+
+Consigner Task 5 dans `.superpowers/sdd/progress.md`.
+
+---
+
 ## Self-Review (rédaction du plan)
 
-- **Couverture spec :** palier forme non-régressif ✓ ; règles conservatrices + abstention ✓ ; oracle Lib anti-contresens ✓ ; avertissement dédié ✓ ; rendu porte = boîte IC (pas de NAND deviné) ✓ ; boucle visuelle ✓. Écart assumé : inductance reportée (justifié §Périmètre).
+- **Couverture spec :** palier forme non-régressif ✓ ; règles conservatrices + abstention ✓ ; oracle Lib anti-contresens ✓ ; avertissement dédié ✓ ; rendu porte = boîte IC honnête, jamais un AOP (Task 5 — la boucle visuelle de Task 4 a montré que la couche données seule ne suffisait pas : `_puce_ilot`/`"U"→"opamp"` produisait un triangle d'AOP) ✓ ; boucle visuelle ✓. Écart assumé : inductance reportée (justifié §Périmètre) ; les 162 Gate2 internes aux puces composées restent `X` (géométrie non attachée par `extraire_composes`) — chantier séparé.
 - **Placeholders :** aucun — code complet à chaque étape.
 - **Cohérence des types :** `extraire_geometrie`/`classer_par_forme` signatures identiques entre tâches ; `_PLAN_D` réutilisé (déjà défini).
