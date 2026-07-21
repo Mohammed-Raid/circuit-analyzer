@@ -253,3 +253,29 @@ def test_aucun_fil_ne_traverse_le_dot_d_une_autre_broche(fichier):
         for seg in lignes:
             assert not _dot_strictement_dans(dot, seg), \
                 f"fil {seg} traverse le dot {dot}"
+
+
+def test_puce_ilot_connecteur_multibroches_donne_boite():
+    from circuit_analyzer.composant import Composant, construire_graphe
+    comp = Composant(ref="J1", type="J",
+                     pins={"1": "A", "2": "B", "3": "C"}, value="Borne", boite_ic=True)
+    g = construire_graphe([comp])
+    trouve = cv._puce_ilot({"composants": ["J1"]}, g)
+    assert trouve is not None
+    ref, entree = trouve
+    assert entree["categorie"] == "Connecteur" and entree["nom"] == "Borne"
+
+
+def test_puce_ilot_ic_nommee_donne_boite_ci():
+    from circuit_analyzer.composant import Composant, construire_graphe
+    comp = Composant(ref="U1", type="U",
+                     pins={str(i): f"n{i}" for i in range(1, 9)},
+                     value="SI844AB", boite_ic=True)
+    g = construire_graphe([comp])
+    ref, entree = cv._puce_ilot({"composants": ["U1"]}, g)
+    assert entree["categorie"] != "AOP" and entree["nom"] == "SI844AB"
+
+
+def test_symbole_jumper_2_broches():
+    import schemdraw.elements as elm
+    assert cv._SYMBOL_ELM.get(cv._schematic_symbol("J")) is elm.Jumper

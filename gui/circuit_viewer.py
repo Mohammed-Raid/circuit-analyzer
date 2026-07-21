@@ -575,19 +575,24 @@ def _puce_ilot(ilot, graph):
     if len(actifs) != 1:
         return None
     comp = raw[actifs[0]]
+    nom = getattr(comp, "value", "") or "?"
+    if comp.type == "J":
+        # Connecteur multi-broches (dialecte réel) -> boîte étiquetée honnête,
+        # jamais une puce/AOP générique.
+        return (actifs[0], {"categorie": "Connecteur", "nom": nom, "broches": None})
     if comp.type != "U":
         return None
     entree = identifier("U", getattr(comp, "value", ""))
     if entree is not None and entree.get("categorie") == "AOP":
         return None                     # 741… → détecteurs AOP dédiés
     if entree is None:
-        if getattr(comp, "par_forme", False):
-            # Reconnu par forme (arc + 3 broches = porte logique), hors
-            # catalogue : boîte IC NEUTRE honnête (jamais le triangle d'AOP de
-            # la vue générique "U"→"opamp"). Le vrai AOP passe par le nom, pas
-            # par la forme, donc n'est jamais marqué par_forme → intact.
-            val = getattr(comp, "value", "") or "?"
-            return (actifs[0], {"categorie": "CI", "nom": val, "broches": None})
+        if getattr(comp, "par_forme", False) or getattr(comp, "boite_ic", False):
+            # Reconnu par forme (arc + 3 broches = porte logique) OU marqué
+            # boîte IC par le dialecte réel (Task 3), hors catalogue : boîte
+            # IC NEUTRE honnête (jamais le triangle d'AOP de la vue générique
+            # "U"→"opamp"). Le vrai AOP passe par le nom, pas par la forme,
+            # donc n'est jamais marqué par_forme → intact.
+            return (actifs[0], {"categorie": "CI", "nom": nom, "broches": None})
         return None                     # inconnu ordinaire → comportement actuel
     return (actifs[0], entree)
 
@@ -2398,6 +2403,7 @@ def _schematic_symbol(ctype):
         "M": "mosfet",
         "K": "relay",
         "X": "connector",
+        "J": "jumper",
     }.get(ctype, "block")
 
 
@@ -2534,6 +2540,7 @@ _SYMBOL_ELM = {
     "diode": elm.Diode,
     "fuse": elm.Fuse,
     "switch": elm.Switch,
+    "jumper": elm.Jumper,
 }
 
 
