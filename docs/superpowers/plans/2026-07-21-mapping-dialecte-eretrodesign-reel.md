@@ -512,6 +512,256 @@ Consigner le chantier dans `.superpowers/sdd/progress.md`.
 
 ---
 
+## Correctifs de rendu (boucle visuelle T5 — 3 défauts réels sur les vraies cartes)
+
+La boucle visuelle de T5 (couche données parfaite : 144→0 inconnus) a révélé que
+les schémas RENDUS sont faux pour 3 des 5 familles cibles. Défauts, causes racines
+et fixes ci-dessous. Décision boss : corriger les 3 maintenant, puis re-boucle visuelle.
+
+### Task 6 : Préserver l'identité de pièce jusqu'au rendu (défaut #4 + plomberie #2)
+
+**Contexte :** `_puce_ilot`/`_draw_block_row` identifient une puce via
+`identifier("U", comp.value)`, mais `78L05CP` (et les ICs cataloguées) ont une
+`value` VIDE (le n° de pièce était dans le `<Name>`, consommé à la lecture) → le
+régulateur n'est jamais reconnu au rendu. De plus le marqueur `boite_ic` n'est pas
+propagé jusqu'aux lignes de rendu (nécessaire pour Task 7).
+
+**Files :**
+- Modify : `circuit_analyzer/xml.py` (Étape 5 : backfill `value=nom` élargi)
+- Modify : `gui/circuit_viewer.py` (`_build_island_model`, `_make_row` : porter `boite_ic`)
+- Test : `tests/test_eretro_dialecte.py`, `tests/test_puce_drawing.py`
+
+**Interfaces :**
+- Produces : après `lire_xml`, tout composant U/J à `value` vide porte `value=<nom>` ;
+  les dicts d'îlot (`units`) et les lignes de plan (`_make_row`) portent `boite_ic`.
+
+- [ ] **Step 1 : Test rouge**
+
+```python
+# tests/test_eretro_dialecte.py  (ajouter)
+def test_78L05_garde_son_identite_de_piece():
+    from tests.test_eretro import _item, _pin, _boardsch, _lire
+    from circuit_analyzer.catalogue import identifier
+    pins = [_pin(refs=[f'n{i}']) for i in range(3)]
+    item = _item('78L05CP', pins=pins)          # nom = n° de pièce, value XML vide
+    comps = _lire(_boardsch([item], []))
+    c = comps[0]
+    assert c.type == 'U'
+    # le n° de pièce survit dans value -> identifiable au rendu comme régulateur
+    assert c.value == '78L05CP'
+    assert identifier('U', c.value)['categorie'] == 'Regulateur +5 V'
+```
+
+- [ ] **Step 2 : Vérifier l'échec**
+
+Run : `PYTHONUTF8=1 python -m pytest tests/test_eretro_dialecte.py -q -k 78L05`
+Expected : FAIL (`c.value == ''`).
+
+- [ ] **Step 3 : Implémentation**
+
+`circuit_analyzer/xml.py`, Étape 5 — élargir le backfill `value=nom` à TOUT U/J à
+value vide (pas seulement `boite_ic`/J), pour que le n° de pièce survive au rendu :
+```python
+        # Étiquette/identité : U et J sans <value> portent leur <Name> (n° de pièce
+        # ou libellé connecteur) — sinon la puce n'est plus identifiable au rendu
+        # (identifier() travaille sur value) et la boîte s'affiche vide.
+        if type_prefix in ('U', 'J') and not elem['value']:
+            valeur = nom
+```
+(Adapter au bloc réel : la variable locale de valeur — `valeur` chez l'implémenteur
+T3 — doit valoir `nom` pour tout U/J à value vide, en amont du `Component(...)`.)
+
+`gui/circuit_viewer.py` — propager `boite_ic` du composant jusqu'à la ligne :
+- dans `_build_island_model`, chaque `units.append({...})` d'un multi-broches ajoute
+  `"boite_ic": info.get("boite_ic", False)` ; assure-toi que le `comp_info`/`info`
+  source porte `boite_ic` (le construire depuis `getattr(comp, "boite_ic", False)`
+  là où `comp_info` est bâti — grep `"value": ` / `getattr(comp` dans le fichier).
+- dans `_make_row` (~l.2357), ajouter `"boite_ic": comp.get("boite_ic", False)`.
+
+- [ ] **Step 4 : Vérifier le vert + non-régression**
+
+Run : `PYTHONUTF8=1 python -m pytest tests/test_eretro_dialecte.py tests/test_eretro.py tests/test_puce_drawing.py -q`
+Expected : PASS.
+
+- [ ] **Step 5 : Commit**
+
+```bash
+git add circuit_analyzer/xml.py gui/circuit_viewer.py tests/test_eretro_dialecte.py
+git commit -m "fix(eretro): le n° de piece survit dans value + boite_ic propage aux lignes de rendu"
+```
+
+---
+
+### Task 7 : Rendu bloc honnête — jamais un faux AOP (défaut #2, le gros)
+
+**Contexte :** dans un îlot multi-actifs (cas majoritaire des vraies cartes),
+`_puce_ilot` ne se déclenche pas (il exige 1 seul actif) → le rendu générique
+`_draw_block_row` dessine un type U en **triangle d'AOP** (`_schematic_symbol("U")
+=="opamp"`) et un type J en **rectangle vide**. Il faut une boîte étiquetée honnête
+pour les connecteurs, ICs cataloguées et ICs `boite_ic` — l'AOP triangle réservé
+aux vrais AOP.
+
+**Files :**
+- Modify : `gui/circuit_viewer.py` (`_draw_block_row` + helper `_titre_bloc`)
+- Test : `tests/test_puce_drawing.py`
+
+**Interfaces :**
+- Consumes : `row["type"]`, `row["value"]`, `row["boite_ic"]` (Task 6).
+- Produces : `_titre_bloc(row) -> str|None` — étiquette honnête d'un bloc non-AOP, ou `None` (garde le rendu AOP/bloc actuel).
+
+- [ ] **Step 1 : Test rouge**
+
+```python
+# tests/test_puce_drawing.py  (ajouter)
+def test_titre_bloc_connecteur_ic_et_aop():
+    from gui.circuit_viewer import _titre_bloc
+    from circuit_analyzer.catalogue import identifier
+    assert _titre_bloc({"type": "J", "value": "Borne"}).startswith("Connecteur")
+    assert "SI844AB" in _titre_bloc({"type": "U", "value": "SI844AB", "boite_ic": True})
+    reg = _titre_bloc({"type": "U", "value": "78L05CP", "boite_ic": False})
+    assert reg is not None and "Regulateur" in reg
+    # vrai AOP -> None (garde le triangle d'AOP)
+    assert _titre_bloc({"type": "U", "value": "741", "boite_ic": False}) is None
+    # U inconnu sans marqueur -> None (non-régression, garde le comportement actuel)
+    assert _titre_bloc({"type": "U", "value": "", "boite_ic": False}) is None
+
+
+def test_draw_block_row_connecteur_rend_une_boite_pas_un_aop():
+    import schemdraw, schemdraw.elements as elm
+    from gui import circuit_viewer as cv
+    row = {"type": "J", "value": "Borne", "boite_ic": True, "ref": "J1",
+           "symbol": "jumper", "y": 0.0,
+           "pins": [("1", "A"), ("2", "B"), ("3", "C")], "stubs": []}
+    with schemdraw.Drawing(show=False) as d:
+        d._comp_positions = {}; d._z_hitboxes = []; d._mode_detaille = False
+        cv._draw_block_row(d, row, [], {}, 4.0)
+        # aucune Opamp dessinée ; au moins un Rect (la boîte)
+        noms = [type(e).__name__ for e in d.elements]
+    assert "Opamp" not in noms and "Rect" in noms
+```
+
+- [ ] **Step 2 : Vérifier l'échec**
+
+Run : `PYTHONUTF8=1 python -m pytest tests/test_puce_drawing.py -q -k "titre_bloc or block_row_connecteur"`
+Expected : FAIL (`_titre_bloc` inexistant).
+
+- [ ] **Step 3 : Implémentation**
+
+`gui/circuit_viewer.py` — ajouter le helper et brancher `_draw_block_row` :
+```python
+def _titre_bloc(row):
+    """@brief Étiquette honnête d'un bloc multi-broches NON-AOP (connecteur/IC
+    nommée/régulateur catalogué), ou None pour garder le rendu AOP/bloc actuel."""
+    t, val = row.get("type"), row.get("value") or ""
+    if t == "J":
+        return f"Connecteur\n{val}" if val else "Connecteur"
+    if t == "U":
+        from circuit_analyzer.catalogue import identifier
+        e = identifier("U", val)
+        if e is not None and e.get("categorie") != "AOP":
+            return f"{e['categorie']}\n{e['nom']}"
+        if row.get("boite_ic"):
+            return f"CI\n{val}" if val else "CI"
+    return None
+```
+Puis dans `_draw_block_row`, remplacer le choix opamp/rect :
+```python
+    y = row["y"]
+    titre = _titre_bloc(row)
+    if titre is not None:
+        d += elm.Rect(w=2.2, h=1.0).at((device_x, y)).label(titre).color(_WIRE)
+        block_right = (device_x + 1.1, y)
+    elif row["symbol"] == "opamp":
+        op = elm.Opamp().at((device_x, y)).right().color(_WIRE).fill(_OPAMP_FILL).label(
+            row["ref"], loc="center")
+        d += op
+        block_right = tuple(op.out)
+    else:
+        d += elm.Rect(w=1.8, h=0.8).at((device_x, y)).label(row["ref"])
+        block_right = (device_x + 0.9, y)
+    _enregistrer_position(d, row.get("ref"), (device_x, y))
+    # ... (fils vers colonnes + moignons : INCHANGÉS) ...
+```
+
+- [ ] **Step 4 : Vérifier le vert + non-régression**
+
+Run : `PYTHONUTF8=1 python -m pytest tests/test_puce_drawing.py -q`
+Expected : PASS. Le 741/AOP reste en triangle (`_titre_bloc`→None).
+
+- [ ] **Step 5 : Commit**
+
+```bash
+git add gui/circuit_viewer.py tests/test_puce_drawing.py
+git commit -m "fix(gui): bloc multi-actifs connecteur/IC en boite etiquetee honnete (jamais un faux AOP)"
+```
+
+---
+
+### Task 8 : Jumper 2 broches — symbole correct + re-boucle visuelle (défaut #3)
+
+**Contexte :** `_SYMBOL_ELM["jumper"] = elm.Jumper` plante (`elm.Jumper` n'a pas de
+`.to()`, ce n'est pas un élément 2 bornes). Le test T4 ne vérifiait que le mapping
+du dict, pas le rendu réel → le crash est passé inaperçu.
+
+**Files :**
+- Modify : `gui/circuit_viewer.py` (`_SYMBOL_ELM["jumper"]`)
+- Test : `tests/test_puce_drawing.py`
+- Boucle visuelle finale : script scratch, PNG inspectés.
+
+- [ ] **Step 1 : Test rouge (qui REND vraiment)**
+
+```python
+# tests/test_puce_drawing.py  (ajouter)
+def test_jumper_2_broches_se_dessine_sans_crash():
+    import schemdraw
+    from gui import circuit_viewer as cv
+    row = {"type": "J", "value": "JMP", "boite_ic": False, "ref": "JP1",
+           "symbol": "jumper", "y": 0.0, "pins": [("1", "A"), ("2", "B")], "stubs": []}
+    with schemdraw.Drawing(show=False) as d:
+        d._comp_positions = {}; d._z_hitboxes = []; d._mode_detaille = False
+        cv._draw_two_pin_row(d, row, {"A": 0.0, "B": 2.0}, "top", None)  # ne doit PAS lever
+```
+
+- [ ] **Step 2 : Vérifier l'échec**
+
+Run : `PYTHONUTF8=1 python -m pytest tests/test_puce_drawing.py -q -k jumper_2_broches`
+Expected : FAIL (`AttributeError: 'Jumper' object has no attribute 'to'` ou équivalent).
+
+- [ ] **Step 3 : Implémentation**
+
+`gui/circuit_viewer.py` — `elm.Jumper` n'est pas un élément 2 bornes ; le remplacer
+par `elm.Switch` (interrupteur/lien 2 bornes honnête pour un cavalier) :
+```python
+    "jumper": elm.Switch,
+```
+
+- [ ] **Step 4 : Vérifier le vert**
+
+Run : `PYTHONUTF8=1 python -m pytest tests/test_puce_drawing.py -q`
+Expected : PASS.
+
+- [ ] **Step 5 : Re-boucle visuelle finale (exigence boss)**
+
+Script scratch (hors dépôt, DPI ~110, PNG supprimés au fur et à mesure — disque
+serré) : re-rendre sur les 4 cartes les 5 cas de T5 — (a) résistance R-code (valeur
+affichée), (b) connecteur multi-broches (boîte « Connecteur (…) »), (c) jumper 2
+broches (symbole, plus de crash), (d) IC nommée (boîte « CI (SI844AB) »), (e)
+régulateur 78L05 (boîte « Regulateur +5 V »). INSPECTER chaque PNG : les 5 défauts
+de T5 doivent être RÉSOLUS, canvas clair, aucun faux AOP, aucune boîte noire pour
+ces familles. Décrire dans le rapport. Supprimer PNG/scripts après.
+
+- [ ] **Step 6 : Suite complète + commit + ledger**
+
+Run : `PYTHONUTF8=1 python -m pytest -q` (avec `-p no:cacheprovider` si disque ; flake `test_500_portes_sous_budget` isolé si besoin).
+
+```bash
+git add gui/circuit_viewer.py tests/test_puce_drawing.py
+git commit -m "fix(gui): jumper 2 broches en symbole 2 bornes (elm.Switch) + re-boucle visuelle cartes reelles"
+```
+Consigner la clôture (défauts #2/#3/#4 résolus) dans `.superpowers/sdd/progress.md`.
+
+---
+
 ## Self-Review (rédaction du plan)
 
 - **Couverture spec :** R-code+valeur (T1) ✓ ; underscore+connecteurs+R-code+condo polarisé+photodiode (T2) ✓ ; catch-all IC boîte + type J + marqueur + 78L05 (T3) ✓ ; rendu boîte connecteur/IC + jumper 2 broches (T4) ✓ ; oracle corpus réel + boucle visuelle (T5) ✓. Principe « toujours des schémas » ancré dans les contraintes + T5.
