@@ -25,6 +25,7 @@ puce composée (CCLine) ne sont JAMAIS décodés ainsi, même sur une plage à
 boîtier), vérifié empiriquement sur Diag2.xml.
 """
 import math
+import re
 import unicodedata
 
 
@@ -126,6 +127,42 @@ def extraire_geometrie(item_et):
     return {'segments': segments,
             'nb_arcs': len(item_et.findall('dataarc/DataArc')),
             'nb_broches': len(item_et.findall('datapin/DataPin'))}
+
+
+def _ohms_vers_str(ohms: float) -> str:
+    """@brief Ohms -> chaîne d'ingénierie ('81', '3.3k', '390k')."""
+    if ohms >= 1_000_000:
+        s, suf = ohms / 1_000_000, 'M'
+    elif ohms >= 1_000:
+        s, suf = ohms / 1_000, 'k'
+    else:
+        s, suf = ohms, ''
+    return f"{s:g}{suf}"
+
+
+def decoder_valeur_resistance(nom: str) -> str:
+    """@brief Valeur d'une résistance depuis son NOM ERetroDesign 'R <code>'.
+
+    Notation résistance standard : EIA (dernier chiffre = multiplicateur),
+    'R'-décimal (R = virgule), 'RINF' = non peuplée. Repli gracieux : un code
+    indécodable ou aberrant (>100 MΩ) est rendu BRUT — jamais une valeur inventée.
+
+    @param nom Nom brut ('R 810', 'R810', 'R 3R90', 'RINF').
+    @return str Valeur pour Composant.value ('81', '1k', '3.9', 'open'), ou '' si pas une résistance.
+    """
+    code = re.sub(r'(?i)^r\s*', '', (nom or '').strip())
+    if not code:
+        return ''
+    if code.upper() == 'INF':
+        return 'open'
+    m = re.fullmatch(r'(?i)(\d+)R(\d+)', code)      # 3R90 -> 3.9
+    if m:
+        return f"{m.group(1)}.{m.group(2)}".rstrip('0').rstrip('.')
+    if code.isdigit() and len(code) >= 2:
+        ohms = int(code[:-1]) * (10 ** int(code[-1]))
+        if ohms <= 100_000_000:
+            return _ohms_vers_str(ohms)
+    return code                                     # aberrant/indécodable -> brut
 
 
 def _bbox(segs):
