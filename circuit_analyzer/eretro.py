@@ -38,7 +38,7 @@ def normaliser_nom(nom: str) -> str:
     """
     sans_accents = ''.join(c for c in unicodedata.normalize('NFD', nom)
                            if unicodedata.category(c) != 'Mn')
-    return ' '.join(sans_accents.lower().split())
+    return ' '.join(sans_accents.replace('_', ' ').lower().split())
 
 
 _PLAN_D = {'A': 'A', 'K': 'K', '1': 'A', '2': 'K',
@@ -63,6 +63,8 @@ _MAPPING_ERETRO = {
     'mosfet p1': ('M', _PLAN_M),
     'fusible': ('F', None),
     'relais 2rt': ('K', {}),
+    'condensateur polarise': ('C', None),
+    'photodiode': ('D', _PLAN_D),
 }
 
 
@@ -82,6 +84,13 @@ def mapper_nom(nom: str):
     cle = normaliser_nom(nom)
     if cle in _MAPPING_ERETRO:
         return _MAPPING_ERETRO[cle]
+    # Connecteurs/jumpers/bornes -> type dédié 'J' (dialecte réel).
+    if any(mot in cle for mot in ('connect', 'jumper', 'borne')):
+        return ('J', None)
+    # Résistance 'R <code>' : R suivi d'un chiffre, ou 'RINF'. 'RELAIS' (lettre
+    # après R) ne matche pas ; l'exact 'relais 2rt' est déjà intercepté au-dessus.
+    if re.match(r'r\s*(\d|inf)', cle):
+        return ('R', None)
     from circuit_analyzer.catalogue import identifier
     if identifier('U', nom) is not None:
         return ('U', {})
