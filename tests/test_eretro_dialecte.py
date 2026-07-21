@@ -40,3 +40,30 @@ def test_mapper_nom_pas_de_faux_positif_r(nom):
         assert corr[0] == "K"
     else:
         assert corr[0] == "R"
+
+
+# ── Task 3 : valeur R-code + catch-all IC + marqueur boîte + 78L05 ───────────
+
+from circuit_analyzer.composant import Composant
+
+
+def test_composant_boite_ic_defaut_false():
+    assert Composant(ref="U1", type="U", pins={}).boite_ic is False
+
+
+def test_ic_nommee_multibroches_devient_boite_ic():
+    # helpers _item/_pin/_boardsch/_lire réutilisés depuis test_eretro.
+    from tests.test_eretro import _item, _pin, _boardsch, _lire
+    pins = [_pin(refs=[f'n{i}']) for i in range(8)]
+    item = _item('SI844AB', pins=pins)          # nom inconnu, 8 broches, pas de forme franche
+    comps = _lire(_boardsch([item], []))
+    c = comps[0]
+    assert c.type == 'U' and c.boite_ic is True and c.value == 'SI844AB'
+
+
+def test_rcode_porte_sa_valeur_decodee():
+    from tests.test_eretro import _item, _pin, _boardsch, _lire
+    item = _item('R 1001', pins=[_pin(refs=['a']), _pin(refs=['b'])])
+    comps = _lire(_boardsch([item], []))
+    c = comps[0]
+    assert c.type == 'R' and c.value == '1k'

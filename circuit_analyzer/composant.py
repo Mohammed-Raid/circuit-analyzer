@@ -112,12 +112,16 @@ class Composant:
         value: valeur optionnelle (ex: '10k', '100nF')
         par_forme : True si le type a été déduit de la forme du symbole
                     (jamais pour un type résolu par nom → jamais un vrai AOP)
+        boite_ic : True si le type a été déduit du catch-all IC (nom réel
+                   non reconnu, ≥3 broches) ou d'un connecteur J — rendu en
+                   boîte neutre étiquetée du nom, jamais un faux AOP.
     """
     ref:   str
     type:  str
     pins:  dict[str, str]
     value: str = ''
     par_forme: bool = False
+    boite_ic: bool = False
 
     @property
     def net1(self) -> str:

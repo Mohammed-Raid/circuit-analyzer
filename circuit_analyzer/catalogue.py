@@ -90,6 +90,9 @@ _SUFFIXES_U = {
                {"1": "IN", "2": "GND", "3": "OUT"}, alias=True),
     "7812": _e("Regulateur +12 V", "7812",
                {"1": "IN", "2": "GND", "3": "OUT"}, alias=True),
+    # NON-aliasée : le pinout 78L05 (TO-92) est l'INVERSE du 7805 (TO-220) —
+    # on ne renomme donc pas les broches, la boîte reste étiquetée par le nom.
+    "78L05": _e("Regulateur +5 V", "78L05", None),
 }
 
 _REPLI_74HC = _e("Logique 74HC", "74HC (famille)", None)

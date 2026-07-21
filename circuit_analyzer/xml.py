@@ -1373,6 +1373,18 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             if forme is not None:
                 correspondance, par_forme = forme, True
 
+        boite_ic = False
+        # Catch-all IC : nom réel (composant de premier niveau, pas un fils de
+        # puce composée) et suffisamment de broches pour être une vraie IC
+        # (pas une forme franche R/C/D/Q déjà tranchée ci-dessus) -> boîte IC
+        # honnête étiquetée du nom, jamais une boîte noire X muette ni un faux
+        # AOP. Seuil (>=6) volontairement au-dessus des passifs/transfos à
+        # petit nombre de broches déjà couverts ailleurs (non-régression
+        # test_import_inconnu_reste_boite_x : 'transfo' 4 broches reste X).
+        if (correspondance is None and elem.get('puce') is None
+                and nom.strip() and len(elem['pins']) >= 6):
+            correspondance, boite_ic = ('U', {}), True
+
         if correspondance is None:
             # Composant inconnu : on le garde sous type 'X' pour ne pas perdre ses connexions
             ref = generer_ref('X', elem)
@@ -1417,8 +1429,22 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
                 f"{ref} ({nom}): broches critiques non connectées : {', '.join(manquantes)}"
             )
 
+        valeur = elem['value']
+        # Connecteur J et IC boîte catch-all : étiquette = nom réel (le champ
+        # value ERetroDesign est vide pour ces familles — sinon la boîte
+        # s'afficherait « CI () »).
+        if not valeur and (boite_ic or type_prefix == 'J'):
+            valeur = nom
+            boite_ic = True
+        # Résistance R-code : valeur décodée depuis le nom si value vide.
+        if type_prefix == 'R' and not valeur:
+            v = eretro.decoder_valeur_resistance(nom)
+            if v:
+                valeur = v
+
         composants.append(Component(ref=ref, type=type_prefix, pins=broches,
-                                    value=elem['value'], par_forme=par_forme))
+                                    value=valeur, par_forme=par_forme,
+                                    boite_ic=boite_ic))
         if par_forme:
             composants.warnings.append(
                 f"Composant '{nom}' (id={cid}) typé par sa forme (dessin) "
