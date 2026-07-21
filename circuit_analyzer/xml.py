@@ -1417,7 +1417,8 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
                 f"{ref} ({nom}): broches critiques non connectées : {', '.join(manquantes)}"
             )
 
-        composants.append(Component(ref=ref, type=type_prefix, pins=broches, value=elem['value']))
+        composants.append(Component(ref=ref, type=type_prefix, pins=broches,
+                                    value=elem['value'], par_forme=par_forme))
         if par_forme:
             composants.warnings.append(
                 f"Composant '{nom}' (id={cid}) typé par sa forme (dessin) "

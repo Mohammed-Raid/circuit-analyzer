@@ -578,8 +578,17 @@ def _puce_ilot(ilot, graph):
     if comp.type != "U":
         return None
     entree = identifier("U", getattr(comp, "value", ""))
-    if entree is None or entree.get("categorie") == "AOP":
-        return None          # inconnu -> comportement actuel ; 741 -> AOP
+    if entree is not None and entree.get("categorie") == "AOP":
+        return None                     # 741… → détecteurs AOP dédiés
+    if entree is None:
+        if getattr(comp, "par_forme", False):
+            # Reconnu par forme (arc + 3 broches = porte logique), hors
+            # catalogue : boîte IC NEUTRE honnête (jamais le triangle d'AOP de
+            # la vue générique "U"→"opamp"). Le vrai AOP passe par le nom, pas
+            # par la forme, donc n'est jamais marqué par_forme → intact.
+            val = getattr(comp, "value", "") or "?"
+            return (actifs[0], {"categorie": "CI", "nom": val, "broches": None})
+        return None                     # inconnu ordinaire → comportement actuel
     return (actifs[0], entree)
 
 

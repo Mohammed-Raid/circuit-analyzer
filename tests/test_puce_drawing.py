@@ -57,6 +57,36 @@ def test_puce_ilot_ignore_les_aop_et_inconnus():
     assert cv._puce_ilot(ilot, g) is None     # aliasé AOP -> chemins AOP
 
 
+def test_puce_ilot_gate_par_forme_donne_boite_ic_neutre():
+    from circuit_analyzer.composant import Composant, construire_graphe
+    comp = Composant(ref="U1", type="U", pins={"1": "A", "2": "B", "3": "Y"},
+                     value="4000", par_forme=True)
+    g = construire_graphe([comp])
+    trouve = cv._puce_ilot({"composants": ["U1"]}, g)
+    assert trouve is not None                       # plus jamais None → opamp
+    ref, entree = trouve
+    assert ref == "U1"
+    assert entree["categorie"] != "AOP"             # boîte neutre, pas un AOP
+    # l'entrée neutre est bien dessinable par le drawer boîte IC existant
+    import schemdraw, schemdraw.elements as elm
+    from gui import puce_schematic
+    ci = {"U1": {"type": "U", "value": "4000", "pins": comp.pins}}
+    with schemdraw.Drawing(show=False) as d:
+        d._comp_positions = {}; d._z_hitboxes = []; d._mode_detaille = False
+        res = puce_schematic.dessiner_puce(d, ref, entree, ci)
+    assert set(res["nets"]) == {"A", "B", "Y"}      # 3 broches câblées, boîte IC
+    assert "U1" in d._comp_positions                # cliquable
+
+
+def test_puce_ilot_u_inconnu_sans_forme_reste_none():
+    # Contraste : sans le marqueur, comportement inchangé (retombe en vue générique).
+    from circuit_analyzer.composant import Composant, construire_graphe
+    comp = Composant(ref="U1", type="U", pins={"1": "A", "2": "B", "3": "Y"},
+                     value="4000", par_forme=False)
+    g = construire_graphe([comp])
+    assert cv._puce_ilot({"composants": ["U1"]}, g) is None
+
+
 def test_make_puce_fig_deux_vues_et_z_cliquables():
     comps = lire_xml("circuits_industriels/reel_555_astable.xml")
     g = construire_graphe(comps)

@@ -371,3 +371,23 @@ def test_inconnu_sans_forme_franche_reste_boite_noire():
     item = _item('Truc', pins=[_pin(refs=['a']), _pin(refs=['b'])], segments=[])
     comps = _lire(_boardsch([item], []))
     assert comps[0].type == 'X'
+
+
+# ── Task 5 : marqueur par_forme (rendu boîte IC neutre, jamais un AOP) ──────
+
+def test_composant_par_forme_defaut_false():
+    from circuit_analyzer.composant import Composant
+    c = Composant(ref="R1", type="R", pins={"1": "a", "2": "b"})
+    assert c.par_forme is False
+
+
+def test_forme_reconnue_pose_le_marqueur_par_forme():
+    # Nom inconnu + zigzag 2 broches → R, marqué par_forme ; un nom connu ne l'est pas.
+    segs = [(502, 500, 749, 500), (749, 500, 799, 402), (800, 401, 901, 596),
+            (903, 599, 997, 401), (999, 403, 1099, 601), (1101, 602, 1196, 402),
+            (1198, 401, 1249, 499), (1251, 499, 1499, 499)]
+    inconnu = _item('ZigMachin', pins=[_pin(refs=['n1']), _pin(refs=['n2'])],
+                    segments=segs)
+    comps = _lire(_boardsch([inconnu], []))
+    zig = next(c for c in comps if c.type == 'R')
+    assert zig.par_forme is True

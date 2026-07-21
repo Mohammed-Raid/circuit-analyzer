@@ -110,11 +110,14 @@ class Composant:
         pins : dictionnaire {nom_broche → nœud_électrique}
                ex: {'1': 'NET_IN', '2': 'GND'}
         value: valeur optionnelle (ex: '10k', '100nF')
+        par_forme : True si le type a été déduit de la forme du symbole
+                    (jamais pour un type résolu par nom → jamais un vrai AOP)
     """
     ref:   str
     type:  str
     pins:  dict[str, str]
     value: str = ''
+    par_forme: bool = False
 
     @property
     def net1(self) -> str:
