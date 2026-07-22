@@ -2654,11 +2654,31 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top", hitboxes=None):
     _hit(0.0, 1.4)
 
 
+def _titre_bloc(row):
+    """@brief Étiquette honnête d'un bloc multi-broches NON-AOP (connecteur/IC
+    nommée/régulateur catalogué), ou None pour garder le rendu AOP/bloc actuel."""
+    t, val = row.get("type"), row.get("value") or ""
+    if t == "J":
+        return f"Connecteur\n{val}" if val else "Connecteur"
+    if t == "U":
+        from circuit_analyzer.catalogue import identifier
+        e = identifier("U", val)
+        if e is not None and e.get("categorie") != "AOP":
+            return f"{e['categorie']}\n{e['nom']}"
+        if row.get("boite_ic"):
+            return f"CI\n{val}" if val else "CI"
+    return None
+
+
 def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
     """@brief Composant multi-broches : AOP (triangle) ou bloc, place dans la voie
     dediee a droite (device_x), broches cablees vers les colonnes."""
     y = row["y"]
-    if row["symbol"] == "opamp":
+    titre = _titre_bloc(row)
+    if titre is not None:
+        d += elm.Rect(w=2.2, h=1.0).at((device_x, y)).label(titre).color(_WIRE)
+        block_right = (device_x + 1.1, y)    # bord droit du bloc
+    elif row["symbol"] == "opamp":
         op = elm.Opamp().at((device_x, y)).right().color(_WIRE).fill(_OPAMP_FILL).label(
             row["ref"], loc="center")
         d += op

@@ -279,3 +279,43 @@ def test_puce_ilot_ic_nommee_donne_boite_ci():
 def test_symbole_jumper_2_broches():
     import schemdraw.elements as elm
     assert cv._SYMBOL_ELM.get(cv._schematic_symbol("J")) is elm.Jumper
+
+
+def test_titre_bloc_connecteur_ic_et_aop():
+    from gui.circuit_viewer import _titre_bloc
+    assert _titre_bloc({"type": "J", "value": "Borne"}).startswith("Connecteur")
+    assert "SI844AB" in _titre_bloc({"type": "U", "value": "SI844AB", "boite_ic": True})
+    reg = _titre_bloc({"type": "U", "value": "78L05CP", "boite_ic": False})
+    assert reg is not None and "Regulateur" in reg
+    # vrai AOP -> None (garde le triangle d'AOP)
+    assert _titre_bloc({"type": "U", "value": "741", "boite_ic": False}) is None
+    # U inconnu sans marqueur -> None (non-régression, garde le comportement actuel)
+    assert _titre_bloc({"type": "U", "value": "", "boite_ic": False}) is None
+
+
+def test_draw_block_row_ic_multiactive_rend_une_boite_pas_un_faux_aop():
+    # IC catch-all (boite_ic) multi-broches : le rendu generique la typait "opamp"
+    # -> faux triangle d'AOP. Doit desormais etre une boite etiquetee.
+    row = {"type": "U", "value": "SI844AB", "boite_ic": True, "ref": "U1",
+           "symbol": "opamp", "y": 0.0,
+           "pins": [("1", "A"), ("2", "B"), ("3", "C")], "stubs": []}
+    with schemdraw.Drawing(show=False) as d:
+        d._comp_positions = {}
+        d._z_hitboxes = []
+        d._mode_detaille = False
+        cv._draw_block_row(d, row, [], {}, 4.0)
+        noms = [type(e).__name__ for e in d.elements]
+    assert "Opamp" not in noms and "Rect" in noms
+
+
+def test_draw_block_row_connecteur_rend_une_boite_pas_un_aop():
+    row = {"type": "J", "value": "Borne", "boite_ic": True, "ref": "J1",
+           "symbol": "jumper", "y": 0.0,
+           "pins": [("1", "A"), ("2", "B"), ("3", "C")], "stubs": []}
+    with schemdraw.Drawing(show=False) as d:
+        d._comp_positions = {}
+        d._z_hitboxes = []
+        d._mode_detaille = False
+        cv._draw_block_row(d, row, [], {}, 4.0)
+        noms = [type(e).__name__ for e in d.elements]
+    assert "Opamp" not in noms and "Rect" in noms
