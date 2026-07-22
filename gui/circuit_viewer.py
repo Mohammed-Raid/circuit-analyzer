@@ -329,6 +329,7 @@ def _build_island_model(ilot: dict, graph, comp_info: dict) -> dict:
             })
 
     # Composants multi-broches (AOP, transistors) : pas des aretes 2 bornes.
+    non_peuples = []
     for ref in sorted(island_refs - consumed):
         info = _info_for_ref(ref, graph, comp_info)
         pins = dict(info.get("pins", {}) or {})
@@ -345,6 +346,11 @@ def _build_island_model(ilot: dict, graph, comp_info: dict) -> dict:
                 "refs": [ref], "composition": ref,
             })
             continue
+        if len(pins) == 0:
+            # Composant non peuple / non connecte (DNP : RINF/'open' sans broche) :
+            # ni arete, ni 1-broche, ni bloc -> liste "non peuples" plutot que "Ilot vide".
+            non_peuples.append(ref)
+            continue
         if len(pins) <= 2:
             continue
         units.append({
@@ -355,7 +361,17 @@ def _build_island_model(ilot: dict, graph, comp_info: dict) -> dict:
             "boite_ic": info.get("boite_ic", False),
         })
 
-    return {"label": ilot.get("label", "Ilot"), "components": units}
+    return {"label": ilot.get("label", "Ilot"), "components": units,
+            "non_peuples": non_peuples}
+
+
+def _formater_non_peuples(refs, par_ligne=6):
+    """@brief Bloc texte listant des composants non peuples (DNP) en lignes courtes."""
+    lignes = ["Composants non peuples (DNP)"]
+    for i in range(0, len(refs), par_ligne):
+        lignes.append("   ".join(refs[i:i + par_ligne]))
+    lignes.append("(aucune connexion)")
+    return "\n".join(lignes)
 
 
 def _build_dipole_model(refs, graph, comp_info, label="Detail Z") -> dict:
@@ -1997,7 +2013,9 @@ def _make_island_fig(model, matches=None, detaille: bool = False):
     fig._comp_positions = {}   # registre ref -> position (renseigné par le drawer)
 
     if not components:
-        ax.text(0.5, 0.5, "Ilot vide", ha="center", va="center",
+        nonp = model.get("non_peuples") or []
+        texte = _formater_non_peuples(nonp) if nonp else "Ilot vide"
+        ax.text(0.5, 0.5, texte, ha="center", va="center",
                 transform=ax.transAxes, fontsize=13, color=theme.SCHEMA_COLORS["LEGENDE"])
         ajuster_labels(fig)
         return fig

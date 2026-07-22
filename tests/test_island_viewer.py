@@ -135,6 +135,37 @@ def test_ilot_une_broche_ne_rend_pas_ilot_vide():
     assert any("J7" in t or "Connecteur" in t for t in textes)
 
 
+def test_ilot_tout_non_connecte_liste_les_non_peuples():
+    # Ilot compose uniquement de resistances DNP non peuplees (RINF/'open',
+    # pins={}) : ni arete, ni 1-broche, ni bloc -> doit alimenter la liste
+    # "non_peuples", jamais un ilot vide silencieux.
+    composants = [
+        Composant("R1", "R", {}, "open"),
+        Composant("R2", "R", {}, "open"),
+    ]
+    graphe = construire_graphe(composants)
+    ilot = {"label": "I", "composants": ["R1", "R2"]}
+
+    model = _build_island_model(ilot, graphe, _comp_info(composants))
+
+    assert model["components"] == []
+    assert model["non_peuples"] == ["R1", "R2"]
+
+
+def test_ilot_non_peuple_affiche_la_liste_pas_ilot_vide():
+    composants = [
+        Composant("R1", "R", {}, "open"),
+        Composant("R2", "R", {}, "open"),
+    ]
+    graphe = construire_graphe(composants)
+    ilot = {"label": "I", "composants": ["R1", "R2"]}
+
+    fig = _make_island_fig(_build_island_model(ilot, graphe, _comp_info(composants)))
+    textes = " ".join(t.get_text() for t in fig.axes[0].texts)
+    assert "Ilot vide" not in textes
+    assert "non peuples" in textes and "R1" in textes
+
+
 def test_dipole_model_exposes_raw_components_with_real_symbols():
     composants = [
         Composant("C3", "C", {"1": "GND", "2": "N"}, "1u"),
