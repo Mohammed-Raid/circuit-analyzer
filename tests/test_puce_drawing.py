@@ -278,7 +278,9 @@ def test_puce_ilot_ic_nommee_donne_boite_ci():
 
 def test_symbole_jumper_2_broches():
     import schemdraw.elements as elm
-    assert cv._SYMBOL_ELM.get(cv._schematic_symbol("J")) is elm.Jumper
+    # elm.Jumper n'est pas un element 2 bornes (pas de .to()) -> plante au rendu.
+    # elm.Switch est l'element 2 bornes honnete pour un cavalier.
+    assert cv._SYMBOL_ELM.get(cv._schematic_symbol("J")) is elm.Switch
 
 
 def test_titre_bloc_connecteur_ic_et_aop():
@@ -319,3 +321,13 @@ def test_draw_block_row_connecteur_rend_une_boite_pas_un_aop():
         cv._draw_block_row(d, row, [], {}, 4.0)
         noms = [type(e).__name__ for e in d.elements]
     assert "Opamp" not in noms and "Rect" in noms
+
+
+def test_jumper_2_broches_se_dessine_sans_crash():
+    import schemdraw
+    from gui import circuit_viewer as cv
+    row = {"type": "J", "value": "JMP", "boite_ic": False, "ref": "JP1",
+           "symbol": "jumper", "y": 0.0, "pins": [("1", "A"), ("2", "B")], "stubs": []}
+    with schemdraw.Drawing(show=False) as d:
+        d._comp_positions = {}; d._z_hitboxes = []; d._mode_detaille = False
+        cv._draw_two_pin_row(d, row, {"A": 0.0, "B": 2.0}, "top", None)  # ne doit PAS lever

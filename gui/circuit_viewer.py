@@ -2544,7 +2544,7 @@ _SYMBOL_ELM = {
     "diode": elm.Diode,
     "fuse": elm.Fuse,
     "switch": elm.Switch,
-    "jumper": elm.Jumper,
+    "jumper": elm.Switch,
 }
 
 
