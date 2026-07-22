@@ -1430,11 +1430,16 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             )
 
         valeur = elem['value']
-        # Connecteur J et IC boîte catch-all : étiquette = nom réel (le champ
-        # value ERetroDesign est vide pour ces familles — sinon la boîte
-        # s'afficherait « CI () »).
-        if not valeur and (boite_ic or type_prefix == 'J'):
+        # U et J sans <value> : le <Name> porte le n° de pièce (78L05CP…) ou le
+        # libellé connecteur. On le préserve dans value pour que la puce reste
+        # IDENTIFIABLE au rendu (identifier() travaille sur value) et que la
+        # boîte ne s'affiche pas vide.
+        if type_prefix in ('U', 'J') and not valeur:
             valeur = nom
+        # Boîte neutre étiquetée : connecteur J et IC catch-all hors catalogue.
+        # (Un régulateur catalogué reste boite_ic=False → _puce_ilot l'identifie
+        # via le catalogue AVANT la branche boîte neutre.)
+        if type_prefix == 'J' or boite_ic:
             boite_ic = True
         # Résistance R-code : valeur décodée depuis le nom si value vide.
         if type_prefix == 'R' and not valeur:

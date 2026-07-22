@@ -67,3 +67,18 @@ def test_rcode_porte_sa_valeur_decodee():
     comps = _lire(_boardsch([item], []))
     c = comps[0]
     assert c.type == 'R' and c.value == '1k'
+
+
+# ── Task 6 : le n° de pièce survit dans value jusqu'au rendu ─────────────────
+
+def test_78L05_garde_son_identite_de_piece():
+    from tests.test_eretro import _item, _pin, _boardsch, _lire
+    from circuit_analyzer.catalogue import identifier
+    pins = [_pin(refs=[f'n{i}']) for i in range(3)]
+    item = _item('78L05CP', pins=pins)          # nom = n° de pièce, value XML vide
+    comps = _lire(_boardsch([item], []))
+    c = comps[0]
+    assert c.type == 'U'
+    # le n° de pièce survit dans value -> identifiable au rendu comme régulateur
+    assert c.value == '78L05CP'
+    assert identifier('U', c.value)['categorie'] == 'Regulateur +5 V'

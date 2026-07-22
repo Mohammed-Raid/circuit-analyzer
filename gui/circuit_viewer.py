@@ -265,6 +265,7 @@ def _info_for_ref(ref: str, graph, comp_info: dict) -> dict:
     info.setdefault("type", getattr(comp, "type", "?"))
     info.setdefault("value", getattr(comp, "value", ""))
     info.setdefault("pins", getattr(comp, "pins", {}))
+    info.setdefault("boite_ic", getattr(comp, "boite_ic", False))
     return info
 
 
@@ -337,6 +338,7 @@ def _build_island_model(ilot: dict, graph, comp_info: dict) -> dict:
             "value": info.get("value", ""), "pins": pins,
             "symbol": _schematic_symbol(info.get("type", "?")),
             "refs": [ref], "composition": ref,
+            "boite_ic": info.get("boite_ic", False),
         })
 
     return {"label": ilot.get("label", "Ilot"), "components": units}
@@ -2365,6 +2367,7 @@ def _make_row(comp, y, net_pins, col_nets):
         "refs": comp.get("refs", [comp.get("ref")]),
         "composition": comp.get("composition", comp.get("ref", "")),
         "detail_info": comp.get("detail_info", {}),
+        "boite_ic": comp.get("boite_ic", False),
     }
 
 
