@@ -257,15 +257,16 @@ def _is_rail_net(net: str) -> bool:
 
 def _info_for_ref(ref: str, graph, comp_info: dict) -> dict:
     info = dict(comp_info.get(ref, {}) or {})
+    comp = getattr(graph, "graph", {}).get("components", {}).get(ref)
+    if comp is not None:
+        info.setdefault("boite_ic", getattr(comp, "boite_ic", False))
     if info.get("pins"):
         return info
-    comp = getattr(graph, "graph", {}).get("components", {}).get(ref)
     if comp is None:
         return info
     info.setdefault("type", getattr(comp, "type", "?"))
     info.setdefault("value", getattr(comp, "value", ""))
     info.setdefault("pins", getattr(comp, "pins", {}))
-    info.setdefault("boite_ic", getattr(comp, "boite_ic", False))
     return info
 
 

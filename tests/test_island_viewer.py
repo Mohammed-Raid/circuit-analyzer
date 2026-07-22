@@ -84,6 +84,25 @@ def test_island_model_combines_series_passives_into_one_z():
     assert set(zs[0]["refs"]) == {"C3", "R8"}
 
 
+def test_island_model_propage_boite_ic_pour_composant_multi_broches():
+    # Chemin reel (tab_analyze.py/tab_draw.py) : comp_info porte deja pins non
+    # vide (via _comp_info), SANS boite_ic. _info_for_ref doit quand meme lire
+    # boite_ic sur le composant brut, meme quand `info["pins"]` fait retourner
+    # tot -- sinon la plomberie boite_ic livree par T6 est morte (T7 la lit
+    # via l'unite du modele, jamais directement sur le composant brut).
+    composants = [
+        Composant("U1", "U", {"1": "A", "2": "B", "3": "GND"}, "XYZ123",
+                  boite_ic=True),
+    ]
+    graphe = construire_graphe(composants)
+    ilot = {"label": "I", "composants": ["U1"]}
+
+    model = _build_island_model(ilot, graphe, _comp_info(composants))
+
+    u1 = next(u for u in model["components"] if u["ref"] == "U1")
+    assert u1["boite_ic"] is True
+
+
 def test_dipole_model_exposes_raw_components_with_real_symbols():
     composants = [
         Composant("C3", "C", {"1": "GND", "2": "N"}, "1u"),
