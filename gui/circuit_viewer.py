@@ -332,6 +332,19 @@ def _build_island_model(ilot: dict, graph, comp_info: dict) -> dict:
     for ref in sorted(island_refs - consumed):
         info = _info_for_ref(ref, graph, comp_info)
         pins = dict(info.get("pins", {}) or {})
+        if len(pins) == 1:
+            # Connecteur 1 broche (Borne reelle) : ni arete 2-bornes ni bloc >2 ->
+            # emis explicitement en unite, sinon l'ilot se rend vide. Le dispatch
+            # (_draw_island_schematic) route les lignes != 2 broches vers
+            # _draw_block_row -> boite etiquetee honnete + moignon vers le net.
+            units.append({
+                "ref": ref, "type": info.get("type", "?"),
+                "value": info.get("value", ""), "pins": pins,
+                "symbol": _schematic_symbol(info.get("type", "?")),
+                "boite_ic": info.get("boite_ic", False),
+                "refs": [ref], "composition": ref,
+            })
+            continue
         if len(pins) <= 2:
             continue
         units.append({

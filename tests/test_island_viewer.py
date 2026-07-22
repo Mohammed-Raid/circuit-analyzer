@@ -103,6 +103,38 @@ def test_island_model_propage_boite_ic_pour_composant_multi_broches():
     assert u1["boite_ic"] is True
 
 
+def test_ilot_composant_une_broche_emet_une_unite():
+    # Borne reelle = connecteur 1 broche : doit produire une unite de rendu,
+    # jamais un ilot vide.
+    composants = [
+        Composant("J7", "J", {"1": "NET70"}, "Borne"),
+    ]
+    graphe = construire_graphe(composants)
+    ilot = {"label": "I", "composants": ["J7"]}
+
+    model = _build_island_model(ilot, graphe, _comp_info(composants))
+    unites = model["components"]
+
+    assert len(unites) == 1
+    u = unites[0]
+    assert u["ref"] == "J7" and u["type"] == "J"
+    assert u["value"] == "Borne"
+    assert list(u["pins"].values()) == ["NET70"]
+
+
+def test_ilot_une_broche_ne_rend_pas_ilot_vide():
+    composants = [
+        Composant("J7", "J", {"1": "NET70"}, "Borne"),
+    ]
+    graphe = construire_graphe(composants)
+    ilot = {"label": "I", "composants": ["J7"]}
+
+    fig = _make_island_fig(_build_island_model(ilot, graphe, _comp_info(composants)))
+    textes = [t.get_text() for t in fig.axes[0].texts]
+    assert "Ilot vide" not in textes
+    assert any("J7" in t or "Connecteur" in t for t in textes)
+
+
 def test_dipole_model_exposes_raw_components_with_real_symbols():
     composants = [
         Composant("C3", "C", {"1": "GND", "2": "N"}, "1u"),
