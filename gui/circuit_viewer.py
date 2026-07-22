@@ -281,7 +281,10 @@ def _build_island_model(ilot: dict, graph, comp_info: dict) -> dict:
     @param ilot Ilot detecte (cle 'composants' = refs bruts).
     @param graph Graphe brut (porte graph['components']).
     @param comp_info Dict {ref -> {type, value, pins}}.
-    @return dict {label, components} ou chaque unite porte refs + composition.
+    @return dict {label, components, non_peuples} : chaque unite de `components`
+        porte refs + composition ; `non_peuples` liste les refs des composants
+        de l'ilot sans broche (DNP non connectes), rendus en liste plutot qu'en
+        symbole.
     """
     from circuit_analyzer import impedance
 
@@ -2707,7 +2710,11 @@ def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
     y = row["y"]
     titre = _titre_bloc(row)
     if titre is not None:
-        d += elm.Rect(w=2.2, h=1.0).at((device_x, y)).label(titre).color(_WIRE)
+        # Etiquette AU-DESSUS de la boite (loc="top") : centree dans la boite,
+        # elle chevauchait les labels de net qui sortent a DROITE des boites
+        # connecteur/IC multi-broches (audit cartes reelles : "connecteur
+        # traversant" 13 broches). Au-dessus, elle est degagee du faisceau droit.
+        d += elm.Rect(w=2.2, h=1.0).at((device_x, y)).label(titre, loc="top").color(_WIRE)
         block_right = (device_x + 1.1, y)    # bord droit du bloc
     elif row["symbol"] == "opamp":
         op = elm.Opamp().at((device_x, y)).right().color(_WIRE).fill(_OPAMP_FILL).label(
@@ -2726,16 +2733,18 @@ def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
         # les marques +/- du triangle et encombre le milieu du schema.
         d += elm.Dot().at((x, y)).color(_WIRE)
 
-    # le moignon de sortie quitte le bord droit du symbole, jamais son centre
-    # (sinon le label de net chevauche l'etiquette ref de l'AOP) ; plusieurs
-    # moignons sont decales verticalement pour ne pas se superposer.
-    stub_dy = 0.0
-    for pin, net in row["stubs"]:
-        if _is_not_connected(net):
-            continue
-        d += elm.Line().at((block_right[0], block_right[1] + stub_dy)).right(0.6).color(_WIRE)
+    # Moignons de net a droite : eventail VERS LE BAS depuis le centre de la
+    # boite (le haut est reserve a l'etiquette loc="top" -> pas de conflit
+    # titre/labels), espacement >= hauteur d'un label de net (0.7 empilait
+    # NET15/NET16 -> 1.0), reach allonge (0.6 -> 0.9) pour degager les labels
+    # du bloc. Donne assez d'air a l'anti-collision pour converger sur les
+    # boites a nombreuses broches (connecteur traversant 13 broches).
+    stubs = [(pin, net) for pin, net in row["stubs"] if not _is_not_connected(net)]
+    _ESP_MOIGNON = 1.0
+    for k, (pin, net) in enumerate(stubs):
+        yy = block_right[1] - k * _ESP_MOIGNON
+        d += elm.Line().at((block_right[0], yy)).right(0.9).color(_WIRE)
         _draw_net_end(d, net)
-        stub_dy += 0.7
 
 
 def _component_label(comp):
