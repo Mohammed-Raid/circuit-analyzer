@@ -12,6 +12,10 @@ Primitive :
 
 from gui.theme import SCHEMA_COLORS
 
+# Couleur des composants sans symbole dedie (boite generique, brochage libre).
+# Source UNIQUE : l'editeur l'importe, aucun hex duplique.
+AUTO_COLOR = "#94a3b8"
+
 
 def rotate_pin(dx, dy, rotation):
     """@brief Tourne (dx,dy) de `rotation` degres sens horaire (0/90/180/270)."""
@@ -259,3 +263,49 @@ def def_puce(value, broches):
         "pins": pins, "default_value": value,
         "fonctions": dict(broches),
     }
+
+
+# ── Brochage libre par instance (spec 2026-07-23) ────────────────────────────
+
+BOITE_MIN_W = 80
+BOITE_MIN_H = 60
+BOITE_MARGE = 20
+
+
+def geometrie_libre(pinout):
+    """@brief Def d'une boite au brochage libre (spec 2026-07-23).
+
+    @param pinout {nom: (cote 'L'/'R'/'T'/'B', decalage signe sur ce bord)}.
+    @return def compatible COMP_DEFS, taille AUTO-AJUSTEE pour contenir les
+            broches — on ne peut jamais manquer de bord, d'ou l'absence de
+            poignee de redimensionnement.
+    """
+    lat = [abs(d) for c, d in pinout.values() if c in ("L", "R")]
+    ver = [abs(d) for c, d in pinout.values() if c in ("T", "B")]
+    h = max(BOITE_MIN_H, 2 * max(lat, default=0) + BOITE_MARGE)
+    w = max(BOITE_MIN_W, 2 * max(ver, default=0) + BOITE_MARGE)
+    w2, h2 = w // 2, h // 2
+    pins, cotes = {}, {}
+    for nom, (cote, dec) in pinout.items():
+        pins[nom] = {"L": (-w2, dec), "R": (w2, dec),
+                     "T": (dec, -h2), "B": (dec, h2)}[cote]
+        cotes[nom] = cote
+    return {"label": "", "color": AUTO_COLOR, "w": w, "h": h,
+            "pins": pins, "cotes": cotes, "default_value": ""}
+
+
+def aimanter_bord(dx, dy, w, h, pas):
+    """@brief (dx,dy) relatif au centre -> (cote, decalage aligne sur `pas`).
+
+    Bord dont la distance perpendiculaire est la plus faible. A EGALITE (coin),
+    les bords HORIZONTAUX gagnent : arbitraire, mais deterministe donc testable
+    (changer l'ordre du parcours ci-dessous suffit a changer l'arbitrage).
+    """
+    w2, h2 = w / 2, h / 2
+    d = {"L": abs(dx + w2), "R": abs(dx - w2),
+         "T": abs(dy + h2), "B": abs(dy - h2)}
+    m = min(d.values())
+    for cote in ("T", "B", "L", "R"):          # cet ordre = arbitrage du coin
+        if d[cote] == m:
+            long_ = dx if cote in ("T", "B") else dy
+            return (cote, int(round(long_ / pas) * pas))

@@ -5,8 +5,9 @@ type trace, rotation coherente, DIP catalogue, purete d'import.
 import subprocess
 import sys
 
-from gui.schematic_symbols import (def_puce, est_boite_generique, primitives,
-                                    rotate_pin)
+from gui.schematic_symbols import (aimanter_bord, def_puce,
+                                    est_boite_generique, geometrie_libre,
+                                    primitives, rotate_pin)
 
 # Géométries minimales suffisantes pour tracer (pins réels de COMP_DEFS).
 DEFS = {
@@ -102,3 +103,37 @@ def test_purete_import():
             "('tkinter', 'customtkinter', 'matplotlib')) else 0)")
     r = subprocess.run([sys.executable, "-c", code], capture_output=True)
     assert r.returncode == 0, r.stderr
+
+
+# ── Brochage libre (spec 2026-07-23) ─────────────────────────────────────────
+
+def test_boite_vide_a_la_taille_minimale():
+    d = geometrie_libre({})
+    assert d["pins"] == {}
+    assert (d["w"], d["h"]) == (80, 60)
+
+
+def test_cotes_vers_offsets_absolus():
+    d = geometrie_libre({"1": ("L", -20), "2": ("R", 20), "3": ("T", 0)})
+    w2, h2 = d["w"] // 2, d["h"] // 2
+    assert d["pins"]["1"] == (-w2, -20)     # bord gauche : le décalage est un y
+    assert d["pins"]["2"] == (w2, 20)
+    assert d["pins"]["3"] == (0, -h2)       # bord haut : le décalage est un x
+    assert d["cotes"]["3"] == "T"
+
+
+def test_boite_s_agrandit_pour_contenir_les_broches():
+    d = geometrie_libre({"1": ("L", -100)})
+    assert d["h"] >= 220                    # 2*100 + marge
+    assert d["pins"]["1"] == (-d["w"] // 2, -100)
+
+
+def test_aimantation_choisit_le_bord_le_plus_proche():
+    assert aimanter_bord(-38, 7, 80, 60, 20) == ("L", 0)
+    assert aimanter_bord(38, -13, 80, 60, 20) == ("R", -20)
+    assert aimanter_bord(11, -29, 80, 60, 20) == ("T", 20)
+
+
+def test_aimantation_au_coin_les_bords_horizontaux_gagnent():
+    # coin haut-gauche exact : distance nulle aux deux bords -> T
+    assert aimanter_bord(-40, -30, 80, 60, 20)[0] == "T"

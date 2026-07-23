@@ -14,7 +14,10 @@ from circuit_analyzer.composant import charger_bibliotheque, Composant
 from gui.fonts import FONT_FAMILY
 from gui.schematic_io import editor_to_dict, points_jonction, type_reel
 from gui.schematic_symbols import (primitives, rotate_pin as _rotate_pin,
-                                    def_puce, est_boite_generique)
+                                    def_puce, est_boite_generique,
+                                    aimanter_bord, geometrie_libre,
+                                    AUTO_COLOR as _AUTO_COLOR,
+                                    BOITE_MIN_W, BOITE_MIN_H)
 from gui.theme import (SURFACE, RAISED, OVERLAY, BORDER, TEXT, TEXT_MUTED,
                         TEXT_DIM, BLUE, ERROR, SCHEMA_COLORS)
 
@@ -62,7 +65,7 @@ COMP_DEFS: dict = {
             "pins": {"1": (0, 20)},                            "default_value": "VCC"},
 }
 
-_AUTO_COLOR = "#94a3b8"   # couleur des composants personnalisés (boîte générique)
+# _AUTO_COLOR : importé de schematic_symbols (source unique, cf. AUTO_COLOR).
 
 
 def _auto_def(name: str, pins: list) -> dict:
