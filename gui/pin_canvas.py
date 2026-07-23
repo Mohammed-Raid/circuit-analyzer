@@ -35,10 +35,12 @@ class PinCanvas(ctk.CTkFrame):
     @param on_change Callback appelé après toute mutation, avec le brochage.
     """
 
-    def __init__(self, parent, on_change=None, hauteur=190):
-        # 190 et non 260 : à 260, le bandeau d'ordre tombait sous la zone
-        # visible du formulaire défilant — invisible alors qu'il porte l'ordre
-        # de la netlist (défaut trouvé en boucle visuelle, 2026-07-23).
+    def __init__(self, parent, on_change=None, hauteur=150):
+        # Hauteur volontairement basse : le formulaire s'est allongé (valeur
+        # par défaut, modèle, taille) et tout ce qui suit le canevas — champ de
+        # nom, bandeau d'ordre — doit rester au-dessus de la ligne de flottaison.
+        # C'est le zoom-to-fit (`_echelle`) qui garantit la lisibilité, plus la
+        # hauteur : une grande boîte est réduite au lieu de déborder.
         super().__init__(parent, fg_color=CARD2)
         self._on_change = on_change
         self._brochage: list = []          # [(nom, côté, décalage)] ORDONNÉ
@@ -112,6 +114,21 @@ class PinCanvas(ctk.CTkFrame):
 
     def _centre(self) -> tuple:
         return (self._cv.winfo_width() // 2, self._cv.winfo_height() // 2)
+
+    def _echelle(self) -> float:
+        """@brief Facteur d'affichage pour que la boîte TIENNE dans le cadre.
+
+        Une taille imposée (ou un DIP-16) déborde du canevas : sans réduction
+        on ne voyait que le milieu des deux bords latéraux, ni haut ni bas du
+        rectangle (défaut trouvé en boucle visuelle). On ne grossit jamais —
+        le facteur est plafonné à 1.
+        """
+        lw, lh = self._cv.winfo_width(), self._cv.winfo_height()
+        if lw <= 1 or lh <= 1:
+            return 1.0
+        d = self._defn()
+        marge = 44          # place pour les pastilles et les libellés
+        return min(1.0, (lw - marge) / d["w"], (lh - marge) / d["h"])
 
     def _nom_libre(self) -> str:
         """@brief Plus petit entier >= 1 non utilisé (une suppression se recycle)."""
@@ -352,9 +369,10 @@ class PinCanvas(ctk.CTkFrame):
     # ── Souris / clavier ────────────────────────────────────────────────────
 
     def _boite(self, event):
-        """@brief Événement écran -> coordonnées repère BOÎTE."""
+        """@brief Événement écran -> coordonnées repère BOÎTE (échelle défaite)."""
         cx, cy = self._centre()
-        return event.x - cx, event.y - cy
+        k = self._echelle() or 1.0
+        return (event.x - cx) / k, (event.y - cy) / k
 
     def _sur_clic(self, event):
         """@brief Clic SUR une broche = sélection ; clic ailleurs = nouvelle broche."""
@@ -394,19 +412,20 @@ class PinCanvas(ctk.CTkFrame):
         if cx <= 1:
             return                      # widget pas encore dimensionné
         d = self._defn()
+        k = self._echelle()
         for p in primitives(TYPE_LIBRE, d, 0):
             if p[0] == "polygon":
-                pts = [c for x, y in p[1] for c in (cx + x, cy + y)]
+                pts = [c for x, y in p[1] for c in (cx + x * k, cy + y * k)]
                 self._cv.create_polygon(*pts, fill="", outline=AUTO_COLOR,
                                         width=2)
             elif p[0] == "text":
-                self._cv.create_text(cx + p[1][0], cy + p[1][1], text=p[2],
-                                     fill=TEXT_MUTED,
-                                     font=("Consolas", 8),
+                self._cv.create_text(cx + p[1][0] * k, cy + p[1][1] * k,
+                                     text=p[2], fill=TEXT_MUTED,
+                                     font=("Consolas", max(6, int(8 * k))),
                                      anchor={"e": "e", "w": "w"}.get(p[4],
                                                                      "center"))
         for nom, (px, py) in d["pins"].items():
-            x, y = cx + px, cy + py
+            x, y = cx + px * k, cy + py * k
             contour = AUTO_COLOR if nom == self._selection else _PIN_OFF
             self._cv.create_oval(x - _R_BROCHE, y - _R_BROCHE,
                                  x + _R_BROCHE, y + _R_BROCHE,

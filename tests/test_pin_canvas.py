@@ -209,3 +209,47 @@ def test_suppression_retire_le_role(canevas):
     canevas._definir_role("1", "Masse")
     canevas._supprimer("1")
     assert canevas.roles() == {}
+
+
+# ── Defaut trouve en boucle visuelle : grande boite hors cadre ───────────────
+
+def _dimensionner(pc, larg=320, haut=190):
+    pc._cv.configure(width=larg, height=haut)
+    pc.winfo_toplevel().update_idletasks()
+    pc._dessiner()
+
+
+def test_grande_boite_tient_dans_le_canevas(canevas):
+    """Une taille imposee (ou un DIP-16) debordait : on ne voyait que le
+    milieu des deux bords lateraux, sans haut ni bas du rectangle."""
+    canevas.charger([("A", "L", 0)], w_mini=600, h_mini=800)
+    _dimensionner(canevas)
+    poly = [i for i in canevas._cv.find_all()
+            if canevas._cv.type(i) == "polygon"]
+    assert poly, "boite non dessinee"
+    x0, y0, x1, y1 = canevas._cv.bbox(poly[0])
+    assert x0 >= -2 and y0 >= -2
+    assert x1 <= canevas._cv.winfo_width() + 2
+    assert y1 <= canevas._cv.winfo_height() + 2
+
+
+def test_petite_boite_reste_a_l_echelle_1(canevas):
+    canevas.charger([("A", "L", 0)])
+    _dimensionner(canevas)
+    assert canevas._echelle() == 1.0
+
+
+def test_clic_est_converti_selon_l_echelle(canevas):
+    """Sinon on clique a cote des broches des que la boite est reduite."""
+    import types
+    canevas.charger([("A", "L", 0)], w_mini=600, h_mini=800)
+    _dimensionner(canevas)
+    k = canevas._echelle()
+    assert k < 1.0
+    cx, cy = canevas._centre()
+    # Inversion EXACTE du transport de dessin (x_ecran = cx + x_boite * k).
+    # On n'arrondit pas : à cette échelle un pixel écran vaut ~7 unités de
+    # boîte, la quantification masquerait la formule qu'on veut vérifier.
+    ev = types.SimpleNamespace(x=cx + 50 * k, y=cy)
+    bx, _by = canevas._boite(ev)
+    assert abs(bx - 50) < 1e-6
