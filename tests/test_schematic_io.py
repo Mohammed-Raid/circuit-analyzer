@@ -108,6 +108,13 @@ def _mk_wire(i, a, pa, b, pb):
 DEFS = {"R": {"w": 80, "h": 40, "pins": {"1": (-40, 0), "2": (40, 0)}}}
 
 
+def _geom(comp):
+    """Résolveur de géométrie attendu par `points_jonction` (spec 2026-07-23) :
+    une fonction, pas un dict — deux instances d'un même type peuvent avoir des
+    brochages différents."""
+    return DEFS[comp.comp_type]
+
+
 def test_type_reel():
     assert type_reel("U::NE555") == ("U", "NE555")
     assert type_reel("R") == ("R", "")
@@ -122,14 +129,14 @@ def test_points_jonction_trois_fils():
     wires = [_mk_wire(1, 1, "2", 2, "1"),
              _mk_wire(2, 1, "2", 3, "1"),
              _mk_wire(3, 2, "1", 3, "1")]
-    pts = points_jonction(comps, wires, DEFS)
+    pts = points_jonction(comps, wires, _geom)
     assert (200, 100) in pts    # >= 3 extrémités de fils y coïncident
 
 
 def test_points_jonction_deux_fils_aucune():
     comps = {1: _mk_comp(1, "R", 160, 100), 2: _mk_comp(2, "R", 240, 100)}
     wires = [_mk_wire(1, 1, "2", 2, "1")]
-    assert points_jonction(comps, wires, DEFS) == []
+    assert points_jonction(comps, wires, _geom) == []
 
 
 # ── load_dict / to_netlist (nécessitent un root Tk) ───────────────────────────

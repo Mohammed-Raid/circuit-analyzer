@@ -145,6 +145,10 @@ class CompInst:
     cx:        int      # coordonnées monde
     cy:        int
     rotation:  int = 0  # 0, 90, 180, 270
+    # Brochage LIBRE de cette instance : {nom: (côté 'L'/'R'/'T'/'B', décalage)}.
+    # None = la géométrie du TYPE fait foi (comportement historique) ; un dict
+    # (même vide) prend le pas dessus — cf. `_geom` (spec 2026-07-23).
+    pinout:    Optional[dict] = None
 
 
 @dataclass
@@ -205,6 +209,8 @@ class SchematicEditor(tk.Frame):
 
         # géométrie effective : intégrés + types personnalisés (bibliothèque)
         self._defs: dict = _compute_defs()
+        # Mémoïsation des géométries d'instance (brochage libre) — cf. `_geom`.
+        self._geom_cache: dict[int, dict] = {}
 
         self._build()
 
@@ -234,6 +240,9 @@ class SchematicEditor(tk.Frame):
         self._wires    = wires
         self._counters = counters
         self._next_id  = next_id
+        # Les CompInst restaurés sont d'AUTRES objets (deepcopy) : tout
+        # brochage libre mémoïsé est périmé.
+        self._invalider_geom()
         self._selected_ids.clear()
         self._drag_comp_id = None
         self._drag_moved   = False
@@ -656,10 +665,40 @@ class SchematicEditor(tk.Frame):
         """@brief Alias historique de `_place_at` (compat tests existants)."""
         return self._place_at(wx, wy)
 
+    # ── Géométrie effective (type ou brochage libre) ──────────────────────────
+
+    def _geom(self, comp: CompInst) -> dict:
+        """@brief Géométrie EFFECTIVE : brochage d'instance sinon def du type.
+
+        Point d'accès UNIQUE à la géométrie d'un composant posé — tout ce qui
+        lisait `self._defs[comp.comp_type]` passe désormais par ici (spec
+        2026-07-23). Mémoïsé car `_find_pin_at` balaye tous les composants à
+        chaque mouvement de souris. Invalidé par `_invalider_geom` (édition de
+        broche, undo/redo, chargement, suppression) : un cache périmé donne des
+        fils qui pointent à côté, symptôme pénible à diagnostiquer.
+        """
+        if comp.pinout is None:
+            return self._defs[comp.comp_type]
+        d = self._geom_cache.get(comp.id)
+        if d is None:
+            d = geometrie_libre(comp.pinout)
+            base = self._defs.get(comp.comp_type)
+            if base:
+                d["color"] = base["color"]
+            self._geom_cache[comp.id] = d
+        return d
+
+    def _invalider_geom(self, comp_id: Optional[int] = None):
+        """@brief Purge le cache de géométrie (tout, ou un seul composant)."""
+        if comp_id is None:
+            self._geom_cache.clear()
+        else:
+            self._geom_cache.pop(comp_id, None)
+
     # ── Rendu ────────────────────────────────────────────────────────────────
 
     def _draw_comp(self, comp: CompInst):
-        defn  = self._defs[comp.comp_type]
+        defn  = self._geom(comp)
         color = defn["color"]
         z     = self._zoom
         rot   = comp.rotation
@@ -746,9 +785,9 @@ class SchematicEditor(tk.Frame):
         cb = self._comps.get(wire.to_comp_id)
         if not ca or not cb:
             return
-        dx_a, dy_a = self._defs[ca.comp_type]["pins"][wire.from_pin]
+        dx_a, dy_a = self._geom(ca)["pins"][wire.from_pin]
         rdx_a, rdy_a = _rotate_pin(dx_a, dy_a, ca.rotation)
-        dx_b, dy_b = self._defs[cb.comp_type]["pins"][wire.to_pin]
+        dx_b, dy_b = self._geom(cb)["pins"][wire.to_pin]
         rdx_b, rdy_b = _rotate_pin(dx_b, dy_b, cb.rotation)
 
         wx1, wy1 = ca.cx + rdx_a, ca.cy + rdy_a
@@ -777,7 +816,7 @@ class SchematicEditor(tk.Frame):
         """
         self._canvas.delete("jonction")
         r = 4 * self._zoom
-        for wx, wy in points_jonction(self._comps, self._wires, self._defs):
+        for wx, wy in points_jonction(self._comps, self._wires, self._geom):
             sx, sy = self._w2s(wx, wy)
             self._canvas.create_oval(sx - r, sy - r, sx + r, sy + r,
                                      fill=_WIRE_COLOR, outline=_WIRE_COLOR,
@@ -802,7 +841,7 @@ class SchematicEditor(tk.Frame):
     def _find_pin_at(self, wx, wy) -> Optional[tuple[int, str]]:
         tol = _HIT_R / self._zoom  # rayon de détection en coordonnées monde
         for comp in self._comps.values():
-            for pn, (dx, dy) in self._defs[comp.comp_type]["pins"].items():
+            for pn, (dx, dy) in self._geom(comp)["pins"].items():
                 rdx, rdy = _rotate_pin(dx, dy, comp.rotation)
                 px, py = comp.cx + rdx, comp.cy + rdy
                 if (wx - px)**2 + (wy - py)**2 <= tol**2:
@@ -811,7 +850,7 @@ class SchematicEditor(tk.Frame):
 
     def _find_comp_at(self, wx, wy) -> Optional[int]:
         for comp in self._comps.values():
-            defn = self._defs[comp.comp_type]
+            defn = self._geom(comp)
             rot  = comp.rotation
             w2 = (defn["w"] // 2 if rot % 180 == 0 else defn["h"] // 2) + 6
             h2 = (defn["h"] // 2 if rot % 180 == 0 else defn["w"] // 2) + 6
@@ -827,9 +866,9 @@ class SchematicEditor(tk.Frame):
             cb = self._comps.get(w.to_comp_id)
             if not ca or not cb:
                 continue
-            dx_a, dy_a = self._defs[ca.comp_type]["pins"][w.from_pin]
+            dx_a, dy_a = self._geom(ca)["pins"][w.from_pin]
             rdx_a, rdy_a = _rotate_pin(dx_a, dy_a, ca.rotation)
-            dx_b, dy_b = self._defs[cb.comp_type]["pins"][w.to_pin]
+            dx_b, dy_b = self._geom(cb)["pins"][w.to_pin]
             rdx_b, rdy_b = _rotate_pin(dx_b, dy_b, cb.rotation)
             x1, y1 = ca.cx + rdx_a, ca.cy + rdy_a
             x2, y2 = cb.cx + rdx_b, cb.cy + rdy_b
@@ -1077,7 +1116,7 @@ class SchematicEditor(tk.Frame):
 
         xs, ys = [], []
         for c in self._comps.values():
-            d = self._defs[c.comp_type]
+            d = self._geom(c)
             w2, h2 = d["w"] // 2 + 30, d["h"] // 2 + 30
             xs += [c.cx - w2, c.cx + w2]
             ys += [c.cy - h2, c.cy + h2]
@@ -1119,7 +1158,7 @@ class SchematicEditor(tk.Frame):
         comp = self._comps.get(self._wire_src[0])
         if not comp:
             return
-        dx, dy = self._defs[comp.comp_type]["pins"][self._wire_src[1]]
+        dx, dy = self._geom(comp)["pins"][self._wire_src[1]]
         rdx, rdy = _rotate_pin(dx, dy, comp.rotation)
         x1, y1 = self._w2s(comp.cx + rdx, comp.cy + rdy)
 
@@ -1128,7 +1167,7 @@ class SchematicEditor(tk.Frame):
         halo_xy = None
         if target and target != self._wire_src:
             tcomp = self._comps[target[0]]
-            tdx, tdy = self._defs[tcomp.comp_type]["pins"][target[1]]
+            tdx, tdy = self._geom(tcomp)["pins"][target[1]]
             trdx, trdy = _rotate_pin(tdx, tdy, tcomp.rotation)
             ex, ey = self._w2s(tcomp.cx + trdx, tcomp.cy + trdy)
             halo_xy = (ex, ey)
@@ -1195,7 +1234,7 @@ class SchematicEditor(tk.Frame):
         self._selected_ids.add(comp_id)
         comp = self._comps.get(comp_id)
         if comp:
-            defn  = self._defs[comp.comp_type]
+            defn  = self._geom(comp)
             rot   = comp.rotation
             z     = self._zoom
             rw2 = ((defn["w"] // 2 if rot % 180 == 0 else defn["h"] // 2) + 5) * z
@@ -1312,6 +1351,7 @@ class SchematicEditor(tk.Frame):
         self._wires = [w for w in self._wires
                        if w.from_comp_id != comp_id and w.to_comp_id != comp_id]
         self._comps.pop(comp_id, None)
+        self._invalider_geom(comp_id)
         self._selected_ids.discard(comp_id)
         self._canvas.delete(f"sel_{comp_id}")
         self._redraw_all()
@@ -1399,9 +1439,9 @@ class SchematicEditor(tk.Frame):
             if fa not in new_comps or ta not in new_comps:
                 continue
             fp, tp = w.get("from_pin"), w.get("to_pin")
-            if fp not in self._defs[new_comps[fa].comp_type]["pins"]:
+            if fp not in self._geom(new_comps[fa])["pins"]:
                 continue
-            if tp not in self._defs[new_comps[ta].comp_type]["pins"]:
+            if tp not in self._geom(new_comps[ta])["pins"]:
                 continue
             new_wires.append(WireInst(next_id, fa, fp, ta, tp))
             next_id += 1
@@ -1420,6 +1460,7 @@ class SchematicEditor(tk.Frame):
         self._wire_src     = None
         self._rubber_band  = None
         self._drag_comp_id = None
+        self._invalider_geom()      # ids réattribués : cache d'instance périmé
         self._redraw_all()
         self._set_status("Schéma\nchargé")
 
@@ -1476,7 +1517,7 @@ class SchematicEditor(tk.Frame):
 
         lines = ["* Schéma généré par Circuit Analyzer — éditeur interactif", ""]
         for comp in real_comps.values():
-            pins = self._defs[comp.comp_type]["pins"]
+            pins = self._geom(comp)["pins"]
             nets = " ".join(net_of(f"{comp.id}:{pn}") for pn in pins)
             _t, v = type_reel(comp.comp_type)
             lines.append(f"{comp.ref} {nets} {v or comp.value}")
@@ -1505,7 +1546,7 @@ class SchematicEditor(tk.Frame):
 
         composants = []
         for comp in real_comps.values():
-            pins = self._defs[comp.comp_type]["pins"]
+            pins = self._geom(comp)["pins"]
             t, v = type_reel(comp.comp_type)
             broches = {pn: net_of(f"{comp.id}:{pn}") for pn in pins}
             composants.append(Composant(ref=comp.ref, type=t, pins=broches,
@@ -1528,7 +1569,7 @@ class SchematicEditor(tk.Frame):
         """
         loose = []
         for comp in self._comps.values():
-            for pn in self._defs[comp.comp_type]["pins"]:
+            for pn in self._geom(comp)["pins"]:
                 if not self._pin_connected(comp.id, pn):
                     loose.append((comp.ref, pn))
         return loose

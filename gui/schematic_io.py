@@ -62,19 +62,27 @@ def type_reel(comp_type: str) -> tuple:
     return comp_type, ""
 
 
-def _pin_monde(comp, pin, defs):
+def _pin_monde(comp, pin, geom):
+    """@brief Position monde d'une broche (rotation appliquée).
+
+    @param geom Résolveur `(comp) -> def` — PAS un dict indexé par type : deux
+           instances d'un même type peuvent avoir des brochages différents
+           (brochage libre, spec 2026-07-23).
+    """
     from gui.schematic_symbols import rotate_pin
-    dx, dy = defs[comp.comp_type]["pins"][pin]
+    dx, dy = geom(comp)["pins"][pin]
     rdx, rdy = rotate_pin(dx, dy, comp.rotation)
     return (comp.cx + rdx, comp.cy + rdy)
 
 
-def points_jonction(comps, wires, defs) -> list:
+def points_jonction(comps, wires, geom) -> list:
     """@brief Points monde où >= 3 extrémités de fils coïncident (spec §4).
 
     Une extrémité = la broche (monde, rotation appliquée) d'un bout de fil.
     Deux fils qui se REJOIGNENT sur une même broche = >= 3 extrémités au
     même point — le seuil >= 3 évite le point sur une simple liaison à 2.
+
+    @param geom Résolveur `(comp) -> def` (cf. `_pin_monde`).
     """
     from collections import Counter
     compte = Counter()
@@ -82,8 +90,8 @@ def points_jonction(comps, wires, defs) -> list:
         ca, cb = comps.get(w.from_comp_id), comps.get(w.to_comp_id)
         if not ca or not cb:
             continue
-        compte[_pin_monde(ca, w.from_pin, defs)] += 1
-        compte[_pin_monde(cb, w.to_pin, defs)] += 1
+        compte[_pin_monde(ca, w.from_pin, geom)] += 1
+        compte[_pin_monde(cb, w.to_pin, geom)] += 1
     return sorted(p for p, n in compte.items() if n >= 3)
 
 
