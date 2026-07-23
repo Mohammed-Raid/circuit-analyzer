@@ -197,3 +197,29 @@ def test_modele_dip_impair_refuse():
         modele_brochage("DIP", 2)
     with pytest.raises(ValueError):
         modele_brochage("Inconnu", 4)
+
+
+def test_taille_mini_agrandit_la_boite():
+    d = geometrie_libre({"1": ("L", 0)}, w_mini=200, h_mini=300)
+    assert d["w"] >= 200 and d["h"] >= 300
+
+
+def test_taille_mini_ne_descend_jamais_sous_le_besoin_reel():
+    """Plancher, JAMAIS plafond : sinon les broches sortent du cadre."""
+    auto = geometrie_libre({"1": ("L", -200)})
+    force = geometrie_libre({"1": ("L", -200)}, w_mini=40, h_mini=40)
+    assert force["h"] == auto["h"] and force["w"] == auto["w"]
+
+
+def test_role_apparait_dans_le_libelle():
+    from gui.schematic_symbols import _tr_boite_libre
+    d = geometrie_libre({"VCC": ("L", 0)}, roles={"VCC": "Alim"})
+    textes = [p[2] for p in _tr_boite_libre(d) if p[0] == "text"]
+    assert "VCC Alim" in textes
+
+
+def test_largeur_tient_compte_du_role():
+    sans = geometrie_libre({"A": ("L", 0), "B": ("R", 0)})
+    avec = geometrie_libre({"A": ("L", 0), "B": ("R", 0)},
+                           roles={"A": "Alim", "B": "Sortie"})
+    assert avec["w"] > sans["w"]

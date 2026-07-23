@@ -277,21 +277,30 @@ BOITE_MARGE = 20
 CHAR_W = 7          # largeur approx. d'un caractere du libelle de broche
 
 
-def geometrie_libre(pinout):
+def geometrie_libre(pinout, w_mini=None, h_mini=None, roles=None):
     """@brief Def d'une boite au brochage libre (spec 2026-07-23).
 
-    @param pinout {nom: (cote 'L'/'R'/'T'/'B', decalage signe sur ce bord)}.
-    @return def compatible COMP_DEFS, taille AUTO-AJUSTEE pour contenir les
-            broches — on ne peut jamais manquer de bord, d'ou l'absence de
-            poignee de redimensionnement.
+    @param pinout  {nom: (cote 'L'/'R'/'T'/'B', decalage signe sur ce bord)}.
+    @param w_mini,h_mini Taille PLANCHER voulue par l'utilisateur : la boite
+           fait au moins ca, mais l'auto-ajustement continue de garantir que
+           broches et libelles tiennent — on ne peut donc pas fabriquer un
+           composant dont les broches debordent du cadre.
+    @param roles   {nom: role} — le libelle devient « nom ROLE », comme le fait
+           deja `_tr_boite` pour les puces du catalogue.
+    @return def compatible COMP_DEFS, taille AUTO-AJUSTEE.
     """
+    roles = roles or {}
+
+    def _lab(n):
+        return f"{n} {roles.get(n, '')}".strip()
+
     lat = [abs(d) for c, d in pinout.values() if c in ("L", "R")]
     ver = [abs(d) for c, d in pinout.values() if c in ("T", "B")]
     # La boite doit aussi loger les LIBELLES, dessines a l'interieur : sans ca
     # les noms des bords opposes se telescopent ("IN1 VCCOUT1", defaut trouve
-    # en boucle visuelle le 2026-07-23).
-    lg = max((len(n) for n, (c, _d) in pinout.items() if c == "L"), default=0)
-    ld = max((len(n) for n, (c, _d) in pinout.items() if c == "R"), default=0)
+    # en boucle visuelle le 2026-07-23). Le ROLE en fait partie.
+    lg = max((len(_lab(n)) for n, (c, _d) in pinout.items() if c == "L"), default=0)
+    ld = max((len(_lab(n)) for n, (c, _d) in pinout.items() if c == "R"), default=0)
     h = max(BOITE_MIN_H, 2 * max(lat, default=0) + BOITE_MARGE)
     w = max(BOITE_MIN_W, 2 * max(ver, default=0) + BOITE_MARGE,
             (lg + ld) * CHAR_W + 3 * BOITE_MARGE)
@@ -299,6 +308,9 @@ def geometrie_libre(pinout):
         # Les libelles du haut/bas mordent vers l'interieur : on leur reserve
         # une bande, sinon ils croisent ceux des bords lateraux.
         h += 2 * BOITE_MARGE
+    # PLANCHER applique APRES l'auto-ajustement : jamais sous le besoin reel.
+    w = max(w, int(w_mini or 0))
+    h = max(h, int(h_mini or 0))
     w2, h2 = w // 2, h // 2
     pins, cotes = {}, {}
     for nom, (cote, dec) in pinout.items():
@@ -306,7 +318,8 @@ def geometrie_libre(pinout):
                      "T": (dec, -h2), "B": (dec, h2)}[cote]
         cotes[nom] = cote
     return {"label": "", "color": AUTO_COLOR, "w": w, "h": h,
-            "pins": pins, "cotes": cotes, "default_value": ""}
+            "pins": pins, "cotes": cotes, "fonctions": dict(roles),
+            "default_value": ""}
 
 
 def aimanter_bord(dx, dy, w, h, pas):
@@ -376,6 +389,8 @@ def _tr_boite_libre(defn):
     prims = [("polygon", [(-w2, -h2), (w2, -h2), (w2, h2), (-w2, h2)], False)]
     for pn, (px, py) in defn["pins"].items():
         cote = (defn.get("cotes") or {}).get(pn, "L")
+        fonction = (defn.get("fonctions") or {}).get(pn, "")
+        libelle = f"{pn} {fonction}".strip()
         if cote in ("L", "R"):
             # Ancre cote BORD : le libelle croit VERS l'interieur, jamais sur
             # la pastille de broche (meme regle que `_tr_boite`).
@@ -384,5 +399,5 @@ def _tr_boite_libre(defn):
         else:
             ancre = "center"
             tx, ty = px, py + (10 if cote == "T" else -10)
-        prims.append(("text", (tx, ty), pn, 7, ancre))
+        prims.append(("text", (tx, ty), libelle, 7, ancre))
     return prims
