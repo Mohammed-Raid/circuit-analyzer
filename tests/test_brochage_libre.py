@@ -146,3 +146,58 @@ def test_ajout_de_broche_est_annulable(editeur):
     editeur._ajouter_broche(c, 200 - 40, 200)
     editeur._undo()
     assert editeur._comps[c.id].pinout == {}
+
+
+# ── Task 6 : glisser, renommer, supprimer ────────────────────────────────────
+
+def test_glisser_une_broche_l_aimante_a_la_grille(editeur):
+    c = _place(editeur, "X", 200, 200)
+    editeur._entrer_pinedit(c.id)
+    editeur._ajouter_broche(c, 200 - 40, 200)
+    editeur._deplacer_broche(c, "1", 200 - 40, 200 + 27)
+    cote, dec = c.pinout["1"]
+    assert cote == "L" and dec % 20 == 0
+
+
+def test_glisser_au_dela_du_coin_agrandit_la_boite(editeur):
+    c = _place(editeur, "X", 200, 200)
+    editeur._entrer_pinedit(c.id)
+    editeur._ajouter_broche(c, 200 - 40, 200)
+    h_avant = editeur._geom(c)["h"]
+    editeur._deplacer_broche(c, "1", 200 - 40, 200 + 200)
+    assert editeur._geom(c)["h"] > h_avant
+
+
+def test_renommage_refuse_vide_et_doublon(editeur):
+    c = _place(editeur, "X", 200, 200)
+    editeur._entrer_pinedit(c.id)
+    editeur._ajouter_broche(c, 200 - 40, 200)
+    editeur._ajouter_broche(c, 200 + 40, 200)
+    assert editeur._renommer_broche(c, "1", "VCC") is True
+    assert "VCC" in c.pinout and "1" not in c.pinout
+    assert editeur._renommer_broche(c, "2", "VCC") is False
+    assert editeur._renommer_broche(c, "2", "") is False
+    assert "2" in c.pinout
+
+
+def test_renommage_suit_les_fils(editeur):
+    c = _place(editeur, "X", 200, 200)
+    g = _place(editeur, "GND", 300, 300)
+    editeur._entrer_pinedit(c.id)
+    editeur._ajouter_broche(c, 200 - 40, 200)
+    editeur._quitter_pinedit()
+    editeur._add_wire(c.id, "1", g.id, next(iter(editeur._geom(g)["pins"])))
+    editeur._renommer_broche(c, "1", "OUT")
+    assert editeur._wires[0].from_pin == "OUT"
+
+
+def test_supprimer_une_broche_supprime_ses_fils(editeur):
+    c = _place(editeur, "X", 200, 200)
+    g = _place(editeur, "GND", 300, 300)
+    editeur._entrer_pinedit(c.id)
+    editeur._ajouter_broche(c, 200 - 40, 200)
+    editeur._quitter_pinedit()
+    editeur._add_wire(c.id, "1", g.id, next(iter(editeur._geom(g)["pins"])))
+    editeur._supprimer_broche(c, "1")
+    assert "1" not in c.pinout
+    assert editeur._wires == []          # aucun fil orphelin

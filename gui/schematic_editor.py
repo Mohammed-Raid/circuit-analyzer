@@ -6,6 +6,7 @@ import copy
 import logging
 import math
 import tkinter as tk
+from tkinter import simpledialog
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -782,6 +783,60 @@ class SchematicEditor(tk.Frame):
         self._dessiner_cadre_pinedit()
         return nom
 
+    def _deplacer_broche(self, comp: CompInst, nom: str, wx: int, wy: int):
+        """@brief Fait coulisser une broche ; aimantation bord + grille."""
+        if comp.pinout is None or nom not in comp.pinout:
+            return
+        self._push_undo()
+        d = self._geom(comp)
+        comp.pinout[nom] = aimanter_bord(wx - comp.cx, wy - comp.cy,
+                                         d["w"], d["h"], GRID)
+        self._invalider_geom(comp.id)
+        self._draw_comp(comp)
+        self._redraw_wires_of(comp.id)
+        self._dessiner_cadre_pinedit()
+
+    def _renommer_broche(self, comp: CompInst, ancien: str, nouveau: str) -> bool:
+        """@brief Renomme une broche ET les fils qui la référencent (par NOM).
+
+        @return False si le nom est vide ou déjà pris (refus signalé au statut).
+        """
+        if comp.pinout is None or ancien not in comp.pinout:
+            return False
+        nouveau = (nouveau or "").strip()
+        if not nouveau or nouveau in comp.pinout:
+            self._set_status("Nom vide ou\ndéjà utilisé")
+            return False
+        self._push_undo()
+        comp.pinout[nouveau] = comp.pinout.pop(ancien)
+        # Les fils référencent les broches par NOM : sans cette reprise, le
+        # renommage les rendrait orphelins au prochain redessin.
+        for w in self._wires:
+            if w.from_comp_id == comp.id and w.from_pin == ancien:
+                w.from_pin = nouveau
+            if w.to_comp_id == comp.id and w.to_pin == ancien:
+                w.to_pin = nouveau
+        if self._pin_selectionnee == ancien:
+            self._pin_selectionnee = nouveau
+        self._invalider_geom(comp.id)
+        self._draw_comp(comp)
+        return True
+
+    def _supprimer_broche(self, comp: CompInst, nom: str):
+        """@brief Retire une broche ET les fils rattachés (sinon fils orphelins)."""
+        if comp.pinout is None or nom not in comp.pinout:
+            return
+        self._push_undo()
+        comp.pinout.pop(nom, None)
+        self._wires = [w for w in self._wires
+                       if not ((w.from_comp_id == comp.id and w.from_pin == nom)
+                               or (w.to_comp_id == comp.id and w.to_pin == nom))]
+        if self._pin_selectionnee == nom:
+            self._pin_selectionnee = None
+        self._invalider_geom(comp.id)
+        self._redraw_all()
+        self._dessiner_cadre_pinedit()
+
     # ── Rendu ────────────────────────────────────────────────────────────────
 
     def _draw_comp(self, comp: CompInst):
@@ -1028,6 +1083,13 @@ class SchematicEditor(tk.Frame):
                 sx, sy, sx, sy, outline=BLUE, dash=(4, 3), tags="selrect")
 
     def _on_b1_motion(self, event):
+        if self._state == "pinedit" and self._pin_selectionnee:
+            comp = self._comps.get(self._pinedit_id)
+            if comp:
+                wx, wy = self._cw(event)
+                self._deplacer_broche(comp, self._pin_selectionnee, wx, wy)
+            return
+
         if self._state == "idle" and self._drag_comp_id is not None:
             wx, wy   = self._cw(event)
             swx, swy = self._snap(wx, wy)
@@ -1088,6 +1150,21 @@ class SchematicEditor(tk.Frame):
 
     def _on_double_click(self, event):
         wx, wy  = self._cw(event)
+
+        # En édition de broches, le double-clic RENOMME la broche visée
+        # (il n'ouvre pas la fiche du composant).
+        if self._state == "pinedit":
+            comp = self._comps.get(self._pinedit_id)
+            cible = self._find_pin_at(wx, wy)
+            if comp and cible and cible[0] == comp.id:
+                nouveau = simpledialog.askstring(
+                    "Renommer la broche",
+                    f"Nouveau nom pour « {cible[1]} » :",
+                    initialvalue=cible[1], parent=self)
+                if nouveau is not None:
+                    self._renommer_broche(comp, cible[1], nouveau)
+            return
+
         comp_id = self._find_comp_at(wx, wy)
         if comp_id:
             self._edit_comp(comp_id)
@@ -1121,6 +1198,13 @@ class SchematicEditor(tk.Frame):
         m.post(event.x_root, event.y_root)
 
     def _on_delete(self, _=None):
+        # En édition de broches, Suppr retire la BROCHE sélectionnée, pas le
+        # composant (qui reste la cible du mode).
+        if self._state == "pinedit":
+            comp = self._comps.get(self._pinedit_id)
+            if comp and self._pin_selectionnee:
+                self._supprimer_broche(comp, self._pin_selectionnee)
+            return
         self._delete_selected()
 
     def _on_escape(self, _=None):
