@@ -64,6 +64,12 @@ COMP_DEFS: dict = {
             "pins": {"1": (0, -20)},                           "default_value": "GND"},
     "VCC": {"label": "VCC",          "color": "#ef4444", "w": 40, "h": 40,
             "pins": {"1": (0, 20)},                            "default_value": "VCC"},
+    # Boîte vierge : zéro broche, à brocher à la main (spec 2026-07-23). "X"
+    # est la convention maison de la boîte noire côté import ERetroDesign, donc
+    # les réfs se numérotent X1, X2… et l'analyseur sait déjà traiter ce type.
+    "X":   {"label": "Boîte",        "color": _AUTO_COLOR,
+            "w": BOITE_MIN_W, "h": BOITE_MIN_H,
+            "pins": {},                                        "default_value": ""},
 }
 
 # _AUTO_COLOR : importé de schematic_symbols (source unique, cf. AUTO_COLOR).
@@ -655,6 +661,8 @@ class SchematicEditor(tk.Frame):
         value = self._place_value if self._place_value is not None else defn["default_value"]
         comp = CompInst(self._next_id, ref, t, value, wx, wy,
                         self._place_rotation)
+        if t == "X":
+            comp.pinout = {}      # boîte vierge : brochage libre, zéro broche
         self._next_id += 1
         self._comps[comp.id] = comp
         self._draw_comp(comp)

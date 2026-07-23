@@ -88,3 +88,16 @@ def test_broche_du_haut_est_dessinee(editeur):
     editeur._invalider_geom()
     editeur._redraw_all()
     assert editeur._canvas.find_withtag(f"pin_{c.id}_VCC")
+
+
+# ── Task 4 : boite vierge en palette ─────────────────────────────────────────
+
+def test_boite_vierge_posee_sans_broche(editeur):
+    c = _place(editeur, "X", 200, 200)
+    assert c.ref == "X1"
+    assert c.pinout == {}
+    assert editeur._geom(c)["pins"] == {}
+
+
+def test_boite_vierge_a_un_bouton_de_palette(editeur):
+    assert "X" in editeur._palette_btns
