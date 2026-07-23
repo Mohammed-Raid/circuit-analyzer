@@ -218,6 +218,9 @@ class SchematicEditor(tk.Frame):
         self._defs: dict = _compute_defs()
         # Mémoïsation des géométries d'instance (brochage libre) — cf. `_geom`.
         self._geom_cache: dict[int, dict] = {}
+        # Édition de broches : composant ciblé et broche sélectionnée.
+        self._pinedit_id: Optional[int] = None
+        self._pin_selectionnee: Optional[str] = None
 
         self._build()
 
@@ -704,6 +707,81 @@ class SchematicEditor(tk.Frame):
         else:
             self._geom_cache.pop(comp_id, None)
 
+    # ── Édition de broches (mode "pinedit", spec 2026-07-23) ──────────────────
+
+    def _entrer_pinedit(self, comp_id: int):
+        """@brief Passe en édition de broches sur CE composant."""
+        if comp_id not in self._comps:
+            return
+        self._cancel_wiring()
+        self._deselect()
+        self._state      = "pinedit"
+        self._pinedit_id = comp_id
+        self._pin_selectionnee = None
+        self._canvas.configure(cursor="crosshair")
+        self._dessiner_cadre_pinedit()
+        self._set_status("Clic bord = broche\nDouble-clic = renommer\n"
+                         "Suppr = retirer\nÉchap = fin")
+
+    def _quitter_pinedit(self):
+        """@brief Sort du mode d'édition de broches."""
+        self._canvas.delete("pinedit")
+        self._state      = "idle"
+        self._pinedit_id = None
+        self._pin_selectionnee = None
+        self._canvas.configure(cursor="")
+        self._set_status("Prêt")
+
+    def _dessiner_cadre_pinedit(self):
+        """@brief Cadre pointillé autour du composant en cours d'édition."""
+        self._canvas.delete("pinedit")
+        comp = self._comps.get(self._pinedit_id)
+        if not comp:
+            return
+        d = self._geom(comp)
+        rot = comp.rotation
+        w2 = (d["w"] // 2 if rot % 180 == 0 else d["h"] // 2) + 8
+        h2 = (d["h"] // 2 if rot % 180 == 0 else d["w"] // 2) + 8
+        x0, y0 = self._w2s(comp.cx - w2, comp.cy - h2)
+        x1, y1 = self._w2s(comp.cx + w2, comp.cy + h2)
+        self._canvas.create_rectangle(x0, y0, x1, y1, outline=BLUE,
+                                      dash=(4, 3), width=2, tags="pinedit")
+
+    def _nom_broche_libre(self, pinout: dict) -> str:
+        """@brief Plus petit entier >= 1 non utilisé (une suppression se recycle)."""
+        n = 1
+        while str(n) in pinout:
+            n += 1
+        return str(n)
+
+    def _amorcer_pinout(self, comp: CompInst) -> dict:
+        """@brief Projette les broches du TYPE sur les bords -> (côté, décalage).
+
+        PARESSEUX : appelé à la PREMIÈRE mutation seulement. Sinon, comme
+        `pinout is not None` déclenche le rendu en boîte, entrer dans le mode
+        puis faire Échap transformerait le symbole sans qu'on ait rien touché.
+        """
+        d = self._defs[comp.comp_type]
+        return {pn: aimanter_bord(dx, dy, d["w"], d["h"], GRID)
+                for pn, (dx, dy) in d["pins"].items()}
+
+    def _ajouter_broche(self, comp: CompInst, wx: int, wy: int) -> str:
+        """@brief Ajoute une broche aimantée au bord le plus proche du clic.
+
+        @return Nom attribué (numérotation automatique).
+        """
+        self._push_undo()
+        if comp.pinout is None:
+            comp.pinout = self._amorcer_pinout(comp)
+        d = self._geom(comp)
+        nom = self._nom_broche_libre(comp.pinout)
+        comp.pinout[nom] = aimanter_bord(wx - comp.cx, wy - comp.cy,
+                                         d["w"], d["h"], GRID)
+        self._invalider_geom(comp.id)
+        self._draw_comp(comp)
+        self._dessiner_cadre_pinedit()
+        return nom
+
     # ── Rendu ────────────────────────────────────────────────────────────────
 
     def _draw_comp(self, comp: CompInst):
@@ -904,6 +982,20 @@ class SchematicEditor(tk.Frame):
             self._place_at(swx, swy)
             return
 
+        if self._state == "pinedit":
+            comp = self._comps.get(self._pinedit_id)
+            if comp is None:
+                self._quitter_pinedit()
+                return
+            # Clic SUR une broche = la sélectionner (le glissé la déplacera) ;
+            # clic ailleurs sur le bord = nouvelle broche.
+            cible = self._find_pin_at(wx, wy)
+            if cible and cible[0] == comp.id:
+                self._pin_selectionnee = cible[1]
+            else:
+                self._pin_selectionnee = self._ajouter_broche(comp, wx, wy)
+            return
+
         if self._state == "wiring":
             pin = self._find_pin_at(wx, wy)
             if pin and pin != self._wire_src:
@@ -1022,6 +1114,8 @@ class SchematicEditor(tk.Frame):
                     activebackground=BLUE, activeforeground=TEXT)
         m.add_command(label="✏  Modifier…",  command=lambda: self._edit_comp(comp_id))
         m.add_command(label="↻  Rotation",   command=lambda: self._rotate_comp(comp_id))
+        m.add_command(label="⊹  Éditer broches",
+                      command=lambda: self._entrer_pinedit(comp_id))
         m.add_separator()
         m.add_command(label="🗑  Supprimer", command=lambda: self._delete_comp(comp_id))
         m.post(event.x_root, event.y_root)
@@ -1030,6 +1124,9 @@ class SchematicEditor(tk.Frame):
         self._delete_selected()
 
     def _on_escape(self, _=None):
+        if self._state == "pinedit":
+            self._quitter_pinedit()
+            return
         if self._state == "wiring":
             self._cancel_wiring()
         elif self._state == "placing":

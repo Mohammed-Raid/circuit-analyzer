@@ -101,3 +101,48 @@ def test_boite_vierge_posee_sans_broche(editeur):
 
 def test_boite_vierge_a_un_bouton_de_palette(editeur):
     assert "X" in editeur._palette_btns
+
+
+# ── Task 5 : mode pinedit, amorcage paresseux, ajout de broche ───────────────
+
+def test_entrer_et_sortir_sans_toucher_ne_change_rien(editeur):
+    c = _place(editeur, "R", 200, 200)
+    editeur._entrer_pinedit(c.id)
+    editeur._quitter_pinedit()
+    assert c.pinout is None            # amorcage PARESSEUX
+    assert editeur._state == "idle"
+
+
+def test_premiere_mutation_amorce_sans_bouger_les_broches(editeur):
+    c = _place(editeur, "R", 200, 200)
+    avant = dict(editeur._geom(c)["pins"])
+    editeur._entrer_pinedit(c.id)
+    editeur._ajouter_broche(c, 200, 200 - 40)
+    assert c.pinout is not None
+    for pn, xy in avant.items():
+        assert editeur._geom(c)["pins"][pn] == xy
+
+
+def test_broches_numerotees_automatiquement(editeur):
+    c = _place(editeur, "X", 200, 200)
+    editeur._entrer_pinedit(c.id)
+    assert editeur._ajouter_broche(c, 200 - 40, 200) == "1"
+    assert editeur._ajouter_broche(c, 200 - 40, 200 + 20) == "2"
+
+
+def test_nom_reutilise_le_plus_petit_entier_libre(editeur):
+    c = _place(editeur, "X", 200, 200)
+    editeur._entrer_pinedit(c.id)
+    for dy in (-20, 0, 20):
+        editeur._ajouter_broche(c, 200 - 40, 200 + dy)
+    del c.pinout["2"]
+    editeur._invalider_geom(c.id)
+    assert editeur._ajouter_broche(c, 200 - 40, 200) == "2"
+
+
+def test_ajout_de_broche_est_annulable(editeur):
+    c = _place(editeur, "X", 200, 200)
+    editeur._entrer_pinedit(c.id)
+    editeur._ajouter_broche(c, 200 - 40, 200)
+    editeur._undo()
+    assert editeur._comps[c.id].pinout == {}
