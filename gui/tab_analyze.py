@@ -1038,6 +1038,22 @@ def _build_group_preview(results: list, limit: int = 9) -> list:
     return preview
 
 
+# Libellé français de chaque catégorie fonctionnelle produite par
+# `circuit_analyzer.detecteur._CATEGORIES`. Toute catégorie de l'analyseur DOIT
+# figurer ici : une absence renvoie le résumé dans le fourre-tout « annexes »
+# (test `test_toutes_les_categories_ont_un_libelle`).
+_LIBELLE_CATEGORIE = {
+    "impedance":         "des réseaux d'impédances",
+    "amplification":     "de l'amplification",
+    "commutation":       "de la commutation",
+    "protection":        "de la protection",
+    "alimentation":      "de l'alimentation",
+    "comparaison":       "de la comparaison",
+    "polarisation":      "de la polarisation",
+    "traitement_signal": "du traitement du signal",
+}
+
+
 def _format_category_list(results: list) -> str:
     """@brief Résume les catégories fonctionnelles dominantes des circuits.
 
@@ -1046,17 +1062,25 @@ def _format_category_list(results: list) -> str:
     """
     labels = []
     for result in results:
-        category = _category(result.get("circuit_type", ""))
-        if "COMMUTATION" in category:
-            label = "de la commutation"
-        elif "PROTECTION" in category or "DIODES" in category:
-            label = "de la protection"
-        elif "FILTRES" in category:
-            label = "du filtrage"
-        elif "OPÉRATIONNELS" in category:
-            label = "de l'amplification"
-        else:
-            label = "des fonctions annexes"
+        # L'analyseur calcule DÉJÀ la catégorie fonctionnelle
+        # (`detecteur._CATEGORIES`) : on la lit au lieu de la re-deviner depuis
+        # le nom. Sans ça, « Impédance Z » et « Amplificateur émetteur commun »
+        # — soit 100 % d'une vraie carte — tombaient dans le fourre-tout et le
+        # résumé annonçait « principalement des fonctions annexes », ce qui est
+        # faux (défaut trouvé en répétition de démo, 2026-07-23).
+        label = _LIBELLE_CATEGORIE.get(result.get("functional_category"))
+        if label is None:
+            category = _category(result.get("circuit_type", ""))
+            if "COMMUTATION" in category:
+                label = "de la commutation"
+            elif "PROTECTION" in category or "DIODES" in category:
+                label = "de la protection"
+            elif "FILTRES" in category:
+                label = "du filtrage"
+            elif "OPÉRATIONNELS" in category:
+                label = "de l'amplification"
+            else:
+                label = "des fonctions annexes"
         if label not in labels:
             labels.append(label)
     return _join_fr(labels[:3]) if labels else "des fonctions non classifiées"
