@@ -179,3 +179,33 @@ def test_refus_n_avance_pas(canevas):
     assert canevas._selection == "1"
     assert canevas._valider_nom("   ") is False      # vide
     assert canevas._selection == "1"
+
+
+# ── Task 5 : role par broche ─────────────────────────────────────────────────
+
+def test_role_enregistre_et_restitue(canevas):
+    canevas.charger([("VCC", "T", 0)])
+    canevas._definir_role("VCC", "Alim")
+    assert canevas.roles() == {"VCC": "Alim"}
+
+
+def test_role_vide_est_omis(canevas):
+    canevas.charger([("VCC", "T", 0)])
+    canevas._definir_role("VCC", "Alim")
+    canevas._definir_role("VCC", "")
+    assert canevas.roles() == {}
+
+
+def test_renommage_conserve_le_role(canevas):
+    """Sinon `fonctions` se remplit d'entrees fantomes ecrites en bibliotheque."""
+    canevas.charger([("1", "L", 0)])
+    canevas._definir_role("1", "Masse")
+    canevas._renommer("1", "GND")
+    assert canevas.roles() == {"GND": "Masse"}
+
+
+def test_suppression_retire_le_role(canevas):
+    canevas.charger([("1", "L", 0)])
+    canevas._definir_role("1", "Masse")
+    canevas._supprimer("1")
+    assert canevas.roles() == {}

@@ -25,6 +25,9 @@ _R_CLIC = 12
 _PIN_OFF = "#ef4444"
 _FOND = "#0f172a"
 
+# Liste FERMEE : lisible dans le symbole et exploitable plus tard.
+ROLES = ("", "Alim", "Entrée", "Sortie", "Masse", "E/S")
+
 
 class PinCanvas(ctk.CTkFrame):
     """@brief Placement des broches d'un TYPE à la souris.
@@ -179,6 +182,8 @@ class PinCanvas(ctk.CTkFrame):
             return False
         _n, cote, dec = self._brochage[i]
         self._brochage[i] = (nouveau, cote, dec)
+        if ancien in self._roles:          # le rôle SUIT la broche
+            self._roles[nouveau] = self._roles.pop(ancien)
         if self._selection == ancien:
             self._selection = nouveau
         self._muter()
@@ -192,8 +197,19 @@ class PinCanvas(ctk.CTkFrame):
         if i < 0:
             return
         self._brochage.pop(i)
+        self._roles.pop(nom, None)         # sinon entrée fantôme en biblio
         if self._selection == nom:
             self._selection = None
+        self._muter()
+
+    def _definir_role(self, nom, role):
+        """@brief Fixe (ou efface) le rôle d'une broche. Vide = pas d'entrée."""
+        if self._lecture_seule:
+            return
+        if role:
+            self._roles[nom] = role
+        else:
+            self._roles.pop(nom, None)
         self._muter()
 
     def _selection_suivante(self):
@@ -303,6 +319,14 @@ class PinCanvas(ctk.CTkFrame):
                 p.bind("<Button-1>", lambda _e, k=i: self._debut_glisse(k))
                 p.bind("<ButtonRelease-1>", self._fin_glisse)
             self._pastilles.append(p)
+            menu = ctk.CTkOptionMenu(
+                self._bandeau, values=list(ROLES), width=86, height=22,
+                font=ctk.CTkFont(size=10),
+                variable=tk.StringVar(value=self._roles.get(nom, "")),
+                command=lambda r, k=nom: self._definir_role(k, r))
+            if self._lecture_seule:
+                menu.configure(state="disabled")
+            menu.pack(side="left", padx=(0, 8))
 
     def _debut_glisse(self, index):
         self._glisse_depuis = index
