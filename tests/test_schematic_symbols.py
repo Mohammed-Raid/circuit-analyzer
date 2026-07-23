@@ -162,3 +162,38 @@ def test_broches_haut_bas_laissent_de_la_hauteur():
     sans = geometrie_libre({"A": ("L", 0)})
     avec = geometrie_libre({"A": ("L", 0), "VCC": ("T", 0), "GND": ("B", 0)})
     assert avec["h"] > sans["h"]
+
+
+# ── Modeles de boitier (spec 2026-07-23, confort) ────────────────────────────
+
+def test_modele_dip8_suit_la_convention_reelle():
+    from gui.schematic_symbols import modele_brochage
+    b = modele_brochage("DIP", 8)
+    assert [n for n, _c, _d in b] == [str(i) for i in range(1, 9)]
+    cotes = {n: c for n, c, _d in b}
+    assert all(cotes[str(i)] == "L" for i in range(1, 5))
+    assert all(cotes[str(i)] == "R" for i in range(5, 9))
+    dec = {n: d for n, _c, d in b}
+    gauche = [dec[str(i)] for i in range(1, 5)]
+    assert gauche == sorted(gauche)                  # 1..4 de HAUT en BAS
+    droite = [dec[str(i)] for i in range(5, 9)]
+    assert droite == sorted(droite, reverse=True)    # 5..8 de BAS en HAUT
+    assert all(d % 20 == 0 for d in dec.values())
+
+
+def test_modele_connecteur_tout_a_gauche():
+    from gui.schematic_symbols import modele_brochage
+    b = modele_brochage("Connecteur", 3)
+    assert [n for n, _c, _d in b] == ["1", "2", "3"]
+    assert {c for _n, c, _d in b} == {"L"}
+
+
+def test_modele_dip_impair_refuse():
+    import pytest
+    from gui.schematic_symbols import modele_brochage
+    with pytest.raises(ValueError):
+        modele_brochage("DIP", 7)
+    with pytest.raises(ValueError):
+        modele_brochage("DIP", 2)
+    with pytest.raises(ValueError):
+        modele_brochage("Inconnu", 4)

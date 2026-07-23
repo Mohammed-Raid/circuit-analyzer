@@ -326,6 +326,44 @@ def aimanter_bord(dx, dy, w, h, pas):
             return (cote, int(round(long_ / pas) * pas))
 
 
+MODELES = ("DIP", "Connecteur")
+
+
+def modele_brochage(modele, n=0):
+    """@brief Brochage tout fait d'un boitier courant (spec 2026-07-23).
+
+    DIP : 1..n/2 a GAUCHE de haut en bas, n/2+1..n a DROITE de bas en haut —
+    la numerotation d'un vrai boitier, la meme que `def_puce`. Connecteur (le
+    « bornier » n'en est qu'un raccourci de taille) : tout a gauche.
+
+    @return list [(nom, cote, decalage)] ORDONNEE = ordre de la netlist.
+    @throws ValueError Si `n` est hors bornes, impair ou trop petit pour un DIP,
+            ou si le modele est inconnu.
+    """
+    n = int(n)
+    if not 2 <= n <= 64:
+        raise ValueError(f"nombre de broches hors bornes : {n}")
+    pas = 20
+
+    def _depart(m):
+        """Premier decalage pour m broches centrees, aligne sur la grille."""
+        y = -((m - 1) * pas) // 2
+        return y - (y % pas)
+
+    if modele == "DIP":
+        if n % 2 or n < 4:
+            raise ValueError(f"un DIP exige un nombre pair >= 4 : {n}")
+        m = n // 2
+        y0 = _depart(m)
+        gauche = [(str(i + 1), "L", y0 + i * pas) for i in range(m)]
+        droite = [(str(n - i), "R", y0 + i * pas) for i in range(m)]
+        return gauche + droite[::-1]
+    if modele == "Connecteur":
+        y0 = _depart(n)
+        return [(str(i + 1), "L", y0 + i * pas) for i in range(n)]
+    raise ValueError(f"modele inconnu : {modele!r}")
+
+
 def _tr_boite_libre(defn):
     """@brief Boite au brochage libre : broches sur les 4 bords (spec 2026-07-23).
 
