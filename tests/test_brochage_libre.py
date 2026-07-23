@@ -59,3 +59,32 @@ def test_export_utilise_les_broches_libres_sans_polluer_la_valeur(editeur):
     comp = next(x for x in editeur.exporter_composants() if x.ref == c.ref)
     assert set(comp.pins) == {"1", "2", "3"}
     assert comp.type == "R"
+
+
+# ── Task 3 : rendu en boite honnete ──────────────────────────────────────────
+
+def test_resistance_rebrochee_devient_une_boite(editeur):
+    c = _place(editeur, "R", 200, 200)
+    c.pinout = {"1": ("L", 0), "2": ("R", 0)}
+    editeur._invalider_geom()
+    editeur._redraw_all()
+    items = editeur._canvas.find_withtag(f"comp_{c.id}")
+    lignes = [i for i in items if editeur._canvas.type(i) == "line"]
+    # Le zigzag (>= 8 points) a disparu au profit d'un rectangle.
+    assert not any(len(editeur._canvas.coords(i)) >= 16 for i in lignes)
+    assert any(editeur._canvas.type(i) == "polygon" for i in items)
+
+
+def test_resistance_intacte_garde_son_zigzag(editeur):
+    c = _place(editeur, "R", 200, 200)
+    items = editeur._canvas.find_withtag(f"comp_{c.id}")
+    lignes = [i for i in items if editeur._canvas.type(i) == "line"]
+    assert any(len(editeur._canvas.coords(i)) >= 16 for i in lignes)
+
+
+def test_broche_du_haut_est_dessinee(editeur):
+    c = _place(editeur, "R", 200, 200)
+    c.pinout = {"VCC": ("T", 0)}
+    editeur._invalider_geom()
+    editeur._redraw_all()
+    assert editeur._canvas.find_withtag(f"pin_{c.id}_VCC")

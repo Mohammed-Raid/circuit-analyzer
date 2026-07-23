@@ -230,7 +230,9 @@ def primitives(comp_type, defn, rotation, value=""):
     Types traces : table _TRACEURS. Tout autre type (perso, puce catalogue)
     -> boite generique a encoche avec stubs et libelles de broches.
     """
-    if comp_type == "D":
+    if comp_type == TYPE_LIBRE:
+        prims = _tr_boite_libre(defn)
+    elif comp_type == "D":
         prims = _tr_d(defn, value)
     elif comp_type in _TRACEURS:
         prims = _TRACEURS[comp_type](defn)
@@ -266,6 +268,8 @@ def def_puce(value, broches):
 
 
 # ── Brochage libre par instance (spec 2026-07-23) ────────────────────────────
+
+TYPE_LIBRE = "__libre__"   # type de RENDU d'un composant au brochage libre
 
 BOITE_MIN_W = 80
 BOITE_MIN_H = 60
@@ -309,3 +313,27 @@ def aimanter_bord(dx, dy, w, h, pas):
         if d[cote] == m:
             long_ = dx if cote in ("T", "B") else dy
             return (cote, int(round(long_ / pas) * pas))
+
+
+def _tr_boite_libre(defn):
+    """@brief Boite au brochage libre : broches sur les 4 bords (spec 2026-07-23).
+
+    `_tr_boite` ne sait placer que des broches gauche/droite (il tranche le cote
+    sur `px > 0`), d'ou ce traceur separe qui lit `defn["cotes"]` et oriente le
+    libelle en consequence. Le laisser separe protege le rendu DIP des puces
+    catalogue, dont depend tout l'import ERetroDesign.
+    """
+    w2, h2 = defn["w"] // 2, defn["h"] // 2
+    prims = [("polygon", [(-w2, -h2), (w2, -h2), (w2, h2), (-w2, h2)], False)]
+    for pn, (px, py) in defn["pins"].items():
+        cote = (defn.get("cotes") or {}).get(pn, "L")
+        if cote in ("L", "R"):
+            # Ancre cote BORD : le libelle croit VERS l'interieur, jamais sur
+            # la pastille de broche (meme regle que `_tr_boite`).
+            ancre = "w" if cote == "L" else "e"
+            tx, ty = px + (6 if cote == "L" else -6), py
+        else:
+            ancre = "center"
+            tx, ty = px, py + (10 if cote == "T" else -10)
+        prims.append(("text", (tx, ty), pn, 7, ancre))
+    return prims

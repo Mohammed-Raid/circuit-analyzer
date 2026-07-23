@@ -17,7 +17,8 @@ from gui.schematic_symbols import (primitives, rotate_pin as _rotate_pin,
                                     def_puce, est_boite_generique,
                                     aimanter_bord, geometrie_libre,
                                     AUTO_COLOR as _AUTO_COLOR,
-                                    BOITE_MIN_W, BOITE_MIN_H)
+                                    BOITE_MIN_W, BOITE_MIN_H,
+                                    TYPE_LIBRE)
 from gui.theme import (SURFACE, RAISED, OVERLAY, BORDER, TEXT, TEXT_MUTED,
                         TEXT_DIM, BLUE, ERROR, SCHEMA_COLORS)
 
@@ -702,6 +703,11 @@ class SchematicEditor(tk.Frame):
         color = defn["color"]
         z     = self._zoom
         rot   = comp.rotation
+        # Brochage libre -> boîte honnête. Le symbole d'origine (zigzag d'une
+        # résistance, triangle d'un AOP…) est dessiné POUR ses broches
+        # d'origine : une fois rebroché, il mentirait (spec 2026-07-23 §4).
+        # Le comp_type, lui, ne bouge pas — l'export et l'analyse non plus.
+        t_rendu = TYPE_LIBRE if comp.pinout is not None else comp.comp_type
         scx, scy = self._w2s(comp.cx, comp.cy)
         w2, h2   = defn["w"] // 2, defn["h"] // 2
         pr   = max(2, _PIN_R * z)
@@ -709,7 +715,7 @@ class SchematicEditor(tk.Frame):
         self._canvas.delete(tag)
 
         # Symbole : primitives vectorielles (Task 1), rotation déjà appliquée.
-        prims = primitives(comp.comp_type, defn, rot, comp.value)
+        prims = primitives(t_rendu, defn, rot, comp.value)
         for p in prims:
             if p[0] == "line":
                 flat = [c for x, y in p[1] for c in self._w2s(comp.cx + x, comp.cy + y)]
@@ -762,7 +768,7 @@ class SchematicEditor(tk.Frame):
         # Boîte générique (types perso, puces catalogue) : _tr_boite dessine
         # déjà un libellé par broche dans ses primitives — un second libellé
         # générique ici les superposerait (spec §5, défaut visuel Task 5).
-        boite = est_boite_generique(comp.comp_type)
+        boite = est_boite_generique(t_rendu)
         for pn, (pdx, pdy) in defn["pins"].items():
             rdx, rdy = _rotate_pin(pdx, pdy, rot)
             spx = scx + rdx * z
