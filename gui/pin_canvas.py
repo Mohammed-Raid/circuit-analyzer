@@ -41,6 +41,11 @@ class PinCanvas(ctk.CTkFrame):
                              bg=_FOND)
         self._cv.pack(fill="both", expand=True, padx=8, pady=8)
         self._cv.bind("<Configure>", lambda _e: self._dessiner())
+        self._cv.bind("<Button-1>", self._sur_clic)
+        self._cv.bind("<B1-Motion>", self._sur_glisse)
+        self._cv.bind("<Double-Button-1>", self._sur_double_clic)
+        self._cv.bind("<Delete>", self._sur_suppr)
+        self._cv.configure(takefocus=1)
 
     # ── API publique ────────────────────────────────────────────────────────
 
@@ -89,11 +94,108 @@ class PinCanvas(ctk.CTkFrame):
         self._muter()
         return nom
 
+    def _broche_a(self, wx, wy):
+        """@brief Nom de la broche sous (wx,wy) en repère BOÎTE, sinon None."""
+        for nom, (px, py) in self._defn()["pins"].items():
+            if (wx - px) ** 2 + (wy - py) ** 2 <= _R_CLIC ** 2:
+                return nom
+        return None
+
+    def _index(self, nom):
+        for i, (n, _c, _d) in enumerate(self._brochage):
+            if n == nom:
+                return i
+        return -1
+
+    def _deplacer(self, nom, wx, wy):
+        """@brief Fait coulisser une broche.
+
+        L'ORDRE ne change pas : position à l'écran et rang dans la netlist sont
+        deux données indépendantes (c'est le bandeau qui règle le rang).
+        """
+        if self._lecture_seule:
+            return
+        i = self._index(nom)
+        if i < 0:
+            return
+        d = self._defn()
+        cote, dec = aimanter_bord(wx, wy, d["w"], d["h"], GRILLE)
+        self._brochage[i] = (nom, cote, dec)
+        self._muter()
+
+    def _renommer(self, ancien, nouveau) -> bool:
+        """@brief Renomme une broche EN PLACE (son rang ne bouge pas).
+
+        @return False si le nom est vide ou déjà pris.
+        """
+        if self._lecture_seule:
+            return False
+        nouveau = (nouveau or "").strip()
+        i = self._index(ancien)
+        if i < 0 or not nouveau:
+            return False
+        if any(n == nouveau for n, _c, _d in self._brochage):
+            return False
+        _n, cote, dec = self._brochage[i]
+        self._brochage[i] = (nouveau, cote, dec)
+        if self._selection == ancien:
+            self._selection = nouveau
+        self._muter()
+        return True
+
+    def _supprimer(self, nom):
+        """@brief Retire une broche (les suivantes remontent d'un rang)."""
+        if self._lecture_seule:
+            return
+        i = self._index(nom)
+        if i < 0:
+            return
+        self._brochage.pop(i)
+        if self._selection == nom:
+            self._selection = None
+        self._muter()
+
     def _muter(self):
         """@brief Redessine et notifie le parent (état du formulaire)."""
         self._dessiner()
         if self._on_change:
             self._on_change(self.brochage())
+
+    # ── Souris / clavier ────────────────────────────────────────────────────
+
+    def _boite(self, event):
+        """@brief Événement écran -> coordonnées repère BOÎTE."""
+        cx, cy = self._centre()
+        return event.x - cx, event.y - cy
+
+    def _sur_clic(self, event):
+        """@brief Clic SUR une broche = sélection ; clic ailleurs = nouvelle broche."""
+        self._cv.focus_set()
+        wx, wy = self._boite(event)
+        touchee = self._broche_a(wx, wy)
+        self._selection = touchee if touchee else self._ajouter(wx, wy)
+        self._dessiner()
+
+    def _sur_glisse(self, event):
+        if self._selection:
+            self._deplacer(self._selection, *self._boite(event))
+
+    def _sur_double_clic(self, event):
+        if self._lecture_seule:
+            return
+        nom = self._broche_a(*self._boite(event))
+        if not nom:
+            return
+        from tkinter import messagebox, simpledialog
+        nouveau = simpledialog.askstring(
+            "Renommer la broche", f"Nouveau nom pour « {nom} » :",
+            initialvalue=nom, parent=self)
+        if nouveau is not None and not self._renommer(nom, nouveau):
+            messagebox.showerror("Erreur", "Nom vide ou déjà utilisé.")
+
+    def _sur_suppr(self, _event=None):
+        if self._selection:
+            self._supprimer(self._selection)
 
     # ── Dessin ──────────────────────────────────────────────────────────────
 

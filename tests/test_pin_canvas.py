@@ -53,3 +53,48 @@ def test_lecture_seule_ne_mute_pas(canevas):
     canevas.charger([("VCC", "T", 0)], lecture_seule=True)
     canevas._ajouter(-40, 0)
     assert canevas.brochage() == [("VCC", "T", 0)]
+
+
+# ── Task 2 : glisser, renommer, supprimer ────────────────────────────────────
+
+def test_glisser_conserve_l_ordre_et_aimante(canevas):
+    canevas._ajouter(-40, -20)
+    canevas._ajouter(-40, 20)
+    canevas._deplacer("1", -40, 27)
+    noms = [n for n, _, _ in canevas.brochage()]
+    assert noms == ["1", "2"]                    # ordre INCHANGE
+    cote, dec = next((c, d) for n, c, d in canevas.brochage() if n == "1")
+    assert cote == "L" and dec % 20 == 0
+
+
+def test_glisser_au_dela_du_coin_agrandit_la_boite(canevas):
+    canevas._ajouter(-40, 0)
+    h_avant = canevas._defn()["h"]
+    canevas._deplacer("1", -40, 200)
+    assert canevas._defn()["h"] > h_avant
+
+
+def test_renommage_refuse_vide_et_doublon(canevas):
+    canevas._ajouter(-40, -20)
+    canevas._ajouter(-40, 20)
+    assert canevas._renommer("1", "VCC") is True
+    assert [n for n, _, _ in canevas.brochage()] == ["VCC", "2"]
+    assert canevas._renommer("2", "VCC") is False
+    assert canevas._renommer("2", "  ") is False
+    assert [n for n, _, _ in canevas.brochage()] == ["VCC", "2"]
+
+
+def test_suppression_puis_ajout_recycle_le_nom_en_fin(canevas):
+    for dy in (-20, 0, 20):
+        canevas._ajouter(-40, dy)
+    canevas._supprimer("2")
+    assert [n for n, _, _ in canevas.brochage()] == ["1", "3"]
+    canevas._ajouter(40, 0)
+    assert [n for n, _, _ in canevas.brochage()] == ["1", "3", "2"]
+
+
+def test_hit_test_trouve_la_broche(canevas):
+    canevas._ajouter(-40, 0)
+    px, py = canevas._defn()["pins"]["1"]
+    assert canevas._broche_a(px, py) == "1"
+    assert canevas._broche_a(px + 200, py) is None
