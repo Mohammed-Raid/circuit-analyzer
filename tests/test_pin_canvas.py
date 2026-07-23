@@ -152,3 +152,30 @@ def test_charger_transporte_roles_et_taille(canevas):
                     w_mini=200, h_mini=240)
     assert canevas.roles() == {"VCC": "Alim"}
     assert canevas._defn()["w"] >= 200 and canevas._defn()["h"] >= 240
+
+
+# ── Task 4 : champ de nom chaine ─────────────────────────────────────────────
+
+def test_nom_chaine_avance_a_la_broche_suivante(canevas):
+    canevas.charger([("1", "L", -20), ("2", "L", 0), ("3", "L", 20)])
+    canevas._selection = "1"
+    assert canevas._valider_nom("GND") is True
+    assert [n for n, _c, _d in canevas.brochage()] == ["GND", "2", "3"]
+    assert canevas._selection == "2"
+
+
+def test_nom_chaine_boucle_apres_la_derniere(canevas):
+    canevas.charger([("1", "L", 0), ("2", "L", 20)])
+    canevas._selection = "2"
+    canevas._valider_nom("OUT")
+    assert canevas._selection == "1"
+
+
+def test_refus_n_avance_pas(canevas):
+    """Un doublon qui ferait avancer ferait PERDRE la broche qu'on nommait."""
+    canevas.charger([("1", "L", 0), ("2", "L", 20)])
+    canevas._selection = "1"
+    assert canevas._valider_nom("2") is False        # doublon
+    assert canevas._selection == "1"
+    assert canevas._valider_nom("   ") is False      # vide
+    assert canevas._selection == "1"

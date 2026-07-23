@@ -54,6 +54,22 @@ class PinCanvas(ctk.CTkFrame):
         self._cv.bind("<Double-Button-1>", self._sur_double_clic)
         self._cv.bind("<Delete>", self._sur_suppr)
         self._cv.configure(takefocus=1)
+        # Champ de nom CHAÎNÉ : Entrée valide et passe à la broche suivante,
+        # pour nommer huit broches sans ouvrir huit fenêtres.
+        ligne = ctk.CTkFrame(self, fg_color="transparent")
+        ligne.pack(fill="x", padx=8, pady=(0, 4))
+        ctk.CTkLabel(ligne, text="Nom :", font=ctk.CTkFont(size=11),
+                     text_color=TEXT_MUTED).pack(side="left", padx=(0, 6))
+        self._nom_var = tk.StringVar()
+        self._champ_nom = ctk.CTkEntry(ligne, textvariable=self._nom_var,
+                                       width=160, height=28,
+                                       font=ctk.CTkFont("Consolas", 11))
+        self._champ_nom.pack(side="left")
+        self._champ_nom.bind("<Return>",
+                             lambda _e: self._valider_nom(self._nom_var.get()))
+        ctk.CTkLabel(ligne, text="Entrée = valider et passer à la suivante",
+                     font=ctk.CTkFont(size=10),
+                     text_color=TEXT_MUTED).pack(side="left", padx=8)
         self._bandeau = ctk.CTkFrame(self, fg_color="transparent")
         self._bandeau.pack(fill="x", padx=8, pady=(0, 8))
         self._construire_bandeau()
@@ -74,6 +90,7 @@ class PinCanvas(ctk.CTkFrame):
         self._selection = None
         self._dessiner()
         self._construire_bandeau()
+        self._sync_champ()
 
     def brochage(self) -> list:
         """@brief Brochage courant, dans l'ordre (= ordre de la netlist)."""
@@ -179,6 +196,38 @@ class PinCanvas(ctk.CTkFrame):
             self._selection = None
         self._muter()
 
+    def _selection_suivante(self):
+        """@brief Avance la sélection d'un rang, en bouclant sur la première."""
+        if not self._brochage:
+            self._selection = None
+            return
+        i = self._index(self._selection)
+        self._selection = self._brochage[(i + 1) % len(self._brochage)][0]
+
+    def _valider_nom(self, nouveau) -> bool:
+        """@brief Renomme la broche sélectionnée PUIS passe à la suivante.
+
+        C'est tout l'intérêt du champ chaîné. Un refus (nom vide ou déjà pris)
+        NE FAIT PAS avancer : sinon on perdrait la broche qu'on essayait de
+        nommer, et on ne s'en apercevrait que plusieurs broches plus loin.
+        """
+        if not self._selection:
+            return False
+        if not self._renommer(self._selection, nouveau):
+            return False
+        self._selection_suivante()
+        self._sync_champ()
+        self._dessiner()
+        return True
+
+    def _sync_champ(self):
+        """@brief Recopie dans le champ le nom de la broche sélectionnée."""
+        if not hasattr(self, "_nom_var"):
+            return
+        self._nom_var.set(self._selection or "")
+        etat = "disabled" if self._lecture_seule else "normal"
+        self._champ_nom.configure(state=etat)
+
     def _reordonner(self, depuis: int, vers: int):
         """@brief Déplace la broche de rang `depuis` au rang `vers`.
 
@@ -228,6 +277,7 @@ class PinCanvas(ctk.CTkFrame):
         """@brief Redessine, reconstruit le bandeau et notifie le parent."""
         self._dessiner()
         self._construire_bandeau()
+        self._sync_champ()
         if self._on_change:
             self._on_change(self.brochage())
 
@@ -288,6 +338,7 @@ class PinCanvas(ctk.CTkFrame):
         wx, wy = self._boite(event)
         touchee = self._broche_a(wx, wy)
         self._selection = touchee if touchee else self._ajouter(wx, wy)
+        self._sync_champ()
         self._dessiner()
 
     def _sur_glisse(self, event):
