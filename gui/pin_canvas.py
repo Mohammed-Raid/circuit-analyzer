@@ -16,7 +16,7 @@ import customtkinter as ctk
 
 from gui.schematic_symbols import (AUTO_COLOR, TYPE_LIBRE, aimanter_bord,
                                    geometrie_libre, primitives)
-from gui.theme import CARD2, TEXT_MUTED
+from gui.theme import CARD2, OVERLAY, TEXT, TEXT_MUTED
 
 GRILLE = 20
 _R_BROCHE = 5
@@ -31,7 +31,10 @@ class PinCanvas(ctk.CTkFrame):
     @param on_change Callback appelé après toute mutation, avec le brochage.
     """
 
-    def __init__(self, parent, on_change=None, hauteur=260):
+    def __init__(self, parent, on_change=None, hauteur=190):
+        # 190 et non 260 : à 260, le bandeau d'ordre tombait sous la zone
+        # visible du formulaire défilant — invisible alors qu'il porte l'ordre
+        # de la netlist (défaut trouvé en boucle visuelle, 2026-07-23).
         super().__init__(parent, fg_color=CARD2)
         self._on_change = on_change
         self._brochage: list = []          # [(nom, côté, décalage)] ORDONNÉ
@@ -193,9 +196,12 @@ class PinCanvas(ctk.CTkFrame):
                      font=ctk.CTkFont(size=11),
                      text_color=TEXT_MUTED).pack(side="left", padx=(0, 6))
         for i, (nom, _c, _d) in enumerate(self._brochage):
-            p = ctk.CTkLabel(self._bandeau, text=nom, fg_color=CARD2,
-                             corner_radius=6, padx=8,
+            # Fond CONTRASTÉ avec la carte : sans lui, la pastille ressemble à
+            # du texte inerte et rien ne dit qu'elle se glisse.
+            p = ctk.CTkLabel(self._bandeau, text=nom, fg_color=OVERLAY,
+                             corner_radius=6, padx=8, text_color=TEXT,
                              font=ctk.CTkFont("Consolas", 11))
+            p.configure(cursor="hand2" if not self._lecture_seule else "")
             p.pack(side="left", padx=2)
             if not self._lecture_seule:
                 p.bind("<Button-1>", lambda _e, k=i: self._debut_glisse(k))

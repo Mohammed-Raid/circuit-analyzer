@@ -137,3 +137,28 @@ def test_aimantation_choisit_le_bord_le_plus_proche():
 def test_aimantation_au_coin_les_bords_horizontaux_gagnent():
     # coin haut-gauche exact : distance nulle aux deux bords -> T
     assert aimanter_bord(-40, -30, 80, 60, 20)[0] == "T"
+
+
+def test_boite_s_elargit_pour_loger_les_libelles():
+    court = geometrie_libre({"A": ("L", 0), "B": ("R", 0)})
+    long_ = geometrie_libre({"ENABLE": ("L", 0), "FEEDBACK": ("R", 0)})
+    assert long_["w"] > court["w"]
+
+
+def test_libelles_opposes_ne_se_chevauchent_pas():
+    """Défaut trouvé en boucle visuelle : 'IN1 VCCOUT1' télescopés."""
+    from gui.schematic_symbols import CHAR_W, _tr_boite_libre
+    d = geometrie_libre({"IN1": ("L", 0), "OUT1": ("R", 0)})
+    spans = []
+    for _t, (x, _y), texte, _taille, ancre in [p for p in _tr_boite_libre(d)
+                                               if p[0] == "text"]:
+        larg = len(texte) * CHAR_W
+        spans.append((x, x + larg) if ancre == "w" else (x - larg, x))
+    (a0, a1), (b0, b1) = sorted(spans)
+    assert a1 <= b0, f"libellés qui se chevauchent : {spans}"
+
+
+def test_broches_haut_bas_laissent_de_la_hauteur():
+    sans = geometrie_libre({"A": ("L", 0)})
+    avec = geometrie_libre({"A": ("L", 0), "VCC": ("T", 0), "GND": ("B", 0)})
+    assert avec["h"] > sans["h"]

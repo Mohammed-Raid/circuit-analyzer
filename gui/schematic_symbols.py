@@ -274,6 +274,7 @@ TYPE_LIBRE = "__libre__"   # type de RENDU d'un composant au brochage libre
 BOITE_MIN_W = 80
 BOITE_MIN_H = 60
 BOITE_MARGE = 20
+CHAR_W = 7          # largeur approx. d'un caractere du libelle de broche
 
 
 def geometrie_libre(pinout):
@@ -286,8 +287,18 @@ def geometrie_libre(pinout):
     """
     lat = [abs(d) for c, d in pinout.values() if c in ("L", "R")]
     ver = [abs(d) for c, d in pinout.values() if c in ("T", "B")]
+    # La boite doit aussi loger les LIBELLES, dessines a l'interieur : sans ca
+    # les noms des bords opposes se telescopent ("IN1 VCCOUT1", defaut trouve
+    # en boucle visuelle le 2026-07-23).
+    lg = max((len(n) for n, (c, _d) in pinout.items() if c == "L"), default=0)
+    ld = max((len(n) for n, (c, _d) in pinout.items() if c == "R"), default=0)
     h = max(BOITE_MIN_H, 2 * max(lat, default=0) + BOITE_MARGE)
-    w = max(BOITE_MIN_W, 2 * max(ver, default=0) + BOITE_MARGE)
+    w = max(BOITE_MIN_W, 2 * max(ver, default=0) + BOITE_MARGE,
+            (lg + ld) * CHAR_W + 3 * BOITE_MARGE)
+    if ver:
+        # Les libelles du haut/bas mordent vers l'interieur : on leur reserve
+        # une bande, sinon ils croisent ceux des bords lateraux.
+        h += 2 * BOITE_MARGE
     w2, h2 = w // 2, h // 2
     pins, cotes = {}, {}
     for nom, (cote, dec) in pinout.items():

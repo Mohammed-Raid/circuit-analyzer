@@ -852,11 +852,19 @@ class SchematicEditor(tk.Frame):
         color = defn["color"]
         z     = self._zoom
         rot   = comp.rotation
-        # Brochage libre -> boîte honnête. Le symbole d'origine (zigzag d'une
-        # résistance, triangle d'un AOP…) est dessiné POUR ses broches
+        # Brochage positionné -> boîte honnête. Le symbole d'origine (zigzag
+        # d'une résistance, triangle d'un AOP…) est dessiné POUR ses broches
         # d'origine : une fois rebroché, il mentirait (spec 2026-07-23 §4).
+        # Le critère est la présence de `cotes` dans la géométrie EFFECTIVE, ce
+        # qui couvre les DEUX sources : brochage d'instance (`comp.pinout`) et
+        # brochage de TYPE défini au canevas de l'onglet Composants. Tester
+        # `comp.pinout` seul laissait le second cas retomber sur `_tr_boite`,
+        # qui ne sait pas placer une broche en haut/bas et rejetait « VCC »
+        # hors de la boîte (défaut trouvé en boucle visuelle).
         # Le comp_type, lui, ne bouge pas — l'export et l'analyse non plus.
-        t_rendu = TYPE_LIBRE if comp.pinout is not None else comp.comp_type
+        # PRÉSENCE de la clé, pas sa valeur : une boîte vierge a `cotes == {}`,
+        # qui est falsy et la ferait retomber sur `_tr_boite`.
+        t_rendu = TYPE_LIBRE if "cotes" in defn else comp.comp_type
         scx, scy = self._w2s(comp.cx, comp.cy)
         w2, h2   = defn["w"] // 2, defn["h"] // 2
         pr   = max(2, _PIN_R * z)

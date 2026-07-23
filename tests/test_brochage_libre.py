@@ -273,3 +273,30 @@ def test_circ_sans_pinout_se_relit(editeur):
         comp.pop("pinout", None)
     editeur.load_dict(d)                 # ne doit pas lever
     assert all(c.pinout is None for c in editeur._comps.values())
+
+
+def test_type_a_brochage_positionne_dessine_le_label_sous_sa_broche(editeur):
+    """Défaut boucle visuelle : un TYPE positionné (def avec `cotes`) mais posé
+    sans pinout d'instance tombait sur `_tr_boite`, qui rejette tout libellé à
+    gauche — 'VCC' se retrouvait hors de la boîte."""
+    from gui.schematic_editor import _auto_def
+    editeur._defs["ZQ"] = _auto_def("Z", ["VCC", "GND"],
+                                    {"VCC": ["T", 0], "GND": ["B", 0]})
+    c = _place(editeur, "ZQ", 200, 200)
+    cv = editeur._canvas
+    txt = [i for i in cv.find_withtag(f"comp_{c.id}")
+           if cv.type(i) == "text" and cv.itemcget(i, "text") == "VCC"]
+    assert txt, "libellé VCC non dessiné"
+    x, _y = cv.coords(txt[0])
+    px, _py = editeur._geom(c)["pins"]["VCC"]
+    sx, _sy = editeur._w2s(200 + px, 200)
+    assert abs(x - sx) < 20, "libellé rejeté loin de sa broche"
+
+
+def test_boite_vierge_sans_broche_reste_rendue_en_boite_libre(editeur):
+    """`cotes` vide est FALSY : tester la valeur au lieu de la présence de la
+    clé faisait retomber la boîte vierge sur l'ancien traceur (encoche DIP)."""
+    c = _place(editeur, "X", 200, 200)
+    items = editeur._canvas.find_withtag(f"comp_{c.id}")
+    assert not any(editeur._canvas.type(i) == "arc" for i in items), \
+        "encoche DIP de _tr_boite : mauvais traceur"
