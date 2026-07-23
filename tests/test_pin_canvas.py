@@ -122,3 +122,33 @@ def test_bandeau_suit_l_ordre_du_brochage(canevas):
     assert [p.cget("text") for p in canevas._pastilles] == ["A", "B"]
     canevas._reordonner(1, 0)
     assert [p.cget("text") for p in canevas._pastilles] == ["B", "A"]
+
+
+# ── Task 3 : pose groupee et chargement etendu ───────────────────────────────
+
+def test_pose_groupee_ajoute_n_broches_en_fin(canevas):
+    canevas.charger([("A", "R", 0)])
+    noms = canevas._poser_groupe("L", 3)
+    assert noms == ["1", "2", "3"]
+    assert [n for n, _c, _d in canevas.brochage()] == ["A", "1", "2", "3"]
+    assert {c for n, c, _d in canevas.brochage() if n != "A"} == {"L"}
+
+
+def test_pose_groupee_espace_les_broches(canevas):
+    canevas._poser_groupe("L", 3)
+    decs = sorted(d for _n, _c, d in canevas.brochage())
+    assert len(set(decs)) == 3
+    assert all(d % 20 == 0 for d in decs)
+
+
+def test_poser_modele_remplace_le_brochage(canevas):
+    canevas.charger([("VIEUX", "L", 0)])
+    canevas.poser_modele("DIP", 8)
+    assert [n for n, _c, _d in canevas.brochage()] == [str(i) for i in range(1, 9)]
+
+
+def test_charger_transporte_roles_et_taille(canevas):
+    canevas.charger([("VCC", "L", 0)], roles={"VCC": "Alim"},
+                    w_mini=200, h_mini=240)
+    assert canevas.roles() == {"VCC": "Alim"}
+    assert canevas._defn()["w"] >= 200 and canevas._defn()["h"] >= 240

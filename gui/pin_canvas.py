@@ -15,7 +15,8 @@ import tkinter as tk
 import customtkinter as ctk
 
 from gui.schematic_symbols import (AUTO_COLOR, TYPE_LIBRE, aimanter_bord,
-                                   geometrie_libre, primitives)
+                                   geometrie_libre, modele_brochage,
+                                   primitives)
 from gui.theme import CARD2, OVERLAY, TEXT, TEXT_MUTED
 
 GRILLE = 20
@@ -42,6 +43,8 @@ class PinCanvas(ctk.CTkFrame):
         self._selection = None
         self._glisse_depuis = None
         self._pastilles: list = []
+        self._roles: dict = {}          # {nom: role} — clef `fonctions`
+        self._w_mini = self._h_mini = None
         self._cv = tk.Canvas(self, height=hauteur, highlightthickness=0,
                              bg=_FOND)
         self._cv.pack(fill="both", expand=True, padx=8, pady=8)
@@ -57,9 +60,16 @@ class PinCanvas(ctk.CTkFrame):
 
     # ── API publique ────────────────────────────────────────────────────────
 
-    def charger(self, brochage: list, lecture_seule: bool = False):
-        """@brief Remplace le brochage affiché (liste ordonnée de tuples)."""
+    def charger(self, brochage: list, lecture_seule: bool = False,
+                roles: dict = None, w_mini=None, h_mini=None):
+        """@brief Remplace le brochage affiché (liste ordonnée de tuples).
+
+        @param roles        {nom: rôle} — affiché « nom RÔLE » dans le symbole.
+        @param w_mini,h_mini Taille PLANCHER voulue (None = auto-ajustement).
+        """
         self._brochage = [tuple(b) for b in brochage]
+        self._roles = dict(roles or {})
+        self._w_mini, self._h_mini = w_mini, h_mini
         self._lecture_seule = lecture_seule
         self._selection = None
         self._dessiner()
@@ -71,9 +81,14 @@ class PinCanvas(ctk.CTkFrame):
 
     # ── Géométrie ───────────────────────────────────────────────────────────
 
+    def roles(self) -> dict:
+        """@brief {nom: rôle} des broches renseignées (rôles vides omis)."""
+        return {n: r for n, r in self._roles.items() if r}
+
     def _defn(self) -> dict:
         """@brief Def de boîte auto-ajustée, via la fonction pure partagée."""
-        return geometrie_libre({n: (c, d) for n, c, d in self._brochage})
+        return geometrie_libre({n: (c, d) for n, c, d in self._brochage},
+                               self._w_mini, self._h_mini, self.roles())
 
     def _centre(self) -> tuple:
         return (self._cv.winfo_width() // 2, self._cv.winfo_height() // 2)
@@ -176,6 +191,37 @@ class PinCanvas(ctk.CTkFrame):
         if not (0 <= depuis < n) or not (0 <= vers < n) or depuis == vers:
             return
         self._brochage.insert(vers, self._brochage.pop(depuis))
+        self._muter()
+
+    def _poser_groupe(self, cote: str, n: int) -> list:
+        """@brief Pose n broches espacées sur un côté, ajoutées EN FIN.
+
+        @return Noms attribués, dans l'ordre.
+        """
+        if self._lecture_seule:
+            return []
+        n = int(n)
+        y0 = -((n - 1) * GRILLE) // 2
+        y0 -= y0 % GRILLE
+        noms = []
+        for i in range(n):
+            nom = self._nom_libre()
+            self._brochage.append((nom, cote, y0 + i * GRILLE))
+            noms.append(nom)
+        self._muter()
+        return noms
+
+    def poser_modele(self, modele: str, n: int):
+        """@brief REMPLACE le brochage par celui d'un boîtier type.
+
+        Destructif : l'appelant demande confirmation si le brochage courant
+        n'est pas vide.
+        """
+        if self._lecture_seule:
+            return
+        self._brochage = list(modele_brochage(modele, n))
+        self._roles = {}
+        self._selection = None
         self._muter()
 
     def _muter(self):
