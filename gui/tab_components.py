@@ -10,9 +10,31 @@ from tkinter import messagebox
 from circuit_analyzer.composant import (
     TYPES_COMPOSANTS as COMPONENT_TYPES, chemin_bibliotheque,
 )
+from gui.pin_canvas import GRILLE, PinCanvas
 from gui.theme import BG, CARD, CARD2, TEXT, TEXT_MUTED, BLUE, ERROR
 from gui import ui_kit
 from gui.widgets import ListeSectionnee, BandeauEtat, ligne_aide, lier_molette
+
+
+def _amorcer(broches: list) -> list:
+    """@brief Projette la géométrie historique sur les bords de la boîte.
+
+    Un type créé AVANT le brochage positionné (spec 2026-07-23) n'a que des
+    noms de broches : on rejoue la répartition moitié gauche / moitié droite de
+    `_auto_def`, puis on aimante chaque broche sur son bord — ainsi la
+    réouverture ne perd aucune broche et montre ce que l'utilisateur voyait.
+
+    @param broches Liste ordonnée de noms.
+    @return list [(nom, côté, décalage)] dans le même ordre.
+    """
+    from gui.schematic_editor import _auto_def
+    from gui.schematic_symbols import aimanter_bord
+    broches = [b for b in broches if b]
+    if not broches:
+        return []
+    d = _auto_def("", list(broches))
+    return [(b, *aimanter_bord(*d["pins"][b], d["w"], d["h"], GRILLE))
+            for b in broches]
 
 
 class TabComponents:
@@ -35,7 +57,9 @@ class TabComponents:
         self._custom: dict = {}
         self._current_key: str | None = None       # clé du perso en édition
         self._mode = 'nouveau'                     # nouveau | edition | lecture
-        self._pin_lignes: list = []                # [(StringVar, CTkEntry)]
+        # Brochage ORDONNÉ [(nom, côté, décalage)] : l'ordre EST celui de la
+        # netlist et de la saisie rapide (spec 2026-07-23).
+        self._brochage: list = []
         self._etat_initial: tuple = ('', '', ())   # snapshot anti-perte
         self._build()
         self._load()
@@ -111,23 +135,12 @@ class TabComponents:
         ligne_aide(form, "Nom lisible affiché dans les listes et le rapport.")
 
         ui_kit.SectionHeader(form, "Broches").pack(anchor="w")
-        pins_card = ui_kit.Card(form, fg_color=CARD2)
-        pins_card.pack(fill="x", pady=(4, 6))
-        self._pins_inner = ctk.CTkFrame(pins_card, fg_color="transparent")
-        self._pins_inner.pack(fill="x", padx=10, pady=10)
-
-        pin_btns = ctk.CTkFrame(form, fg_color="transparent")
-        pin_btns.pack(fill="x", pady=(0, 2))
-        self._btn_add_pin = ui_kit.SecondaryButton(
-            pin_btns, "Ajouter une broche", self._ajouter_broche,
-            icon_name="plus", width=170, height=32)
-        self._btn_add_pin.pack(side="left", padx=(0, 6))
-        self._btn_del_pin = ui_kit.SecondaryButton(
-            pin_btns, "Retirer la broche", self._retirer_broche,
-            icon_name="x", width=170, height=32)
-        self._btn_del_pin.pack(side="left")
-        ligne_aide(form, "Noms des broches dans l'ordre de la netlist "
-                         "(ex : B, C, E pour un transistor).")
+        self._canvas_broches = PinCanvas(form, on_change=self._sur_brochage)
+        self._canvas_broches.pack(fill="x", pady=(4, 6))
+        ligne_aide(form, "Clic sur un bord = poser une broche · glisser = "
+                         "déplacer · double-clic = renommer · Suppr = retirer. "
+                         "Le bandeau donne l'ordre de la netlist (glisser pour "
+                         "réordonner).")
 
         # ── Pied épinglé (hors scroll) : toujours visible
         pied = ctk.CTkFrame(right, fg_color="transparent")
@@ -159,10 +172,8 @@ class TabComponents:
         etat = "disabled" if lecture else "normal"
         self._prefix_entry.configure(state=etat)
         self._name_entry.configure(state=etat)
-        self._btn_add_pin.configure(state=etat)
-        self._btn_del_pin.configure(state=etat)
-        for _, entry in self._pin_lignes:
-            entry.configure(state=etat)
+        # Le canevas porte son propre verrou : `_remplir_formulaire` le charge
+        # avec `lecture_seule`, aucun clic ne mute alors le brochage.
         self._btn_save.pack_forget()
         self._btn_dupliquer.pack_forget()
         if lecture:
@@ -173,7 +184,7 @@ class TabComponents:
     def _afficher_nouveau(self):
         """@brief Affiche un formulaire vierge en mode « nouveau »."""
         self._current_key = None
-        self._remplir_formulaire('', '', [''])
+        self._remplir_formulaire('', '', [])
         self._definir_mode('nouveau', "➕  Nouveau type de composant")
         self._prendre_snapshot()
 
@@ -185,7 +196,8 @@ class TabComponents:
         """
         self._current_key = key
         v = self._custom[key]
-        self._remplir_formulaire(key, v.get("name", ""), v.get("pins", []))
+        self._remplir_formulaire(key, v.get("name", ""), v.get("pins", []),
+                                 v.get("brochage"))
         self._definir_mode('edition', f"✏  Modification de ★ {key}")
         self._prendre_snapshot()
 
@@ -197,17 +209,25 @@ class TabComponents:
         """
         self._current_key = None
         v = COMPONENT_TYPES[key]
-        self._remplir_formulaire(key, v["name"], v["pins"])
+        self._remplir_formulaire(key, v["name"], v["pins"], None,
+                                 lecture_seule=True)
         self._definir_mode('lecture',
                            f"🔒  Type intégré {key} — lecture seule")
         self._prendre_snapshot()
 
-    def _remplir_formulaire(self, prefixe: str, nom: str, broches: list):
-        """@brief Remplit les champs du formulaire (préfixe, nom, broches).
+    def _sur_brochage(self, brochage: list):
+        """@brief Le canevas a muté : sa liste ordonnée devient l'état du form."""
+        self._brochage = list(brochage)
+
+    def _remplir_formulaire(self, prefixe: str, nom: str, broches: list,
+                            brochage: dict = None, lecture_seule: bool = False):
+        """@brief Remplit les champs du formulaire (préfixe, nom, brochage).
 
         @param prefixe Préfixe du type.
         @param nom Nom complet du type.
-        @param broches Liste des noms de broches.
+        @param broches Liste ORDONNÉE des noms de broches (ordre netlist).
+        @param brochage {nom: [côté, décalage]} du fichier, ou None.
+        @param lecture_seule Vrai pour un type intégré (canevas non éditable).
         @return None
         """
         # Réactiver avant d'écrire : un Entry disabled ignore les set()
@@ -215,11 +235,14 @@ class TabComponents:
         self._name_entry.configure(state="normal")
         self._prefix_var.set(prefixe)
         self._name_var.set(nom)
-        for w in self._pins_inner.winfo_children():
-            w.destroy()
-        self._pin_lignes = []
-        for b in broches:
-            self._ajouter_broche(b)
+        if brochage:
+            # L'ORDRE vient de `pins`, les POSITIONS de `brochage` : une broche
+            # présente dans l'un et pas dans l'autre est simplement ignorée.
+            self._brochage = [(b, *brochage[b]) for b in broches
+                              if b in brochage]
+        else:
+            self._brochage = _amorcer(broches)
+        self._canvas_broches.charger(self._brochage, lecture_seule)
 
     # ── Anti-perte de saisie ─────────────────────────────────────────────────
 
@@ -229,7 +252,7 @@ class TabComponents:
         """
         return (self._prefix_var.get().strip(),
                 self._name_var.get().strip(),
-                tuple(v.get().strip() for v, _ in self._pin_lignes))
+                tuple(self._brochage))
 
     def _prendre_snapshot(self):
         """@brief Mémorise l'état courant comme référence anti-perte de saisie."""
@@ -245,40 +268,6 @@ class TabComponents:
             "Modifications non sauvegardées",
             "Le formulaire contient des modifications non sauvegardées.\n"
             "Les abandonner ?")
-
-    # ── Broches ──────────────────────────────────────────────────────────────
-
-    def _ajouter_broche(self, valeur=""):
-        """@brief Ajoute une ligne de saisie de broche au formulaire.
-
-        @param valeur Valeur initiale de la broche (vide par défaut).
-        @return None
-        """
-        n = len(self._pin_lignes) + 1
-        row = ctk.CTkFrame(self._pins_inner, fg_color="transparent")
-        row.pack(anchor="w", pady=2)
-        ctk.CTkLabel(row, text=f"{n}.",
-                     width=24, font=ui_kit.font("caption"),
-                     text_color=TEXT_MUTED).pack(side="left")
-        var = tk.StringVar(value=valeur)
-        entry = ui_kit.Field(
-            row, textvariable=var,
-            placeholder=f"Broche {n}",
-            width=140, height=30, corner_radius=6,
-            font=ctk.CTkFont("Consolas", 11),
-            text_color=BLUE)
-        entry.pack(side="left")
-        self._pin_lignes.append((var, entry))
-        # Nouvelle ligne → la relier à la molette du formulaire scrollable.
-        lier_molette(self._form)
-
-    def _retirer_broche(self):
-        """@brief Retire la dernière ligne de broche du formulaire."""
-        if self._pin_lignes:
-            self._pin_lignes.pop()
-            children = self._pins_inner.winfo_children()
-            if children:
-                children[-1].destroy()
 
     # ── Validation ───────────────────────────────────────────────────────────
 
@@ -344,10 +333,11 @@ class TabComponents:
     def _dupliquer(self):
         """@brief Préremplit un nouveau type personnalisé à partir du type affiché."""
         nom = self._name_var.get()
-        broches = [v.get() for v, _ in self._pin_lignes]
+        broches = [n for n, _c, _d in self._brochage]
+        positions = {n: [c, d] for n, c, d in self._brochage}
         self._liste.deselectionner()
         self._current_key = None
-        self._remplir_formulaire('', f"{nom} (copie)", broches)
+        self._remplir_formulaire('', f"{nom} (copie)", broches, positions)
         self._definir_mode('nouveau',
                            "➕  Nouveau type (copie) — choisir un préfixe")
         self._prendre_snapshot()
@@ -374,8 +364,7 @@ class TabComponents:
         """@brief Valide et enregistre le type personnalisé saisi (préfixe, nom, broches)."""
         prefix = self._prefix_var.get().strip().upper()
         name   = self._name_var.get().strip()
-        pins   = [v.get().strip()
-                  for v, _ in self._pin_lignes if v.get().strip()]
+        pins   = [n.strip() for n, _c, _d in self._brochage if n.strip()]
         if not prefix:
             messagebox.showerror("Erreur", "Préfixe obligatoire.")
             return
@@ -388,7 +377,9 @@ class TabComponents:
             return
         if self._current_key and self._current_key != prefix:
             self._custom.pop(self._current_key, None)
-        self._custom[prefix] = {"name": name, "pins": pins}
+        self._custom[prefix] = {"name": name, "pins": pins,
+                                "brochage": {n: [c, d]
+                                             for n, c, d in self._brochage}}
         self._ecrire()
         self._load()
         self._afficher_perso(prefix)

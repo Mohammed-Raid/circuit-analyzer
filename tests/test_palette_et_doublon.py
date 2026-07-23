@@ -95,8 +95,8 @@ def test_composant_perso_apparait_et_disparait_de_la_palette(
     # 1) Créer un type personnalisé 'IC' (2 broches)
     tab_p._prefix_var.set("IC")
     tab_p._name_var.set("Mon IC")
-    tab_p._pin_lignes[0][0].set("A")
-    tab_p._ajouter_broche("B")
+    # Le brochage est désormais une liste ordonnée (nom, côté, décalage).
+    tab_p._brochage = [("A", "L", 0), ("B", "R", 0)]
     tab_p._sauvegarder()
 
     assert "IC" in editor._defs, "le type créé doit être dessinable"

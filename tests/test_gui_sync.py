@@ -160,7 +160,8 @@ def test_suppression_composant_retiree_de_l_onglet_circuits(
     # 1) Créer un composant personnalisé 'X'
     tab_p._prefix_var.set("X")
     tab_p._name_var.set("Test")
-    tab_p._pin_lignes[0][0].set("1")
+    # Le brochage est désormais une liste ordonnée (nom, côté, décalage).
+    tab_p._brochage = [("1", "L", 0)]
     tab_p._sauvegarder()
     assert "X" in tab_c._comp_vars, \
         "le composant créé devrait apparaître dans l'onglet Circuits"
