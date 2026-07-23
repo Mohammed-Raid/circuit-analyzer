@@ -1232,7 +1232,8 @@ class SchematicEditor(tk.Frame):
     # ── Copier / coller / dupliquer ───────────────────────────────────────────
 
     def _add_comp(self, comp_type: str, value: str, rotation: int,
-                  wx: int, wy: int) -> Optional['CompInst']:
+                  wx: int, wy: int, pinout: Optional[dict] = None
+                  ) -> Optional['CompInst']:
         """@brief Crée, dessine et sélectionne un nouveau composant.
 
         Numérote la référence via le compteur du type (ex. R3). N'empile PAS
@@ -1250,7 +1251,10 @@ class SchematicEditor(tk.Frame):
         n = self._counters.get(tipo, 0) + 1
         self._counters[tipo] = n
         ref = f"{tipo}{n}" if tipo not in ("GND", "VCC") else tipo
-        comp = CompInst(self._next_id, ref, comp_type, value, wx, wy, rotation)
+        # deepcopy du brochage : « par instance » interdit que deux copies
+        # partagent le même dict (éditer l'une modifierait l'autre).
+        comp = CompInst(self._next_id, ref, comp_type, value, wx, wy, rotation,
+                        pinout=copy.deepcopy(pinout))
         self._next_id += 1
         self._comps[comp.id] = comp
         self._draw_comp(comp)
@@ -1264,7 +1268,7 @@ class SchematicEditor(tk.Frame):
         if not comp:
             return
         self._clipboard = {"type": comp.comp_type, "value": comp.value,
-                           "rotation": comp.rotation}
+                           "rotation": comp.rotation, "pinout": comp.pinout}
         self._set_status(f"Copié\n{comp.ref}")
 
     def _paste(self, _=None):
@@ -1274,7 +1278,8 @@ class SchematicEditor(tk.Frame):
         wx, wy = self._snap(*self._cursor_w)
         self._push_undo()
         comp = self._add_comp(self._clipboard["type"], self._clipboard["value"],
-                              self._clipboard["rotation"], wx, wy)
+                              self._clipboard["rotation"], wx, wy,
+                              self._clipboard.get("pinout"))
         if comp is None:
             # Type devenu inconnu : annule l'instantané inutile.
             self._undo_stack.pop()
@@ -1287,10 +1292,10 @@ class SchematicEditor(tk.Frame):
         if not src:
             return
         self._clipboard = {"type": src.comp_type, "value": src.value,
-                           "rotation": src.rotation}
+                           "rotation": src.rotation, "pinout": src.pinout}
         self._push_undo()
         comp = self._add_comp(src.comp_type, src.value, src.rotation,
-                              src.cx + GRID * 2, src.cy + GRID * 2)
+                              src.cx + GRID * 2, src.cy + GRID * 2, src.pinout)
         if comp is None:
             self._undo_stack.pop()
             return
@@ -1621,8 +1626,11 @@ class SchematicEditor(tk.Frame):
             self._ensure_dyn_def(t)           # puce catalogue "U::NE555" (§4)
             if t not in self._defs:
                 continue                      # type inconnu : ignoré
+            po = c.get("pinout")
             ci = CompInst(int(c["id"]), c["ref"], t, c.get("value", ""),
-                          int(c["cx"]), int(c["cy"]), int(c.get("rotation", 0)))
+                          int(c["cx"]), int(c["cy"]), int(c.get("rotation", 0)),
+                          pinout=({n: tuple(v) for n, v in po.items()}
+                                  if po is not None else None))
             new_comps[ci.id] = ci
             max_id = max(max_id, ci.id)
 

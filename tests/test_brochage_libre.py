@@ -201,3 +201,39 @@ def test_supprimer_une_broche_supprime_ses_fils(editeur):
     editeur._supprimer_broche(c, "1")
     assert "1" not in c.pinout
     assert editeur._wires == []          # aucun fil orphelin
+
+
+# ── Task 7 : duplication et persistance .circ ────────────────────────────────
+
+def test_duplication_clone_le_brochage(editeur):
+    c = _place(editeur, "X", 200, 200)
+    editeur._entrer_pinedit(c.id)
+    editeur._ajouter_broche(c, 200 - 40, 200)
+    editeur._quitter_pinedit()
+    editeur._select(c.id)
+    editeur._duplicate()
+    copie = [x for x in editeur._comps.values() if x.id != c.id][0]
+    copie.pinout["ZZ"] = ("R", 0)
+    assert "ZZ" not in c.pinout          # dicts DISTINCTS, pas partages
+
+
+def test_round_trip_circ_conserve_brochage_et_fils(editeur):
+    c = _place(editeur, "X", 200, 200)
+    g = _place(editeur, "GND", 300, 300)
+    editeur._entrer_pinedit(c.id)
+    editeur._ajouter_broche(c, 200 - 40, 200)
+    editeur._quitter_pinedit()
+    editeur._add_wire(c.id, "1", g.id, next(iter(editeur._geom(g)["pins"])))
+    editeur.load_dict(editeur.to_dict())
+    r = next(x for x in editeur._comps.values() if x.comp_type == "X")
+    assert r.pinout == {"1": ("L", 0)}
+    assert len(editeur._wires) == 1
+
+
+def test_circ_sans_pinout_se_relit(editeur):
+    _place(editeur, "R", 200, 200)
+    d = editeur.to_dict()
+    for comp in d["components"]:
+        comp.pop("pinout", None)
+    editeur.load_dict(d)                 # ne doit pas lever
+    assert all(c.pinout is None for c in editeur._comps.values())

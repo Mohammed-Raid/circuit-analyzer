@@ -36,7 +36,12 @@ def editor_to_dict(comps, wires, counters, next_id) -> dict:
         "version": VERSION,
         "components": [
             {"id": c.id, "ref": c.ref, "type": c.comp_type, "value": c.value,
-             "cx": c.cx, "cy": c.cy, "rotation": c.rotation}
+             "cx": c.cx, "cy": c.cy, "rotation": c.rotation,
+             # Brochage libre : champ ADDITIF, absent quand l'instance suit la
+             # géométrie de son type (version .circ inchangée, spec 2026-07-23).
+             # `getattr` : des doubles de test légers n'ont pas ce champ.
+             **({"pinout": {n: list(v) for n, v in pinout.items()}}
+                if (pinout := getattr(c, "pinout", None)) is not None else {})}
             for c in comps.values()
         ],
         "wires": [
