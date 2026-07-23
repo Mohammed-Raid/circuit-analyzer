@@ -60,6 +60,11 @@ class TabComponents:
         # Brochage ORDONNÉ [(nom, côté, décalage)] : l'ordre EST celui de la
         # netlist et de la saisie rapide (spec 2026-07-23).
         self._brochage: list = []
+        self._modeles = {"DIP-8": ("DIP", 8), "DIP-14": ("DIP", 14),
+                         "DIP-16": ("DIP", 16), "Bornier 2": ("Connecteur", 2),
+                         "Bornier 3": ("Connecteur", 3),
+                         "Bornier 4": ("Connecteur", 4),
+                         "Connecteur N": ("Connecteur", 0)}
         self._etat_initial: tuple = ('', '', ())   # snapshot anti-perte
         self._build()
         self._load()
@@ -134,9 +139,56 @@ class TabComponents:
         self._name_entry.pack(fill="x", pady=(4, 2))
         ligne_aide(form, "Nom lisible affiché dans les listes et le rapport.")
 
+        ui_kit.SectionHeader(form, "Valeur par défaut").pack(anchor="w")
+        self._default_var = tk.StringVar()
+        self._default_entry = ui_kit.Field(
+            form, textvariable=self._default_var,
+            placeholder="Ex: LM358", height=40)
+        self._default_entry.pack(fill="x", pady=(4, 2))
+        ligne_aide(form, "Pré-remplie quand tu poses le composant "
+                         "(aujourd'hui toujours vide pour un type perso).")
+
         ui_kit.SectionHeader(form, "Broches").pack(anchor="w")
+
+        mrow = ctk.CTkFrame(form, fg_color="transparent")
+        mrow.pack(fill="x", pady=(4, 2))
+        ctk.CTkLabel(mrow, text="Modèle :", font=ui_kit.font("caption"),
+                     text_color=TEXT_MUTED).pack(side="left", padx=(0, 6))
+        self._modele_var = tk.StringVar(value="DIP-8")
+        ctk.CTkOptionMenu(mrow, values=list(self._modeles),
+                          variable=self._modele_var, width=140,
+                          height=30).pack(side="left")
+        self._n_var = tk.StringVar(value="8")
+        ui_kit.Field(mrow, textvariable=self._n_var, width=56, height=30,
+                     placeholder="N").pack(side="left", padx=6)
+        self._btn_modele = ui_kit.SecondaryButton(
+            mrow, "Poser", self._poser_modele, icon_name="plus",
+            width=90, height=30)
+        self._btn_modele.pack(side="left")
+
         self._canvas_broches = PinCanvas(form, on_change=self._sur_brochage)
         self._canvas_broches.pack(fill="x", pady=(4, 6))
+
+        trow = ctk.CTkFrame(form, fg_color="transparent")
+        trow.pack(fill="x", pady=(0, 2))
+        self._auto_taille_var = tk.BooleanVar(value=True)
+        ctk.CTkCheckBox(trow, text="Ajuster automatiquement",
+                        variable=self._auto_taille_var,
+                        command=self._sur_auto_taille,
+                        font=ui_kit.font("caption")).pack(side="left")
+        ctk.CTkLabel(trow, text="Largeur", font=ui_kit.font("caption"),
+                     text_color=TEXT_MUTED).pack(side="left", padx=(14, 4))
+        self._w_var = tk.StringVar()
+        self._w_entry = ui_kit.Field(trow, textvariable=self._w_var,
+                                     width=70, height=30)
+        self._w_entry.pack(side="left")
+        ctk.CTkLabel(trow, text="Hauteur", font=ui_kit.font("caption"),
+                     text_color=TEXT_MUTED).pack(side="left", padx=(10, 4))
+        self._h_var = tk.StringVar()
+        self._h_entry = ui_kit.Field(trow, textvariable=self._h_var,
+                                     width=70, height=30)
+        self._h_entry.pack(side="left")
+        self._sur_auto_taille()
         ligne_aide(form, "Clic sur un bord = poser une broche · glisser = "
                          "déplacer · double-clic = renommer · Suppr = retirer. "
                          "Le bandeau donne l'ordre de la netlist (glisser pour "
@@ -197,7 +249,10 @@ class TabComponents:
         self._current_key = key
         v = self._custom[key]
         self._remplir_formulaire(key, v.get("name", ""), v.get("pins", []),
-                                 v.get("brochage"))
+                                 v.get("brochage"),
+                                 default_value=v.get("default_value", ""),
+                                 fonctions=v.get("fonctions"),
+                                 boite=v.get("boite"))
         self._definir_mode('edition', f"✏  Modification de ★ {key}")
         self._prendre_snapshot()
 
@@ -210,17 +265,54 @@ class TabComponents:
         self._current_key = None
         v = COMPONENT_TYPES[key]
         self._remplir_formulaire(key, v["name"], v["pins"], None,
-                                 lecture_seule=True)
+                                 lecture_seule=True,
+                                 default_value=v.get("default_value", ""))
         self._definir_mode('lecture',
                            f"🔒  Type intégré {key} — lecture seule")
         self._prendre_snapshot()
+
+    def _sur_auto_taille(self):
+        """@brief Grise les champs de taille tant que l'auto est coché."""
+        etat = "disabled" if self._auto_taille_var.get() else "normal"
+        self._w_entry.configure(state=etat)
+        self._h_entry.configure(state=etat)
+
+    def _poser_modele(self):
+        """@brief Remplace le brochage par celui du boîtier choisi.
+
+        DESTRUCTIF : demande confirmation si un brochage existe déjà.
+        """
+        if self._mode == 'lecture':
+            return
+        modele, n = self._modeles.get(self._modele_var.get(), (None, 0))
+        if modele is None:
+            return
+        if not n:                              # « Connecteur N » : N est saisi
+            try:
+                n = int(self._n_var.get())
+            except ValueError:
+                messagebox.showerror("Erreur", "Nombre de broches invalide.")
+                return
+        if self._brochage and not messagebox.askyesno(
+                "Remplacer le brochage",
+                "Poser un modèle REMPLACE le brochage actuel "
+                f"({len(self._brochage)} broches). Continuer ?"):
+            return
+        try:
+            self._canvas_broches.poser_modele(modele, n)
+        except ValueError as e:
+            messagebox.showerror("Erreur", str(e))
+            return
+        self._brochage = self._canvas_broches.brochage()
 
     def _sur_brochage(self, brochage: list):
         """@brief Le canevas a muté : sa liste ordonnée devient l'état du form."""
         self._brochage = list(brochage)
 
     def _remplir_formulaire(self, prefixe: str, nom: str, broches: list,
-                            brochage: dict = None, lecture_seule: bool = False):
+                            brochage: dict = None, lecture_seule: bool = False,
+                            default_value: str = "", fonctions: dict = None,
+                            boite: dict = None):
         """@brief Remplit les champs du formulaire (préfixe, nom, brochage).
 
         @param prefixe Préfixe du type.
@@ -242,7 +334,15 @@ class TabComponents:
                               if b in brochage]
         else:
             self._brochage = _amorcer(broches)
-        self._canvas_broches.charger(self._brochage, lecture_seule)
+        self._default_var.set(default_value or "")
+        b = boite or {}
+        self._auto_taille_var.set(not b)
+        self._w_var.set(str(b.get("w", "")) if b else "")
+        self._h_var.set(str(b.get("h", "")) if b else "")
+        self._sur_auto_taille()
+        self._canvas_broches.charger(self._brochage, lecture_seule,
+                                     roles=fonctions,
+                                     w_mini=b.get("w"), h_mini=b.get("h"))
 
     # ── Anti-perte de saisie ─────────────────────────────────────────────────
 
@@ -252,7 +352,11 @@ class TabComponents:
         """
         return (self._prefix_var.get().strip(),
                 self._name_var.get().strip(),
-                tuple(self._brochage))
+                tuple(self._brochage),
+                self._default_var.get().strip(),
+                tuple(sorted(self._canvas_broches.roles().items())),
+                (self._auto_taille_var.get(),
+                 self._w_var.get().strip(), self._h_var.get().strip()))
 
     def _prendre_snapshot(self):
         """@brief Mémorise l'état courant comme référence anti-perte de saisie."""
@@ -337,7 +441,14 @@ class TabComponents:
         positions = {n: [c, d] for n, c, d in self._brochage}
         self._liste.deselectionner()
         self._current_key = None
-        self._remplir_formulaire('', f"{nom} (copie)", broches, positions)
+        b = {}
+        if not self._auto_taille_var.get():
+            b = {"w": self._w_var.get(), "h": self._h_var.get()}
+            b = {k: int(v) for k, v in b.items() if str(v).strip().isdigit()}
+        self._remplir_formulaire('', f"{nom} (copie)", broches, positions,
+                                 default_value=self._default_var.get(),
+                                 fonctions=self._canvas_broches.roles(),
+                                 boite=b or None)
         self._definir_mode('nouveau',
                            "➕  Nouveau type (copie) — choisir un préfixe")
         self._prendre_snapshot()
@@ -375,11 +486,26 @@ class TabComponents:
         if not pins:
             messagebox.showerror("Erreur", "Au moins une broche requise.")
             return
+        entree = {"name": name, "pins": pins,
+                  "brochage": {n: [c, d] for n, c, d in self._brochage}}
+        defaut = self._default_var.get().strip()
+        if defaut:
+            entree["default_value"] = defaut
+        roles = self._canvas_broches.roles()
+        if roles:
+            entree["fonctions"] = roles
+        if not self._auto_taille_var.get():
+            try:
+                entree["boite"] = {"w": int(self._w_var.get()),
+                                   "h": int(self._h_var.get())}
+            except ValueError:
+                messagebox.showerror(
+                    "Erreur", "Largeur et hauteur doivent être des entiers "
+                              "(ou coche « Ajuster automatiquement »).")
+                return
         if self._current_key and self._current_key != prefix:
             self._custom.pop(self._current_key, None)
-        self._custom[prefix] = {"name": name, "pins": pins,
-                                "brochage": {n: [c, d]
-                                             for n, c, d in self._brochage}}
+        self._custom[prefix] = entree
         self._ecrire()
         self._load()
         self._afficher_perso(prefix)

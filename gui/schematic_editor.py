@@ -76,7 +76,9 @@ COMP_DEFS: dict = {
 # _AUTO_COLOR : importé de schematic_symbols (source unique, cf. AUTO_COLOR).
 
 
-def _auto_def(name: str, pins: list, brochage: dict = None) -> dict:
+def _auto_def(name: str, pins: list, brochage: dict = None,
+              default_value: str = "", fonctions: dict = None,
+              boite: dict = None) -> dict:
     """@brief Génère une géométrie générique pour un type personnalisé.
 
     Si le type porte un `brochage` POSITIONNÉ (défini au canevas de l'onglet
@@ -90,8 +92,11 @@ def _auto_def(name: str, pins: list, brochage: dict = None) -> dict:
     @return dict Entrée compatible COMP_DEFS (label, color, w, h, pins, default_value).
     """
     if brochage:
-        d = geometrie_libre({n: tuple(v) for n, v in brochage.items()})
+        b = boite or {}
+        d = geometrie_libre({n: tuple(v) for n, v in brochage.items()},
+                            b.get("w"), b.get("h"), fonctions or {})
         d["label"] = name
+        d["default_value"] = default_value or ""
         return d
     pins = [str(p) for p in pins]
     n = len(pins)
@@ -111,7 +116,8 @@ def _auto_def(name: str, pins: list, brochage: dict = None) -> dict:
     _place(left, -w // 2)
     _place(right, w // 2)
     return {"label": name, "color": _AUTO_COLOR, "w": w, "h": h,
-            "pins": pinmap, "default_value": ""}
+            "pins": pinmap, "default_value": default_value or "",
+            "fonctions": dict(fonctions or {})}
 
 
 def _compute_defs() -> dict:
@@ -134,7 +140,9 @@ def _compute_defs() -> dict:
         if not broches:
             continue          # type sans broche : non plaçable
         defs[key] = _auto_def(val.get("name", key), broches,
-                              val.get("brochage"))
+                              val.get("brochage"),
+                              val.get("default_value", ""),
+                              val.get("fonctions"), val.get("boite"))
     return defs
 
 _PIN_R = 5     # rayon visuel pin

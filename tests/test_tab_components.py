@@ -130,3 +130,60 @@ def test_saisie_rapide_voit_les_broches_dans_l_ordre(onglet, monkeypatch):
                         lambda: chemin)
     from circuit_analyzer.saisie import ModeleSaisie
     assert ModeleSaisie()._broches_du_type("IC") == ["GND", "VCC", "IN"]
+
+
+# ── Task 6 : modeles, valeur par defaut, taille, persistance ─────────────────
+
+def test_sauvegarde_ecrit_les_nouvelles_cles(onglet):
+    t, chemin = onglet
+    t._prefix_var.set("IC")
+    t._name_var.set("Ampli")
+    t._default_var.set("LM358")
+    t._auto_taille_var.set(False)
+    t._w_var.set("120"); t._h_var.set("160")
+    t._brochage = [("VCC", "T", 0), ("GND", "B", 0)]
+    t._canvas_broches.charger(t._brochage, roles={"VCC": "Alim"})
+    t._sauvegarder()
+    d = json.loads(chemin.read_text(encoding="utf-8"))["IC"]
+    assert d["default_value"] == "LM358"
+    assert d["fonctions"] == {"VCC": "Alim"}
+    assert d["boite"] == {"w": 120, "h": 160}
+
+
+def test_taille_auto_n_ecrit_pas_la_cle_boite(onglet):
+    t, chemin = onglet
+    t._prefix_var.set("IC"); t._name_var.set("X")
+    t._auto_taille_var.set(True)
+    t._brochage = [("1", "L", 0)]
+    t._sauvegarder()
+    assert "boite" not in json.loads(chemin.read_text(encoding="utf-8"))["IC"]
+
+
+def test_relecture_restitue_les_nouvelles_cles(onglet):
+    t, chemin = onglet
+    chemin.write_text(json.dumps({"IC": {
+        "name": "Ampli", "pins": ["VCC"], "default_value": "LM358",
+        "brochage": {"VCC": ["T", 0]}, "fonctions": {"VCC": "Alim"},
+        "boite": {"w": 120, "h": 160}}}), encoding="utf-8")
+    t._load(); t._afficher_perso("IC")
+    assert t._default_var.get() == "LM358"
+    assert t._canvas_broches.roles() == {"VCC": "Alim"}
+    assert t._auto_taille_var.get() is False
+    assert t._w_var.get() == "120"
+
+
+def test_poser_modele_remplit_le_brochage(onglet):
+    t, _ = onglet
+    t._modele_var.set("DIP-8")
+    t._poser_modele()
+    assert [n for n, _c, _d in t._brochage] == [str(i) for i in range(1, 9)]
+
+
+def test_auto_def_propage_valeur_role_et_taille():
+    from gui.schematic_editor import _auto_def
+    d = _auto_def("Ampli", ["VCC"], {"VCC": ["T", 0]},
+                  default_value="LM358", fonctions={"VCC": "Alim"},
+                  boite={"w": 200, "h": 240})
+    assert d["default_value"] == "LM358"
+    assert d["fonctions"] == {"VCC": "Alim"}
+    assert d["w"] >= 200 and d["h"] >= 240
