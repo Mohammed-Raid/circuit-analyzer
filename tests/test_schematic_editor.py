@@ -235,3 +235,23 @@ def test_delete_comp_ne_deselectionne_que_lui_meme(editeur):
     editeur._delete_comp(b.id)
     assert b.id not in editeur._comps
     assert editeur._selected_ids == {a.id}
+
+
+# ── Brochage positionné du type (spec 2026-07-23) ────────────────────────────
+
+def test_auto_def_utilise_le_brochage_quand_il_existe():
+    from gui.schematic_editor import _auto_def
+    d = _auto_def("Ampli", ["VCC", "IN", "GND"],
+                  {"VCC": ["T", 0], "IN": ["L", -20], "GND": ["B", 0]})
+    w2, h2 = d["w"] // 2, d["h"] // 2
+    assert d["pins"]["VCC"] == (0, -h2)
+    assert d["pins"]["IN"] == (-w2, -20)
+    assert d["pins"]["GND"] == (0, h2)
+    assert d["label"] == "Ampli"
+
+
+def test_auto_def_sans_brochage_reste_moitie_gauche_moitie_droite():
+    from gui.schematic_editor import _auto_def
+    d = _auto_def("X", ["1", "2", "3", "4"])
+    assert d["pins"]["1"][0] < 0 and d["pins"]["2"][0] < 0
+    assert d["pins"]["3"][0] > 0 and d["pins"]["4"][0] > 0

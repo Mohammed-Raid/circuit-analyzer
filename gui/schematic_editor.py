@@ -76,16 +76,23 @@ COMP_DEFS: dict = {
 # _AUTO_COLOR : importé de schematic_symbols (source unique, cf. AUTO_COLOR).
 
 
-def _auto_def(name: str, pins: list) -> dict:
+def _auto_def(name: str, pins: list, brochage: dict = None) -> dict:
     """@brief Génère une géométrie générique pour un type personnalisé.
 
-    Broches réparties moitié à gauche / moitié à droite d'une boîte rectangulaire ;
-    aucun dessin sur-mesure n'est requis (le moteur de rendu gère ce cas).
+    Si le type porte un `brochage` POSITIONNÉ (défini au canevas de l'onglet
+    Composants, spec 2026-07-23), il fait foi. Sinon, répartition historique
+    moitié à gauche / moitié à droite d'une boîte rectangulaire ; aucun dessin
+    sur-mesure n'est requis (le moteur de rendu gère ce cas).
 
     @param name Nom lisible du type (affiché comme libellé).
     @param pins Liste ordonnée des noms de broches.
+    @param brochage {nom: (côté, décalage)} ou None.
     @return dict Entrée compatible COMP_DEFS (label, color, w, h, pins, default_value).
     """
+    if brochage:
+        d = geometrie_libre({n: tuple(v) for n, v in brochage.items()})
+        d["label"] = name
+        return d
     pins = [str(p) for p in pins]
     n = len(pins)
     half = (n + 1) // 2
@@ -126,7 +133,8 @@ def _compute_defs() -> dict:
         broches = val.get("pins", [])
         if not broches:
             continue          # type sans broche : non plaçable
-        defs[key] = _auto_def(val.get("name", key), broches)
+        defs[key] = _auto_def(val.get("name", key), broches,
+                              val.get("brochage"))
     return defs
 
 _PIN_R = 5     # rayon visuel pin
