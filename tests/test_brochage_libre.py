@@ -230,6 +230,42 @@ def test_round_trip_circ_conserve_brochage_et_fils(editeur):
     assert len(editeur._wires) == 1
 
 
+# ── Task 8 : defaut trouve en boucle visuelle (titre/valeur vs broches T/B) ──
+
+def _chevauchent(a, b):
+    """Vrai si deux bbox canvas (x0,y0,x1,y1) se recouvrent."""
+    return not (a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1])
+
+
+def test_titre_ne_chevauche_pas_une_broche_du_haut(editeur):
+    c = _place(editeur, "X", 200, 200)
+    editeur._entrer_pinedit(c.id)
+    editeur._ajouter_broche(c, 200, 200 - 30)          # bord HAUT
+    editeur._quitter_pinedit()
+    editeur._redraw_all()
+    cv = editeur._canvas
+    broche = cv.find_withtag(f"pin_{c.id}_1")[0]
+    titres = [i for i in cv.find_withtag(f"comp_{c.id}")
+              if cv.type(i) == "text" and cv.itemcget(i, "text") == c.ref]
+    assert titres, "titre non dessiné"
+    assert not _chevauchent(cv.bbox(broche), cv.bbox(titres[0]))
+
+
+def test_valeur_ne_chevauche_pas_une_broche_du_bas(editeur):
+    c = _place(editeur, "X", 200, 200)
+    c.value = "CN12"
+    editeur._entrer_pinedit(c.id)
+    editeur._ajouter_broche(c, 200, 200 + 30)          # bord BAS
+    editeur._quitter_pinedit()
+    editeur._redraw_all()
+    cv = editeur._canvas
+    broche = cv.find_withtag(f"pin_{c.id}_1")[0]
+    valeurs = [i for i in cv.find_withtag(f"comp_{c.id}")
+               if cv.type(i) == "text" and cv.itemcget(i, "text") == "CN12"]
+    assert valeurs, "valeur non dessinée"
+    assert not _chevauchent(cv.bbox(broche), cv.bbox(valeurs[0]))
+
+
 def test_circ_sans_pinout_se_relit(editeur):
     _place(editeur, "R", 200, 200)
     d = editeur.to_dict()

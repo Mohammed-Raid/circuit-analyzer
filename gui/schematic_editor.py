@@ -893,12 +893,19 @@ class SchematicEditor(tk.Frame):
                                      text=comp.ref, fill=color,
                                      font=("Consolas", max(7, int(8*z))), tags=tag)
         else:
-            rx, ry = _rotate_pin(0, -h2 - 10, rot)
+            # Une broche sur le bord HAUT (resp. BAS) occupe déjà l'emplacement
+            # historique du titre (resp. de la valeur), calibré à une époque où
+            # aucune broche ne pouvait s'y trouver : on les repousse. Défaut
+            # trouvé en boucle visuelle, invisible aux tests d'alors.
+            cotes = set((defn.get("cotes") or {}).values())
+            d_ref = 24 if "T" in cotes else 10
+            d_val = 24 if "B" in cotes else 10
+            rx, ry = _rotate_pin(0, -h2 - d_ref, rot)
             self._canvas.create_text(scx+rx*z, scy+ry*z,
                                      text=comp.ref, fill="#e2e8f0",
                                      font=("Consolas", max(7, int(9*z)), "bold"),
                                      tags=tag)
-            vx, vy = _rotate_pin(0, h2 + 10, rot)
+            vx, vy = _rotate_pin(0, h2 + d_val, rot)
             self._canvas.create_text(scx+vx*z, scy+vy*z,
                                      text=comp.value, fill="#64748b",
                                      font=("Consolas", max(6, int(8*z))),
