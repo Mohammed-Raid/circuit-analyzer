@@ -37,6 +37,8 @@ class PinCanvas(ctk.CTkFrame):
         self._brochage: list = []          # [(nom, côté, décalage)] ORDONNÉ
         self._lecture_seule = False
         self._selection = None
+        self._glisse_depuis = None
+        self._pastilles: list = []
         self._cv = tk.Canvas(self, height=hauteur, highlightthickness=0,
                              bg=_FOND)
         self._cv.pack(fill="both", expand=True, padx=8, pady=8)
@@ -46,6 +48,9 @@ class PinCanvas(ctk.CTkFrame):
         self._cv.bind("<Double-Button-1>", self._sur_double_clic)
         self._cv.bind("<Delete>", self._sur_suppr)
         self._cv.configure(takefocus=1)
+        self._bandeau = ctk.CTkFrame(self, fg_color="transparent")
+        self._bandeau.pack(fill="x", padx=8, pady=(0, 8))
+        self._construire_bandeau()
 
     # ── API publique ────────────────────────────────────────────────────────
 
@@ -55,6 +60,7 @@ class PinCanvas(ctk.CTkFrame):
         self._lecture_seule = lecture_seule
         self._selection = None
         self._dessiner()
+        self._construire_bandeau()
 
     def brochage(self) -> list:
         """@brief Brochage courant, dans l'ordre (= ordre de la netlist)."""
@@ -155,11 +161,67 @@ class PinCanvas(ctk.CTkFrame):
             self._selection = None
         self._muter()
 
+    def _reordonner(self, depuis: int, vers: int):
+        """@brief Déplace la broche de rang `depuis` au rang `vers`.
+
+        L'ordre est la donnée de la NETLIST ; les positions à l'écran n'en
+        dépendent pas et ne bougent donc pas.
+        """
+        if self._lecture_seule:
+            return
+        n = len(self._brochage)
+        if not (0 <= depuis < n) or not (0 <= vers < n) or depuis == vers:
+            return
+        self._brochage.insert(vers, self._brochage.pop(depuis))
+        self._muter()
+
     def _muter(self):
-        """@brief Redessine et notifie le parent (état du formulaire)."""
+        """@brief Redessine, reconstruit le bandeau et notifie le parent."""
         self._dessiner()
+        self._construire_bandeau()
         if self._on_change:
             self._on_change(self.brochage())
+
+    # ── Bandeau d'ordre ─────────────────────────────────────────────────────
+
+    def _construire_bandeau(self):
+        """@brief Pastilles dans l'ORDRE de la netlist, réordonnables au glisser."""
+        for w in self._bandeau.winfo_children():
+            w.destroy()
+        self._pastilles = []
+        ctk.CTkLabel(self._bandeau, text="Ordre (netlist) :",
+                     font=ctk.CTkFont(size=11),
+                     text_color=TEXT_MUTED).pack(side="left", padx=(0, 6))
+        for i, (nom, _c, _d) in enumerate(self._brochage):
+            p = ctk.CTkLabel(self._bandeau, text=nom, fg_color=CARD2,
+                             corner_radius=6, padx=8,
+                             font=ctk.CTkFont("Consolas", 11))
+            p.pack(side="left", padx=2)
+            if not self._lecture_seule:
+                p.bind("<Button-1>", lambda _e, k=i: self._debut_glisse(k))
+                p.bind("<ButtonRelease-1>", self._fin_glisse)
+            self._pastilles.append(p)
+
+    def _debut_glisse(self, index):
+        self._glisse_depuis = index
+
+    def _fin_glisse(self, event):
+        """@brief Dépose : la pastille sous le curseur donne le rang cible."""
+        if self._glisse_depuis is None:
+            return
+        cible = self._pastille_sous(event.x_root, event.y_root)
+        if cible is not None:
+            self._reordonner(self._glisse_depuis, cible)
+        self._glisse_depuis = None
+
+    def _pastille_sous(self, x_root, y_root):
+        """@brief Rang de la pastille aux coordonnées écran données, sinon None."""
+        for i, p in enumerate(self._pastilles):
+            x0, y0 = p.winfo_rootx(), p.winfo_rooty()
+            if (x0 <= x_root <= x0 + p.winfo_width()
+                    and y0 <= y_root <= y0 + p.winfo_height()):
+                return i
+        return None
 
     # ── Souris / clavier ────────────────────────────────────────────────────
 

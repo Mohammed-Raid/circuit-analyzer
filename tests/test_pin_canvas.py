@@ -98,3 +98,27 @@ def test_hit_test_trouve_la_broche(canevas):
     px, py = canevas._defn()["pins"]["1"]
     assert canevas._broche_a(px, py) == "1"
     assert canevas._broche_a(px + 200, py) is None
+
+
+# ── Task 3 : bandeau d'ordre ─────────────────────────────────────────────────
+
+def test_reordonner_permute_sans_bouger_les_positions(canevas):
+    canevas.charger([("A", "L", -20), ("B", "L", 20), ("C", "R", 0)])
+    positions = dict(canevas._defn()["pins"])
+    canevas._reordonner(2, 0)
+    assert [n for n, _, _ in canevas.brochage()] == ["C", "A", "B"]
+    assert dict(canevas._defn()["pins"]) == positions   # dessin inchangé
+
+
+def test_reordonner_index_hors_bornes_est_sans_effet(canevas):
+    canevas.charger([("A", "L", 0), ("B", "R", 0)])
+    canevas._reordonner(5, 0)
+    canevas._reordonner(0, 9)
+    assert [n for n, _, _ in canevas.brochage()] == ["A", "B"]
+
+
+def test_bandeau_suit_l_ordre_du_brochage(canevas):
+    canevas.charger([("A", "L", -20), ("B", "L", 20)])
+    assert [p.cget("text") for p in canevas._pastilles] == ["A", "B"]
+    canevas._reordonner(1, 0)
+    assert [p.cget("text") for p in canevas._pastilles] == ["B", "A"]
