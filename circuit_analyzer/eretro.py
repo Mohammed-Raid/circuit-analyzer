@@ -203,7 +203,10 @@ def decoder_valeur_resistance(nom: str) -> str:
         ohms = int(code[:-1]) * (10 ** int(code[-1]))
         if ohms <= 100_000_000:
             return _ohms_vers_str(ohms)
-    return code                                     # aberrant/indécodable -> brut
+    # Repli : un code plausible (contient un chiffre) est rendu BRUT ; un nom
+    # GÉNÉRIQUE sans chiffre (« Résistance » -> « ésistance » après strip du R)
+    # n'est pas une valeur -> rien, plutôt qu'un libellé abîmé.
+    return code if any(ch.isdigit() for ch in code) else ''
 
 
 def _bbox(segs):

@@ -11,6 +11,8 @@ from circuit_analyzer.eretro import decoder_valeur_resistance, mapper_nom
     ("R 3R90", "3.9"), ("R 60R4", "60.4"), ("R 47R0", "47"),
     ("RINF", "open"),
     ("R 308", "308"), ("R 30A", "30A"),   # indécodables/aberrants -> code brut
+    # Nom GÉNÉRIQUE (pas un code) : rien, pas un libellé abîmé « ésistance ».
+    ("Résistance", ""), ("Resistance", ""), ("R", ""),
 ])
 def test_decoder_valeur_resistance(nom, attendu):
     assert decoder_valeur_resistance(nom) == attendu
