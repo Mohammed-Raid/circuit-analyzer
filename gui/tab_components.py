@@ -12,7 +12,7 @@ from circuit_analyzer.composant import (
     TYPES_COMPOSANTS as COMPONENT_TYPES, chemin_bibliotheque,
 )
 from circuit_analyzer.eretro_lib import (
-    composant_vers_symbole_xml, symbole_vers_composant,
+    composant_vers_symbole_xml, composants_depuis_xml,
 )
 from gui.pin_canvas import GRILLE, PinCanvas
 from gui.theme import BG, CARD, CARD2, TEXT, TEXT_MUTED, BLUE, ERROR
@@ -468,7 +468,7 @@ class TabComponents:
 
     def _exporter_eretro(self):
         """@brief Exporte le composant personnalisé courant en symbole Lib
-        ERetroDesign (fichier <Nom>.xml a deposer dans le dossier Lib/)."""
+        ERetroDesign (paquet LibraryBundle a importer via « Importer la biblio »)."""
         key = self._current_key
         if key not in self._custom:
             messagebox.showinfo(
@@ -479,7 +479,7 @@ class TabComponents:
         chemin = filedialog.asksaveasfilename(
             title="Exporter vers la bibliotheque ERetroDesign",
             defaultextension=".xml", initialfile=defaut,
-            filetypes=[("Symbole ERetroDesign", "*.xml")])
+            filetypes=[("Bibliotheque ERetroDesign", "*.xml")])
         if not chemin:
             return
         try:
@@ -490,41 +490,47 @@ class TabComponents:
             return
         messagebox.showinfo(
             "Export ERetroDesign",
-            "Composant exporte.\nDeposez le fichier dans le dossier Lib\\ "
-            "de l'application ERetroDesign pour le partager.")
+            "Composant exporte.\n\nDans ERetroDesign : menu bibliotheque -> "
+            "« Importer la bibliotheque » et choisissez ce fichier.\n"
+            "(Ne PAS utiliser « Ouvrir » : ce n'est pas un schema.)")
 
     def _importer_eretro(self):
-        """@brief Importe un symbole Lib ERetroDesign (.xml) comme type perso."""
+        """@brief Importe un paquet ERetroDesign (.xml) : ajoute ses composants."""
         chemin = filedialog.askopenfilename(
-            title="Importer un composant ERetroDesign",
-            filetypes=[("Symbole ERetroDesign", "*.xml"), ("Tous", "*.*")])
+            title="Importer un composant / une bibliotheque ERetroDesign",
+            filetypes=[("Bibliotheque ERetroDesign", "*.xml"), ("Tous", "*.*")])
         if not chemin:
             return
         try:
-            prefix, entree = symbole_vers_composant(chemin)
+            trouves = composants_depuis_xml(chemin)
         except (ValueError, OSError, ET.ParseError) as e:
             messagebox.showerror(
                 "Import impossible",
                 f"Fichier illisible ou format inattendu :\n{e}")
             return
-        # Prefixe reserve (type integre) ou deja pris : on cherche un libre.
-        base = "".join(ch for ch in prefix if ch.isalnum()) or "X"
-        prefix = base
-        n = 1
-        while prefix in COMPONENT_TYPES or (
-                prefix in self._custom and prefix != self._current_key):
-            n += 1
-            prefix = f"{base}{n}"
-        self._custom[prefix] = entree
+        if not trouves:
+            messagebox.showwarning(
+                "Import", "Aucun composant simple trouve dans ce fichier.")
+            return
+        dernier, ajoutes = None, 0
+        for prefix, entree in trouves:
+            base = "".join(ch for ch in prefix if ch.isalnum()) or "X"
+            prefix = base
+            n = 1
+            while prefix in COMPONENT_TYPES or prefix in self._custom:
+                n += 1
+                prefix = f"{base}{n}"
+            self._custom[prefix] = entree
+            dernier, ajoutes = prefix, ajoutes + 1
         self._ecrire()
         self._load()
-        self._afficher_perso(prefix)
+        if dernier:
+            self._afficher_perso(dernier)
         if self._on_save:
             self._on_save()
         messagebox.showinfo(
             "Import ERetroDesign",
-            f"Composant « {entree.get('name') or prefix} » importe "
-            f"sous le prefixe {prefix}.")
+            f"{ajoutes} composant(s) importe(s).")
 
     def _supprimer(self):
         """@brief Supprime le type personnalisé en cours d'édition (avec confirmation)."""

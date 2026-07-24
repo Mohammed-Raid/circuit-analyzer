@@ -10,21 +10,28 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from circuit_analyzer.eretro_lib import (
-    composant_vers_symbole_xml, symbole_vers_composant)
+    composant_vers_symbole_xml, composants_depuis_xml, symbole_vers_composant)
 
 
-def test_export_produit_un_datitem_valide():
+def test_export_est_un_librarybundle_importable():
+    """ERetroDesign importe un `LibraryBundle` (ImportLibrary), PAS un <DataItem>
+    nu : ce dernier s'importe VIDE. On verrouille donc l'enrobage."""
     entree = {"name": "Mon IC", "pins": ["1", "2"],
               "brochage": {"1": ["L", -20], "2": ["R", 20]},
               "boite": {"w": 80, "h": 60}, "default_value": "LM358"}
     xml = composant_vers_symbole_xml("IC", entree)
     r = ET.fromstring(xml)                       # bien forme
-    assert r.tag == "DataItem"
-    assert r.findtext("Name") == "Mon IC"
-    assert r.findtext("Group") == "IC"           # prefixe conserve
-    assert r.findtext("value") == "LM358"
-    assert len(r.findall(".//datapin/DataPin")) == 2
-    assert len(r.findall(".//datasegment/DataSegment")) == 4   # boite
+    assert r.tag == "LibraryBundle"              # racine attendue par l'app C#
+    assert r.find("Items") is not None and r.find("CComps") is not None
+    items = r.findall("./Items/DataItem")
+    assert len(items) == 1
+    di = items[0]
+    assert di.findtext("Name") == "Mon IC"
+    assert di.findtext("Group") == "IC"          # prefixe conserve
+    assert di.findtext("value") == "LM358"
+    assert len(di.findall("./datapin/DataPin")) == 2
+    assert len(di.findall("./datasegment/DataSegment")) == 4   # boite
+    r = di                                       # les assertions ci-dessous portent sur le DataItem
     # Convention verifiee sur le source C# : symbole Lib = CtrIem/TL/BR nuls,
     # geometrie CENTREE sur (0,0) (Pin = decalage / centre) et alignee sur la
     # grille (GridStep=10) -> se pose sur le curseur et se cable proprement.
@@ -117,6 +124,25 @@ def test_export_circuit_conserve_la_connexite():
     finally:
         os.unlink(f.name)
     assert relu["R1"]["2"] == relu["R2"]["1"]        # noeud milieu partage
+
+
+def test_lit_un_bundle_multi_composants():
+    """Un paquet « Exporter la bibliotheque » du collegue contient PLUSIEURS
+    composants : on les recupere tous (composants_depuis_xml)."""
+    e1 = {"name": "A", "pins": ["1", "2"],
+          "brochage": {"1": ["L", 0], "2": ["R", 0]}, "boite": {"w": 80, "h": 60}}
+    e2 = {"name": "B", "pins": ["1", "2", "3"],
+          "brochage": {"1": ["L", 0], "2": ["R", 0], "3": ["T", 0]},
+          "boite": {"w": 80, "h": 60}}
+    di1 = ET.fromstring(composant_vers_symbole_xml("AA", e1)).find("./Items/DataItem")
+    di2 = ET.fromstring(composant_vers_symbole_xml("BB", e2)).find("./Items/DataItem")
+    bundle = ('<LibraryBundle><Items>'
+              + ET.tostring(di1, encoding="unicode")
+              + ET.tostring(di2, encoding="unicode")
+              + '</Items><CComps /></LibraryBundle>')
+    comps = composants_depuis_xml(bundle)
+    assert {p for p, _e in comps} == {"AA", "BB"}
+    assert {e["name"] for _p, e in comps} == {"A", "B"}
 
 
 def test_symbole_reel_du_collegue_se_lit(tmp_path):
