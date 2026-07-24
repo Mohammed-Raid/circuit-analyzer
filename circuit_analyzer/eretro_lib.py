@@ -24,8 +24,13 @@ from xml.sax.saxutils import escape
 
 from gui.schematic_symbols import geometrie_libre, aimanter_bord
 
-# Unites ERetroDesign par pixel de l'editeur ; geometrie centree sur (0,0).
-ECHELLE = 10
+# Unites ERetroDesign par pixel de l'editeur ; geometrie CENTREE sur (0,0).
+# ECHELLE=1 : les vrais symboles de Lib.xml sont centres avec des coords ~±48..80
+# (Capa 96x96, AOP/Resistance 160 de large). La vignette de la palette
+# (pictureBox2_Paint) dessine `CtrIem_cellule + coord` dans une cellule de 146 px :
+# une echelle trop grande sort de la cellule -> vignette VIDE (composant « pas
+# importable »). Notre boite ~80x60 px tombe pile dans cette plage.
+ECHELLE = 1
 GRILLE = 20
 
 _ENTETE_XSD = ('xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '

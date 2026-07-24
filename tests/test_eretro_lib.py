@@ -43,6 +43,10 @@ def test_export_est_un_librarybundle_importable():
         xs.append(int(p.findtext("X"))); ys.append(int(p.findtext("Y")))
     assert all(v % 10 == 0 for v in xs + ys)           # aligne grille
     assert min(xs) < 0 < max(xs) or min(ys) < 0 < max(ys)   # centre autour de 0
+    # La vignette de la palette dessine `centre_cellule + coord` dans une cellule
+    # de 146 px : une echelle trop grande sort de la cellule -> vignette VIDE.
+    # On borne donc l'amplitude (verifie via le vrai code C# : rendu visible).
+    assert max(abs(v) for v in xs + ys) <= 73          # tient dans la demi-cellule
 
 
 @pytest.mark.parametrize("brochage", [
