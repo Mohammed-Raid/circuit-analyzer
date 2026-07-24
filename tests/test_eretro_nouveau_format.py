@@ -161,3 +161,21 @@ def test_connexite_du_nouveau_format(nom, tmp_path):
         nets = {_net(comps, idx, pnum) for idx, pnum in groupe}
         assert len(nets) == 1, (
             f"{nom} : {groupe} eclate sur {sorted(nets)}")
+
+
+def test_etiquette_baptise_le_net_meme_avec_des_id_de_fil_dupliques(tmp_path):
+    """Cas reel (test14) : les vrais fichiers portent des <ID> de fil tous a 0.
+    L'AttachedLine d'une etiquette est donc un INDICE de fil, pas un <ID> ; le
+    fil vise (indice 1) est le point milieu R1-R2, que l'utilisateur nomme
+    « vout ». Ce nom doit baptiser le net, pas rester NET#."""
+    xml = _carte(
+        items=[_res("R1", "10k", 0), _res("R2", "22k", 1)],
+        # Trois fils, TOUS <ID>0</ID> comme dans les vrais fichiers :
+        #   0 : R1.2 -> VSS   1 : R1.1 -> R2.2 (milieu)   2 : R2.1 -> GND
+        fils=[_fil(0, "0_1_0_0", "0_1_0_0"),
+              _fil(0, "0_0_0_0", "1_1_0_0"),
+              _fil(0, "1_0_0_0", "1_0_0_0")],
+        etiquettes=[("vout", 1)])
+    comps = lire_xml(_ecrire(tmp_path, "etiquette_id0", xml))
+    nets = {n for c in comps for n in (c.pins or {}).values()}
+    assert "vout" in nets, f"etiquette non appliquee ; nets={sorted(nets)}"

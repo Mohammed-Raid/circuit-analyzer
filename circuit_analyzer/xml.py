@@ -1242,17 +1242,19 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             return (cid, pidx)
         return None
 
-    # Une étiquette de réseau désigne un fil par son ID (AttachedLine) ; on
-    # mémorise donc, pour chaque fil, une broche à laquelle il aboutit.
+    # Une étiquette de réseau désigne un fil par son AttachedLine, qui est
+    # l'INDICE du fil dans lineL (C# : `lLine[nl.AttachedLine].Name = nl.Net`),
+    # PAS son <ID> — les vrais fichiers portent des <ID> tous à 0. On mémorise
+    # donc, par indice de fil, une broche à laquelle il aboutit.
     ligne_vers_broche: Dict[str, tuple] = {}
-    for fil in racine.findall('.//lineL/Line'):
+    for idx_fil, fil in enumerate(racine.findall('.//lineL/Line')):
         cf = (fil.findtext('CFirst') or '').strip()
         cl = (fil.findtext('CLast') or '').strip()
         bf = resoudre_extremite(cf, autoriser_packe=True)
         bl = resoudre_extremite(cl, autoriser_packe=True)
-        lid = (fil.findtext('ID') or '').strip()
-        if lid and (bf is not None or bl is not None):
-            ligne_vers_broche.setdefault(lid, bf if bf is not None else bl)
+        broche_fil = bf if bf is not None else bl
+        if broche_fil is not None:
+            ligne_vers_broche[str(idx_fil)] = broche_fil
         if bf is not None and bl is not None:
             unir(bf, bl)
         elif cf or cl:
