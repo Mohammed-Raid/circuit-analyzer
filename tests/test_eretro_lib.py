@@ -64,6 +64,50 @@ def test_import_derive_un_prefixe_si_group_absent():
     assert entree["pins"] == ["1"]
 
 
+def test_export_circuit_est_lisible_par_le_nouveau_format():
+    """Un circuit exporte (generer_xml) doit etre importable dans l'app C# du
+    collegue : la connexite s'y resout par EGALITE de chaines NodeL <-> CFirst/
+    CLast (Form1.cs). On verrouille donc que chaque ref de fil est une ref
+    ConnRef a 4 champs ET presente dans le NodeL d'une broche."""
+    import xml.etree.ElementTree as ET
+
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml
+
+    comps = [Composant(ref="R1", type="R", pins={"1": "VCC", "2": "OUT"}, value="10k"),
+             Composant(ref="R2", type="R", pins={"1": "OUT", "2": "GND"}, value="22k")]
+    r = ET.fromstring(generer_xml(comps))
+    nodel = {(s.text or "").strip()
+             for dp in r.findall(".//datapin/DataPin")
+             for s in dp.findall("NodeL/string") if s.text}
+    refs = [(ln.findtext(tag) or "").strip()
+            for ln in r.findall(".//lineL/Line") for tag in ("CFirst", "CLast")]
+    assert refs, "aucun fil exporte"
+    for ref in refs:
+        assert len(ref.split("_")) == 4, f"{ref} n'est pas une ref ConnRef (4 champs)"
+        assert ref in nodel, f"{ref} absent des NodeL -> l'app C# ne relierait pas"
+
+
+def test_export_circuit_conserve_la_connexite():
+    """Aller-retour : exporte puis relu, le point milieu reste partage."""
+    import tempfile
+    import os
+
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml, lire_xml
+
+    comps = [Composant(ref="R1", type="R", pins={"1": "VCC", "2": "OUT"}, value="10k"),
+             Composant(ref="R2", type="R", pins={"1": "OUT", "2": "GND"}, value="22k")]
+    f = tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False, encoding="utf-8")
+    f.write(generer_xml(comps))
+    f.close()
+    try:
+        relu = {c.ref: c.pins for c in lire_xml(f.name)}
+    finally:
+        os.unlink(f.name)
+    assert relu["R1"]["2"] == relu["R2"]["1"]        # noeud milieu partage
+
+
 def test_symbole_reel_du_collegue_se_lit(tmp_path):
     """Un vrai symbole Lib d'ERetroDesign (BUFFER.xml) se relit sans erreur."""
     import pathlib

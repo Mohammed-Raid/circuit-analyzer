@@ -73,6 +73,11 @@ class TabDraw:
         ui_kit.SecondaryButton(
             bar_inner, "Enregistrer", self._save_circuit,
             icon_name="save", width=140, height=34,
+        ).pack(side="left", padx=(0, 8), pady=8)
+
+        ui_kit.SecondaryButton(
+            bar_inner, "Exporter (ERetroDesign)", self._export_circuit_xml,
+            icon_name="download", width=200, height=34,
         ).pack(side="left", padx=(0, 14), pady=8)
 
         # Légende raccourcis retirée ici : déjà affichée dans la palette (_legend_lbl,
@@ -120,6 +125,42 @@ class TabDraw:
             return
         messagebox.showinfo("Enregistré",
                             f"Schéma enregistré :\n{path}", parent=self.frame)
+
+    def _export_circuit_xml(self):
+        """@brief Exporte le schéma en BoardSCH XML importable dans ERetroDesign.
+
+        Format nouveau dialecte : réfs ConnRef « c_p_n_l » présentes dans les
+        NodeL des broches (connexité par égalité de chaînes, comme l'app C#).
+        """
+        if self._editor.comp_count() == 0:
+            messagebox.showwarning("Schéma vide",
+                                   "Rien à exporter.", parent=self.frame)
+            return
+        composants = self._editor.exporter_composants()
+        if not composants:
+            messagebox.showwarning("Schéma vide",
+                                   "Aucun composant réel à exporter.",
+                                   parent=self.frame)
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self.frame, defaultextension=".xml",
+            filetypes=[("Schéma XML (BoardSCH ERetroDesign)", "*.xml"),
+                       ("Tous", "*.*")],
+            title="Exporter vers ERetroDesign")
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(generer_xml(composants))
+        except OSError as exc:
+            messagebox.showerror("Erreur",
+                                 f"Impossible d'écrire le fichier :\n{exc}",
+                                 parent=self.frame)
+            return
+        messagebox.showinfo(
+            "Export ERetroDesign",
+            f"Schéma exporté :\n{path}\n\nOuvrez-le dans ERetroDesign.",
+            parent=self.frame)
 
     def _open_circuit(self):
         """@brief Ouvre un .circ, ou importe un .xml / netlist dans l'éditeur."""
