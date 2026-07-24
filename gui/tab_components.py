@@ -3,12 +3,16 @@
 @brief Onglet « Composants » : consultation des types intégrés et édition des types personnalisés.
 """
 import json
+import xml.etree.ElementTree as ET
 import tkinter as tk
 import customtkinter as ctk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 
 from circuit_analyzer.composant import (
     TYPES_COMPOSANTS as COMPONENT_TYPES, chemin_bibliotheque,
+)
+from circuit_analyzer.eretro_lib import (
+    composant_vers_symbole_xml, symbole_vers_composant,
 )
 from gui.pin_canvas import GRILLE, PinCanvas
 from gui.theme import BG, CARD, CARD2, TEXT, TEXT_MUTED, BLUE, ERROR
@@ -203,6 +207,13 @@ class TabComponents:
         self._btn_dupliquer = ui_kit.SecondaryButton(
             pied, "Dupliquer comme personnalisé", self._dupliquer,
             icon_name="copy", height=42)
+        # Partage avec la bibliotheque ERetroDesign du collegue.
+        self._btn_export = ui_kit.SecondaryButton(
+            pied, "Exporter vers ERetroDesign (.xml)", self._exporter_eretro,
+            height=38)
+        self._btn_import = ui_kit.SecondaryButton(
+            pied, "Importer un composant ERetroDesign", self._importer_eretro,
+            icon_name="download", height=38)
         self._btn_save.pack(fill="x")
 
         # La molette défile le formulaire même au-dessus des champs et des
@@ -226,12 +237,14 @@ class TabComponents:
         self._name_entry.configure(state=etat)
         # Le canevas porte son propre verrou : `_remplir_formulaire` le charge
         # avec `lecture_seule`, aucun clic ne mute alors le brochage.
-        self._btn_save.pack_forget()
-        self._btn_dupliquer.pack_forget()
-        if lecture:
-            self._btn_dupliquer.pack(fill="x")
-        else:
-            self._btn_save.pack(fill="x")
+        for b in (self._btn_save, self._btn_dupliquer,
+                  self._btn_export, self._btn_import):
+            b.pack_forget()
+        (self._btn_dupliquer if lecture else self._btn_save).pack(fill="x")
+        # Export : seulement pour un perso DEJA enregistre (on exporte le JSON).
+        if self._current_key in self._custom:
+            self._btn_export.pack(fill="x", pady=(8, 0))
+        self._btn_import.pack(fill="x", pady=(8, 0))   # import : toujours dispo
 
     def _afficher_nouveau(self):
         """@brief Affiche un formulaire vierge en mode « nouveau »."""
@@ -452,6 +465,66 @@ class TabComponents:
         self._definir_mode('nouveau',
                            "➕  Nouveau type (copie) — choisir un préfixe")
         self._prendre_snapshot()
+
+    def _exporter_eretro(self):
+        """@brief Exporte le composant personnalisé courant en symbole Lib
+        ERetroDesign (fichier <Nom>.xml a deposer dans le dossier Lib/)."""
+        key = self._current_key
+        if key not in self._custom:
+            messagebox.showinfo(
+                "Info", "Enregistrez d'abord le composant, puis exportez-le.")
+            return
+        entree = self._custom[key]
+        defaut = f"{entree.get('name') or key}.xml"
+        chemin = filedialog.asksaveasfilename(
+            title="Exporter vers la bibliotheque ERetroDesign",
+            defaultextension=".xml", initialfile=defaut,
+            filetypes=[("Symbole ERetroDesign", "*.xml")])
+        if not chemin:
+            return
+        try:
+            with open(chemin, "w", encoding="utf-8") as f:
+                f.write(composant_vers_symbole_xml(key, entree))
+        except OSError as e:
+            messagebox.showerror("Erreur", f"Ecriture impossible : {e}")
+            return
+        messagebox.showinfo(
+            "Export ERetroDesign",
+            "Composant exporte.\nDeposez le fichier dans le dossier Lib\\ "
+            "de l'application ERetroDesign pour le partager.")
+
+    def _importer_eretro(self):
+        """@brief Importe un symbole Lib ERetroDesign (.xml) comme type perso."""
+        chemin = filedialog.askopenfilename(
+            title="Importer un composant ERetroDesign",
+            filetypes=[("Symbole ERetroDesign", "*.xml"), ("Tous", "*.*")])
+        if not chemin:
+            return
+        try:
+            prefix, entree = symbole_vers_composant(chemin)
+        except (ValueError, OSError, ET.ParseError) as e:
+            messagebox.showerror(
+                "Import impossible",
+                f"Fichier illisible ou format inattendu :\n{e}")
+            return
+        # Prefixe reserve (type integre) ou deja pris : on cherche un libre.
+        base = "".join(ch for ch in prefix if ch.isalnum()) or "X"
+        prefix = base
+        n = 1
+        while prefix in COMPONENT_TYPES or (
+                prefix in self._custom and prefix != self._current_key):
+            n += 1
+            prefix = f"{base}{n}"
+        self._custom[prefix] = entree
+        self._ecrire()
+        self._load()
+        self._afficher_perso(prefix)
+        if self._on_save:
+            self._on_save()
+        messagebox.showinfo(
+            "Import ERetroDesign",
+            f"Composant « {entree.get('name') or prefix} » importe "
+            f"sous le prefixe {prefix}.")
 
     def _supprimer(self):
         """@brief Supprime le type personnalisé en cours d'édition (avec confirmation)."""
