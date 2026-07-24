@@ -25,6 +25,17 @@ def test_export_produit_un_datitem_valide():
     assert r.findtext("value") == "LM358"
     assert len(r.findall(".//datapin/DataPin")) == 2
     assert len(r.findall(".//datasegment/DataSegment")) == 4   # boite
+    # Convention verifiee sur le source C# : symbole Lib = CtrIem/TL/BR nuls,
+    # geometrie CENTREE sur (0,0) (Pin = decalage / centre) et alignee sur la
+    # grille (GridStep=10) -> se pose sur le curseur et se cable proprement.
+    for balise in ("CtrIem", "TL", "BR"):
+        assert (r.find(balise).findtext("X"), r.find(balise).findtext("Y")) == ("0", "0")
+    xs, ys = [], []
+    for dp in r.findall(".//datapin/DataPin"):
+        p = dp.find("Pin")
+        xs.append(int(p.findtext("X"))); ys.append(int(p.findtext("Y")))
+    assert all(v % 10 == 0 for v in xs + ys)           # aligne grille
+    assert min(xs) < 0 < max(xs) or min(ys) < 0 < max(ys)   # centre autour de 0
 
 
 @pytest.mark.parametrize("brochage", [

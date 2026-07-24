@@ -7,18 +7,25 @@ boite) s'exporte en un fichier `Lib/<Nom>.xml` au format `<DataItem>` d'ERetroDe
 un symbole Lib du collegue se relit en entree de bibliotheque. Les deux sens
 passent par le MEME modele boite+broches, d'ou un aller-retour exact.
 
-@note La geometrie est produite dans un espace local a echelle ERetroDesign
-(~milliers d'unites). L'echelle exacte de rendu ne peut etre validee que dans
-l'app C# du collegue ; l'aller-retour par notre propre lecteur, lui, est verifie.
+@note Convention CALEE SUR LE SOURCE C# d'ERetroDesign (pas devinee) :
+- un symbole Lib est un <DataItem> sauvegarde par Form2 (button5_Click) qui
+  n'ecrit que Name + geometrie ; CtrIem/TL/BR restent nuls, recalcules au
+  placement (Form1.InsertItem, qui force aussi zmH=zmV=1).
+- le dessin place une broche a `CtrIem + Pin*zoom` (FDraw.Pinp) : Pin est donc
+  un DECALAGE par rapport au centre -> on centre la geometrie sur (0,0) pour
+  que le symbole apparaisse sur le curseur.
+- seul CtrIem est accroche a la grille (Form1.Snap, GridStep=10) ; nos broches
+  tombent sur des multiples de 10 -> cablage propre.
 """
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
 from gui.schematic_symbols import geometrie_libre, aimanter_bord
 
-# Unites ERetroDesign par pixel de l'editeur, et marge pour rester en positif.
+# Unites ERetroDesign par pixel de l'editeur. La geometrie est CENTREE sur (0,0)
+# comme les broches d'un composant place (FDraw : pos = CtrIem + Pin*zoom, donc
+# Pin est un decalage par rapport au centre) : le symbole apparait sur le curseur.
 ECHELLE = 10
-MARGE = 100
 GRILLE = 20
 
 
@@ -40,12 +47,10 @@ def composant_vers_symbole_xml(prefix, entree):
     boite = entree.get("boite") or {}
     geo = geometrie_libre(pinout, boite.get("w"), boite.get("h"))
     w, h = geo["w"], geo["h"]
-    # Centre choisi pour que TOUTES les coordonnees restent positives.
-    cx = MARGE + (w * ECHELLE) // 2
-    cy = MARGE + (h * ECHELLE) // 2
 
     def abs_pt(dx, dy):
-        return int(round(cx + dx * ECHELLE)), int(round(cy + dy * ECHELLE))
+        # Centre a l'origine : Pin = decalage / CtrIem (=0 dans un symbole Lib).
+        return int(round(dx * ECHELLE)), int(round(dy * ECHELLE))
 
     x0, y0 = abs_pt(-w / 2, -h / 2)
     x1, y1 = abs_pt(w / 2, h / 2)
@@ -84,8 +89,10 @@ def composant_vers_symbole_xml(prefix, entree):
         f"<reference /><value>{escape(valeur)}</value>"
         f"<datapolygon /><datasegment>{segments}</datasegment><dataarc />"
         f"<datapin>{''.join(broches)}</datapin>"
-        f"<CtrIem><X>0</X><Y>0</Y></CtrIem>"
-        f"<TL><X>{x0}</X><Y>{y0}</Y></TL><BR><X>{x1}</X><Y>{y1}</Y></BR>"
+        # Comme un vrai symbole Lib (Form2 n'ecrit que Name + geometrie) :
+        # CtrIem/TL/BR restent nuls, recalcules au placement (InsertItem).
+        "<CtrIem><X>0</X><Y>0</Y></CtrIem>"
+        "<TL><X>0</X><Y>0</Y></TL><BR><X>0</X><Y>0</Y></BR>"
         "<angle>0</angle><id>0</id><selected>false</selected>"
         "<focus>false</focus><Visible>true</Visible></DataItem>")
 
