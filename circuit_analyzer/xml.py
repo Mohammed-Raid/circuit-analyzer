@@ -1158,7 +1158,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         typ_txt = (item.findtext('typ') or '').strip()
         typc = chr(int(typ_txt)) if typ_txt.isdigit() and 0 < int(typ_txt) < 0x110000 else ''
         elements[idx] = {'id': idx, 'name': nom, 'value': valeur, 'pins': broches,
-                         'rail': eretro.classer_rail(typc, valeur, len(broches)),
+                         'rail': eretro.classer_rail(typc, valeur, len(broches), nom),
                          'geo': eretro.extraire_geometrie(item)}
 
     # Étape 1 bis : puces composées ERetroDesign (CCmpntL) — dépliées.

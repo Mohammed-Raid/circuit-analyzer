@@ -13,9 +13,16 @@ from circuit_analyzer.xml import lire_xml
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
 
-CORPUS = (Path(__file__).resolve().parent.parent
-          / 'SolutionERetroDesignX20260813' / 'ERetroDesign' / 'ERetroDesign'
-          / 'bin' / 'Debug')
+# Le dossier de la solution C# a ete renomme (SolutionERetroDesignX20260813
+# -> ERetroDesign) ET sa profondeur a change. On LOCALISE le corpus par un
+# fichier temoin au lieu de coder un chemin : sinon les tests se reduisent
+# silencieusement a un skip et toute la non-regression ERetroDesign disparait.
+_RACINE = Path(__file__).resolve().parent.parent
+CORPUS = next(
+    (p.parent for p in _RACINE.glob('*/**/TestDiagram.xml')
+     if '.git' not in p.parts),
+    _RACINE / 'corpus-eretro-absent')
+
 
 necessite_corpus = pytest.mark.skipif(
     not CORPUS.exists(), reason='corpus ERetroDesign absent de ce poste')
@@ -67,7 +74,12 @@ def test_testdiagram_gate2_reconnus_par_forme():
     comps = lire_xml(str(CORPUS / 'TestDiagram.xml'))
     gate2_en_U = [c for c in comps if c.ref.startswith('U')]
     assert len(gate2_en_U) >= 100
-    assert any('forme' in w.lower() for w in comps.warnings)
+    # Depuis 2026-07-23, « Gate2 » est typé par son NOM (mapping de la
+    # bibliothèque du collègue) et non plus par sa forme : on vérifie le
+    # RÉSULTAT (plus aucune boîte noire X pour ces symboles) et non le
+    # mécanisme, qui est désormais plus fiable.
+    assert not [c for c in comps
+                if c.type == 'X' and (c.value or '').startswith('Gate2')]
     # Aucun composant correctement typé auparavant ne régresse en type faux :
     assert all(c.type in ('R', 'C', 'L', 'D', 'Q', 'M', 'U', 'K', 'F', 'X')
                for c in comps)

@@ -94,8 +94,11 @@ def test_forme_ambigue_deux_broches_vide_sabstient():
 # Le skipif est appliqué UNIQUEMENT aux tests de l'oracle (pas à tout le module :
 # les unités de _forme_* ci-dessus doivent rester actives même sans le corpus).
 
-_LIB = os.path.join('SolutionERetroDesignX20260813', 'ERetroDesign',
-                    'ERetroDesign', 'bin', 'Debug', 'Lib')
+# Corpus LOCALISE par sa presence, pas par un chemin en dur : le dossier de
+# la solution C# a change de nom et de profondeur (2026-07-23).
+_LIB = next((os.path.dirname(c) for c in
+             glob.glob(os.path.join('**', 'Debug', 'Lib', 'CD4011.xml'),
+                       recursive=True)), '')
 
 _skip_sans_corpus = pytest.mark.skipif(not os.path.isdir(_LIB), reason="corpus Lib absent")
 

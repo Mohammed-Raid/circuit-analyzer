@@ -65,6 +65,38 @@ _MAPPING_ERETRO = {
     'relais 2rt': ('K', {}),
     'condensateur polarise': ('C', None),
     'photodiode': ('D', _PLAN_D),
+
+    # ── Bibliothèque livrée avec l'éditeur du collègue (2026-07-23) ──────────
+    # Diagnostic : 4 noms sur 52 seulement étaient reconnus (18 % des
+    # occurrences) ; « Résistance », « Capa », « Self » ou « Gate2 » (33×)
+    # tombaient en boîte noire X. Ce dialecte-ci est celui de la BIBLIOTHÈQUE,
+    # distinct de celui des vraies cartes ('R 810', 'Transistor_NPN'…).
+    'resistance': ('R', None),
+    'capa': ('C', None),
+    'self': ('L', None),
+    'transistor': ('Q', _PLAN_Q),
+    'mosfet controle': ('M', _PLAN_M),
+    'aop': ('U', {}),
+    'regulateur': ('U', {}),
+    'optocoupleur simple': ('U', {}),
+    'relais 1formc': ('K', {}),
+    'contact no': ('SW', None),
+    'contact form c': ('SW', None),
+    'bouton poussoir double': ('SW', None),
+    # Portes logiques : rendues en boîte CI honnête, jamais en symbole deviné.
+    'gate2': ('U', {}), 'gate2ic': ('U', {}), 'gates4g': ('U', {}),
+    'inverter': ('U', {}), 'nand gate': ('U', {}), 'buffer': ('U', {}),
+    'hc165': ('U', {}), 'mc4094': ('U', {}), '8 etage registre': ('U', {}),
+}
+
+# Noms de symboles d'alimentation de la bibliothèque, par rail produit.
+# La bibliothèque du collègue écrit `typ=0` au lieu de 'G'/'V'/'N' : sans ce
+# repli par le NOM, aucun rail n'est détecté et plus AUCUN montage n'est
+# reconnaissable (tous les détecteurs s'appuient sur la masse et l'alim).
+_RAILS_PAR_NOM = {
+    'gnd': 'GND', 'masse': 'GND', 'agnd': 'GND', 'dgnd': 'GND',
+    'vcc': 'VCC', 'vcc+': 'VCC', 'v+': 'VCC', 'vdd': 'VCC',
+    'vss': 'VSS', 'vcc-': 'VSS', 'v-': 'VSS', 'vee': 'VSS',
 }
 
 
@@ -234,10 +266,29 @@ def _plaques_fermees_en_boite(segs, a, b, a_horiz, ref):
     return False
 
 
+def _segments_convergent(a, b, prox):
+    """@brief Vrai si deux segments ont une extrémité quasi commune (un sommet).
+
+    Sert à distinguer des ARMATURES (deux traits parallèles disjoints) des deux
+    arêtes d'un TRIANGLE, qui se rejoignent en pointe.
+    """
+    for pa in ((a[0], a[1]), (a[2], a[3])):
+        for pb in ((b[0], b[1]), (b[2], b[3])):
+            if math.hypot(pa[0] - pb[0], pa[1] - pb[1]) < prox:
+                return True
+    return False
+
+
 def _forme_paire_plaques(segs):
     """Condensateur : 2 longs segments parallèles séparés par un vrai écart
     (exclut 2 pattes colinéaires, écart ≈ 0, ET exclut un rectangle fermé
-    type boîtier de fusible/thermistance/varistance — cf. oracle Lib)."""
+    type boîtier de fusible/thermistance/varistance — cf. oracle Lib).
+
+    Exclut aussi les segments qui CONVERGENT en un sommet : les deux arêtes
+    obliques d'un triangle (BUFFER, INVERTER) passaient toutes les gardes et
+    étaient classées « condensateur » — contresens trouvé par l'oracle Lib le
+    2026-07-23, une fois ces symboles enfin typés par leur nom.
+    """
     ref = _diag(segs)
     longs = [s for s in segs if _long(s) > 0.35 * ref]
     for i in range(len(longs)):
@@ -254,6 +305,8 @@ def _forme_paire_plaques(segs):
             if 0.1 * ref < ecart < 0.45 * ref:
                 if _plaques_fermees_en_boite(segs, a, b, a_horiz, ref):
                     continue  # boîte fermée (fusible/thermistance/varistance), pas un condo
+                if _segments_convergent(a, b, 0.12 * ref):
+                    continue  # sommet de triangle (buffer/inverseur), pas des armatures
                 return True
     return False
 
@@ -306,7 +359,7 @@ def classer_par_forme(geo):
     return None
 
 
-def classer_rail(typc, valeur, nb_broches):
+def classer_rail(typc, valeur, nb_broches, nom=''):
     """@brief Nom de net rail pour un symbole d'alimentation ERetroDesign, ou None.
 
     Le C# marque les alims par le char typ : 'G' (masse), 'V' (alim
@@ -314,13 +367,21 @@ def classer_rail(typc, valeur, nb_broches):
     un composant 2 broches n'est jamais un symbole de rail (le typ natif
     est parfois ord(nom[0]), donc 'V' peut apparaître par accident).
 
+    Repli par le NOM (2026-07-23) : la bibliothèque livrée avec l'éditeur du
+    collègue écrit `typ=0` sur GND / Vss / VCC+ / VCC-. Sans ce repli, aucun
+    rail n'est détecté et plus aucun montage n'est reconnaissable. La garde
+    « une seule broche » s'applique de la même façon.
+
     @param typc Char typ décodé ('' si absent).
     @param valeur Champ <value> (peut nommer le rail : '+12V', 'VMOT'…).
     @param nb_broches Nombre de broches du composant.
+    @param nom Champ <Name> du symbole (repli quand `typ` ne classe rien).
     @return str|None Nom de net ('GND', 'VCC', 'VSS', ou rail nommé), ou None.
     """
-    if nb_broches != 1 or typc not in ('G', 'V', 'N'):
+    if nb_broches != 1:
         return None
+    if typc not in ('G', 'V', 'N'):
+        return _RAILS_PAR_NOM.get(normaliser_nom(nom).replace(' ', ''))
     if typc == 'G':
         return 'GND'
     from circuit_analyzer.patterns.base import is_gnd, is_power
