@@ -1,6 +1,32 @@
 """@file test_circuit_viewer.py
 @brief Tests du builder de figure (passe-plat des zones cliquables Z)."""
+import schemdraw
+from schemdraw.segments import SegmentText
+
 from gui import circuit_viewer as cv
+
+
+def _textes_du_dessin(d):
+    """@brief Tous les libellés texte présents dans un schemdraw.Drawing."""
+    return [str(seg.text) for el in d.elements
+            for seg in getattr(el, "segments", [])
+            if isinstance(seg, SegmentText)]
+
+
+def test_masse_nommee_garde_son_nom():
+    """VSS et GND sont tous deux des masses ; sans le nom, deux rails distincts
+    (ex. VSS et GND d'une même Z) se dessinent en deux « GND » identiques —
+    c'est le bug « deux résistances et deux GND » rapporté sur test14."""
+    d = schemdraw.Drawing()
+    cv._draw_net_end(d, "VSS", at=(0, 0))
+    assert "VSS" in _textes_du_dessin(d)
+
+
+def test_masse_generique_reste_un_drapeau_nu():
+    """La masse générique GND ne porte pas de libellé (drapeau CAO classique)."""
+    d = schemdraw.Drawing()
+    cv._draw_net_end(d, "GND", at=(0, 0))
+    assert "GND" not in _textes_du_dessin(d)
 
 
 def test_draw_sommateur_n_plus_un_boites_z():

@@ -2622,6 +2622,11 @@ def _draw_net_end(d, net, at=None, loc="right"):
     kind = _net_kind(net)
     if kind == "ground":
         el = elm.Ground()
+        # Masse générique ⇒ drapeau nu ; masse NOMMÉE (VSS, AGND, DGND, V-…)
+        # ⇒ on garde son nom, sinon deux rails distincts se dessinent en deux
+        # « GND » identiques (ex. VSS et GND d'un même Z).
+        if net.strip().upper() not in ("GND", "0", "0V", "MASSE"):
+            el = el.label(net, loc="bottom", color=_BUS, ofst=_LBL_OFST)
     elif kind == "power":
         el = elm.Vdd().label(net, loc="top", color=_BUS, ofst=_LBL_OFST)
     else:
