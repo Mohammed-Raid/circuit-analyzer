@@ -107,6 +107,38 @@ def test_inconnu_reste_inconnu():
         assert mapper_nom(nom) is None, nom
 
 
+# ── Lot B : un nom indéchiffrable se lit en boîte honnête, jamais une erreur ──
+
+def _carte_un_composant(tmp_path, nom, nb_broches):
+    pins = "".join(
+        f"<DataPin><Pname>{i}</Pname><Pnumber>{i}</Pnumber>"
+        f"<NodeL><string>0_{i}_0_0</string></NodeL></DataPin>"
+        for i in range(nb_broches))
+    xml = (f'<?xml version="1.0"?><BoardSCH><CmpntL><DataItem>'
+           f'<Name>{nom}</Name><reference>R3</reference><value></value>'
+           f'<datapin>{pins}</datapin></DataItem></CmpntL>'
+           f'<lineL/><CCmpntL/></BoardSCH>')
+    p = tmp_path / "b.xml"
+    p.write_text(xml, encoding="utf-8")
+    return str(p)
+
+
+@pytest.mark.parametrize("nom", ["df", "1AM", "027A", "Tr20", "16 pins",
+                                 "J314", "L25010MH", "Nouveau6"])
+@pytest.mark.parametrize("nb_broches", [2, 8])
+def test_nom_indechiffrable_se_lit_en_boite_sans_erreur(nom, nb_broches,
+                                                        tmp_path):
+    """Contrat du lot B : faute de savoir typer, on rend une boîte (X si peu de
+    broches, U étiquetée si assez pour une IC) SANS perdre les connexions et
+    SANS lever. Le collègue tranchera la sémantique plus tard."""
+    from circuit_analyzer.xml import lire_xml
+    comps = lire_xml(_carte_un_composant(tmp_path, nom, nb_broches))
+    assert len(comps) == 1
+    c = comps[0]
+    assert c.type in ("X", "U"), f"{nom} typé {c.type} sans preuve"
+    assert len(c.pins) == nb_broches      # aucune broche perdue
+
+
 # ── Couverture réelle de la bibliothèque livrée ──────────────────────────────
 
 _BIBLIO = pathlib.Path(__file__).resolve().parents[1] / (
