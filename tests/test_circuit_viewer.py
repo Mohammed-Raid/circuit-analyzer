@@ -13,20 +13,49 @@ def _textes_du_dessin(d):
             if isinstance(seg, SegmentText)]
 
 
-def test_masse_nommee_garde_son_nom():
-    """VSS et GND sont tous deux des masses ; sans le nom, deux rails distincts
-    (ex. VSS et GND d'une même Z) se dessinent en deux « GND » identiques —
-    c'est le bug « deux résistances et deux GND » rapporté sur test14."""
-    d = schemdraw.Drawing()
-    cv._draw_net_end(d, "VSS", at=(0, 0))
-    assert "VSS" in _textes_du_dessin(d)
+def test_masse_dessinee_en_borne_nommee():
+    """Choix patron (test14) : les masses ne sont PAS dessinées avec le symbole
+    de terre ⏚ mais en bornes NOMMÉES, pour lire le nom de chaque rail et ne
+    jamais confondre deux masses distinctes (VSS vs GND)."""
+    for net in ("VSS", "GND", "AGND"):
+        d = schemdraw.Drawing()
+        cv._draw_net_end(d, net, at=(0, 0))
+        assert net in _textes_du_dessin(d), f"{net} sans libellé"
 
 
-def test_masse_generique_reste_un_drapeau_nu():
-    """La masse générique GND ne porte pas de libellé (drapeau CAO classique)."""
+def test_pas_de_symbole_de_terre_pour_une_masse():
+    """Aucun élément schemdraw.Ground n'est émis pour une masse."""
+    import schemdraw.elements as elm
     d = schemdraw.Drawing()
     cv._draw_net_end(d, "GND", at=(0, 0))
-    assert "GND" not in _textes_du_dessin(d)
+    assert not any(isinstance(el, elm.Ground) for el in d.elements)
+
+
+def test_chaine_lineaire_rendue_en_ligne_horizontale():
+    """Un diviseur VSS-R1-vout-R2-GND se dessine en LIGNE : trois bornes
+    nommées alignées (même y), vout au milieu — pas un empilement en colonne."""
+    model = {"label": "x", "components": [
+        {"ref": "R1", "type": "R", "pins": {"1": "VSS", "2": "vout"}},
+        {"ref": "R2", "type": "R", "pins": {"1": "vout", "2": "GND"}},
+    ]}
+    plan = cv._build_island_schematic_plan(model)
+    assert {c["net"] for c in plan["columns"]} == {"VSS", "vout", "GND"}
+    assert all(c.get("chaine") for c in plan["columns"])
+    assert all(r["y"] == 0.0 for r in plan["rows"])        # une seule bande
+    xs = {c["net"]: c["x"] for c in plan["columns"]}
+    assert xs["vout"] == sorted(xs.values())[1]            # vout au milieu
+
+
+def test_reseau_branche_n_est_pas_une_chaine():
+    """Trois dipôles sur un nœud commun = branche, pas une chaîne linéaire :
+    on retombe sur la disposition en colonnes classique."""
+    model = {"label": "x", "components": [
+        {"ref": "R1", "type": "R", "pins": {"1": "A", "2": "N"}},
+        {"ref": "R2", "type": "R", "pins": {"1": "N", "2": "B"}},
+        {"ref": "R3", "type": "R", "pins": {"1": "N", "2": "C"}},
+    ]}
+    plan = cv._build_island_schematic_plan(model)
+    assert not any(c.get("chaine") for c in plan["columns"])
 
 
 def test_draw_sommateur_n_plus_un_boites_z():

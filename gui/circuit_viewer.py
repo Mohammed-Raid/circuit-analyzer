@@ -2445,6 +2445,77 @@ def _schematic_symbol(ctype):
     }.get(ctype, "block")
 
 
+def _ordre_chaine_dipoles(dipoles):
+    """@brief Si les dipoles forment UNE chaine lineaire (VSS-R1-vout-R2-GND…),
+    renvoie (nets ordonnes, dipoles ordonnes) ; sinon None.
+
+    Chaque dipole est une arete entre ses deux nets. On accepte seulement le
+    cas d'un CHEMIN simple : chaque net a un degre <= 2, exactement deux
+    extremites de degre 1, pas de cycle ni de branche. Cela permet un rendu
+    horizontal propre (bornes nommees en ligne) au lieu d'un empilement en
+    colonne. Deterministe (depart = plus petite extremite), sans id().
+    """
+    aretes = []
+    for c in dipoles:
+        nets = list(dict.fromkeys(
+            n for _p, n in (c.get("pins", {}) or {}).items()
+            if not _is_not_connected(n)))
+        if len(nets) != 2:               # broche libre, boucle sur soi… -> pas une chaine
+            return None
+        aretes.append((nets[0], nets[1]))
+
+    adj = {}
+    for i, (a, b) in enumerate(aretes):
+        adj.setdefault(a, []).append((b, i))
+        adj.setdefault(b, []).append((a, i))
+    if any(len(v) > 2 for v in adj.values()):    # une branche -> pas lineaire
+        return None
+    extremites = sorted(n for n, v in adj.items() if len(v) == 1)
+    if len(extremites) != 2:                     # cycle, ou plusieurs morceaux
+        return None
+    if len(aretes) != len(adj) - 1:              # pas un arbre connexe (chemin)
+        return None
+
+    nets_ordre, dip_ordre, vus, cur = [extremites[0]], [], set(), extremites[0]
+    while True:
+        suite = [(nb, ei) for nb, ei in adj[cur] if ei not in vus]
+        if not suite:
+            break
+        nb, ei = suite[0]
+        vus.add(ei)
+        dip_ordre.append(dipoles[ei])
+        nets_ordre.append(nb)
+        cur = nb
+    if len(nets_ordre) != len(adj):              # parcours incomplet (garde-fou)
+        return None
+    return nets_ordre, dip_ordre
+
+
+def _plan_chaine_horizontale(model, dipoles, net_pins):
+    """@brief Plan d'une chaine lineaire de dipoles, en LIGNE horizontale.
+
+    Tous les nets (masses comprises) deviennent des bornes nommees alignees,
+    chaque dipole reliant deux bornes consecutives sur la meme bande y=0 —
+    d'ou « VSS ●─[Z1]─● vout ●─[Z2]─● GND ». Renvoie None si ce n'est pas une
+    chaine. Reutilise le dessin de `_draw_island_schematic` (boites Z, vue
+    detaillee, zones cliquables inchangees)."""
+    ordonne = _ordre_chaine_dipoles(dipoles)
+    if ordonne is None:
+        return None
+    nets_ordre, dip_ordre = ordonne
+    columns = [{"net": n, "x": float(i * COL_PITCH), "kind": _net_kind(n),
+                "y_top": 0.0, "y_bottom": 0.0, "chaine": True}
+               for i, n in enumerate(nets_ordre)]
+    col_set = set(nets_ordre)
+    rows = [_make_row(c, 0.0, net_pins, col_set) for c in dip_ordre]
+    return {
+        "label": model.get("label", "Ilot"),
+        "columns": columns,
+        "rows": rows,
+        "caption": "● connexion — un croisement sans point n'est pas une liaison",
+    }
+
+
 def _build_island_schematic_plan(model):
     """@brief Plan netlist-fidele assaini d'un ilot (fonction pure, testable).
 
@@ -2453,6 +2524,9 @@ def _build_island_schematic_plan(model):
     ceux dont les extents x ne se chevauchent pas partagent une bande (meme y),
     ce qui reduit la hauteur et casse l'escalier diagonal. Les composants
     multi-broches (AOP/blocs) occupent une bande chacun, sous les dipoles.
+
+    Cas special : une CHAINE lineaire de dipoles (diviseur, R-C serie…) est
+    rendue horizontalement, bornes nommees en ligne (cf. _plan_chaine_horizontale).
 
     @param model Modele d'ilot (cf. _build_island_model).
     @return dict {label, columns, rows, caption}.
@@ -2466,6 +2540,12 @@ def _build_island_schematic_plan(model):
             if _is_not_connected(net):
                 continue
             net_pins.setdefault(net, []).append((comp["ref"], pin))
+
+    dipoles_tous = [c for c in components if not _is_multi_pin(c)]
+    if len(dipoles_tous) >= 2 and len(dipoles_tous) == len(components):
+        chaine = _plan_chaine_horizontale(model, dipoles_tous, net_pins)
+        if chaine is not None:
+            return chaine
 
     # Nets-hubs rendus en drapeaux locaux (pas en colonnes-bus) : la masse toujours
     # (convention CAO), l'alimentation seulement si elle est peripherique. Un rail
@@ -2600,6 +2680,12 @@ def _draw_island_schematic(d, plan, hitboxes=None):
 
     # Colonnes-bus rognees : ligne verticale + etiquette + masse eventuelle.
     for c in columns:
+        # Noeud d'une chaine horizontale : borne nommee en ligne, sans bus
+        # vertical (le point de connexion est deja pose par les dipoles a y=0).
+        if c.get("chaine"):
+            d += elm.Dot().at((c["x"], 0.0)).label(
+                c["net"], loc="top", color=_BUS, ofst=_LBL_OFST)
+            continue
         # les colonnes ne sont jamais des nets de masse (rendus en drapeaux locaux).
         top = c["y_top"] + 0.5
         bottom = c["y_bottom"] - 0.5
@@ -2620,16 +2706,13 @@ def _draw_net_end(d, net, at=None, loc="right"):
     """@brief Termine un fil sur un net : drapeau de masse/alim si net-hub, sinon
     point + nom de net (convention CAO ; @at None = position courante du dessin)."""
     kind = _net_kind(net)
-    if kind == "ground":
-        el = elm.Ground()
-        # Masse générique ⇒ drapeau nu ; masse NOMMÉE (VSS, AGND, DGND, V-…)
-        # ⇒ on garde son nom, sinon deux rails distincts se dessinent en deux
-        # « GND » identiques (ex. VSS et GND d'un même Z).
-        if net.strip().upper() not in ("GND", "0", "0V", "MASSE"):
-            el = el.label(net, loc="bottom", color=_BUS, ofst=_LBL_OFST)
-    elif kind == "power":
+    if kind == "power":
         el = elm.Vdd().label(net, loc="top", color=_BUS, ofst=_LBL_OFST)
     else:
+        # Masses (GND, VSS, AGND…) ET signaux : borne NOMMÉE (point + nom du
+        # net), jamais de symbole de terre. Choix patron : on veut lire le nom
+        # de chaque rail, deux masses distinctes (VSS vs GND) ne doivent pas se
+        # confondre en deux drapeaux ⏚ identiques.
         el = elm.Dot().label(net, loc=loc, color=_BUS, ofst=_LBL_OFST)
     d += el.at(at) if at is not None else el
 
