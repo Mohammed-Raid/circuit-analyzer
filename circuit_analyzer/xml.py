@@ -1242,11 +1242,17 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             return (cid, pidx)
         return None
 
+    # Une étiquette de réseau désigne un fil par son ID (AttachedLine) ; on
+    # mémorise donc, pour chaque fil, une broche à laquelle il aboutit.
+    ligne_vers_broche: Dict[str, tuple] = {}
     for fil in racine.findall('.//lineL/Line'):
         cf = (fil.findtext('CFirst') or '').strip()
         cl = (fil.findtext('CLast') or '').strip()
         bf = resoudre_extremite(cf, autoriser_packe=True)
         bl = resoudre_extremite(cl, autoriser_packe=True)
+        lid = (fil.findtext('ID') or '').strip()
+        if lid and (bf is not None or bl is not None):
+            ligne_vers_broche.setdefault(lid, bf if bf is not None else bl)
         if bf is not None and bl is not None:
             unir(bf, bl)
         elif cf or cl:
@@ -1267,6 +1273,27 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             avertissements.append(
                 f"Fil interne de puce non résolu : CFirst={cf!r}, CLast={cl!r}"
             )
+
+    # Étiquettes de réseau (NetLabels) : même <Net> ⇒ même nœud électrique.
+    # Le collègue les pose et les persiste, mais son app C# ne les relie PAS
+    # encore à sa netlist ; on fait le câblage ici. Une étiquette désigne un
+    # fil par son AttachedLine (ID de Line) ; on unit les broches des fils qui
+    # portent le même nom, et ce nom baptise le net.
+    label_par_broche: Dict[tuple, str] = {}
+    premiere_broche_du_label: Dict[str, tuple] = {}
+    for et in racine.findall('.//NetLabels/NetLabel'):
+        nom_label = (et.findtext('Net') or '').strip()
+        aid = (et.findtext('AttachedLine') or '').strip()
+        if not nom_label or not aid:
+            continue
+        broche = ligne_vers_broche.get(aid)
+        if broche is None:
+            continue
+        label_par_broche[broche] = nom_label
+        if nom_label in premiere_broche_du_label:
+            unir(premiere_broche_du_label[nom_label], broche)
+        else:
+            premiere_broche_du_label[nom_label] = broche
 
     # Étape 3 : regrouper les broches par nœud électrique
     groupes_nets: Dict[tuple, list] = {}
@@ -1308,6 +1335,11 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
                 racine_vers_net[cle] = norm; return norm
             if norm not in _NOM_VERS_TYPE and (is_gnd(norm) or is_power(norm)):
                 racine_vers_net[cle] = norm; return norm
+        # Étiquette de réseau posée par l'utilisateur : son nom baptise le net.
+        for m in groupes_nets.get(cle, []):
+            if m in label_par_broche:
+                racine_vers_net[cle] = label_par_broche[m]
+                return racine_vers_net[cle]
         compteur += 1
         net = f'NET{compteur}'
         racine_vers_net[cle] = net; return net
