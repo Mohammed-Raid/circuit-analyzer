@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from html import escape as _esc
 from typing import Dict, List, Tuple
+import logging
 import xml.etree.ElementTree as ET
 
 from circuit_analyzer import eretro
@@ -28,6 +29,8 @@ from circuit_analyzer.patterns.base import (
 # =============================================================================
 # Toutes les coordonnées sont en unités BoardSCH, centrées sur (0,0).
 # Source : reverse-engineered depuis "exemples/carte pour tester.xml" du logiciel ERetroDesign.
+
+_log = logging.getLogger(__name__)
 
 _FORME: Dict[str, dict] = {
     "Résistance": {
@@ -822,7 +825,8 @@ def generer_xml(composants, resultats=None, results=None) -> str:
         # (plan sans clé numérique -> broches silencieusement non émises).
         # -> forme DIP générique PuceN, plan identité. Un U à broches
         # nommées (IN+/IN-/OUT) garde la forme AOP historique.
-        if comp.type == "U" and comp.pins and all(k.isdigit() for k in comp.pins):
+        if (spec is None or comp.type == "U") and comp.pins \
+                and all(k.isdigit() for k in comp.pins):
             n = next((t for t in _TAILLES_PUCE
                       if t >= max(int(k) for k in comp.pins)), None)
             # PLAFOND : au-delà de 16 broches (max _TAILLES_PUCE), n=None ->
@@ -833,9 +837,44 @@ def generer_xml(composants, resultats=None, results=None) -> str:
             # cosmétique — net singleton, aucune collision).
             if n is not None:
                 spec = (f"Puce{n}", {k: k for k in comp.pins})
+        if spec is None and comp.pins:
+            # Dernier recours : boîte DIP générique, broches placées dans
+            # l'ORDRE. Sans cela `spec is None` supprimait le composant EN
+            # SILENCE — les 22 connecteurs (type J) des vraies cartes
+            # disparaissaient à l'export, avec toutes leurs liaisons.
+            noms = list(comp.pins)
+            n = next((t for t in _TAILLES_PUCE if t >= len(noms)), _TAILLES_PUCE[-1])
+            spec = (f"Puce{n}",
+                    {nom: str(i + 1) for i, nom in enumerate(noms[:n])})
+            if len(noms) > n:
+                _log.warning(
+                    "%s : %d broches > %d (plus grand boîtier disponible) — "
+                    "les broches au-delà ne sont pas exportées",
+                    comp.ref, len(noms), n)
         if spec is None:
             continue
         nom_forme, plan_broches = spec
+        # Une broche dont le NOM n'est pas au plan (D1 en '-'/'+', U2.1 en
+        # 'C'/'E' sur les vraies cartes) était ignorée plus bas -> liaisons
+        # perdues EN SILENCE. On lui attribue un emplacement LIBRE de la forme.
+        # COPIE obligatoire : les plans de _TYPE_VERS_FORME sont partagés au
+        # niveau module, les compléter en place empoisonnerait les exports
+        # suivants.
+        inconnues = [p for p in comp.pins if p not in plan_broches]
+        if inconnues:
+            plan_broches = dict(plan_broches)
+            # Emplacements réellement pris par CE composant — pas tous les
+            # alias du plan : la forme Diode mappe {A,K,1,2} sur DEUX broches
+            # physiques seulement, donc « tout est occupé » serait faux.
+            occupees = {plan_broches[p] for p in comp.pins if p in plan_broches}
+            libres = [p for p in _FORME.get(nom_forme, {}).get("pins", {})
+                      if p not in occupees]
+            for nom_broche in inconnues:
+                if not libres:
+                    _log.warning("%s : broche %r sans emplacement libre sur %s",
+                                 comp.ref, nom_broche, nom_forme)
+                    break
+                plan_broches[nom_broche] = libres.pop(0)
         if positions and comp.ref in positions:
             x, y = positions[comp.ref]
         else:

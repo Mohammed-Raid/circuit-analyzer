@@ -173,6 +173,32 @@ def ecrire_dans_dossier(dossier, composants):
     return ecrits
 
 
+def _dossiers_bibliotheque(dossier):
+    """@brief Dossiers à balayer pour une bibliothèque ERetroDesign.
+
+    Côté C#, simples et composés vivent dans DEUX dossiers frères
+    (`LibItem/Lib` et `LibItem/CCLib`). Désigner l'un ne doit pas faire rater
+    l'autre en silence : on prend le dossier choisi, ses sous-dossiers, et le
+    frère `CCLib`/`Lib` quand on a désigné l'autre.
+    """
+    # UNIQUEMENT les deux sous-dossiers de bibliothèque connus : `LibItem`
+    # contient aussi des ARCHIVES (`Archiv`, `Save<date>`…) pleines de vieux
+    # agrégats — les balayer ramènerait des centaines de composants périmés.
+    dossiers = [dossier]
+    for sous in sorted(os.listdir(dossier)):
+        chemin = os.path.join(dossier, sous)
+        if os.path.isdir(chemin) and sous.lower() in ("lib", "cclib"):
+            dossiers.append(chemin)
+    parent, base = os.path.dirname(dossier.rstrip("/\\")), os.path.basename(
+        dossier.rstrip("/\\")).lower()
+    frere = {"lib": "CCLib", "cclib": "Lib"}.get(base)
+    if frere and parent:
+        chemin = os.path.join(parent, frere)
+        if os.path.isdir(chemin) and chemin not in dossiers:
+            dossiers.append(chemin)
+    return dossiers
+
+
 def _chemin_config():
     """@brief Fichier retenant le dossier de bibliotheque partagee."""
     from circuit_analyzer.chemins import racine_application
@@ -278,21 +304,24 @@ def composants_depuis_xml(source):
     # ordre reproductible d'une machine a l'autre).
     if not isinstance(source, ET.Element) and "<" not in str(source) \
             and os.path.isdir(str(source)):
-        out = []
-        for nom in sorted(os.listdir(source)):
-            if nom.lower().endswith(".xml"):
-                out.extend(composants_depuis_xml(os.path.join(source, nom)))
-        return out
+        return [c for d in _dossiers_bibliotheque(str(source))
+                for nom in sorted(os.listdir(d)) if nom.lower().endswith(".xml")
+                for c in composants_depuis_xml(os.path.join(d, nom))]
 
     r = _racine(source)
-    if r.tag == "DataItem":
+    # Un <CComp> (composant COMPOSÉ) porte la MÊME enveloppe qu'un DataItem :
+    # datasegment + datapin + CtrIem/TL/BR. Son extérieur est donc déjà une
+    # boîte à broches exploitable ; seules ses entrailles (DItemL/CCLine) sont
+    # spécifiques, et elles ne concernent pas notre modèle boîte+broches.
+    if r.tag in ("DataItem", "CComp"):
         items = [r]
     else:
-        # ArrayOfDataItem (agregat) : les DataItem sont des enfants DIRECTS.
+        # ArrayOfDataItem / ArrayOfCComp (agrégats) : enfants DIRECTS.
         items = (r.findall("./Items/DataItem") or r.findall(".//Items/DataItem")
-                 or r.findall("./DataItem"))
-        if not items and r.tag.endswith("}DataItem"):   # namespace éventuel
-            items = [r]
+                 or r.findall("./DataItem") or r.findall("./CComp")
+                 or r.findall("./CComps/CComp") or r.findall(".//CComps/CComp"))
+        if not items and r.tag.rsplit("}", 1)[-1] in ("DataItem", "CComp"):
+            items = [r]                                  # namespace éventuel
     out = []
     for it in items:
         try:

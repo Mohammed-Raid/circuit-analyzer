@@ -1,4 +1,4 @@
-import os, collections
+import os, collections, tempfile
 import pytest
 from circuit_analyzer.xml import lire_xml
 
@@ -88,3 +88,38 @@ def test_cartes_reelles_ilots_sans_chevauchement_de_labels():
             if cols:
                 residuels.append((f, idx, cols))
     assert not residuels, f"chevauchements residuels d'etiquettes : {residuels}"
+
+
+def test_aller_retour_des_vraies_cartes_ne_perd_ni_composant_ni_liaison():
+    """Contrat « les deux applis travaillent ensemble » : relire une vraie
+    carte puis la RE-EXPORTER doit rendre le meme circuit.
+
+    A l'origine, 9 des 23 composants de PG 2 disparaissaient (les connecteurs
+    type J n'avaient aucune forme -> `if spec is None: continue`), et les
+    broches au nom hors plan (D1 en '-'/'+') perdaient leurs liaisons.
+    """
+    from circuit_analyzer.xml import generer_xml
+
+    def partition(comps):
+        # signature INDEPENDANTE des refs : les connecteurs reexportes en
+        # boitier PuceN se relisent en 'U' avec une autre ref, sans que la
+        # connexite change.
+        nets = {}
+        for c in comps:
+            for n in c.pins.values():
+                nets.setdefault(n, []).append(c.value or c.type)
+        return sorted(tuple(sorted(v)) for v in nets.values() if len(v) > 1)
+
+    for nom in _FICHIERS:
+        avant = lire_xml(os.path.join(_DOSSIER, nom))
+        f = tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False,
+                                        encoding="utf-8")
+        f.write(generer_xml(avant))
+        f.close()
+        try:
+            apres = lire_xml(f.name)
+        finally:
+            os.unlink(f.name)
+        assert len(apres) >= len(avant), (
+            f"{nom} : {len(avant)} -> {len(apres)} composants (perte)")
+        assert partition(avant) == partition(apres), f"{nom} : connexite alteree"

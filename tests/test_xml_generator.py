@@ -505,3 +505,80 @@ def test_circuits_industriels_sans_bobine():
         f"Fichiers XML avec <Name>Bobine</Name> (doit être <Name>Self</Name>) : "
         f"{fichiers_avec_bobine}"
     )
+
+
+def test_connecteur_J_n_est_pas_perdu_a_l_export():
+    """Un connecteur (type J) n'avait AUCUNE forme dans _TYPE_VERS_FORME :
+    `if spec is None: continue` le supprimait EN SILENCE. Sur PG 2, 9 des 23
+    composants disparaissaient a l'export."""
+    import xml.etree.ElementTree as ET
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml
+
+    comps = [
+        Composant(ref="J1", type="J", value="connecteur traversant",
+                  pins={str(i): f"N{i}" for i in range(1, 14)}),
+        Composant(ref="J2", type="J", value="JUMPER", pins={"1": "N1", "2": "N2"}),
+        Composant(ref="R1", type="R", value="10k", pins={"1": "N1", "2": "N2"}),
+    ]
+    r = ET.fromstring(generer_xml(comps))
+    items = r.findall(".//CmpntL/DataItem")
+    # 3 composants + les symboles de rail eventuels : les 3 doivent etre la
+    valeurs = [(i.findtext("value") or "") for i in items]
+    assert "connecteur traversant" in valeurs, "connecteur 13 broches PERDU"
+    assert "JUMPER" in valeurs, "jumper PERDU"
+    # et ses broches portent bien des refs de connexion
+    nodel = {s.text for i in items for dp in i.findall("./datapin/DataPin")
+             for s in dp.findall("NodeL/string") if s.text}
+    assert nodel, "aucune connexion emise"
+
+
+def test_aucun_type_n_est_supprime_en_silence():
+    """Contrat general : tout composant a broches ressort a l'export, quel que
+    soit son type — sinon la carte du collegue revient amputee."""
+    import xml.etree.ElementTree as ET
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml
+
+    comps = [Composant(ref=f"{t}1", type=t, value=t,
+                       pins={"1": "A", "2": "B"})
+             for t in ("R", "C", "J", "SW", "T", "ZZ")]
+    r = ET.fromstring(generer_xml(comps))
+    valeurs = {(i.findtext("value") or "") for i in r.findall(".//CmpntL/DataItem")}
+    for t in ("R", "C", "J", "SW", "T", "ZZ"):
+        assert t in valeurs, f"type {t} supprime en silence"
+
+
+def test_broche_au_nom_inattendu_n_est_pas_perdue():
+    """2e chemin de suppression silencieuse : une broche dont le NOM n'est pas
+    dans le plan de la forme etait ignoree (`broche_forme is None -> continue`).
+    Vu sur PowtranAlim : D1 a des broches '-'/'+' et U2.1 des 'C'/'E', absentes
+    du plan Diode {A,K,1,2} -> toutes leurs liaisons disparaissaient."""
+    import xml.etree.ElementTree as ET
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml
+
+    comps = [
+        Composant(ref="D1", type="D", value="pont", pins={"-": "NA", "+": "NB"}),
+        Composant(ref="R5", type="R", value="1k", pins={"1": "NA", "2": "NB"}),
+    ]
+    r = ET.fromstring(generer_xml(comps))
+    # les deux nets doivent relier D1 ET R5 : donc au moins 2 refs par net
+    nodel = [s.text for i in r.findall(".//CmpntL/DataItem")
+             for dp in i.findall("./datapin/DataPin")
+             for s in dp.findall("NodeL/string") if s.text]
+    assert len(nodel) >= 4, f"broches perdues : seulement {len(nodel)} connexions"
+    lignes = r.findall(".//lineL/Line")
+    assert len(lignes) >= 2, "les liaisons de D1 n'ont pas ete emises"
+
+
+def test_le_plan_de_forme_partage_n_est_jamais_mute():
+    """Les plans de _TYPE_VERS_FORME sont des dicts PARTAGES au niveau module :
+    les completer en place empoisonnerait tous les exports suivants."""
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml, _TYPE_VERS_FORME
+
+    avant = dict(_TYPE_VERS_FORME["D"][1])
+    generer_xml([Composant(ref="D1", type="D", value="x",
+                           pins={"-": "NA", "+": "NB"})])
+    assert _TYPE_VERS_FORME["D"][1] == avant, "plan de forme MUTE"

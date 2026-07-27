@@ -245,3 +245,64 @@ def test_symbole_reel_du_collegue_se_lit(tmp_path):
     prefix, entree = symbole_vers_composant(str(biblio))
     assert prefix and entree["pins"]             # broches recuperees
     assert entree["boite"]["w"] > 0 and entree["boite"]["h"] > 0
+
+
+def test_lit_les_composants_COMPOSES(tmp_path):
+    """Un <CComp> porte la MEME enveloppe qu'un DataItem (datasegment/datapin
+    + CtrIem/TL/BR) : son exterieur est deja une boite a broches, exploitable
+    telle quelle. Seules ses entrailles (DItemL/CCLine) sont specifiques et
+    restent hors sujet ici."""
+    cc = ('<CComp><Name>Pont</Name><Group>PT</Group>'
+          '<datasegment><DataSegment>'
+          '<Spoint><X>-40</X><Y>-30</Y></Spoint>'
+          '<Epoint><X>40</X><Y>30</Y></Epoint></DataSegment></datasegment>'
+          '<datapin>'
+          '<DataPin><Pname>1</Pname><Pin><X>-40</X><Y>0</Y></Pin></DataPin>'
+          '<DataPin><Pname>2</Pname><Pin><X>40</X><Y>0</Y></Pin></DataPin>'
+          '</datapin>'
+          '<DItemL /><CCLine /></CComp>')
+    comps = composants_depuis_xml(cc)
+    assert len(comps) == 1
+    _prefix, e = comps[0]
+    assert e["name"] == "Pont"
+    assert set(e["pins"]) == {"1", "2"}
+
+
+def test_lit_toute_la_bibliotheque_COMPOSEE_du_collegue():
+    """Les 14 composes de LibItem/CCLib etaient TOUS ignores en silence."""
+    import pathlib
+    racine = pathlib.Path(__file__).resolve().parents[1]
+    dossier = next(iter(racine.glob("*/**/LibItem/CCLib")), None)
+    if dossier is None:
+        pytest.skip("bibliotheque composee ERetroDesign absente")
+    lus = {e["name"] for _p, e in composants_depuis_xml(str(dossier))}
+    attendus = set()
+    for f in dossier.glob("*.xml"):
+        import xml.etree.ElementTree as ET2
+        attendus.add((ET2.parse(f).getroot().findtext("Name") or "").strip())
+    manquants = attendus - lus
+    assert not manquants, f"composes non lus : {sorted(manquants)}"
+    assert all(e["pins"] for _p, e in composants_depuis_xml(str(dossier)))
+
+
+def test_dossier_ramasse_simples_ET_composes(tmp_path):
+    """Cote C#, simples et composes vivent dans DEUX dossiers freres
+    (LibItem/Lib et LibItem/CCLib). Choisir l'un ne doit pas faire rater
+    l'autre en silence : on ramasse le dossier, ses sous-dossiers, et le
+    frere CCLib quand on a designe Lib."""
+    libitem = tmp_path / "LibItem"
+    (libitem / "Lib").mkdir(parents=True)
+    (libitem / "CCLib").mkdir()
+    (libitem / "Lib" / "R.xml").write_text(
+        '<DataItem><Name>Resi</Name><datapin><DataPin><Pname>1</Pname>'
+        '<Pin><X>-40</X><Y>0</Y></Pin></DataPin></datapin></DataItem>',
+        encoding="utf-8")
+    (libitem / "CCLib" / "P.xml").write_text(
+        '<CComp><Name>Pont</Name><datapin><DataPin><Pname>1</Pname>'
+        '<Pin><X>-40</X><Y>0</Y></Pin></DataPin></datapin></CComp>',
+        encoding="utf-8")
+
+    # on designe le PARENT -> les deux
+    assert {e["name"] for _p, e in composants_depuis_xml(str(libitem))} == {"Resi", "Pont"}
+    # on designe Lib -> le frere CCLib est ramasse quand meme
+    assert {e["name"] for _p, e in composants_depuis_xml(str(libitem / "Lib"))} == {"Resi", "Pont"}
