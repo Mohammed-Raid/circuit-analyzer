@@ -19,6 +19,7 @@ deux sens passent par le MEME modele boite+broches, d'ou un aller-retour exact.
   curseur. Seul CtrIem est accroche a la grille (Snap, GridStep=10) ; nos broches
   tombent sur des multiples de 10 -> cablage propre.
 """
+import os
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
@@ -185,21 +186,38 @@ def _entree_depuis_dataitem(r):
 
 
 def composants_depuis_xml(source):
-    """@brief Tous les composants SIMPLES d'un fichier ERetroDesign.
+    """@brief Tous les composants SIMPLES d'une source ERetroDesign.
 
-    Accepte un `LibraryBundle` (paquet « Exporter la bibliotheque », plusieurs
-    Items), un `<DataItem>` nu (ancien symbole Lib/<Nom>.xml), ou une racine qui
-    en contient. Les composants COMPOSES (CComps) sont ignores ici (geometrie
+    Accepte, dans l'ordre de ce que produit l'app du collegue :
+    - un DOSSIER de .xml (`LibItem/Lib`) — format COURANT depuis 2026-07-24,
+      un fichier par composant ;
+    - un `<ArrayOfDataItem>` (agregat historique `LibItem/Lib.xml`) ;
+    - un `<LibraryBundle>` (paquet « Exporter la bibliotheque ») ;
+    - un `<DataItem>` nu (notre export, et l'export unitaire du collegue).
+
+    Les composants COMPOSES (CComps/CCLib) sont ignores ici (geometrie
     imbriquee — a traiter separement).
 
-    @param source Chemin, chaine XML, ou Element.
+    @param source Chemin de fichier ou de DOSSIER, chaine XML, ou Element.
     @return list[tuple] Liste de (prefix, entree).
     """
+    # Dossier : on concatene les composants de chaque .xml (tri stable pour un
+    # ordre reproductible d'une machine a l'autre).
+    if not isinstance(source, ET.Element) and "<" not in str(source) \
+            and os.path.isdir(str(source)):
+        out = []
+        for nom in sorted(os.listdir(source)):
+            if nom.lower().endswith(".xml"):
+                out.extend(composants_depuis_xml(os.path.join(source, nom)))
+        return out
+
     r = _racine(source)
     if r.tag == "DataItem":
         items = [r]
     else:
-        items = r.findall("./Items/DataItem") or r.findall(".//Items/DataItem")
+        # ArrayOfDataItem (agregat) : les DataItem sont des enfants DIRECTS.
+        items = (r.findall("./Items/DataItem") or r.findall(".//Items/DataItem")
+                 or r.findall("./DataItem"))
         if not items and r.tag.endswith("}DataItem"):   # namespace éventuel
             items = [r]
     out = []

@@ -152,6 +152,34 @@ def test_lit_un_bundle_multi_composants():
     assert {e["name"] for _p, e in comps} == {"A", "B"}
 
 
+def test_lit_une_liste_arrayofdataitem():
+    """Le VIEUX fichier agrege du collegue (LibItem/Lib.xml) a pour racine
+    <ArrayOfDataItem>. Sans cette branche, `composants_depuis_xml` renvoyait 0
+    composant SANS erreur : la bibliotheque semblait vide."""
+    e = {"name": "A", "pins": ["1", "2"],
+         "brochage": {"1": ["L", 0], "2": ["R", 0]}, "boite": {"w": 80, "h": 60}}
+    di = composant_vers_symbole_xml("AA", e).split("?>", 1)[1].strip()
+    liste = f"<ArrayOfDataItem>{di}{di.replace('>A<', '>B<', 1)}</ArrayOfDataItem>"
+    comps = composants_depuis_xml(liste)
+    assert [x[1]["name"] for x in comps] == ["A", "B"]
+
+
+def test_lit_la_vraie_bibliotheque_du_collegue():
+    """Bout en bout sur les VRAIS fichiers : le dossier par-composant
+    (LibItem/Lib, format courant depuis 2026-07-24) ET l'agregat historique
+    (LibItem/Lib.xml) doivent tous deux se lire."""
+    import pathlib
+    racine = pathlib.Path(__file__).resolve().parents[1]
+    dossier = next(iter(racine.glob("*/**/LibItem/Lib")), None)
+    agregat = next(iter(racine.glob("*/**/LibItem/Lib.xml")), None)
+    if dossier is None or agregat is None:
+        pytest.skip("bibliotheque ERetroDesign absente (lecture seule)")
+    depuis_dossier = composants_depuis_xml(str(dossier))
+    assert len(depuis_dossier) >= 10          # 16 symboles au moment de l'ecriture
+    assert all(e["pins"] for _p, e in depuis_dossier)
+    assert composants_depuis_xml(str(agregat))     # agregat non vide
+
+
 def test_symbole_reel_du_collegue_se_lit(tmp_path):
     """Un vrai symbole Lib d'ERetroDesign (BUFFER.xml) se relit sans erreur."""
     import pathlib
