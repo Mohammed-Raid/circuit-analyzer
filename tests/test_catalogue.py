@@ -102,7 +102,8 @@ def test_uc384x_controleur_pwm(valeur):
 def test_si844_n_est_pas_pris_pour_un_uc384x():
     """SI844AB (isolateur 16 broches de la carte PG) contient « 844 » : il ne
     doit JAMAIS tomber dans la famille PWM par un suffixe trop permissif."""
-    assert catalogue.identifier("U", "SI844AB") is None
+    e = catalogue.identifier("U", "SI844AB")
+    assert e is None or e["categorie"] != "Controleur PWM"
 
 
 def test_appliquer_catalogue_alias_741():

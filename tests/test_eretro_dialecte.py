@@ -56,11 +56,14 @@ def test_composant_boite_ic_defaut_false():
 def test_ic_nommee_multibroches_devient_boite_ic():
     # helpers _item/_pin/_boardsch/_lire réutilisés depuis test_eretro.
     from tests.test_eretro import _item, _pin, _boardsch, _lire
+    # Reference VOLONTAIREMENT fictive : ce test porte sur le catch-all des
+    # puces INCONNUES. Une vraie reference finit tot ou tard au catalogue
+    # (c'est arrive a 'SI844AB'), ce qui invaliderait la premisse en silence.
     pins = [_pin(refs=[f'n{i}']) for i in range(8)]
-    item = _item('SI844AB', pins=pins)          # nom inconnu, 8 broches, pas de forme franche
+    item = _item('XYZ4321K', pins=pins)         # nom inconnu, 8 broches, pas de forme franche
     comps = _lire(_boardsch([item], []))
     c = comps[0]
-    assert c.type == 'U' and c.boite_ic is True and c.value == 'SI844AB'
+    assert c.type == 'U' and c.boite_ic is True and c.value == 'XYZ4321K'
 
 
 def test_rcode_porte_sa_valeur_decodee():
