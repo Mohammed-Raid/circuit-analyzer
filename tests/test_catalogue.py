@@ -84,6 +84,27 @@ def test_74hc_inconnu_ne_tombe_pas_dans_les_suffixes():
     assert catalogue.identifier("U", "74HC7805")["categorie"] == "Logique 74HC"
 
 
+@pytest.mark.parametrize("valeur", [
+    "UC2844", "UC3844", "UC2842", "UC3842", "UC2843", "UC3843",
+    "UC2845", "UC3845", "KA3842",          # tout prefixe constructeur
+])
+def test_uc384x_controleur_pwm(valeur):
+    """Vue sur la VRAIE carte PowtranAlim (U1 = UC2844, DIP-8) : sans entree
+    de catalogue la puce reste anonyme et ne porte aucun montage."""
+    e = catalogue.identifier("U", valeur)
+    assert e is not None and e["categorie"] == "Controleur PWM"
+    # Brochage DIP-8 commun a toute la famille UC284x/384x.
+    assert e["broches"]["3"] == "ISENSE" and e["broches"]["6"] == "OUT"
+    assert e["broches"]["5"] == "GND" and e["broches"]["7"] == "VCC"
+    assert e["alias"] is False             # roles specifiques, pas de role app
+
+
+def test_si844_n_est_pas_pris_pour_un_uc384x():
+    """SI844AB (isolateur 16 broches de la carte PG) contient « 844 » : il ne
+    doit JAMAIS tomber dans la famille PWM par un suffixe trop permissif."""
+    assert catalogue.identifier("U", "SI844AB") is None
+
+
 def test_appliquer_catalogue_alias_741():
     c = Composant(ref="U1", type="U", value="LM741",
                   pins={"2": "NIN", "3": "GND", "6": "NOUT",

@@ -95,6 +95,19 @@ _SUFFIXES_U = {
     "78L05": _e("Regulateur +5 V", "78L05", None),
 }
 
+# Contrôleurs PWM courant UC284x/UC384x (DIP-8), vus sur la carte PowtranAlim.
+# Brochage commun à toute la famille (le boîtier 14 broches SOIC diffère, mais
+# les cartes du corpus sont en DIP-8).
+_BROCHES_UC384X = {"1": "COMP", "2": "VFB", "3": "ISENSE", "4": "RT/CT",
+                   "5": "GND", "6": "OUT", "7": "VCC", "8": "VREF"}
+
+# Clés à 4 chiffres OBLIGATOIRES : un suffixe "844" attraperait SI844AB
+# (isolateur 16 broches de la carte PG) via le préfixe constructeur libre.
+_SUFFIXES_U.update({
+    f"{serie}{modele}": _e("Controleur PWM", f"UC{serie}{modele}",
+                           dict(_BROCHES_UC384X))
+    for serie in ("28", "38") for modele in ("42", "43", "44", "45")})
+
 _REPLI_74HC = _e("Logique 74HC", "74HC (famille)", None)
 
 # ── Q / M / D : catégorie seule (les broches nommées existent déjà) ─────────
