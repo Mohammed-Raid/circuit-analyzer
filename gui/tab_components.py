@@ -468,7 +468,7 @@ class TabComponents:
 
     def _exporter_eretro(self):
         """@brief Exporte le composant personnalisé courant en symbole Lib
-        ERetroDesign (paquet LibraryBundle a importer via « Importer la biblio »)."""
+        ERetroDesign (<DataItem>, a importer via le bouton « Importer composant »)."""
         key = self._current_key
         if key not in self._custom:
             messagebox.showinfo(
@@ -490,8 +490,9 @@ class TabComponents:
             return
         messagebox.showinfo(
             "Export ERetroDesign",
-            "Composant exporte.\n\nDans ERetroDesign : menu bibliotheque -> "
-            "« Importer la bibliotheque » et choisissez ce fichier.\n"
+            "Composant exporte.\n\nDans ERetroDesign : bouton « Importer "
+            "composant » (sous la palette), puis choisissez ce fichier.\n"
+            "Il apparait dans la palette : cliquez-le pour le poser.\n"
             "(Ne PAS utiliser « Ouvrir » : ce n'est pas un schema.)")
 
     def _importer_eretro(self):

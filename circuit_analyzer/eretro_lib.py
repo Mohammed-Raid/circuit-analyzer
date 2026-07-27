@@ -33,6 +33,16 @@ from gui.schematic_symbols import geometrie_libre, aimanter_bord
 ECHELLE = 1
 GRILLE = 20
 
+# Boite CLIQUABLE d'une vignette de palette (coordonnees pixel de pictureBox2 ;
+# la ligne courante ajoute 146*c en Y). Le clic teste litteralement
+# `e.X > TL.X && e.X < BR.X && e.Y > TL.Y + 146*c && e.Y < BR.Y + 146*c`
+# (Form1.pictureBox2_MouseDown) : a TL=BR=(0,0) la condition est TOUJOURS
+# fausse -> le composant s'affiche dans la palette mais est IMPOSSIBLE a
+# selectionner, donc a poser. Les 12 symboles de LibItem/Lib.xml portent tous
+# exactement ces deux valeurs.
+_CLIC_TL = (50, 25)
+_CLIC_BR = (210, 121)
+
 _ENTETE_XSD = ('xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
                'xmlns:xsd="http://www.w3.org/2001/XMLSchema"')
 
@@ -89,25 +99,33 @@ def _dataitem_fragment(prefix, entree):
         f"<reference /><value>{escape(valeur)}</value>"
         f"<datapolygon /><datasegment>{segments}</datasegment><dataarc />"
         f"<datapin>{''.join(broches)}</datapin>"
-        # Comme un vrai symbole Lib : CtrIem/TL/BR nuls, recalcules au placement.
+        # CtrIem nul : recalcule a chaque rendu de palette (pictureBox2_Paint).
+        # TL/BR, EUX, NE SONT PAS NULS : c'est la boite CLIQUABLE de la vignette
+        # (cf. _CLIC_*), pas la geometrie du symbole.
         "<CtrIem><X>0</X><Y>0</Y></CtrIem>"
-        "<TL><X>0</X><Y>0</Y></TL><BR><X>0</X><Y>0</Y></BR>"
+        f"<TL><X>{_CLIC_TL[0]}</X><Y>{_CLIC_TL[1]}</Y></TL>"
+        f"<BR><X>{_CLIC_BR[0]}</X><Y>{_CLIC_BR[1]}</Y></BR>"
         "<angle>0</angle><id>0</id><selected>false</selected>"
         "<focus>false</focus><Visible>true</Visible></DataItem>")
 
 
 def composant_vers_symbole_xml(prefix, entree):
-    """@brief Paquet LibraryBundle importable par ERetroDesign (« Importer la biblio »).
+    """@brief Composant importable par ERetroDesign (bouton « Importer composant »).
+
+    Racine = <DataItem> NU, et non un <LibraryBundle> : `ImportComponent`
+    aiguille sur le NOM DE LA RACINE et n'y connait que ArrayOfDataItem /
+    ArrayOfCComp / CComp, tout le reste partant en deserialisation `DataItem`
+    (un LibraryBundle y echoue). Ce meme fichier reste accepte par « Importer
+    bibliotheque » (branche root == "DataItem") : un seul format pour les deux.
 
     @param prefix Prefixe de type ('IC'...) ; conserve dans <Group> (aller-retour).
     @param entree {name, pins, brochage{nom:[cote,dec]}, boite{w,h}, default_value}.
-    @return str Document XML <LibraryBundle> autonome (un composant simple).
+    @return str Document XML <DataItem> autonome (un composant simple).
     """
-    return (
-        '<?xml version="1.0" encoding="utf-8"?>\n'
-        f'<LibraryBundle {_ENTETE_XSD}>'
-        f"<Items>{_dataitem_fragment(prefix, entree)}</Items>"
-        "<CComps /></LibraryBundle>")
+    fragment = _dataitem_fragment(prefix, entree)
+    # L'entete xsi/xsd va sur la RACINE : c'est ce qu'ecrit le C# (SeveXMLFile).
+    return ('<?xml version="1.0" encoding="utf-8"?>\n'
+            + fragment.replace("<DataItem>", f"<DataItem {_ENTETE_XSD}>", 1))
 
 
 def _racine(source):

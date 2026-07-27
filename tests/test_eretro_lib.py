@@ -13,30 +13,32 @@ from circuit_analyzer.eretro_lib import (
     composant_vers_symbole_xml, composants_depuis_xml, symbole_vers_composant)
 
 
-def test_export_est_un_librarybundle_importable():
-    """ERetroDesign importe un `LibraryBundle` (ImportLibrary), PAS un <DataItem>
-    nu : ce dernier s'importe VIDE. On verrouille donc l'enrobage."""
+def test_export_est_un_dataitem_importable():
+    """Racine = <DataItem> NU. `ImportComponent` (bouton « Importer composant »)
+    aiguille sur le NOM DE LA RACINE : ArrayOfDataItem / ArrayOfCComp / CComp,
+    et TOUT LE RESTE part en `LoadOneItemQuiet` (deserialisation DataItem) — un
+    <LibraryBundle> y echoue donc. Un DataItem nu passe AUSSI par « Importer
+    bibliotheque » (branche root == "DataItem"), d'ou ce choix : un seul
+    fichier pour les deux boutons."""
     entree = {"name": "Mon IC", "pins": ["1", "2"],
               "brochage": {"1": ["L", -20], "2": ["R", 20]},
               "boite": {"w": 80, "h": 60}, "default_value": "LM358"}
     xml = composant_vers_symbole_xml("IC", entree)
     r = ET.fromstring(xml)                       # bien forme
-    assert r.tag == "LibraryBundle"              # racine attendue par l'app C#
-    assert r.find("Items") is not None and r.find("CComps") is not None
-    items = r.findall("./Items/DataItem")
-    assert len(items) == 1
-    di = items[0]
-    assert di.findtext("Name") == "Mon IC"
-    assert di.findtext("Group") == "IC"          # prefixe conserve
-    assert di.findtext("value") == "LM358"
-    assert len(di.findall("./datapin/DataPin")) == 2
-    assert len(di.findall("./datasegment/DataSegment")) == 4   # boite
-    r = di                                       # les assertions ci-dessous portent sur le DataItem
-    # Convention verifiee sur le source C# : symbole Lib = CtrIem/TL/BR nuls,
-    # geometrie CENTREE sur (0,0) (Pin = decalage / centre) et alignee sur la
-    # grille (GridStep=10) -> se pose sur le curseur et se cable proprement.
-    for balise in ("CtrIem", "TL", "BR"):
-        assert (r.find(balise).findtext("X"), r.find(balise).findtext("Y")) == ("0", "0")
+    assert r.tag == "DataItem"                   # racine attendue par ImportComponent
+    assert r.findtext("Name") == "Mon IC"
+    assert r.findtext("Group") == "IC"           # prefixe conserve
+    assert r.findtext("value") == "LM358"
+    assert len(r.findall("./datapin/DataPin")) == 2
+    assert len(r.findall("./datasegment/DataSegment")) == 4     # boite
+    # TL/BR = BOITE CLIQUABLE de la vignette, PAS la geometrie du symbole. Le
+    # clic palette teste `e.X > TL.X && e.X < BR.X && ...` (Form1.cs) : a zero,
+    # la condition est TOUJOURS fausse -> composant visible mais IMPOSSIBLE a
+    # poser. Les 12 symboles de Lib.xml portent tous exactement ces valeurs.
+    assert (r.find("TL").findtext("X"), r.find("TL").findtext("Y")) == ("50", "25")
+    assert (r.find("BR").findtext("X"), r.find("BR").findtext("Y")) == ("210", "121")
+    # CtrIem reste nul : recalcule a chaque rendu de palette (pictureBox2_Paint).
+    assert (r.find("CtrIem").findtext("X"), r.find("CtrIem").findtext("Y")) == ("0", "0")
     xs, ys = [], []
     for dp in r.findall(".//datapin/DataPin"):
         p = dp.find("Pin")
@@ -138,8 +140,9 @@ def test_lit_un_bundle_multi_composants():
     e2 = {"name": "B", "pins": ["1", "2", "3"],
           "brochage": {"1": ["L", 0], "2": ["R", 0], "3": ["T", 0]},
           "boite": {"w": 80, "h": 60}}
-    di1 = ET.fromstring(composant_vers_symbole_xml("AA", e1)).find("./Items/DataItem")
-    di2 = ET.fromstring(composant_vers_symbole_xml("BB", e2)).find("./Items/DataItem")
+    # Notre export est un DataItem NU ; un paquet du collegue les enrobe.
+    di1 = ET.fromstring(composant_vers_symbole_xml("AA", e1))
+    di2 = ET.fromstring(composant_vers_symbole_xml("BB", e2))
     bundle = ('<LibraryBundle><Items>'
               + ET.tostring(di1, encoding="unicode")
               + ET.tostring(di2, encoding="unicode")
