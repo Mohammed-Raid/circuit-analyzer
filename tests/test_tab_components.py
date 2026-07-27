@@ -187,3 +187,47 @@ def test_auto_def_propage_valeur_role_et_taille():
     assert d["default_value"] == "LM358"
     assert d["fonctions"] == {"VCC": "Alim"}
     assert d["w"] >= 200 and d["h"] >= 240
+
+
+def test_envoyer_puis_recevoir_la_bibliotheque_partagee(onglet, tmp_path, monkeypatch):
+    """Aller-retour complet par le DOSSIER partagé (format LibItem/Lib du C#) :
+    nos composants partent en .xml, et une réception les relit à l'identique."""
+    t, _chemin = onglet
+    partage = tmp_path / "LibShared"
+    partage.mkdir()
+    monkeypatch.setattr("gui.tab_components.dossier_partage", lambda: str(partage))
+
+    t._prefix_var.set("CAPT")
+    t._name_var.set("Mon capteur")
+    t._brochage = [("1", "L", -20), ("2", "R", 20), ("VCC", "T", 0)]
+    t._sauvegarder()
+
+    t._envoyer_biblio()
+    assert (partage / "Mon capteur.xml").exists()
+
+    # Réception : même nom -> mise à jour, jamais un doublon.
+    avant = len(t._custom)
+    t._recevoir_biblio()
+    assert len(t._custom) == avant
+    relu = next(e for e in t._custom.values() if e.get("name") == "Mon capteur")
+    assert set(relu["pins"]) == {"1", "2", "VCC"}
+    assert relu["brochage"]["VCC"] == ["T", 0]
+
+
+def test_recevoir_n_ecrase_pas_les_composants_du_collegue(onglet, tmp_path, monkeypatch):
+    """Envoyer ne doit JAMAIS supprimer les .xml déjà présents chez le collègue
+    (le C#, lui, vide son dossier avant de réécrire — pas nous)."""
+    t, _chemin = onglet
+    partage = tmp_path / "LibShared"
+    partage.mkdir()
+    monkeypatch.setattr("gui.tab_components.dossier_partage", lambda: str(partage))
+    temoin = partage / "Resistance.xml"
+    temoin.write_text("<DataItem><Name>Resistance</Name></DataItem>", encoding="utf-8")
+
+    t._prefix_var.set("CAPT")
+    t._name_var.set("Mon capteur")
+    t._brochage = [("1", "L", 0), ("2", "R", 0)]
+    t._sauvegarder()
+    t._envoyer_biblio()
+
+    assert temoin.exists(), "le composant du collegue a ete supprime"

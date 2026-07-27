@@ -129,6 +129,79 @@ def composant_vers_symbole_xml(prefix, entree):
             + fragment.replace("<DataItem>", f"<DataItem {_ENTETE_XSD}>", 1))
 
 
+_INTERDITS_FICHIER = '/\\:*?"<>|'
+
+
+def _nom_fichier(nom, pris):
+    """@brief Nom de fichier sur pour un composant (unique dans `pris`).
+
+    Le nom du composant reste INTACT dans le XML : seul le nom de FICHIER est
+    assaini. C'est `<Name>` qui identifie le composant cote C#, pas le fichier.
+    """
+    base = "".join("_" if c in _INTERDITS_FICHIER else c for c in (nom or "")).strip()
+    base = base or "composant"
+    candidat, n = base, 2
+    while candidat.lower() in pris:
+        candidat, n = f"{base} ({n})", n + 1
+    pris.add(candidat.lower())
+    return candidat
+
+
+def ecrire_dans_dossier(dossier, composants):
+    """@brief Ecrit un `<DataItem>.xml` par composant dans le dossier partage.
+
+    C'est le format de `LibItem/Lib` cote ERetroDesign (un fichier par
+    composant depuis 2026-07-24) : le C# relit tout le dossier au demarrage.
+
+    @warning On n'EFFACE JAMAIS le dossier, contrairement au C#
+        (`SaveSimpleLibToDisk` supprime tous les .xml avant de reecrire depuis
+        sa liste en memoire). Un envoi depuis notre app ne doit pas detruire la
+        bibliotheque du collegue : on ecrase uniquement nos propres noms.
+
+    @param dossier Dossier cible (cree s'il manque).
+    @param composants Iterable de (prefix, entree).
+    @return list[str] Chemins ecrits.
+    """
+    os.makedirs(dossier, exist_ok=True)
+    pris, ecrits = set(), []
+    for prefix, entree in composants:
+        chemin = os.path.join(dossier,
+                              _nom_fichier(entree.get("name") or prefix, pris) + ".xml")
+        with open(chemin, "w", encoding="utf-8") as f:
+            f.write(composant_vers_symbole_xml(prefix, entree))
+        ecrits.append(chemin)
+    return ecrits
+
+
+def _chemin_config():
+    """@brief Fichier retenant le dossier de bibliotheque partagee."""
+    from circuit_analyzer.chemins import racine_application
+    return racine_application() / "config" / "eretro_biblio.json"
+
+
+def dossier_partage():
+    """@brief Dossier de bibliotheque partagee memorise, ou None."""
+    import json
+    chemin = _chemin_config()
+    try:
+        with open(chemin, encoding="utf-8") as f:
+            valeur = (json.load(f) or {}).get("dossier") or None
+    except (OSError, ValueError):
+        return None
+    # Un dossier disparu (cle USB retiree, appli deplacee) ne doit pas faire
+    # croire a une configuration valide.
+    return valeur if valeur and os.path.isdir(valeur) else None
+
+
+def definir_dossier_partage(dossier):
+    """@brief Memorise le dossier de bibliotheque partagee."""
+    import json
+    chemin = _chemin_config()
+    os.makedirs(os.path.dirname(chemin), exist_ok=True)
+    with open(chemin, "w", encoding="utf-8") as f:
+        json.dump({"dossier": str(dossier)}, f, ensure_ascii=False, indent=2)
+
+
 def _racine(source):
     """@brief Element racine depuis un chemin, une chaine XML, ou un Element."""
     if isinstance(source, ET.Element):

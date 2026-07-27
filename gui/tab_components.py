@@ -13,6 +13,7 @@ from circuit_analyzer.composant import (
 )
 from circuit_analyzer.eretro_lib import (
     composant_vers_symbole_xml, composants_depuis_xml,
+    definir_dossier_partage, dossier_partage, ecrire_dans_dossier,
 )
 from gui.pin_canvas import GRILLE, PinCanvas
 from gui.theme import BG, CARD, CARD2, TEXT, TEXT_MUTED, BLUE, ERROR
@@ -214,6 +215,14 @@ class TabComponents:
         self._btn_import = ui_kit.SecondaryButton(
             pied, "Importer un composant ERetroDesign", self._importer_eretro,
             icon_name="download", height=38)
+        # Bibliotheque PARTAGEE : un dossier commun aux deux applis (cote C# :
+        # LibItem/Lib, un .xml par composant).
+        self._btn_recevoir = ui_kit.SecondaryButton(
+            pied, "⇩  Recevoir la bibliotheque partagee", self._recevoir_biblio,
+            height=38)
+        self._btn_envoyer = ui_kit.SecondaryButton(
+            pied, "⇧  Envoyer mes composants", self._envoyer_biblio,
+            height=38)
         self._btn_save.pack(fill="x")
 
         # La molette défile le formulaire même au-dessus des champs et des
@@ -238,13 +247,17 @@ class TabComponents:
         # Le canevas porte son propre verrou : `_remplir_formulaire` le charge
         # avec `lecture_seule`, aucun clic ne mute alors le brochage.
         for b in (self._btn_save, self._btn_dupliquer,
-                  self._btn_export, self._btn_import):
+                  self._btn_export, self._btn_import,
+                  self._btn_recevoir, self._btn_envoyer):
             b.pack_forget()
         (self._btn_dupliquer if lecture else self._btn_save).pack(fill="x")
         # Export : seulement pour un perso DEJA enregistre (on exporte le JSON).
         if self._current_key in self._custom:
             self._btn_export.pack(fill="x", pady=(8, 0))
         self._btn_import.pack(fill="x", pady=(8, 0))   # import : toujours dispo
+        # Partage de bibliotheque : jamais lie au composant courant.
+        self._btn_recevoir.pack(fill="x", pady=(8, 0))
+        self._btn_envoyer.pack(fill="x", pady=(4, 0))
 
     def _afficher_nouveau(self):
         """@brief Affiche un formulaire vierge en mode « nouveau »."""
@@ -494,6 +507,89 @@ class TabComponents:
             "composant » (sous la palette), puis choisissez ce fichier.\n"
             "Il apparait dans la palette : cliquez-le pour le poser.\n"
             "(Ne PAS utiliser « Ouvrir » : ce n'est pas un schema.)")
+
+    def _choisir_dossier_partage(self, redemander=False):
+        """@brief Dossier de bibliothèque partagée (mémorisé), ou None si annulé.
+
+        Côté ERetroDesign c'est `LibItem/Lib` : un `.xml` par composant, relu
+        au démarrage de l'appli.
+        """
+        dossier = None if redemander else dossier_partage()
+        if dossier:
+            return dossier
+        dossier = filedialog.askdirectory(
+            title="Dossier de bibliotheque partagee (ERetroDesign : LibItem/Lib)")
+        if not dossier:
+            return None
+        definir_dossier_partage(dossier)
+        return dossier
+
+    def _recevoir_biblio(self):
+        """@brief Ajoute tous les composants du dossier partagé à notre bibliothèque."""
+        dossier = self._choisir_dossier_partage()
+        if not dossier:
+            return
+        try:
+            trouves = composants_depuis_xml(dossier)
+        except (ValueError, OSError, ET.ParseError) as e:
+            messagebox.showerror("Reception impossible", f"Dossier illisible :\n{e}")
+            return
+        if not trouves:
+            messagebox.showwarning(
+                "Bibliotheque partagee",
+                f"Aucun composant dans :\n{dossier}\n\n"
+                "Attendu : le dossier « LibItem/Lib » d'ERetroDesign "
+                "(un .xml par composant).")
+            return
+        # Un composant DEJA connu (meme nom) est mis a jour, pas duplique :
+        # sinon chaque reception empilerait des copies.
+        par_nom = {(e.get("name") or "").lower(): k for k, e in self._custom.items()}
+        ajoutes = majs = 0
+        dernier = None
+        for prefix, entree in trouves:
+            cle = par_nom.get((entree.get("name") or "").lower())
+            if cle:
+                self._custom[cle] = entree
+                dernier, majs = cle, majs + 1
+                continue
+            base = "".join(ch for ch in prefix if ch.isalnum()) or "X"
+            neuf, n = base, 1
+            while neuf in COMPONENT_TYPES or neuf in self._custom:
+                n += 1
+                neuf = f"{base}{n}"
+            self._custom[neuf] = entree
+            par_nom[(entree.get("name") or "").lower()] = neuf
+            dernier, ajoutes = neuf, ajoutes + 1
+        self._ecrire()
+        self._load()
+        if dernier:
+            self._afficher_perso(dernier)
+        messagebox.showinfo(
+            "Bibliotheque partagee",
+            f"{ajoutes} composant(s) ajoute(s), {majs} mis a jour.")
+
+    def _envoyer_biblio(self):
+        """@brief Écrit nos composants personnalisés dans le dossier partagé."""
+        if not self._custom:
+            messagebox.showinfo(
+                "Bibliotheque partagee",
+                "Aucun composant personnalise a envoyer.")
+            return
+        dossier = self._choisir_dossier_partage()
+        if not dossier:
+            return
+        try:
+            ecrits = ecrire_dans_dossier(dossier, list(self._custom.items()))
+        except OSError as e:
+            messagebox.showerror("Envoi impossible", f"Ecriture impossible :\n{e}")
+            return
+        messagebox.showinfo(
+            "Bibliotheque partagee",
+            f"{len(ecrits)} composant(s) ecrit(s) dans :\n{dossier}\n\n"
+            "IMPORTANT : ERetroDesign doit etre FERME pendant l'envoi, puis "
+            "rouvert pour les voir.\n"
+            "Sinon sa prochaine sauvegarde de bibliotheque efface le dossier "
+            "et vos composants avec.")
 
     def _importer_eretro(self):
         """@brief Importe un paquet ERetroDesign (.xml) : ajoute ses composants."""

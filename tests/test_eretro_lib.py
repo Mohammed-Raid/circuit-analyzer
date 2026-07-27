@@ -180,6 +180,61 @@ def test_lit_la_vraie_bibliotheque_du_collegue():
     assert composants_depuis_xml(str(agregat))     # agregat non vide
 
 
+def test_ecrire_dans_dossier_partage_aller_retour(tmp_path):
+    """Ecrit un .xml par composant dans le dossier partage, relisible tel quel."""
+    from circuit_analyzer.eretro_lib import ecrire_dans_dossier
+    items = [("IC", {"name": "Mon capteur", "pins": ["1", "2"],
+                     "brochage": {"1": ["L", 0], "2": ["R", 0]},
+                     "boite": {"w": 80, "h": 60}}),
+             ("CN", {"name": "Bornier 3", "pins": ["1", "2", "3"],
+                     "brochage": {"1": ["L", -20], "2": ["L", 0], "3": ["L", 20]},
+                     "boite": {"w": 80, "h": 60}})]
+    ecrits = ecrire_dans_dossier(str(tmp_path), items)
+    assert len(ecrits) == 2
+    assert {p.name for p in tmp_path.glob("*.xml")} == {"Mon capteur.xml", "Bornier 3.xml"}
+    relus = {e["name"]: e for _p, e in composants_depuis_xml(str(tmp_path))}
+    assert set(relus) == {"Mon capteur", "Bornier 3"}
+    assert set(relus["Bornier 3"]["pins"]) == {"1", "2", "3"}
+
+
+def test_ecrire_dans_dossier_ne_supprime_jamais_l_existant(tmp_path):
+    """SECURITE : le C# (SaveSimpleLibToDisk) EFFACE tout le dossier avant de
+    reecrire. Nous, JAMAIS : on ecrase seulement nos propres noms. Sinon un
+    envoi depuis notre app detruirait la bibliotheque du collegue."""
+    from circuit_analyzer.eretro_lib import ecrire_dans_dossier
+    (tmp_path / "Resistance.xml").write_text("<DataItem><Name>Resistance</Name></DataItem>",
+                                             encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("garde-moi", encoding="utf-8")
+    ecrire_dans_dossier(str(tmp_path), [
+        ("IC", {"name": "Nouveau", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                "boite": {"w": 80, "h": 60}})])
+    assert (tmp_path / "Resistance.xml").exists()      # composant du collegue intact
+    assert (tmp_path / "notes.txt").exists()
+    assert (tmp_path / "Nouveau.xml").exists()
+
+
+def test_nom_de_fichier_assaini(tmp_path):
+    """Un nom de composant peut contenir / \\ : etc. — interdits sous Windows."""
+    from circuit_analyzer.eretro_lib import ecrire_dans_dossier
+    ecrire_dans_dossier(str(tmp_path), [
+        ("IC", {"name": 'A/B:C*D?"E<F>G|H', "pins": ["1"],
+                "brochage": {"1": ["L", 0]}, "boite": {"w": 80, "h": 60}})])
+    fichiers = list(tmp_path.glob("*.xml"))
+    assert len(fichiers) == 1
+    assert not (set(fichiers[0].name) & set('/\\:*?"<>|'))
+    # le NOM du composant, lui, reste intact dans le XML (c'est lui qui compte)
+    assert composants_depuis_xml(str(tmp_path))[0][1]["name"] == 'A/B:C*D?"E<F>G|H'
+
+
+def test_dossier_partage_memorise(tmp_path, monkeypatch):
+    """Le dossier choisi est retenu d'une session a l'autre."""
+    from circuit_analyzer import eretro_lib
+    monkeypatch.setattr(eretro_lib, "_chemin_config", lambda: tmp_path / "cfg.json")
+    assert eretro_lib.dossier_partage() is None          # rien de configure
+    eretro_lib.definir_dossier_partage(str(tmp_path))
+    assert eretro_lib.dossier_partage() == str(tmp_path)
+
+
 def test_symbole_reel_du_collegue_se_lit(tmp_path):
     """Un vrai symbole Lib d'ERetroDesign (BUFFER.xml) se relit sans erreur."""
     import pathlib
