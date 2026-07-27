@@ -50,8 +50,48 @@ def test_ground_net_standard():
 
     @return None
     """
-    for n in ('GND', 'AGND', 'DGND', 'PGND', 'VSS', '0', '0V', 'COM'):
+    for n in ('GND', 'AGND', 'DGND', 'PGND', '0', '0V', 'COM'):
         assert is_ground_net(n), f"'{n}' devrait être masse"
+
+
+def test_config_peut_RETIRER_un_alias(tmp_path):
+    """`config/net_aliases.json` est un fichier UTILISATEUR (livré à côté de
+    l'exe) : une catégorie présente dans le fichier REMPLACE la valeur par
+    défaut. Avant, la fusion était une UNION avec des défauts codés en dur —
+    on pouvait ajouter un alias, jamais en retirer un, en silence."""
+    import json
+    from circuit_analyzer.patterns import base
+
+    (tmp_path / 'config').mkdir()
+    (tmp_path / 'config' / 'net_aliases.json').write_text(
+        json.dumps({"ground": ["GND"]}), encoding='utf-8')
+
+    import circuit_analyzer.chemins as chemins
+    vrai = chemins.racine_application
+    chemins.racine_application = lambda: tmp_path
+    try:
+        alias = base._charger_alias()
+    finally:
+        chemins.racine_application = vrai
+    assert alias['ground'] == ['GND'], "la categorie du fichier doit REMPLACER"
+    # une catégorie ABSENTE du fichier garde bien les défauts
+    assert 'VCC' in {a.upper() for a in alias['power']}
+
+
+def test_rail_negatif_n_est_pas_une_masse():
+    """VSS / V- / VEE = rail d'alimentation NÉGATIF, jamais la masse.
+
+    Le format BoardSCH distingue lui-même `typ` 'G' (masse), 'V' (alim +) et
+    'N' (alim −) — et `classer_rail` mappe 'N' -> 'VSS'. Les confondre efface
+    une distinction que le fichier source encode explicitement, et la
+    bibliothèque ERetroDesign a bien GND et Vss en symboles SÉPARÉS.
+    """
+    from circuit_analyzer.patterns.base import is_power_net
+    for n in ('VSS', 'V-', 'VEE'):
+        assert not is_ground_net(n), f"'{n}' est un rail négatif, pas la masse"
+        assert is_power_net(n), f"'{n}' devrait rester une alimentation"
+    # la vraie masse reste une masse
+    assert is_ground_net('GND') and not is_power_net('GND')
 
 def test_ground_net_kicad_prefix():
     """@brief Verifie ground net kicad prefix.

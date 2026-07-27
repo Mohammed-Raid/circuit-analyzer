@@ -25,10 +25,15 @@ def _charger_alias() -> dict:
 
     @return dict Alias fusionnés avec les défauts ; les défauts seuls si le fichier est absent/illisible.
     """
+    # VSS / V- / VEE sont volontairement dans "power" : ce sont des rails
+    # d'alimentation NÉGATIFS, pas des masses. Le format BoardSCH distingue
+    # lui-même typ 'G' (masse), 'V' (alim +) et 'N' (alim −) -> 'VSS', et la
+    # bibliothèque ERetroDesign a GND et Vss en symboles SÉPARÉS.
     _defaut = {
-        "ground": ["GND", "AGND", "DGND", "PGND", "0", "0V", "COM", "VSS", "V-"],
+        "ground": ["GND", "AGND", "DGND", "PGND", "0", "0V", "COM"],
         "power":  ["VCC", "VDD", "VIN", "VBAT", "VBUS", "VMOT", "+5V", "+3V3",
-                   "AVCC", "AVDD", "DVCC", "PWR", "V+", "VREG", "VSUPPLY", "VPWR", "VSYS", "VOUT"],
+                   "AVCC", "AVDD", "DVCC", "PWR", "V+", "VREG", "VSUPPLY", "VPWR", "VSYS",
+                   "VSS", "V-", "VEE", "VOUT"],
         "protective_earth": ["PE", "EARTH", "CHASSIS"]
     }
     # Racine de l'application : projet en mode normal, dossier de l'exe
@@ -39,9 +44,15 @@ def _charger_alias() -> dict:
         try:
             with open(chemin, encoding='utf-8') as f:
                 data = json.load(f)
-            # Fusionner avec les défauts pour ne rien perdre
-            merged = {k: list({*_defaut.get(k, []), *data.get(k, [])}) for k in set(_defaut) | set(data)}
-            return merged
+            # Une catégorie PRÉSENTE dans le fichier REMPLACE le défaut ; une
+            # catégorie absente garde le défaut. L'ancienne fusion était une
+            # UNION : on pouvait ajouter un alias mais JAMAIS en retirer un,
+            # sans le moindre message — un fichier utilisateur doit pouvoir
+            # corriger la classification, pas seulement l'étendre.
+            # (Les clés "_note*" sont des commentaires, pas des catégories.)
+            return {**_defaut,
+                    **{k: list(v) for k, v in data.items()
+                       if not k.startswith('_') and isinstance(v, list)}}
         except Exception:
             pass
     return _defaut

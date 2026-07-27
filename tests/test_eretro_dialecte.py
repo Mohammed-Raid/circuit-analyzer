@@ -87,3 +87,17 @@ def test_78L05_garde_son_identite_de_piece():
     # le n° de pièce survit dans value -> identifiable au rendu comme régulateur
     assert c.value == '78L05CP'
     assert identifier('U', c.value)['categorie'] == 'Regulateur +5 V'
+
+
+@pytest.mark.parametrize("nom", [
+    "NOT", "OR", "AND", "NAND", "NOR", "XOR", "XNOR", "BUFFER",
+    "not", "Or",                       # casse indifferente
+])
+def test_portes_logiques_de_la_bibliotheque_sont_typees(nom):
+    """La bibliotheque ERetroDesign livre NOT.xml et OR.xml : ces portes
+    tombaient en boite noire X faute d'entree dans le dialecte. Elles doivent
+    etre typees 'U' (boite CI honnete), comme Gate2 l'est deja."""
+    from circuit_analyzer.eretro import mapper_nom
+    resultat = mapper_nom(nom)
+    assert resultat is not None, f"« {nom} » non reconnu"
+    assert resultat[0] == "U"

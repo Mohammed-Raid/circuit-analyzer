@@ -146,11 +146,22 @@ _BIBLIO = pathlib.Path(__file__).resolve().parents[1] / (
 
 
 def _noms_bibliotheque():
+    """@brief Noms de TOUTE la bibliothèque ERetroDesign courante.
+
+    Depuis 2026-07-24 le C# stocke un `.xml` PAR COMPOSANT dans `LibItem/Lib`
+    et `LibItem/CCLib` ; les agrégats `Lib.xml`/`CCompLib.xml` ne sont plus
+    que des reliquats (celui livré avec la version du 2026-07-27 ne contient
+    plus qu'un seul nom). Les lire SEULS faisait silencieusement tomber la
+    couverture de 16 composants à 1 — on lit donc les dossiers AUSSI.
+    """
     import collections
     noms = collections.Counter()
-    for src in (_BIBLIO / "LibItem" / "Lib.xml",
-                _BIBLIO / "LibItem" / "CCompLib.xml"):
-        if src.exists():
+    sources = [_BIBLIO / "LibItem" / "Lib.xml", _BIBLIO / "LibItem" / "CCompLib.xml"]
+    for dossier in (_BIBLIO / "LibItem" / "Lib", _BIBLIO / "LibItem" / "CCLib"):
+        if dossier.is_dir():
+            sources.extend(sorted(dossier.glob("*.xml")))
+    for src in sources:
+        if src.exists() and src.is_file():
             noms.update(
                 n.strip() for n in re.findall(
                     r"<Name>(.*?)</Name>",
@@ -167,6 +178,9 @@ _LOT_B = {
     "Nouveau12", "Nouveau13", "Nouveau15", "Nouveau17", "Nouveau24",
     "027A", "16 pins", "1AM", "2N2B", "A J314", "A314J", "J314",
     "L25010MH", "CA", "BAV99", "Alim_unipolaire", "Pont_diode_monophase",
+    # Composants d'essai du collègue : noms sans aucune portée électrique,
+    # rien à déduire (« home » est apparu avec la version du 2026-07-27).
+    "TATA", "yoyo", "home",
     # Potentiomètre : le patron a sa propre règle dans custom_circuits.json,
     # on ne la contredit pas ici.
     "Potentiomètre",

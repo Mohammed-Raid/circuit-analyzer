@@ -87,6 +87,10 @@ _MAPPING_ERETRO = {
     'gate2': ('U', {}), 'gate2ic': ('U', {}), 'gates4g': ('U', {}),
     'inverter': ('U', {}), 'nand gate': ('U', {}), 'buffer': ('U', {}),
     'hc165': ('U', {}), 'mc4094': ('U', {}), '8 etage registre': ('U', {}),
+    # Portes NOMMÉES par leur fonction : la bibliothèque livre NOT.xml et
+    # OR.xml, qui tombaient en boîte noire X faute d'entrée ici.
+    'not': ('U', {}), 'or': ('U', {}), 'and': ('U', {}), 'nand': ('U', {}),
+    'nor': ('U', {}), 'xor': ('U', {}), 'xnor': ('U', {}),
 }
 
 # Noms de symboles d'alimentation de la bibliothèque, par rail produit.
