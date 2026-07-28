@@ -231,3 +231,26 @@ def test_recevoir_n_ecrase_pas_les_composants_du_collegue(onglet, tmp_path, monk
     t._envoyer_biblio()
 
     assert temoin.exists(), "le composant du collegue a ete supprime"
+
+
+def test_envoyer_ne_renvoie_pas_les_composes_recus(onglet, tmp_path, monkeypatch):
+    """Un composé reçu de CCLib ne doit pas repartir aplati dans Lib : côté
+    collègue ça ferait un DOUBLON dans la palette, et la version riche
+    (DItemL/CCLine) serait remplacée par une boîte vide."""
+    t, _chemin = onglet
+    source = tmp_path / "LibItem" / "CCLib"
+    source.mkdir(parents=True)
+    (source / "Pont.xml").write_text(
+        '<CComp><Name>Pont</Name><Group>PT</Group><datapin>'
+        '<DataPin><Pname>1</Pname><Pin><X>-40</X><Y>0</Y></Pin></DataPin>'
+        '<DataPin><Pname>2</Pname><Pin><X>40</X><Y>0</Y></Pin></DataPin>'
+        '</datapin><DItemL /><CCLine /></CComp>', encoding="utf-8")
+    monkeypatch.setattr("gui.tab_components.dossier_partage", lambda: str(source))
+    t._recevoir_biblio()
+    assert any(e.get("name") == "Pont" for e in t._custom.values())
+
+    cible = tmp_path / "Sortie"
+    cible.mkdir()
+    monkeypatch.setattr("gui.tab_components.dossier_partage", lambda: str(cible))
+    t._envoyer_biblio()
+    assert not (cible / "Pont.xml").exists(), "compose renvoye aplati"

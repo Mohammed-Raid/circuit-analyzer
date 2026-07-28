@@ -10,7 +10,8 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from circuit_analyzer.eretro_lib import (
-    composant_vers_symbole_xml, composants_depuis_xml, symbole_vers_composant)
+    composant_vers_symbole_xml, composants_depuis_xml, ecrire_dans_dossier,
+    symbole_vers_composant)
 
 
 def test_export_est_un_dataitem_importable():
@@ -283,6 +284,35 @@ def test_lit_toute_la_bibliotheque_COMPOSEE_du_collegue():
     manquants = attendus - lus
     assert not manquants, f"composes non lus : {sorted(manquants)}"
     assert all(e["pins"] for _p, e in composants_depuis_xml(str(dossier)))
+
+
+def test_un_compose_est_marque_comme_tel(tmp_path):
+    """Sans marqueur, un compose RECU repart a l'ENVOI comme un DataItem
+    simple : il atterrit dans `Lib` alors que son original vit dans `CCLib`
+    -> DOUBLON dans la palette du collegue, et ses entrailles (DItemL/CCLine)
+    sont perdues au passage."""
+    cc = ('<CComp><Name>Pont</Name><datapin><DataPin><Pname>1</Pname>'
+          '<Pin><X>-40</X><Y>0</Y></Pin></DataPin></datapin>'
+          '<DItemL /><CCLine /></CComp>')
+    simple = ('<DataItem><Name>Resi</Name><datapin><DataPin><Pname>1</Pname>'
+              '<Pin><X>-40</X><Y>0</Y></Pin></DataPin></datapin></DataItem>')
+    (_p, compose), = composants_depuis_xml(cc)
+    (_q, plat), = composants_depuis_xml(simple)
+    assert compose.get("compose") is True
+    assert not plat.get("compose")
+
+
+def test_envoi_ne_reecrit_pas_les_composes(tmp_path):
+    """`ecrire_dans_dossier` ne sait ecrire QUE des <DataItem>. Y passer un
+    compose ecraserait la version riche du collegue par une boite vide : on
+    l'ignore, et l'appelant peut le dire a l'utilisateur (total - ecrits)."""
+    comps = [("R", {"name": "Resi", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                    "boite": {"w": 80, "h": 60}}),
+             ("PT", {"name": "Pont", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                     "boite": {"w": 80, "h": 60}, "compose": True})]
+    ecrits = ecrire_dans_dossier(str(tmp_path), comps)
+    assert len(ecrits) == 1
+    assert {p.name for p in tmp_path.iterdir()} == {"Resi.xml"}
 
 
 def test_dossier_ramasse_simples_ET_composes(tmp_path):

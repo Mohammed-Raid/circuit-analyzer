@@ -158,6 +158,13 @@ def ecrire_dans_dossier(dossier, composants):
         sa liste en memoire). Un envoi depuis notre app ne doit pas detruire la
         bibliotheque du collegue : on ecrase uniquement nos propres noms.
 
+    @warning Les composants COMPOSES (`entree["compose"]`, venus de `CCLib`)
+        sont IGNORES : cette fonction ne sait ecrire que des <DataItem>, et
+        recopier un compose ici l'aplatirait dans `Lib` alors que son original
+        vit dans `CCLib` -- doublon dans la palette du collegue, entrailles
+        perdues. L'appelant deduit le nombre d'ignores de `len(composants) -
+        len(retour)` pour le dire a l'utilisateur.
+
     @param dossier Dossier cible (cree s'il manque).
     @param composants Iterable de (prefix, entree).
     @return list[str] Chemins ecrits.
@@ -165,6 +172,8 @@ def ecrire_dans_dossier(dossier, composants):
     os.makedirs(dossier, exist_ok=True)
     pris, ecrits = set(), []
     for prefix, entree in composants:
+        if entree.get("compose"):
+            continue
         chemin = os.path.join(dossier,
                               _nom_fichier(entree.get("name") or prefix, pris) + ".xml")
         with open(chemin, "w", encoding="utf-8") as f:
@@ -278,6 +287,13 @@ def _entree_depuis_dataitem(r):
         prefix = (nom_symbole[:3].upper() or "X")
     entree = {"name": nom_symbole, "pins": pins, "brochage": brochage,
               "boite": {"w": w, "h": h}}
+    # Un COMPOSE (<CComp>, dossier CCLib) se lit comme une boite a broches,
+    # mais il ne doit JAMAIS repartir en <DataItem> : son original vit dans
+    # CCLib et porte des entrailles (DItemL/CCLine) que nous ne modelisons pas.
+    # Sans ce marqueur, l'envoi le recopiait aplati dans Lib -> doublon dans la
+    # palette du collegue et version riche perdue. Cf. `ecrire_dans_dossier`.
+    if r.tag.rsplit("}", 1)[-1] == "CComp":
+        entree["compose"] = True
     valeur = (r.findtext("value") or "").strip()
     if valeur:
         entree["default_value"] = valeur

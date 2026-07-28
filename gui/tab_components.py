@@ -578,14 +578,23 @@ class TabComponents:
         dossier = self._choisir_dossier_partage()
         if not dossier:
             return
+        composants = list(self._custom.items())
         try:
-            ecrits = ecrire_dans_dossier(dossier, list(self._custom.items()))
+            ecrits = ecrire_dans_dossier(dossier, composants)
         except OSError as e:
             messagebox.showerror("Envoi impossible", f"Ecriture impossible :\n{e}")
             return
+        # Les composes sont volontairement laisses de cote (cf.
+        # eretro_lib.ecrire_dans_dossier) — le dire, jamais l'omettre.
+        ignores = len(composants) - len(ecrits)
+        detail = ""
+        if ignores:
+            detail = (f"\n{ignores} compose(s) NON renvoye(s) : ils vivent dans "
+                      "« CCLib » cote ERetroDesign et y restent la reference. "
+                      "Les recopier ici en ferait des doublons aplatis.\n")
         messagebox.showinfo(
             "Bibliotheque partagee",
-            f"{len(ecrits)} composant(s) ecrit(s) dans :\n{dossier}\n\n"
+            f"{len(ecrits)} composant(s) ecrit(s) dans :\n{dossier}\n{detail}\n"
             "IMPORTANT : ERetroDesign doit etre FERME pendant l'envoi, puis "
             "rouvert pour les voir.\n"
             "Sinon sa prochaine sauvegarde de bibliotheque efface le dossier "
