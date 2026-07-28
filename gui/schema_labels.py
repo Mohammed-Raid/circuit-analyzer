@@ -92,6 +92,26 @@ def _classer(t, ax):
     return _PRIO_COMPOSANT, True
 
 
+def _doit_ceder(e, autre, rang_e, rang_autre):
+    """@brief Lequel des deux textes s'ecarte lors d'un chevauchement.
+
+    Regle NORMALE : le moins prioritaire cede ; a priorite egale, le dernier
+    dans l'ordre deterministe.
+
+    REPLI : un texte declare BLOQUE (cycle detecte, cf. `ajuster_labels`) n'a
+    plus AUCUNE position valide -- il cesse de ceder, et c'est son partenaire
+    qui s'ecarte, fut-il plus prioritaire. Sans cela deux contraintes
+    incompatibles se renvoient le texte jusqu'a la borne d'iterations et le
+    chevauchement SURVIT.
+    """
+    if e.get("bloque"):
+        return False
+    if autre.get("bloque"):
+        return True
+    return (e["priority"] < autre["priority"]
+            or (e["priority"] == autre["priority"] and rang_e > rang_autre))
+
+
 def _collecter_entrees(fig):
     """@brief Liste des Text visibles/non vides de la figure, avec priorite."""
     entrees = []
@@ -150,11 +170,15 @@ def _sort_key(entry):
     return (round(bbox.x0), round(bbox.y0), entry["text"].get_text())
 
 
-def _push_bbox_vs_bbox(bbox_t, bbox_o, marge):
+def _push_bbox_vs_bbox(bbox_t, bbox_o, marge, perpendiculaire=False):
     """@brief (amount, dx, dy) pour separer bbox_t de bbox_o (bbox_t bouge).
 
     None si les deux bboxes ne se chevauchent pas. `amount` sert a comparer
     plusieurs collisions candidates (la plus severe est resolue en premier).
+
+    @param perpendiculaire Fuir par l'axe du PLUS GRAND recouvrement au lieu du
+           plus petit. Reserve aux textes declares BLOQUES : l'axe naturel a
+           deja prouve qu'il ne menait nulle part (cf. `ajuster_labels`).
     """
     overlap_x = min(bbox_t.x1, bbox_o.x1) - max(bbox_t.x0, bbox_o.x0)
     overlap_y = min(bbox_t.y1, bbox_o.y1) - max(bbox_t.y0, bbox_o.y0)
@@ -162,7 +186,7 @@ def _push_bbox_vs_bbox(bbox_t, bbox_o, marge):
         return None
     cxt, cxo = (bbox_t.x0 + bbox_t.x1) / 2, (bbox_o.x0 + bbox_o.x1) / 2
     cyt, cyo = (bbox_t.y0 + bbox_t.y1) / 2, (bbox_o.y0 + bbox_o.y1) / 2
-    if overlap_x <= overlap_y:
+    if (overlap_x > overlap_y) if perpendiculaire else (overlap_x <= overlap_y):
         amount = overlap_x + marge
         dx = amount if cxt >= cxo else -amount
         return amount, dx, 0.0
@@ -171,19 +195,22 @@ def _push_bbox_vs_bbox(bbox_t, bbox_o, marge):
     return amount, 0.0, dy
 
 
-def _push_bbox_vs_point(bbox_t, px, py, marge):
+def _push_bbox_vs_point(bbox_t, px, py, marge, perpendiculaire=False):
     """@brief (amount, dx, dy) pour extraire bbox_t d'un point de fil px,py.
 
     None si le point n'est pas a l'interieur de bbox_t. Pousse vers le bord
     le plus proche (deplacement minimal) le long de l'axe qui demande le
     moins de mouvement.
+
+    @param perpendiculaire cf. `_push_bbox_vs_bbox` : fuir par l'axe le plus
+           couteux, l'axe economique ayant deja echoue.
     """
     if not (bbox_t.x0 <= px <= bbox_t.x1 and bbox_t.y0 <= py <= bbox_t.y1):
         return None
     dl, dr = px - bbox_t.x0, bbox_t.x1 - px
     db, dt = py - bbox_t.y0, bbox_t.y1 - py
     push_x, push_y = min(dl, dr) + marge, min(db, dt) + marge
-    if push_x <= push_y:
+    if (push_x > push_y) if perpendiculaire else (push_x <= push_y):
         dx = push_x if dl <= dr else -push_x
         return push_x, dx, 0.0
     dy = push_y if db <= dt else -push_y
@@ -325,6 +352,9 @@ def ajuster_labels(fig):
         e["_bbox0"] = e["text"].get_window_extent(renderer)
     ordre = sorted(range(len(entrees)), key=lambda i: _sort_key(entrees[i]))
     rang = {idx: pos for pos, idx in enumerate(ordre)}
+    # Positions DEJA OCCUPEES par chaque texte au moment d'un deplacement :
+    # y revenir prouve que deux obstacles se le renvoient (cf. plus bas).
+    historique = {idx: set() for idx in range(len(entrees))}
 
     for _ in range(_MAX_ITER):
         bboxes = [e["text"].get_window_extent(renderer) for e in entrees]
@@ -334,23 +364,38 @@ def ajuster_labels(fig):
             if not e["movable"]:
                 continue
             bbox_t = bboxes[idx]
+            # Un texte BLOQUE a epuise son axe naturel : il fuit desormais par
+            # l'axe perpendiculaire, seul endroit ou de la place reste.
+            perp = bool(e.get("bloque"))
             pire = None
             for jdx in ordre:
                 if jdx == idx:
                     continue
-                autre = entrees[jdx]
-                doit_bouger = e["priority"] < autre["priority"] or (
-                    e["priority"] == autre["priority"] and rang[idx] > rang[jdx])
-                if not doit_bouger:
+                if not _doit_ceder(e, entrees[jdx], rang[idx], rang[jdx]):
                     continue
-                cand = _push_bbox_vs_bbox(bbox_t, bboxes[jdx], marge)
+                cand = _push_bbox_vs_bbox(bbox_t, bboxes[jdx], marge, perp)
                 if cand and (pire is None or cand[0] > pire[0]):
                     pire = cand
             for (px, py) in points_lignes:
-                cand = _push_bbox_vs_point(bbox_t, px, py, marge)
+                cand = _push_bbox_vs_point(bbox_t, px, py, marge, perp)
                 if cand and (pire is None or cand[0] > pire[0]):
                     pire = cand
             if pire is not None:
+                # Detection de CYCLE. Repartir d'une position d'ou l'on a DEJA
+                # ete pousse = ping-pong entre deux contraintes incompatibles.
+                # Mesure sur la carte « pg carte » : le titre « Isolateur
+                # numerique (SI844AB) » etait pousse de -15,8 px par NET97 puis
+                # repousse de +15,8 px par un fil, 20 iterations durant. Le
+                # declarer BLOQUE inverse le sacrifice (cf. `_doit_ceder`) : il
+                # ne fuit plus que les FILS, et les textes s'ecartent de lui.
+                # Clé au PIXEL EXACT, volontairement stricte : quantifiee a
+                # 2 px (essai mesure) elle attrape des textes qui PROGRESSENT
+                # vraiment, les declare bloques a tort, et la fuite
+                # perpendiculaire les couche sur un fil -- 2 defauts -> 5.
+                cle = (round(bbox_t.x0), round(bbox_t.y0))
+                if cle in historique[idx]:
+                    e["bloque"] = True
+                historique[idx].add(cle)
                 _deplacer(e["text"], pire[1], pire[2])
                 bboxes[idx] = e["text"].get_window_extent(renderer)
                 collision = True

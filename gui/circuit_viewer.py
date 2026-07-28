@@ -1953,7 +1953,7 @@ def _make_puce_fig(ref, entree, comp_info, matches, detaille: bool = False):
             except Exception:
                 title_pt = res["title"]
             d.add(elm.Label().at(title_pt).label(
-                f"{entree['categorie']} ({entree['nom']})",
+                _sans_redite(entree["categorie"], entree["nom"], "{c} ({n})"),
                 color=_TITRE_COLOR, fontsize=11))
             fig._z_hitboxes = list(d._z_hitboxes)
             fig._comp_positions = dict(d._comp_positions)
@@ -2776,19 +2776,36 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top", hitboxes=None):
     _hit(0.0, 1.4)
 
 
+def _sans_redite(categorie, nom, gabarit="{c}\n{n}"):
+    """@brief « Connecteur » + « connecteur traversant » -> « connecteur
+    traversant ».
+
+    Le dialecte réel nomme parfois le composant PAR sa catégorie. Répéter le
+    mot n'apprend rien et allonge une étiquette qui doit ensuite trouver sa
+    place au milieu des fils (cf. gui/schema_labels).
+
+    @param gabarit Assemblage quand les deux apportent quelque chose : deux
+           lignes pour un bloc de grille, « Cat (nom) » pour une boîte puce."""
+    if not nom:
+        return categorie
+    if categorie.lower() in nom.lower():
+        return nom
+    return gabarit.format(c=categorie, n=nom)
+
+
 def _titre_bloc(row):
     """@brief Étiquette honnête d'un bloc multi-broches NON-AOP (connecteur/IC
     nommée/régulateur catalogué), ou None pour garder le rendu AOP/bloc actuel."""
     t, val = row.get("type"), row.get("value") or ""
     if t == "J":
-        return f"Connecteur\n{val}" if val else "Connecteur"
+        return _sans_redite("Connecteur", val)
     if t == "U":
         from circuit_analyzer.catalogue import identifier
         e = identifier("U", val)
         if e is not None and e.get("categorie") != "AOP":
-            return f"{e['categorie']}\n{e['nom']}"
+            return _sans_redite(e["categorie"], e["nom"])
         if row.get("boite_ic"):
-            return f"CI\n{val}" if val else "CI"
+            return _sans_redite("CI", val)
     return None
 
 

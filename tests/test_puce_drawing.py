@@ -295,6 +295,20 @@ def test_titre_bloc_connecteur_ic_et_aop():
     assert _titre_bloc({"type": "U", "value": "", "boite_ic": False}) is None
 
 
+def test_titre_bloc_ne_repete_pas_la_categorie_deja_dans_le_nom():
+    """Le dialecte reel nomme parfois le composant PAR sa categorie : la carte
+    « pg carte » porte un J value='connecteur traversant', rendu
+    « Connecteur / connecteur traversant ». Repeter le mot n'apporte rien et
+    allonge une etiquette qui doit ensuite trouver sa place."""
+    from gui.circuit_viewer import _titre_bloc
+    assert _titre_bloc({"type": "J", "value": "connecteur traversant"}) \
+        == "connecteur traversant"
+    # casse differente : meme traitement
+    assert _titre_bloc({"type": "J", "value": "CONNECTEUR J5"}) == "CONNECTEUR J5"
+    # nom qui n'a rien a voir -> les deux lignes sont conservees
+    assert _titre_bloc({"type": "J", "value": "Borne"}) == "Connecteur\nBorne"
+
+
 def test_draw_block_row_ic_multiactive_rend_une_boite_pas_un_faux_aop():
     # IC catch-all (boite_ic) multi-broches : le rendu generique la typait "opamp"
     # -> faux triangle d'AOP. Doit desormais etre une boite etiquetee.
