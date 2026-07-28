@@ -337,6 +337,105 @@ def test_draw_block_row_connecteur_rend_une_boite_pas_un_aop():
     assert "Opamp" not in noms and "Rect" in noms
 
 
+def _dessiner_bloc(row, cols_pins=(), x_by_net=None):
+    """@brief Joue `_draw_block_row` isolement, renvoie (elements, drawing)."""
+    with schemdraw.Drawing(show=False) as d:
+        d._comp_positions = {}
+        d._z_hitboxes = []
+        d._mode_detaille = False
+        cv._draw_block_row(d, row, list(cols_pins), dict(x_by_net or {}), 4.0)
+        return list(d.elements), d
+
+
+def test_boite_multibroches_assez_haute_pour_ses_moignons():
+    """DEFAUT D1 (audit visuel 2026-07-28) : la boite etait a hauteur FIXE (1.0)
+    alors que les moignons s'eventent de 1.0 par broche. Sur SI844AB (13
+    broches), 12 moignons flottaient dans le vide, detaches de la boite."""
+    stubs = [(str(i), f"NET{i}") for i in range(1, 14)]
+    row = {"type": "U", "value": "SI844AB", "boite_ic": True, "ref": "U1",
+           "symbol": "opamp", "y": 0.0,
+           "pins": stubs, "stubs": stubs}
+    elements, _d = _dessiner_bloc(row)
+    rect = next(e for e in elements if type(e).__name__ == "Rect")
+    haut = rect.get_bbox(transform=True)
+    assert haut.ymax - haut.ymin >= len(stubs), (
+        f"boite de {haut.ymax - haut.ymin} pour {len(stubs)} broches")
+    # ... et CHAQUE moignon part de l'interieur de la boite.
+    lignes = [e for e in elements if type(e).__name__ == "Line"]
+    ys = {round(e.get_bbox(transform=True).ymin, 3) for e in lignes}
+    dehors = [y for y in ys if not (haut.ymin - 1e-6 <= y <= haut.ymax + 1e-6)]
+    assert not dehors, f"moignons hors de la boite : {sorted(dehors)}"
+
+
+def test_bloc_multibroches_nomme_ses_broches():
+    """DEFAUT D2 : les transistors sortaient en CARRE VIDE -- aucune broche
+    nommee, un seul fil arrivant sur un coin. B/C/E existent pourtant dans les
+    donnees des vraies cartes."""
+    row = {"type": "Q", "value": "", "boite_ic": False, "ref": "Q1",
+           "symbol": "bjt", "y": 0.0,
+           "pins": [("B", "NET1"), ("C", "NET2"), ("E", "NET3")],
+           "stubs": [("E", "NET3")]}
+    elements, _d = _dessiner_bloc(row, cols_pins=[("B", "NET1"), ("C", "NET2")],
+                                  x_by_net={"NET1": 0.0, "NET2": 2.0})
+    textes = set()
+    for e in elements:
+        for lab in getattr(e, "_userlabels", []) or []:
+            textes.add(getattr(lab, "label", None))
+    assert {"B", "C", "E"} <= textes, f"broches non nommees : {textes}"
+
+
+def test_broches_de_colonne_ne_se_superposent_pas():
+    """DEFAUT D2 (suite) : toutes les broches cablees arrivaient a la MEME
+    ordonnee -> trois fils exactement superposes, illisibles (Q1 : C et E sur
+    le meme net donnaient deux traits identiques)."""
+    row = {"type": "Q", "value": "", "boite_ic": False, "ref": "Q1",
+           "symbol": "bjt", "y": 0.0,
+           "pins": [("B", "NET1"), ("C", "NET2"), ("E", "NET2")], "stubs": []}
+    cols = [("B", "NET1"), ("C", "NET2"), ("E", "NET2")]
+    elements, _d = _dessiner_bloc(row, cols_pins=cols,
+                                  x_by_net={"NET1": 0.0, "NET2": 2.0})
+    lignes = [e for e in elements if type(e).__name__ == "Line"]
+    ys = [round(e.get_bbox(transform=True).ymin, 3) for e in lignes]
+    assert len(set(ys)) == len(cols), f"fils superposes : {ys}"
+
+
+def test_reserve_verticale_est_le_miroir_de_la_boite_dessinee():
+    """La place reservee au plan doit valoir la HAUTEUR REELLE de la boite.
+
+    Majorer a `len(pins)` sur une puce cablee moitie-moitie reservait le double,
+    ecartait les blocs a l'exces et alignait tous les hauts de bus a la meme
+    ordonnee : 17 chevauchements d'etiquettes sur « pg carte »."""
+    pins = [(str(i), f"NET{i}") for i in range(1, 17)]
+    row = {"type": "U", "value": "SI844AB", "boite_ic": True, "ref": "U1",
+           "symbol": "opamp", "y": 0.0, "pins": pins,
+           "cols": pins[:8], "stubs": pins[8:]}
+    elements, _d = _dessiner_bloc(row, cols_pins=row["cols"],
+                                  x_by_net={n: 0.0 for _p, n in row["cols"]})
+    rect = next(e for e in elements if type(e).__name__ == "Rect")
+    # Le CADRE seul (get_bbox engloberait aussi le titre pose au-dessus).
+    ys = [p[1] for seg in rect.segments
+          for p in getattr(seg, "path", ()) or ()]
+    assert cv._demi_hauteur_bloc(row) == pytest.approx((max(ys) - min(ys)) / 2.0)
+
+
+def test_voie_des_devices_degage_les_moignons_de_la_derniere_colonne():
+    """La diode D4 de « pg carte » etait dessinee A TRAVERS l'isolateur : un
+    dipole « bus a gauche, E/S a droite » atteint col_x + STUB_REACH."""
+    columns = [{"x": 0.0}, {"x": cv.COL_PITCH}]
+    bord_gauche = cv._voie_devices(columns) - cv._W_BLOC / 2.0
+    assert bord_gauche >= columns[-1]["x"] + cv.STUB_REACH
+
+
+def test_compactage_reserve_la_largeur_de_l_etiquette():
+    """Deux impedances tenaient dans la meme bande parce que leurs SYMBOLES ne se
+    touchaient pas, pendant que leurs titres se marchaient dessus."""
+    court = cv._span_avec_etiquette((0.0, 1.6), "Z9\nC12")
+    long_ = cv._span_avec_etiquette((0.0, 1.6), "Z6\nR15+C8+C9")
+    assert long_[1] - long_[0] > court[1] - court[0]
+    # ... et l'elargissement est CENTRE sur le symbole (le label l'est aussi).
+    assert (long_[0] + long_[1]) / 2 == pytest.approx(0.8)
+
+
 def test_jumper_2_broches_se_dessine_sans_crash():
     import schemdraw
     from gui import circuit_viewer as cv
