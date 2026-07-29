@@ -68,6 +68,23 @@ def ecrire_groupes(source, composants, resultats=None) -> str:
     return _serialiser_avec_entete(source)
 
 
+def _normaliser_fins_de_ligne(texte: str) -> str:
+    """@brief Ramene toute fin de ligne a LF ('\\n') pur.
+
+    `ecrire_groupes` renvoie une CHAINE, pas des octets : la convention de fin
+    de ligne du fichier final appartient a l'APPELANT qui l'ecrit sur disque
+    (gui/tab_analyze.py fait `open(p, 'w', encoding='utf-8')`, qui retraduit
+    tout '\\n' en '\\r\\n' sur Windows). `source.avant_racine` est capture BRUT
+    depuis l'octet du fichier (donc deja en '\\r\\n' sur les cartes reelles,
+    100% CRLF) — le laisser tel quel a cote d'un corps ET.tostring() qui, lui,
+    ne contient QUE des '\\n' (la norme XML impose au parseur de normaliser
+    CRLF/CR en LF a la lecture) produirait un '\\r\\r\\n' corrompu a l'ecriture
+    texte. On normalise donc tout en LF ICI, une fois, et on laisse l'appelant
+    retraduire uniformement — ce qui redonne exactement le CRLF de la source.
+    """
+    return texte.replace('\r\n', '\n').replace('\r', '\n')
+
+
 def _serialiser_avec_entete(source) -> str:
     """@brief Serialise l'arbre en restituant le prologue et les xmlns d'origine.
 
@@ -89,8 +106,14 @@ def _serialiser_avec_entete(source) -> str:
     # dans la balise racine. C'est une AFFECTATION (racine.set), pas un ajout
     # cumulatif : appeler ecrire_groupes plusieurs fois de suite reecrit les
     # memes cles avec les memes valeurs, donc idempotent par construction.
+    # NB (revue) : si la racine portait un jour un attribut REEL en plus des
+    # xmlns (aucune des 4 cartes reelles n'en a), cette boucle le laisserait
+    # avant les xmlns dans l'ordre du dict `attrib`, alors que la source
+    # pouvait les avoir dans un ordre different — latent, non corrige ici.
     for prefixe, uri in source.namespaces:
         racine.set(f"xmlns:{prefixe}", uri)
 
     corps = ET.tostring(racine, encoding="unicode")
-    return source.avant_racine + corps if source.avant_racine else corps
+    if not source.avant_racine:
+        return corps
+    return _normaliser_fins_de_ligne(source.avant_racine) + corps

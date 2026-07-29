@@ -160,6 +160,21 @@ def _entete(texte_xml, tag_racine="BoardSCH"):
     return texte_xml[:fin]
 
 
+def _sans_fins_de_ligne(texte):
+    """@brief Normalise CRLF/CR en LF pour COMPARER du contenu, pas des octets.
+
+    `ecrire_groupes` renvoie desormais une chaine en LF pur (ronde de
+    correction 3 : voir `_normaliser_fins_de_ligne` dans eretro_patch.py) ;
+    la source disque, elle, reste en CRLF. Normaliser les DEUX cotes ici
+    compare donc bien le contenu (prologue, xmlns) sans etre sensible a la
+    convention de fin de ligne, qui est desormais la responsabilite de
+    l'appelant qui ecrit le fichier — ca n'affaiblit pas l'assertion de
+    contenu, ca la rend juste insensible a un detail qui ne lui appartient
+    plus.
+    """
+    return texte.replace("\r\n", "\n").replace("\r", "\n")
+
+
 @pytest.mark.skipif(not os.path.isdir(_DOSSIER_REEL), reason="cartes reelles absentes")
 def test_entete_restituee_a_l_identique_sur_une_carte_reelle():
     """Constat #1 (ronde de correction) : prologue + xmlns:* ne doivent pas se perdre.
@@ -173,7 +188,7 @@ def test_entete_restituee_a_l_identique_sur_une_carte_reelle():
         brut_source = f.read().decode("utf-8")
     comps, res = _analyser(chemin)
     patche = ecrire_groupes(comps.source, comps, res)
-    assert _entete(patche) == _entete(brut_source)
+    assert _sans_fins_de_ligne(_entete(patche)) == _sans_fins_de_ligne(_entete(brut_source))
 
 
 def test_les_namespaces_absents_de_la_source_ne_sont_pas_fabriques(tmp_path):
@@ -208,6 +223,45 @@ def test_entete_idempotente_sur_deux_ecritures_successives(tmp_path):
     seconde = ecrire_groupes(comps.source, comps, res)
     assert premiere == seconde
     assert _entete(premiere) == _entete(seconde)
+
+
+def test_ecrire_groupes_ne_melange_pas_crlf_et_lf(tmp_path):
+    """Ronde de correction 3 : la re-revue a trouve un '\\r\\r\\n' en tete du
+    fichier ecrit reellement par l'appli. `ecrire_groupes` renvoie une
+    CHAINE, pas des octets : melanger le '\\r\\n' brut de `avant_racine`
+    (capture depuis le disque, donc deja CRLF sur une carte reelle) avec le
+    corps '\\n' pur d'ET.tostring() est la cause. La chaine renvoyee doit
+    donc etre uniformement LF : aucun '\\r' nulle part, quelle que soit la
+    convention de la source.
+    """
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    chemin = _fichier_synthetique(tmp_path)
+    comps, res = _analyser(chemin)
+    patche = ecrire_groupes(comps.source, comps, res)
+    assert "\r" not in patche, "la chaine renvoyee melange CRLF (source) et LF (ET.tostring)"
+
+
+def test_ecriture_sur_disque_ne_produit_pas_de_crlf_double(tmp_path):
+    """Le test de bout en bout qui manquait (ronde de correction 3) : les
+    autres tests de ce fichier travaillent tous sur la chaine en memoire.
+    Ici on reproduit le CHEMIN REEL de l'appelant (gui/tab_analyze.py :
+    `open(p, 'w', encoding='utf-8')` puis `f.write(...)`) : c'est CE mode
+    texte qui retraduit '\\n' -> '\\r\\n' sur Windows, et qui transformait un
+    '\\r\\n' deja present dans la chaine en '\\r\\r\\n' corrompu — invisible
+    tant qu'on ne relit pas le fichier en binaire.
+    """
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    chemin = _fichier_synthetique(tmp_path)
+    comps, res = _analyser(chemin)
+    patche = ecrire_groupes(comps.source, comps, res)
+
+    cible = os.path.join(str(tmp_path), "recu.xml")
+    with open(cible, "w", encoding="utf-8") as f:   # meme mode que l'appelant reel
+        f.write(patche)
+
+    with open(cible, "rb") as f:
+        brut = f.read()
+    assert b"\r\r\n" not in brut, "fin de ligne CRLF doublee : fichier malforme"
 
 
 def test_poser_groupe_incomplet_si_le_drapeau_compagnon_manque():
