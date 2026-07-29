@@ -154,6 +154,62 @@ def test_manquants_declenche_un_warning(caplog):
     assert any("GpId" in rec.message for rec in caplog.records)
 
 
+def _entete(texte_xml, tag_racine="BoardSCH"):
+    """@brief Prologue + balise racine ouvrante COMPLETE (jusqu'au '>' inclus)."""
+    fin = texte_xml.index(">", texte_xml.index(f"<{tag_racine}")) + 1
+    return texte_xml[:fin]
+
+
+@pytest.mark.skipif(not os.path.isdir(_DOSSIER_REEL), reason="cartes reelles absentes")
+def test_entete_restituee_a_l_identique_sur_une_carte_reelle():
+    """Constat #1 (ronde de correction) : prologue + xmlns:* ne doivent pas se perdre.
+
+    ET.parse() ne conserve pas les xmlns:* qui ne qualifient aucun tag ; lire_xml
+    doit les avoir captes a part pour qu'ecrire_groupes les restitue tels quels.
+    """
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    chemin = os.path.join(_DOSSIER_REEL, "pg carte.xml")
+    with open(chemin, "rb") as f:
+        brut_source = f.read().decode("utf-8")
+    comps, res = _analyser(chemin)
+    patche = ecrire_groupes(comps.source, comps, res)
+    assert _entete(patche) == _entete(brut_source)
+
+
+def test_les_namespaces_absents_de_la_source_ne_sont_pas_fabriques(tmp_path):
+    """On ne devine jamais le format : un document sans xmlns:* en ressort sans."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    contenu = generer_xml([Composant("R1", "R", {"1": "IN", "2": "GND"}, "10k")])
+    contenu_sans_ns = contenu.replace(
+        '<BoardSCH xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
+        'xmlns:xsd="http://www.w3.org/2001/XMLSchema">',
+        "<BoardSCH>",
+    )
+    assert "xmlns" not in contenu_sans_ns, "le remplacement du test n'a rien trouve"
+    p = os.path.join(str(tmp_path), "sans_ns.xml")
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(contenu_sans_ns)
+
+    comps = lire_xml(p)
+    assert comps.source.namespaces == []
+
+    patche = ecrire_groupes(comps.source, comps, None)
+    assert "xmlns" not in patche
+
+
+def test_entete_idempotente_sur_deux_ecritures_successives(tmp_path):
+    """Poser les xmlns:* mute l'arbre partage (source.arbre) : ca ne doit pas
+    s'accumuler ni se deformer si on rappelle ecrire_groupes plusieurs fois
+    sur la meme SourceXML (ex. reecriture apres une nouvelle analyse)."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    chemin = _fichier_synthetique(tmp_path)
+    comps, res = _analyser(chemin)
+    premiere = ecrire_groupes(comps.source, comps, res)
+    seconde = ecrire_groupes(comps.source, comps, res)
+    assert premiere == seconde
+    assert _entete(premiere) == _entete(seconde)
+
+
 def test_poser_groupe_incomplet_si_le_drapeau_compagnon_manque():
     """Revue #3 : _poser_groupe ne comptait que l'ecriture de GpId.
 

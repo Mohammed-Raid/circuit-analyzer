@@ -27,7 +27,7 @@ boîtier), vérifié empiriquement sur Diag2.xml.
 import math
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 def normaliser_nom(nom: str) -> str:
@@ -466,3 +466,9 @@ class SourceXML:
     elements: dict                   # ref -> ET.Element (<DataItem> ou <CComp>)
     lignes: list                     # <Line> de lineL, dans l'ordre du fichier
     lignes_refs: dict                # indice de fil -> (ref_a, ref_b)
+    # Ce que ET.parse() detruit silencieusement et que le patch doit restituer
+    # tel quel (jamais fabrique) : xml.etree.ElementTree ne conserve PAS les
+    # declarations xmlns:* non utilisees pour qualifier un tag/attribut — un
+    # fichier sans namespace donne `namespaces=[]`, jamais une valeur devinee.
+    namespaces: list = field(default_factory=list)   # [(prefixe, uri), ...] dans l'ordre du fichier
+    avant_racine: str = ""           # texte brut avant la balise racine ouvrante (prologue inclus)

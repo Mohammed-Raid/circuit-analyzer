@@ -65,5 +65,32 @@ def ecrire_groupes(source, composants, resultats=None) -> str:
         _log.warning("%d element(s) sans balise GpId : groupe non ecrit "
                      "(fichier hors dialecte BoardSCH connu)", manquants)
 
+    return _serialiser_avec_entete(source)
+
+
+def _serialiser_avec_entete(source) -> str:
+    """@brief Serialise l'arbre en restituant le prologue et les xmlns d'origine.
+
+    ET.parse() ne conserve ni le prologue `<?xml ...?>` ni les declarations
+    `xmlns:*` qui ne qualifient aucun tag (comportement documente de
+    xml.etree.ElementTree, contrairement a lxml) : lire_xml les a donc captes
+    a part, en texte brut, dans SourceXML.avant_racine/.namespaces. On les
+    repose ici plutot que de laisser ET.tostring() fabriquer un prologue
+    generique (guillemets simples, xmlns disparus) qui ne serait plus le
+    fichier du collegue.
+
+    Un fichier sans namespace ni prologue (namespaces=[], avant_racine="",
+    ex. arbre construit a la main dans les tests) ne fabrique rien : on
+    retombe alors sur le tostring() nu, comportement inchange.
+    """
     racine = source.arbre.getroot()
-    return ET.tostring(racine, encoding="unicode")
+    # Mutation DELIBEREE de l'arbre partage : on repose les xmlns:* comme de
+    # simples attributs litteraux pour qu'ET.tostring() les fasse ressortir
+    # dans la balise racine. C'est une AFFECTATION (racine.set), pas un ajout
+    # cumulatif : appeler ecrire_groupes plusieurs fois de suite reecrit les
+    # memes cles avec les memes valeurs, donc idempotent par construction.
+    for prefixe, uri in source.namespaces:
+        racine.set(f"xmlns:{prefixe}", uri)
+
+    corps = ET.tostring(racine, encoding="unicode")
+    return source.avant_racine + corps if source.avant_racine else corps

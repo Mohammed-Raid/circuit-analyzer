@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from html import escape as _esc
 from typing import Dict, List, Tuple
 import logging
+import re
 import xml.etree.ElementTree as ET
 
 from circuit_analyzer import eretro
@@ -1158,6 +1159,45 @@ def _analyser_ref_packee(nid: str) -> tuple:
     return valeur // 1000, (valeur % 1000) // 100
 
 
+def _capturer_entete_source(chemin: str, tag_racine: str):
+    """@brief Capture ce que ET.parse() detruit silencieusement au parsing.
+
+    `xml.etree.ElementTree` (contrairement a lxml) ne conserve PAS les
+    declarations `xmlns:*` de la racine quand elles ne qualifient aucun
+    tag/attribut, et ne rejoue pas le prologue `<?xml ...?>` a la
+    serialisation. Cette info doit donc etre captee ICI, au moment de la
+    lecture — la reconstruire plus tard reviendrait a la deviner.
+
+    Best-effort explicitement : un echec de capture (fichier illisible en
+    utf-8, etc.) ne doit jamais faire echouer la lecture principale, qui a
+    deja reussi via ET.parse() au moment ou cette fonction est appelee.
+
+    @param chemin Chemin du fichier source (le meme que ET.parse(chemin)).
+    @param tag_racine Nom de la balise racine deja parsee (repere la fin
+    du texte a capturer, sans en dependre pour le contenu).
+    @return tuple (namespaces: list[(prefixe, uri)], avant_racine: str) —
+    listes/chaine vides si le fichier n'en portait pas (on ne fabrique rien).
+    """
+    namespaces: list = []
+    try:
+        for _, (prefixe, uri) in ET.iterparse(chemin, events=('start-ns',)):
+            namespaces.append((prefixe, uri))
+    except ET.ParseError:
+        pass  # deja signale par le ET.parse() principal, pas la peine de redoubler
+
+    avant_racine = ""
+    try:
+        with open(chemin, 'rb') as f:
+            brut = f.read().decode('utf-8')
+        m = re.search(r'(?s)^.*?(?=<' + re.escape(tag_racine) + r'\b)', brut)
+        if m:
+            avant_racine = m.group(0)
+    except (OSError, UnicodeDecodeError):
+        pass
+
+    return namespaces, avant_racine
+
+
 def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     """
     @brief Lit un fichier BoardSCH XML et retourne une liste de Composant.
@@ -1177,6 +1217,10 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     except ET.ParseError as e:
         raise ValueError(f"Fichier XML invalide : {e}") from e
     racine = arbre.getroot()
+    # Capture, AVANT toute autre chose, ce que ET.parse() vient de detruire
+    # silencieusement (prologue, xmlns:* non qualifiants) — c'est le seul
+    # endroit ou `chemin` est encore en portee pour le relire.
+    namespaces_source, avant_racine_source = _capturer_entete_source(chemin, racine.tag)
 
     # Étape 1 : extraire tous les composants du fichier.
     # Indexation par POSITION dans CmpntL (sémantique du C# ERetroDesign) :
@@ -1552,6 +1596,8 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         lignes_refs={idx: (cid_vers_ref[a], cid_vers_ref[b])
                      for idx, (a, b) in lignes_cids.items()
                      if a in cid_vers_ref and b in cid_vers_ref},
+        namespaces=namespaces_source,
+        avant_racine=avant_racine_source,
     )
 
     return composants
