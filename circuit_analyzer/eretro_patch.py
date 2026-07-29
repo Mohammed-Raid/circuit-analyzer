@@ -11,10 +11,27 @@ schema cree chez nous et destructeur pour une carte recue.
 """
 import logging
 import xml.etree.ElementTree as ET
+from collections import Counter
 
 from circuit_analyzer.xml import _grouper_par_circuit, _ids_groupes_par_ref
 
 _log = logging.getLogger(__name__)
+
+
+def _groupe_majoritaire(gids) -> int:
+    """@brief Groupe d'une puce composee, a la majorite de ses composants internes.
+
+    Les gids nuls (composants non classes) ne votent pas. A EGALITE, on
+    s'abstient : mieux vaut une puce non groupee qu'une puce rattachee au
+    hasard de l'ordre d'un dictionnaire.
+    """
+    votes = Counter(g for g in gids if g)
+    if not votes:
+        return 0
+    (gagnant, n), *reste = votes.most_common()
+    if reste and reste[0][1] == n:
+        return 0
+    return gagnant
 
 
 def _ecrire(element, balise, valeur):
@@ -57,9 +74,18 @@ def ecrire_groupes(source, composants, resultats=None) -> str:
     blocs = _grouper_par_circuit(composants, resultats) if resultats else []
     gid_par_ref = _ids_groupes_par_ref(blocs) if blocs else {}
 
-    manquants = 0
+    votes_par_element = {}
     for ref, element in source.elements.items():
-        if not _poser_groupe(element, gid_par_ref.get(ref, 0), "Begrp"):
+        # `element` EST la cle : ET.Element se hache par identite, donc deux
+        # refs internes d'un meme composé (U7.1, U7.2) tombent dans la meme
+        # entree. Surtout pas `id()` : le depot proscrit ce motif, et il est
+        # ici inutile puisque le dict garde l'objet en vie.
+        votes_par_element.setdefault(element, []).append(gid_par_ref.get(ref, 0))
+
+    manquants = 0
+    for element, gids in votes_par_element.items():
+        gid = gids[0] if len(gids) == 1 else _groupe_majoritaire(gids)
+        if not _poser_groupe(element, gid, "Begrp"):
             manquants += 1
     if manquants:
         _log.warning("%d element(s) sans balise GpId : groupe non ecrit "

@@ -264,6 +264,64 @@ def test_ecriture_sur_disque_ne_produit_pas_de_crlf_double(tmp_path):
     assert b"\r\r\n" not in brut, "fin de ligne CRLF doublee : fichier malforme"
 
 
+def test_groupe_majoritaire_tranche_et_s_abstient_a_egalite():
+    from circuit_analyzer.eretro_patch import _groupe_majoritaire
+    assert _groupe_majoritaire([2, 2, 5]) == 2
+    assert _groupe_majoritaire([2, 5]) == 0          # egalite -> abstention
+    assert _groupe_majoritaire([0, 0, 3]) == 3       # les non-groupes ne votent pas
+    assert _groupe_majoritaire([0, 0]) == 0
+    assert _groupe_majoritaire([]) == 0
+
+
+@pytest.mark.skipif(not os.path.isdir(_DOSSIER_REEL), reason="cartes reelles absentes")
+def test_le_compose_est_groupe_sur_son_boitier_ses_entrailles_intactes():
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    chemin = os.path.join(_DOSSIER_REEL, "PowtranAlim20260809.xml")
+    comps, res = _analyser(chemin)
+    avant = ET.parse(chemin).getroot()
+    apres = ET.fromstring(ecrire_groupes(comps.source, comps, res))
+    for cc_av, cc_ap in zip(avant.findall(".//CCmpntL/CComp"),
+                            apres.findall(".//CCmpntL/CComp")):
+        # Les items INTERNES ne bougent pas d'un iota, GpId compris.
+        for di_av, di_ap in zip(cc_av.findall("DItemL/DataItem"),
+                                cc_ap.findall("DItemL/DataItem")):
+            assert (di_av.findtext("GpId") or "") == (di_ap.findtext("GpId") or "")
+            assert (di_av.findtext("Begrp") or "") == (di_ap.findtext("Begrp") or "")
+
+
+def test_ecrire_groupes_agrege_les_votes_d_un_compose_avant_d_ecrire(monkeypatch):
+    """Renforcement (auto-revue) : sur PowtranAlim20260809.xml, les deux refs
+    internes du seul compose de la carte votent pour le MEME groupe (7, 7) —
+    ce cas reel ne peut donc pas distinguer la nouvelle arbitration d'un bug
+    "dernier ecrit dans l'ordre du dict gagne", puisque les deux issues
+    coincident. Ce test construit un compose dont les refs internes votent
+    pour des groupes DIFFERENTS (2, 2, 5) : seule une vraie agregation avant
+    ecriture peut produire 2, jamais 5 ni un ordre dependant du dictionnaire.
+    """
+    from circuit_analyzer import eretro_patch
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    from circuit_analyzer.eretro import SourceXML
+
+    racine = ET.Element("BoardSCH")
+    ccomp = ET.SubElement(ET.SubElement(racine, "CCmpntL"), "CComp")
+    ET.SubElement(ccomp, "GpId").text = "0"
+    ET.SubElement(ccomp, "Begrp").text = "false"
+
+    # Trois refs internes du MEME compose, deux votant 2 et une votant 5.
+    elements = {"U7.1": ccomp, "U7.2": ccomp, "U7.3": ccomp}
+    src = SourceXML(arbre=ET.ElementTree(racine), elements=elements,
+                     lignes=[], lignes_refs={})
+
+    monkeypatch.setattr(eretro_patch, "_grouper_par_circuit", lambda comps, res: ["bloc"])
+    monkeypatch.setattr(eretro_patch, "_ids_groupes_par_ref",
+                         lambda blocs: {"U7.1": 2, "U7.2": 2, "U7.3": 5})
+
+    racine_patchee = ET.fromstring(ecrire_groupes(src, [], resultats=["dummy"]))
+    cc = racine_patchee.find(".//CCmpntL/CComp")
+    assert cc.findtext("GpId") == "2", "la majorite doit l'emporter, pas le dernier ecrit"
+    assert cc.findtext("Begrp") == "true"
+
+
 def test_poser_groupe_incomplet_si_le_drapeau_compagnon_manque():
     """Revue #3 : _poser_groupe ne comptait que l'ecriture de GpId.
 
