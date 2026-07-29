@@ -145,6 +145,49 @@ def test_beingrp_suit_le_gpid_du_fil(tmp_path):
         assert (l.findtext("BeIngrp") or "").strip() == attendu
 
 
+def test_fil_manquant_declenche_un_warning_distinct(caplog):
+    """Correction ronde 1, constat 1 : un <Line> hors dialecte (sans GpId ou
+    sans BeIngrp) doit remonter en warning, au meme titre qu'un composant hors
+    dialecte (`test_manquants_declenche_un_warning`) — mais le message doit
+    designer un FIL, pas un composant, sinon le diagnostic ne dit pas lequel
+    des deux est en cause."""
+    from circuit_analyzer.eretro import SourceXML
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    racine = ET.Element("BoardSCH")
+    ligne = ET.SubElement(ET.SubElement(racine, "lineL"), "Line")
+    ET.SubElement(ligne, "CFirst").text = "x"   # pas de GpId : hors dialecte connu
+    src = SourceXML(arbre=ET.ElementTree(racine), elements={},
+                     lignes=[ligne], lignes_refs={})
+    with caplog.at_level("WARNING", logger="circuit_analyzer.eretro_patch"):
+        ecrire_groupes(src, [], None)
+    messages = [rec.message for rec in caplog.records]
+    assert any("fil" in m.lower() for m in messages), \
+        "le message doit designer un FIL, pas un composant"
+
+
+def test_repatcher_sans_resultats_degroupe_aussi_les_fils(tmp_path):
+    """Correction ronde 1, constat 2 : le brief justifie l'ecriture
+    inconditionnelle de GpId=0 par le risque de "groupes fantomes" d'une
+    analyse precedente — ce test protege cette propriete CONTRE UNE
+    REGRESSION (ex. quelqu'un conditionnant un jour la boucle des fils par
+    `if resultats:`). On patche d'abord AVEC des resultats (au moins un fil
+    doit se grouper, garde-fou anti-test-creux), puis on repatche SANS, et on
+    verifie que les fils precedemment groupes reviennent a GpId=0/BeIngrp=false."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    chemin = _fichier_synthetique(tmp_path)
+    comps, res = _analyser(chemin)
+
+    avec = ET.fromstring(ecrire_groupes(comps.source, comps, res))
+    lignes_avec = avec.findall(".//lineL/Line")
+    assert any(int(l.findtext("GpId") or 0) for l in lignes_avec), \
+        "garde-fou : au moins un fil doit etre groupe a la premiere passe"
+
+    sans = ET.fromstring(ecrire_groupes(comps.source, comps, None))
+    lignes_sans = sans.findall(".//lineL/Line")
+    assert {int(l.findtext("GpId") or 0) for l in lignes_sans} == {0}
+    assert {(l.findtext("BeIngrp") or "").strip() for l in lignes_sans} == {"false"}
+
+
 def test_un_composant_absent_de_la_source_ne_cree_rien(tmp_path):
     """Cas limite spec §4 : un composant inconnu du fichier n'ajoute aucun element."""
     from circuit_analyzer.eretro_patch import ecrire_groupes

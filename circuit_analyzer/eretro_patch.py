@@ -91,11 +91,19 @@ def ecrire_groupes(source, composants, resultats=None) -> str:
         _log.warning("%d element(s) sans balise GpId : groupe non ecrit "
                      "(fichier hors dialecte BoardSCH connu)", manquants)
 
+    manquants_fils = 0
     for idx, ligne in enumerate(source.lignes):
         ra, rb = source.lignes_refs.get(idx, (None, None))
         ga, gb = gid_par_ref.get(ra, 0), gid_par_ref.get(rb, 0)
         # Un fil qui traverse deux montages n'appartient a aucun des deux.
-        _poser_groupe(ligne, ga if (ga and ga == gb) else 0, "BeIngrp")
+        if not _poser_groupe(ligne, ga if (ga and ga == gb) else 0, "BeIngrp"):
+            manquants_fils += 1
+    if manquants_fils:
+        # Compteur separe de celui des composants : le message doit dire
+        # lequel des deux est en cause (correction ronde 1, constat 1),
+        # sinon le diagnostic ne dit rien d'utile a qui le lit.
+        _log.warning("%d fil(s) sans balise GpId/BeIngrp : groupe non ecrit "
+                     "(fichier hors dialecte BoardSCH connu)", manquants_fils)
 
     return _serialiser_avec_entete(source)
 
