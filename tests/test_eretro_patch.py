@@ -70,3 +70,82 @@ def test_un_compose_pointe_sur_son_boitier_pas_sur_ses_entrailles():
     assert internes, "la carte de reference contient une puce composee"
     for ref in internes:
         assert src.elements[ref] in boitiers
+
+
+def _analyser(chemin):
+    """@brief Chaine d'analyse minimale : composants + resultats du detecteur."""
+    from circuit_analyzer.graph_builder import build_graph
+    from circuit_analyzer.matcher import match_patterns
+    comps = lire_xml(chemin)
+    return comps, match_patterns(build_graph(comps))
+
+
+def test_patch_ecrit_un_gpid_non_nul_sur_les_composants_groupes(tmp_path):
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    chemin = _fichier_synthetique(tmp_path)
+    comps, res = _analyser(chemin)
+    racine = ET.fromstring(ecrire_groupes(comps.source, comps, res))
+    gpids = {int(d.findtext("GpId") or 0) for d in racine.findall(".//CmpntL/DataItem")}
+    assert gpids != {0}, "aucun groupe ecrit"
+
+
+def test_begrp_suit_toujours_gpid(tmp_path):
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    chemin = _fichier_synthetique(tmp_path)
+    comps, res = _analyser(chemin)
+    racine = ET.fromstring(ecrire_groupes(comps.source, comps, res))
+    for d in racine.findall(".//CmpntL/DataItem"):
+        attendu = "true" if int(d.findtext("GpId") or 0) else "false"
+        assert (d.findtext("Begrp") or "").strip() == attendu
+
+
+def test_patch_sans_resultats_ne_groupe_rien(tmp_path):
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    comps = lire_xml(_fichier_synthetique(tmp_path))
+    racine = ET.fromstring(ecrire_groupes(comps.source, comps, None))
+    assert {int(d.findtext("GpId") or 0)
+            for d in racine.findall(".//CmpntL/DataItem")} == {0}
+
+
+def test_un_composant_absent_de_la_source_ne_cree_rien(tmp_path):
+    """Cas limite spec §4 : un composant inconnu du fichier n'ajoute aucun element."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    chemin = _fichier_synthetique(tmp_path)
+    comps, res = _analyser(chemin)
+    n_avant = len(ET.parse(chemin).getroot().findall(".//CmpntL/DataItem"))
+    comps.append(Composant("R99", "R", {"1": "IN", "2": "GND"}, "1k"))
+    racine = ET.fromstring(ecrire_groupes(comps.source, comps, res))
+    assert len(racine.findall(".//CmpntL/DataItem")) == n_avant
+
+
+def test_patch_ne_touche_a_rien_d_autre(tmp_path):
+    """Invariant central : hors GpId/Begrp/BeIngrp, l'arbre est identique."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    chemin = _fichier_synthetique(tmp_path)
+    comps, res = _analyser(chemin)
+    avant = ET.parse(chemin).getroot()
+    apres = ET.fromstring(ecrire_groupes(comps.source, comps, res))
+    _comparer_sauf_groupes(avant, apres)
+
+
+_CHAMPS_GROUPE = {"GpId", "Begrp", "BeIngrp"}
+
+
+def _comparer_sauf_groupes(a, b, chemin="/"):
+    """@brief Egalite RECURSIVE de deux arbres, hors champs de groupe.
+
+    Compare la structure (tag, ordre, nombre d'enfants), le texte et les
+    attributs. On compare arbre a arbre et NON octet a octet : ElementTree
+    re-serialise tout le document (balises auto-fermantes, espaces), un diff
+    textuel serait rouge en permanence et donc jamais relu.
+    """
+    assert a.tag == b.tag, f"{chemin} : {a.tag} != {b.tag}"
+    assert a.attrib == b.attrib, f"{chemin}{a.tag} : attributs modifies"
+    ea, eb = list(a), list(b)
+    assert [x.tag for x in ea] == [x.tag for x in eb], \
+        f"{chemin}{a.tag} : enfants ajoutes, retires ou reordonnes"
+    if a.tag not in _CHAMPS_GROUPE:
+        assert (a.text or "").strip() == (b.text or "").strip(), \
+            f"{chemin}{a.tag} : texte modifie"
+    for i, (x, y) in enumerate(zip(ea, eb)):
+        _comparer_sauf_groupes(x, y, f"{chemin}{a.tag}[{i}]/")
