@@ -1095,6 +1095,8 @@ class ListeComposantsXML(list):
     @brief Liste de Composant retournée par lire_xml(), compatible avec list.
 
     Attribut .warnings : avertissements non-bloquants rencontrés pendant la lecture.
+    Attribut .source : SourceXML (arbre d'origine + pont ref->element) si la
+    liste vient d'un lire_xml, None sinon (ex. liste construite à la main).
     """
     def __init__(self, composants=None):
         """@brief Initialise la liste de composants XML et ses avertissements.
@@ -1105,6 +1107,7 @@ class ListeComposantsXML(list):
         super().__init__(composants or [])
         self.warnings: list[str] = []
         self.groupes_puces: dict[str, str] = {}
+        self.source = None
 
 _NET_ALIMENTATION: Dict[str, str] = {
     'GND': 'GND', 'AGND': 'GND', 'PGND': 'GND', 'DGND': 'GND',
@@ -1198,7 +1201,8 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         typc = chr(int(typ_txt)) if typ_txt.isdigit() and 0 < int(typ_txt) < 0x110000 else ''
         elements[idx] = {'id': idx, 'name': nom, 'value': valeur, 'pins': broches,
                          'rail': eretro.classer_rail(typc, valeur, len(broches), nom),
-                         'geo': eretro.extraire_geometrie(item)}
+                         'geo': eretro.extraire_geometrie(item),
+                         'xml': item}
 
     # Étape 1 bis : puces composées ERetroDesign (CCmpntL) — dépliées.
     elements_cc, fils_cc, avert_cc = eretro.extraire_composes(racine, len(elements))
@@ -1286,7 +1290,9 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     # PAS son <ID> — les vrais fichiers portent des <ID> tous à 0. On mémorise
     # donc, par indice de fil, une broche à laquelle il aboutit.
     ligne_vers_broche: Dict[str, tuple] = {}
-    for idx_fil, fil in enumerate(racine.findall('.//lineL/Line')):
+    lignes_xml = racine.findall('.//lineL/Line')
+    lignes_cids: Dict[int, tuple] = {}
+    for idx_fil, fil in enumerate(lignes_xml):
         cf = (fil.findtext('CFirst') or '').strip()
         cl = (fil.findtext('CLast') or '').strip()
         bf = resoudre_extremite(cf, autoriser_packe=True)
@@ -1296,6 +1302,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             ligne_vers_broche[str(idx_fil)] = broche_fil
         if bf is not None and bl is not None:
             unir(bf, bl)
+            lignes_cids[idx_fil] = (bf[0], bl[0])
         elif cf or cl:
             avertissements.append(
                 f"Fil non résolu : CFirst={cf!r}, CLast={cl!r}"
@@ -1397,6 +1404,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     compteurs_type: Dict[str, int] = {}
     refs_puces: Dict[int, str] = {}     # num composé → ref boîtier ('U7')
     compteurs_internes: Dict[int, int] = {}
+    cid_vers_ref: Dict[int, str] = {}   # id composant (elements) → ref émise
 
     def generer_ref(type_prefix, elem):
         """@brief Réf du composant courant, partagée par les deux branches
@@ -1461,6 +1469,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         if correspondance is None:
             # Composant inconnu : on le garde sous type 'X' pour ne pas perdre ses connexions
             ref = generer_ref('X', elem)
+            cid_vers_ref[cid] = ref
             broches = {}
             for pidx, info_b in enumerate(elem['pins']):
                 net = broche_vers_net.get((cid, pidx), 'NC')
@@ -1473,6 +1482,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
 
         type_prefix, plan = correspondance
         ref = generer_ref(type_prefix, elem)
+        cid_vers_ref[cid] = ref
         broches = {}
         for pidx, info_b in enumerate(elem['pins']):
             pnom = info_b['pname']
@@ -1532,6 +1542,17 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     if alias_catalogue:
         from circuit_analyzer.catalogue import appliquer_catalogue
         appliquer_catalogue(composants)
+
+    composants.source = eretro.SourceXML(
+        arbre=arbre,
+        elements={ref: elements[cid]['xml']
+                  for cid, ref in cid_vers_ref.items()
+                  if elements[cid].get('xml') is not None},
+        lignes=lignes_xml,
+        lignes_refs={idx: (cid_vers_ref[a], cid_vers_ref[b])
+                     for idx, (a, b) in lignes_cids.items()
+                     if a in cid_vers_ref and b in cid_vers_ref},
+    )
 
     return composants
 
