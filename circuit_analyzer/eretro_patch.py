@@ -34,10 +34,16 @@ def _ecrire(element, balise, valeur):
 
 
 def _poser_groupe(element, gid, balise_drapeau):
-    """@brief Pose GpId + son drapeau compagnon sur un element du fichier."""
-    ok = _ecrire(element, "GpId", gid)
-    _ecrire(element, balise_drapeau, "true" if gid else "false")
-    return ok
+    """@brief Pose GpId + son drapeau compagnon sur un element du fichier.
+
+    Le retour depend des DEUX ecritures : un element qui porte GpId mais pas
+    son drapeau (ou l'inverse) est un element partiellement hors dialecte, pas
+    un succes a moitie silencieux — sinon `manquants` sous-compte et le
+    drapeau peut rester incoherent avec un GpId pourtant mis a jour.
+    """
+    ok_gid = _ecrire(element, "GpId", gid)
+    ok_drapeau = _ecrire(element, balise_drapeau, "true" if gid else "false")
+    return ok_gid and ok_drapeau
 
 
 def ecrire_groupes(source, composants, resultats=None) -> str:

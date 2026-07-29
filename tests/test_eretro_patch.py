@@ -128,6 +128,45 @@ def test_patch_ne_touche_a_rien_d_autre(tmp_path):
     _comparer_sauf_groupes(avant, apres)
 
 
+def test_ecrire_refuse_de_creer_une_balise_manquante():
+    """Revue #2 : le chemin de refus de _ecrire n'etait exerce par aucun test.
+
+    C'est la propriete de securite centrale du module (l'ordre attendu par
+    l'XmlSerializer C# nous est inconnu, donc on ne cree jamais une balise).
+    """
+    from circuit_analyzer.eretro_patch import _ecrire
+    elem = ET.Element("DataItem")
+    assert _ecrire(elem, "GpId", 1) is False
+    assert list(elem) == [], "aucune balise ne doit etre creee"
+
+
+def test_manquants_declenche_un_warning(caplog):
+    """Revue #2 : le compteur `manquants` doit remonter en warning."""
+    from circuit_analyzer.eretro import SourceXML
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    racine = ET.Element("BoardSCH")
+    di = ET.SubElement(ET.SubElement(racine, "CmpntL"), "DataItem")
+    ET.SubElement(di, "Name").text = "R1"   # pas de GpId : hors dialecte connu
+    src = SourceXML(arbre=ET.ElementTree(racine), elements={"R1": di},
+                     lignes=[], lignes_refs={})
+    with caplog.at_level("WARNING", logger="circuit_analyzer.eretro_patch"):
+        ecrire_groupes(src, [], None)
+    assert any("GpId" in rec.message for rec in caplog.records)
+
+
+def test_poser_groupe_incomplet_si_le_drapeau_compagnon_manque():
+    """Revue #3 : _poser_groupe ne comptait que l'ecriture de GpId.
+
+    Un element qui porte GpId mais pas son drapeau (ou l'inverse) est
+    partiellement hors dialecte : ce n'est pas un succes.
+    """
+    from circuit_analyzer.eretro_patch import _poser_groupe
+    elem = ET.Element("DataItem")
+    ET.SubElement(elem, "GpId").text = "0"
+    # Pas de Begrp : le drapeau compagnon est absent.
+    assert _poser_groupe(elem, 3, "Begrp") is False
+
+
 _CHAMPS_GROUPE = {"GpId", "Begrp", "BeIngrp"}
 
 
