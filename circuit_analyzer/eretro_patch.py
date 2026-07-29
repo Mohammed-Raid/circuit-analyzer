@@ -91,6 +91,12 @@ def ecrire_groupes(source, composants, resultats=None) -> str:
         _log.warning("%d element(s) sans balise GpId : groupe non ecrit "
                      "(fichier hors dialecte BoardSCH connu)", manquants)
 
+    for idx, ligne in enumerate(source.lignes):
+        ra, rb = source.lignes_refs.get(idx, (None, None))
+        ga, gb = gid_par_ref.get(ra, 0), gid_par_ref.get(rb, 0)
+        # Un fil qui traverse deux montages n'appartient a aucun des deux.
+        _poser_groupe(ligne, ga if (ga and ga == gb) else 0, "BeIngrp")
+
     return _serialiser_avec_entete(source)
 
 

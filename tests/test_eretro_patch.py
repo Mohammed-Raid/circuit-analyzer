@@ -107,6 +107,44 @@ def test_patch_sans_resultats_ne_groupe_rien(tmp_path):
             for d in racine.findall(".//CmpntL/DataItem")} == {0}
 
 
+def test_un_fil_intra_groupe_prend_le_groupe(tmp_path):
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    comps, res = _analyser(_fichier_synthetique(tmp_path))
+    racine = ET.fromstring(ecrire_groupes(comps.source, comps, res))
+    items = racine.findall(".//CmpntL/DataItem")
+    lignes = racine.findall(".//lineL/Line")
+    assert items and lignes  # garde-fou : le fichier synthetique est non vide
+    # Des lors qu'un groupe existe, au moins un fil doit le porter.
+    if {int(d.findtext("GpId") or 0) for d in items} != {0}:
+        assert any(int(l.findtext("GpId") or 0) for l in lignes)
+
+
+def test_un_fil_entre_deux_groupes_reste_a_zero(tmp_path):
+    """Un fil dont les deux bouts n'ont pas le meme groupe n'est jamais groupe."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    chemin = _fichier_synthetique(tmp_path)
+    comps, res = _analyser(chemin)
+    src = comps.source
+    from circuit_analyzer.xml import _grouper_par_circuit, _ids_groupes_par_ref
+    gid = _ids_groupes_par_ref(_grouper_par_circuit(comps, res)) if res else {}
+    racine = ET.fromstring(ecrire_groupes(src, comps, res))
+    lignes = racine.findall(".//lineL/Line")
+    for idx, (ra, rb) in src.lignes_refs.items():
+        ga, gb = gid.get(ra, 0), gid.get(rb, 0)
+        attendu = ga if (ga and ga == gb) else 0
+        assert int(lignes[idx].findtext("GpId") or 0) == attendu
+
+
+def test_beingrp_suit_le_gpid_du_fil(tmp_path):
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    chemin = _fichier_synthetique(tmp_path)
+    comps, res = _analyser(chemin)
+    racine = ET.fromstring(ecrire_groupes(comps.source, comps, res))
+    for l in racine.findall(".//lineL/Line"):
+        attendu = "true" if int(l.findtext("GpId") or 0) else "false"
+        assert (l.findtext("BeIngrp") or "").strip() == attendu
+
+
 def test_un_composant_absent_de_la_source_ne_cree_rien(tmp_path):
     """Cas limite spec §4 : un composant inconnu du fichier n'ajoute aucun element."""
     from circuit_analyzer.eretro_patch import ecrire_groupes
