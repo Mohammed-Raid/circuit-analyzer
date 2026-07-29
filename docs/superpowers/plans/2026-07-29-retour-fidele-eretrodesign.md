@@ -555,22 +555,18 @@ d'abord, écrit ensuite** — un élément n'est écrit qu'une seule fois :
 ```python
     votes_par_element = {}
     for ref, element in source.elements.items():
-        votes_par_element.setdefault(id(element), (element, []))[1].append(
-            gid_par_ref.get(ref, 0))
+        # `element` EST la cle : ET.Element se hache par identite, donc deux
+        # refs internes d'un meme composé (U7.1, U7.2) tombent dans la meme
+        # entree. Surtout pas `id()` : le depot proscrit ce motif, et il est
+        # ici inutile puisque le dict garde l'objet en vie.
+        votes_par_element.setdefault(element, []).append(gid_par_ref.get(ref, 0))
 
     manquants = 0
-    for element, gids in votes_par_element.values():
+    for element, gids in votes_par_element.items():
         gid = gids[0] if len(gids) == 1 else _groupe_majoritaire(gids)
         if not _poser_groupe(element, gid, "Begrp"):
             manquants += 1
 ```
-
-**`id(element)` est correct ici et seulement ici :** l'arbre est vivant pendant
-tout l'appel, donc aucun élément ne peut être collecté et voir son `id` réutilisé.
-(`ET.Element` n'est pas hachable de façon stable en Python 3.11 — l'égalité est
-l'identité, mais le dict garderait l'objet en vie, ce qui marche aussi ; on
-préfère `id()` pour rendre l'intention explicite. Ne **pas** reproduire ce motif
-sur des objets à durée de vie courte.)
 
 - [ ] **Step 4 : vérifier le vert**
 
