@@ -471,32 +471,47 @@ def _convention_fin_de_ligne(brut: bytes) -> str:
     return "CRLF" if b"\r\n" in brut else "LF"
 
 
+def _lire_octets(chemin):
+    """@brief Contenu binaire d'un fichier (aucun handle laisse ouvert)."""
+    with open(chemin, "rb") as f:
+        return f.read()
+
+
+def _piloter_export_xml(monkeypatch, comps, resultats, chemin_courant, cible):
+    """@brief Joue `TabAnalyze._export_xml` sans ouvrir la moindre fenetre.
+
+    Le selecteur de fichier et les trois boites de dialogue sont remplaces par
+    des mouchards, et `self` par un objet minimal portant les seuls attributs
+    que la methode lit. On exerce ainsi le VRAI chemin de l'appli — y compris
+    le `open(..., "w")` en mode texte, responsable de la convention de fin de
+    ligne — sans dependre d'un affichage Tk.
+
+    @return list des (genre, message) affiches, dans l'ordre.
+    """
+    import gui.tab_analyze as ta
+    monkeypatch.setattr(ta.filedialog, "asksaveasfilename", lambda **kw: cible)
+    vus = []
+    for genre in ("info", "warning", "error"):
+        monkeypatch.setattr(ta.messagebox, f"show{genre}",
+                            lambda titre, msg, _g=genre: vus.append((_g, msg)))
+    ta.TabAnalyze._export_xml(SimpleNamespace(
+        _comps=comps, _results=resultats,
+        _file_path=SimpleNamespace(get=lambda: chemin_courant)))
+    return vus
+
+
 def test_le_repli_est_annonce_a_l_utilisateur(tmp_path, monkeypatch):
     """Le repli ne doit JAMAIS etre silencieux : c'est le defaut qu'on corrige.
 
     Un utilisateur a qui l'on rend un schema REDESSINE (positions, symboles et
-    zooms inventes) sans le lui dire croira tenir sa carte d'origine. On pilote
-    donc `_export_xml` sans ouvrir de fenetre : les deux boites de dialogue
-    sont remplacees par des mouchards, et on verifie que le chemin de repli
-    passe par showwarning, pas par le showinfo du succes fidele.
+    zooms inventes) sans le lui dire croira tenir sa carte d'origine. On verifie
+    donc que ce chemin passe par showwarning, pas par le showinfo du succes.
     """
-    import gui.tab_analyze as ta
     cible = os.path.join(str(tmp_path), "sortie.xml")
-    monkeypatch.setattr(ta.filedialog, "asksaveasfilename", lambda **kw: cible)
-    vus = []
-    monkeypatch.setattr(ta.messagebox, "showinfo", lambda t, m: vus.append(("info", m)))
-    monkeypatch.setattr(ta.messagebox, "showwarning", lambda t, m: vus.append(("warn", m)))
-    monkeypatch.setattr(ta.messagebox, "showerror", lambda t, m: vus.append(("err", m)))
-
-    class _FauxChamp:
-        def get(self):
-            return ""
-
-    faux = SimpleNamespace(_comps=[Composant("R1", "R", {"1": "IN", "2": "GND"}, "1k")],
-                           _results=None, _file_path=_FauxChamp())
-    ta.TabAnalyze._export_xml(faux)
-
-    assert [genre for genre, _ in vus] == ["warn"], \
+    vus = _piloter_export_xml(
+        monkeypatch, [Composant("R1", "R", {"1": "IN", "2": "GND"}, "1k")],
+        None, "", cible)
+    assert [genre for genre, _ in vus] == ["warning"], \
         "le repli sur le generateur doit alerter, jamais annoncer un simple succes"
     assert "REDESSIN" in vus[0][1].upper(), "l'alerte doit dire que le schema a ete redessine"
     assert os.path.isfile(cible), "le fichier doit tout de meme etre ecrit"
@@ -504,30 +519,18 @@ def test_le_repli_est_annonce_a_l_utilisateur(tmp_path, monkeypatch):
 
 def test_export_fidele_annonce_la_carte_conservee(tmp_path, monkeypatch):
     """Pendant fidele du test precedent : succes annonce, aucune alerte."""
-    import gui.tab_analyze as ta
     chemin = _fichier_synthetique(tmp_path)
     comps, res = _analyser(chemin)
     cible = os.path.join(str(tmp_path), "sortie.xml")
-    monkeypatch.setattr(ta.filedialog, "asksaveasfilename", lambda **kw: cible)
-    vus = []
-    monkeypatch.setattr(ta.messagebox, "showinfo", lambda t, m: vus.append(("info", m)))
-    monkeypatch.setattr(ta.messagebox, "showwarning", lambda t, m: vus.append(("warn", m)))
-    monkeypatch.setattr(ta.messagebox, "showerror", lambda t, m: vus.append(("err", m)))
-
-    class _FauxChamp:
-        def get(self):
-            return chemin
-
-    ta.TabAnalyze._export_xml(SimpleNamespace(_comps=comps, _results=res,
-                                              _file_path=_FauxChamp()))
+    vus = _piloter_export_xml(monkeypatch, comps, res, chemin, cible)
     assert [genre for genre, _ in vus] == ["info"]
-    # Le fichier ecrit par le VRAI chemin de l'appli doit rester relisible et
-    # fidele : c'est le mode texte de `open(..., "w")` qui retraduit les LF de
-    # `ecrire_groupes` en CRLF. Un `newline=""` ajoute ici sortirait en LF nu.
-    with open(cible, "rb") as f:
-        brut = f.read()
+
+    brut = _lire_octets(cible)
+    # Le fichier ecrit par le VRAI chemin de l'appli doit rester fidele : c'est
+    # le mode texte de `open(..., "w")` qui retraduit les LF de `ecrire_groupes`
+    # en CRLF. Un `newline=""` ajoute la-bas le sortirait en LF nu.
     assert b"\r\r\n" not in brut, "fin de ligne doublee : fichier malforme"
-    assert _convention_fin_de_ligne(brut) == _convention_fin_de_ligne(open(chemin, "rb").read()), \
+    assert _convention_fin_de_ligne(brut) == _convention_fin_de_ligne(_lire_octets(chemin)), \
         "la carte rendue doit garder la convention de fin de ligne de la source " \
         "(un newline='' a l'ouverture la sortirait en LF nu)"
     _comparer_sauf_groupes(ET.parse(chemin).getroot(), ET.fromstring(brut.decode("utf-8")))
