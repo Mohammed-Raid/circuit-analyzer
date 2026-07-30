@@ -3,6 +3,7 @@
 """
 import os
 import xml.etree.ElementTree as ET
+from types import SimpleNamespace
 
 import pytest
 
@@ -432,6 +433,104 @@ def test_poser_groupe_incomplet_si_le_drapeau_compagnon_manque():
     # 3 » sans le drapeau qui le dit, pendant que le warning annonce « groupe
     # non ecrit » — une demi-verite ecrite dans un fichier qu'on promet intact.
     assert elem.findtext("GpId") == "0", "GpId ne doit pas avoir ete touche"
+
+
+def test_export_analyse_est_fidele_quand_la_source_existe(tmp_path):
+    """L'onglet Analyse renvoie la carte RECUE, enrichie des seuls groupes."""
+    from gui.tab_analyze import _texte_export_analyse
+    chemin = _fichier_synthetique(tmp_path)
+    comps, res = _analyser(chemin)
+    xml, fidele = _texte_export_analyse(comps, res)
+    assert fidele is True
+    racine = ET.fromstring(xml)
+    # Assertion qui DISCRIMINE reellement patch et regeneration : le
+    # `findall(".//CmpntL/DataItem")` du plan serait vrai d'un XML regenere
+    # aussi. Ici on exige que l'arbre rendu soit celui du FICHIER SOURCE, a
+    # l'identique hors champs de groupe.
+    _comparer_sauf_groupes(ET.parse(chemin).getroot(), racine)
+    # ... et que les groupes aient bien ete poses, sinon « fidele » ne serait
+    # qu'une copie inutile du fichier d'entree.
+    assert {int(d.findtext("GpId") or 0)
+            for d in racine.findall(".//CmpntL/DataItem")} != {0}
+
+
+def test_export_analyse_replie_sur_le_generateur_sans_source():
+    """Une liste nue (analyse partie d'un .net) n'a pas de source : on regenere."""
+    from gui.tab_analyze import _texte_export_analyse
+    comps = [Composant("R1", "R", {"1": "IN", "2": "GND"}, "1k")]
+    xml, fidele = _texte_export_analyse(comps, None)
+    assert fidele is False
+    items = ET.fromstring(xml).findall(".//CmpntL/DataItem")
+    # Le `findall` nu du plan serait vrai de n'importe quel BoardSCH : on
+    # exige que le document REGENERE porte bien le composant qu'on a passe.
+    assert "1k" in {(d.findtext("value") or "").strip() for d in items}
+
+
+def _convention_fin_de_ligne(brut: bytes) -> str:
+    """@brief 'CRLF' ou 'LF' d'un contenu binaire — comparable d'un OS a l'autre."""
+    return "CRLF" if b"\r\n" in brut else "LF"
+
+
+def test_le_repli_est_annonce_a_l_utilisateur(tmp_path, monkeypatch):
+    """Le repli ne doit JAMAIS etre silencieux : c'est le defaut qu'on corrige.
+
+    Un utilisateur a qui l'on rend un schema REDESSINE (positions, symboles et
+    zooms inventes) sans le lui dire croira tenir sa carte d'origine. On pilote
+    donc `_export_xml` sans ouvrir de fenetre : les deux boites de dialogue
+    sont remplacees par des mouchards, et on verifie que le chemin de repli
+    passe par showwarning, pas par le showinfo du succes fidele.
+    """
+    import gui.tab_analyze as ta
+    cible = os.path.join(str(tmp_path), "sortie.xml")
+    monkeypatch.setattr(ta.filedialog, "asksaveasfilename", lambda **kw: cible)
+    vus = []
+    monkeypatch.setattr(ta.messagebox, "showinfo", lambda t, m: vus.append(("info", m)))
+    monkeypatch.setattr(ta.messagebox, "showwarning", lambda t, m: vus.append(("warn", m)))
+    monkeypatch.setattr(ta.messagebox, "showerror", lambda t, m: vus.append(("err", m)))
+
+    class _FauxChamp:
+        def get(self):
+            return ""
+
+    faux = SimpleNamespace(_comps=[Composant("R1", "R", {"1": "IN", "2": "GND"}, "1k")],
+                           _results=None, _file_path=_FauxChamp())
+    ta.TabAnalyze._export_xml(faux)
+
+    assert [genre for genre, _ in vus] == ["warn"], \
+        "le repli sur le generateur doit alerter, jamais annoncer un simple succes"
+    assert "REDESSIN" in vus[0][1].upper(), "l'alerte doit dire que le schema a ete redessine"
+    assert os.path.isfile(cible), "le fichier doit tout de meme etre ecrit"
+
+
+def test_export_fidele_annonce_la_carte_conservee(tmp_path, monkeypatch):
+    """Pendant fidele du test precedent : succes annonce, aucune alerte."""
+    import gui.tab_analyze as ta
+    chemin = _fichier_synthetique(tmp_path)
+    comps, res = _analyser(chemin)
+    cible = os.path.join(str(tmp_path), "sortie.xml")
+    monkeypatch.setattr(ta.filedialog, "asksaveasfilename", lambda **kw: cible)
+    vus = []
+    monkeypatch.setattr(ta.messagebox, "showinfo", lambda t, m: vus.append(("info", m)))
+    monkeypatch.setattr(ta.messagebox, "showwarning", lambda t, m: vus.append(("warn", m)))
+    monkeypatch.setattr(ta.messagebox, "showerror", lambda t, m: vus.append(("err", m)))
+
+    class _FauxChamp:
+        def get(self):
+            return chemin
+
+    ta.TabAnalyze._export_xml(SimpleNamespace(_comps=comps, _results=res,
+                                              _file_path=_FauxChamp()))
+    assert [genre for genre, _ in vus] == ["info"]
+    # Le fichier ecrit par le VRAI chemin de l'appli doit rester relisible et
+    # fidele : c'est le mode texte de `open(..., "w")` qui retraduit les LF de
+    # `ecrire_groupes` en CRLF. Un `newline=""` ajoute ici sortirait en LF nu.
+    with open(cible, "rb") as f:
+        brut = f.read()
+    assert b"\r\r\n" not in brut, "fin de ligne doublee : fichier malforme"
+    assert _convention_fin_de_ligne(brut) == _convention_fin_de_ligne(open(chemin, "rb").read()), \
+        "la carte rendue doit garder la convention de fin de ligne de la source " \
+        "(un newline='' a l'ouverture la sortirait en LF nu)"
+    _comparer_sauf_groupes(ET.parse(chemin).getroot(), ET.fromstring(brut.decode("utf-8")))
 
 
 _CHAMPS_GROUPE = {"GpId", "Begrp", "BeIngrp"}

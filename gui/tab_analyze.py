@@ -46,6 +46,25 @@ TYPE_COLORS = {
     "default":     ("#1e293b", "#94a3b8", "⚙"),
 }
 
+def _texte_export_analyse(comps, resultats):
+    """@brief XML à exporter depuis l'onglet Analyse.
+
+    @param comps Composants analysés (liste, ou ListeComposantsXML si l'analyse
+                 est partie d'un .xml : elle porte alors `.source`).
+    @param resultats Sortie du détecteur, ou None.
+    @return tuple (xml, fidele). fidele=True : la carte REÇUE est renvoyée telle
+    quelle, enrichie des seuls groupes. fidele=False : elle a été RÉGÉNÉRÉE
+    (positions, formes et zooms inventés) faute de fichier source — cas d'une
+    analyse partie d'un .net. L'appelant DOIT le dire à l'utilisateur.
+    """
+    source = getattr(comps, "source", None)
+    if source is not None:
+        from circuit_analyzer.eretro_patch import ecrire_groupes
+        return ecrire_groupes(source, comps, resultats), True
+    from circuit_analyzer.xml import generer_xml
+    return generer_xml(comps, results=resultats), False
+
+
 def _type_style(name: str):
     """@brief Style visuel (fond, texte, icône) associé à un type de circuit.
 
@@ -386,13 +405,23 @@ class TabAnalyze:
         if not path:
             return
         try:
-            from circuit_analyzer.xml import generer_xml as components_to_xml
-            xml = components_to_xml(self._comps, results=self._results)
+            xml, fidele = _texte_export_analyse(self._comps, self._results)
+            # Mode texte volontaire (pas de newline="") : `ecrire_groupes`
+            # renvoie du LF pur et compte sur Windows pour retraduire chaque
+            # '\n' en '\r\n', ce qui restitue exactement le CRLF de la source.
             with open(path, "w", encoding="utf-8") as f:
                 f.write(xml)
-            messagebox.showinfo("Succès ✓",
-                f"Schéma XML exporté :\n{path}\n\n"
-                "Ouvrable dans le logiciel de design.")
+            if fidele:
+                messagebox.showinfo("Succès ✓",
+                    f"Schéma XML exporté :\n{path}\n\n"
+                    "Carte d'origine conservée (positions, symboles, angles) "
+                    "avec les groupes d'analyse ajoutés.")
+            else:
+                messagebox.showwarning("Exporté, mais REGÉNÉRÉ",
+                    f"Schéma XML exporté :\n{path}\n\n"
+                    "Aucun fichier XML source : le schéma a été REDESSINÉ sur "
+                    "une grille. Positions, symboles et zooms sont inventés.\n\n"
+                    "Pour un retour fidèle, partez d'un .xml ERetroDesign.")
         except Exception as e:
             _log.exception("export XML échoué")
             messagebox.showerror("Erreur export XML", str(e))
