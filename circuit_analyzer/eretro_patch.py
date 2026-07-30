@@ -39,31 +39,14 @@ def _ecrire(element, balise, valeur):
 
     Refus delibere de creer la balise manquante : l'XmlSerializer C# est
     sensible a l'ORDRE des elements d'une sequence, et on ne connait pas
-    l'ordre attendu. Les 4 cartes reelles portent GpId/Begrp/BeIngrp sur 100 %
-    de leurs elements — un manque signale un fichier hors dialecte, pas un cas
-    a rattraper en devinant.
+    l'ordre attendu. Les 4 cartes reelles portent GpId sur 100 % de leurs
+    elements — un manque signale un fichier hors dialecte, pas un cas a
+    rattraper en devinant.
     """
     cible = element.find(balise)
     if cible is None:
         return False
     cible.text = str(valeur)
-    return True
-
-
-def _poser_groupe(element, gid, balise_drapeau):
-    """@brief Pose GpId + son drapeau compagnon sur un element du fichier.
-
-    TOUT OU RIEN : on sonde les DEUX balises avant d'en ecrire une seule. Un
-    element qui porte GpId mais pas son drapeau est partiellement hors
-    dialecte ; ecrire quand meme son GpId rendrait au collegue un element
-    marque « groupe 7 » sans le drapeau qui le dit, pendant que le warning
-    annonce « groupe non ecrit ». Un fichier qu'on promet intact ne repart pas
-    avec une demi-verite.
-    """
-    if element.find("GpId") is None or element.find(balise_drapeau) is None:
-        return False
-    _ecrire(element, "GpId", gid)
-    _ecrire(element, balise_drapeau, "true" if gid else "false")
     return True
 
 
@@ -74,6 +57,16 @@ def ecrire_groupes(source, composants, resultats=None) -> str:
     @param composants Composants analyses (le retour de lire_xml).
     @param resultats Sortie de detecteur.match_patterns, ou None (aucun groupe).
     @return str Document BoardSCH patche.
+
+    ON N'ECRIT QUE `GpId` (arbitrage du boss, 2026-07-30, apres la preuve C#
+    de la Task 7). Ses drapeaux `Begrp`/`BeIngrp` ne sont PAS des compagnons
+    decoratifs de `GpId` : dans son editeur, `Begrp=true` INTERDIT la selection
+    individuelle du composant (Form1.cs:2192, 2269, 2337, 2697, 3767, 5510),
+    et l'appartenance a un groupe fait autorite dans `<GrpL>`, que nous
+    n'ecrivons pas. Poser les drapeaux sans `<GrpL>` rendrait les composants
+    groupes INERTES chez lui : ni selectionnables un par un, ni en groupe.
+    `GpId` seul est inerte tant que `<GrpL>` est vide — l'information d'analyse
+    voyage dans le fichier sans jamais perturber son application.
     """
     blocs = _grouper_par_circuit(composants, resultats) if resultats else []
     gid_par_ref = _ids_groupes_par_ref(blocs) if blocs else {}
@@ -89,7 +82,7 @@ def ecrire_groupes(source, composants, resultats=None) -> str:
     manquants = 0
     for element, gids in votes_par_element.items():
         gid = gids[0] if len(gids) == 1 else _groupe_majoritaire(gids)
-        if not _poser_groupe(element, gid, "Begrp"):
+        if not _ecrire(element, "GpId", gid):
             manquants += 1
     if manquants:
         _log.warning("%d element(s) sans balise GpId : groupe non ecrit "
@@ -100,13 +93,13 @@ def ecrire_groupes(source, composants, resultats=None) -> str:
         ra, rb = source.lignes_refs.get(idx, (None, None))
         ga, gb = gid_par_ref.get(ra, 0), gid_par_ref.get(rb, 0)
         # Un fil qui traverse deux montages n'appartient a aucun des deux.
-        if not _poser_groupe(ligne, ga if (ga and ga == gb) else 0, "BeIngrp"):
+        if not _ecrire(ligne, "GpId", ga if (ga and ga == gb) else 0):
             manquants_fils += 1
     if manquants_fils:
         # Compteur separe de celui des composants : le message doit dire
         # lequel des deux est en cause (correction ronde 1, constat 1),
         # sinon le diagnostic ne dit rien d'utile a qui le lit.
-        _log.warning("%d fil(s) sans balise GpId/BeIngrp : groupe non ecrit "
+        _log.warning("%d fil(s) sans balise GpId : groupe non ecrit "
                      "(fichier hors dialecte BoardSCH connu)", manquants_fils)
 
     return _serialiser_avec_entete(source)

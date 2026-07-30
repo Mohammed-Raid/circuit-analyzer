@@ -90,14 +90,27 @@ def test_patch_ecrit_un_gpid_non_nul_sur_les_composants_groupes(tmp_path):
     assert gpids != {0}, "aucun groupe ecrit"
 
 
-def test_begrp_suit_toujours_gpid(tmp_path):
+def test_begrp_n_est_jamais_touche(tmp_path):
+    """Arbitrage du boss (2026-07-30) apres la preuve C# : on n'ecrit QUE GpId.
+
+    `Begrp=true` INTERDIT la selection individuelle du composant dans son
+    editeur (Form1.cs:2192, 2269, 2337...), et l'appartenance a un groupe fait
+    autorite dans `<GrpL>`, que nous n'ecrivons pas. Poser le drapeau rendrait
+    les composants groupes INERTES chez lui. On verifie donc que le drapeau
+    ressort EXACTEMENT comme il est entre, meme sur un composant groupe.
+    """
     from circuit_analyzer.eretro_patch import ecrire_groupes
     chemin = _fichier_synthetique(tmp_path)
     comps, res = _analyser(chemin)
+    avant = {d.findtext("ID"): (d.findtext("Begrp") or "").strip()
+             for d in ET.parse(chemin).getroot().findall(".//CmpntL/DataItem")}
     racine = ET.fromstring(ecrire_groupes(comps.source, comps, res))
-    for d in racine.findall(".//CmpntL/DataItem"):
-        attendu = "true" if int(d.findtext("GpId") or 0) else "false"
-        assert (d.findtext("Begrp") or "").strip() == attendu
+    items = racine.findall(".//CmpntL/DataItem")
+    assert any(int(d.findtext("GpId") or 0) for d in items), \
+        "garde-fou : au moins un composant doit etre groupe, sinon on ne prouve rien"
+    for d in items:
+        assert (d.findtext("Begrp") or "").strip() == avant[d.findtext("ID")], \
+            "Begrp a ete modifie — les composants deviendraient inertes chez lui"
 
 
 def test_patch_sans_resultats_ne_groupe_rien(tmp_path):
@@ -136,14 +149,19 @@ def test_un_fil_entre_deux_groupes_reste_a_zero(tmp_path):
         assert int(lignes[idx].findtext("GpId") or 0) == attendu
 
 
-def test_beingrp_suit_le_gpid_du_fil(tmp_path):
+def test_beingrp_n_est_jamais_touche(tmp_path):
+    """Pendant fil de `test_begrp_n_est_jamais_touche` : on n'ecrit que GpId."""
     from circuit_analyzer.eretro_patch import ecrire_groupes
     chemin = _fichier_synthetique(tmp_path)
     comps, res = _analyser(chemin)
-    racine = ET.fromstring(ecrire_groupes(comps.source, comps, res))
-    for l in racine.findall(".//lineL/Line"):
-        attendu = "true" if int(l.findtext("GpId") or 0) else "false"
-        assert (l.findtext("BeIngrp") or "").strip() == attendu
+    avant = [(l.findtext("BeIngrp") or "").strip()
+             for l in ET.parse(chemin).getroot().findall(".//lineL/Line")]
+    lignes = ET.fromstring(ecrire_groupes(comps.source, comps, res)) \
+        .findall(".//lineL/Line")
+    assert any(int(l.findtext("GpId") or 0) for l in lignes), \
+        "garde-fou : au moins un fil doit etre groupe, sinon on ne prouve rien"
+    assert [(l.findtext("BeIngrp") or "").strip() for l in lignes] == avant, \
+        "BeIngrp a ete modifie — le fil serait vu comme membre d'un groupe absent"
 
 
 def test_fil_manquant_declenche_un_warning_distinct(caplog):
@@ -186,7 +204,7 @@ def test_repatcher_sans_resultats_degroupe_aussi_les_fils(tmp_path):
     REGRESSION (ex. quelqu'un conditionnant un jour la boucle des fils par
     `if resultats:`). On patche d'abord AVEC des resultats (au moins un fil
     doit se grouper, garde-fou anti-test-creux), puis on repatche SANS, et on
-    verifie que les fils precedemment groupes reviennent a GpId=0/BeIngrp=false."""
+    verifie que les fils precedemment groupes reviennent a GpId=0."""
     from circuit_analyzer.eretro_patch import ecrire_groupes
     chemin = _fichier_synthetique(tmp_path)
     comps, res = _analyser(chemin)
@@ -199,7 +217,9 @@ def test_repatcher_sans_resultats_degroupe_aussi_les_fils(tmp_path):
     sans = ET.fromstring(ecrire_groupes(comps.source, comps, None))
     lignes_sans = sans.findall(".//lineL/Line")
     assert {int(l.findtext("GpId") or 0) for l in lignes_sans} == {0}
-    assert {(l.findtext("BeIngrp") or "").strip() for l in lignes_sans} == {"false"}
+    # BeIngrp n'est PLUS assert ici : on ne l'ecrit plus, donc l'exiger a
+    # "false" ne prouverait que la valeur d'origine du fichier synthetique.
+    # C'est `test_beingrp_n_est_jamais_touche` qui garde ce champ desormais.
 
 
 def test_un_composant_absent_de_la_source_ne_cree_rien(tmp_path):
@@ -214,7 +234,7 @@ def test_un_composant_absent_de_la_source_ne_cree_rien(tmp_path):
 
 
 def test_patch_ne_touche_a_rien_d_autre(tmp_path):
-    """Invariant central : hors GpId/Begrp/BeIngrp, l'arbre est identique."""
+    """Invariant central : hors GpId, l'arbre est identique — drapeaux compris."""
     from circuit_analyzer.eretro_patch import ecrire_groupes
     chemin = _fichier_synthetique(tmp_path)
     comps, res = _analyser(chemin)
@@ -414,25 +434,22 @@ def test_ecrire_groupes_agrege_les_votes_d_un_compose_avant_d_ecrire(monkeypatch
     racine_patchee = ET.fromstring(ecrire_groupes(src, [], resultats=["dummy"]))
     cc = racine_patchee.find(".//CCmpntL/CComp")
     assert cc.findtext("GpId") == "2", "la majorite doit l'emporter, pas le dernier ecrit"
-    assert cc.findtext("Begrp") == "true"
+    assert cc.findtext("Begrp") == "false", "le drapeau du boitier reste intact"
 
 
-def test_poser_groupe_incomplet_si_le_drapeau_compagnon_manque():
-    """Revue #3 : _poser_groupe ne comptait que l'ecriture de GpId.
+def test_un_element_sans_gpid_ne_recoit_rien():
+    """Hors dialecte : pas de balise GpId => on n'ecrit rien, on ne cree rien.
 
-    Un element qui porte GpId mais pas son drapeau (ou l'inverse) est
-    partiellement hors dialecte : ce n'est pas un succes.
+    (Remplace `test_poser_groupe_incomplet…` : `_poser_groupe` n'existe plus,
+    l'arbitrage du boss du 2026-07-30 ayant reduit l'ecriture a la seule
+    balise `GpId`. Il n'y a donc plus de demi-ecriture possible.)
     """
-    from circuit_analyzer.eretro_patch import _poser_groupe
+    from circuit_analyzer.eretro_patch import _ecrire
     elem = ET.Element("DataItem")
-    ET.SubElement(elem, "GpId").text = "0"
-    # Pas de Begrp : le drapeau compagnon est absent.
-    assert _poser_groupe(elem, 3, "Begrp") is False
-    # Re-revue ronde 1 : et l'echec doit etre TOUT OU RIEN. Ecrire GpId puis
-    # echouer sur le drapeau rendrait au collegue un element marque « groupe
-    # 3 » sans le drapeau qui le dit, pendant que le warning annonce « groupe
-    # non ecrit » — une demi-verite ecrite dans un fichier qu'on promet intact.
-    assert elem.findtext("GpId") == "0", "GpId ne doit pas avoir ete touche"
+    ET.SubElement(elem, "Begrp").text = "false"   # dialecte voisin : pas de GpId
+    assert _ecrire(elem, "GpId", 3) is False
+    assert elem.find("GpId") is None, "la balise ne doit jamais etre creee"
+    assert elem.findtext("Begrp") == "false", "et rien d'autre ne bouge"
 
 
 def test_export_analyse_est_fidele_quand_la_source_existe(tmp_path):
@@ -549,7 +566,12 @@ def test_export_fidele_annonce_la_carte_conservee(tmp_path, monkeypatch):
     _comparer_sauf_groupes(ET.parse(chemin).getroot(), ET.fromstring(brut.decode("utf-8")))
 
 
-_CHAMPS_GROUPE = {"GpId", "Begrp", "BeIngrp"}
+# `GpId` SEUL (arbitrage du boss, 2026-07-30). Begrp/BeIngrp sont volontairement
+# ABSENTS de cet ensemble : on ne les ecrit plus, donc le comparateur doit les
+# traiter comme n'importe quel autre champ a preserver. C'est ce qui fait de ce
+# gardien l'executeur du nouveau contrat — toucher un drapeau ferait rougir
+# l'invariance sur les 4 vraies cartes.
+_CHAMPS_GROUPE = {"GpId"}
 
 
 def _comparer_sauf_groupes(a, b, chemin="/"):

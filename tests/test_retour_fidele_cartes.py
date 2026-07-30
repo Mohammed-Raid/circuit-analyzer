@@ -27,7 +27,10 @@ _DOSSIER = "CARTE POUR TESTER (VRAI TEST)"
 _FICHIERS = ["PG 2.xml", "PG 3.xml", "PowtranAlim20260809.xml", "pg carte.xml"]
 
 #: Balises dont la VALEUR a le droit de changer : c'est tout l'apport du patch.
-_LIGNES_DE_GROUPE = ("GpId", "Begrp", "BeIngrp")
+# `GpId` SEUL (arbitrage du boss, 2026-07-30). Begrp/BeIngrp en sont exclus a
+# dessein : on ne les ecrit plus, donc une ligne de drapeau qui changerait doit
+# etre comptee comme une difference HORS groupe, et faire rougir le test.
+_LIGNES_DE_GROUPE = ("GpId",)
 
 pytestmark = pytest.mark.skipif(
     not os.path.isdir(_DOSSIER), reason="cartes reelles absentes")
@@ -73,7 +76,7 @@ def _lignes_physiques(brut):
 
 
 def _est_une_ligne_de_groupe(ligne):
-    """@brief Vrai si la ligne ne porte qu'une balise GpId/Begrp/BeIngrp."""
+    """@brief Vrai si la ligne ne porte qu'une balise GpId — la seule qu'on ecrit."""
     nue = ligne.strip()
     return any(nue.startswith(b"<%s>" % b.encode()) for b in _LIGNES_DE_GROUPE)
 
