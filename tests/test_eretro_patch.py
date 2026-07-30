@@ -154,15 +154,28 @@ def test_fil_manquant_declenche_un_warning_distinct(caplog):
     from circuit_analyzer.eretro import SourceXML
     from circuit_analyzer.eretro_patch import ecrire_groupes
     racine = ET.Element("BoardSCH")
-    ligne = ET.SubElement(ET.SubElement(racine, "lineL"), "Line")
-    ET.SubElement(ligne, "CFirst").text = "x"   # pas de GpId : hors dialecte connu
+    liste = ET.SubElement(racine, "lineL")
+
+    sain = ET.SubElement(liste, "Line")          # dans le dialecte : deux balises
+    ET.SubElement(sain, "GpId").text = "0"
+    ET.SubElement(sain, "BeIngrp").text = "false"
+
+    hors = ET.SubElement(liste, "Line")
+    ET.SubElement(hors, "CFirst").text = "x"     # pas de GpId : hors dialecte connu
+
     src = SourceXML(arbre=ET.ElementTree(racine), elements={},
-                     lignes=[ligne], lignes_refs={})
+                     lignes=[sain, hors], lignes_refs={})
     with caplog.at_level("WARNING", logger="circuit_analyzer.eretro_patch"):
         ecrire_groupes(src, [], None)
-    messages = [rec.message for rec in caplog.records]
-    assert any("fil" in m.lower() for m in messages), \
-        "le message doit designer un FIL, pas un composant"
+    messages = [rec.getMessage() for rec in caplog.records]
+    # Le COMPTE est asserte, pas seulement la presence du message. D'ou les
+    # DEUX fils du montage, dont un seul est hors dialecte : un
+    # `manquants_fils += 1` inconditionnel dirait « 2 fil(s) » et virerait au
+    # rouge, la ou un simple `any("fil" in m)` l'aurait laisse passer.
+    assert any("1 fil" in m for m in messages), \
+        "le message doit designer UN fil (compte juste), pas un composant"
+    assert not any("2 fil" in m for m in messages), \
+        "le fil dans le dialecte ne doit pas etre compte comme manquant"
 
 
 def test_repatcher_sans_resultats_degroupe_aussi_les_fils(tmp_path):
@@ -414,6 +427,11 @@ def test_poser_groupe_incomplet_si_le_drapeau_compagnon_manque():
     ET.SubElement(elem, "GpId").text = "0"
     # Pas de Begrp : le drapeau compagnon est absent.
     assert _poser_groupe(elem, 3, "Begrp") is False
+    # Re-revue ronde 1 : et l'echec doit etre TOUT OU RIEN. Ecrire GpId puis
+    # echouer sur le drapeau rendrait au collegue un element marque « groupe
+    # 3 » sans le drapeau qui le dit, pendant que le warning annonce « groupe
+    # non ecrit » — une demi-verite ecrite dans un fichier qu'on promet intact.
+    assert elem.findtext("GpId") == "0", "GpId ne doit pas avoir ete touche"
 
 
 _CHAMPS_GROUPE = {"GpId", "Begrp", "BeIngrp"}

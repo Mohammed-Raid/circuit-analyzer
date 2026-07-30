@@ -53,14 +53,18 @@ def _ecrire(element, balise, valeur):
 def _poser_groupe(element, gid, balise_drapeau):
     """@brief Pose GpId + son drapeau compagnon sur un element du fichier.
 
-    Le retour depend des DEUX ecritures : un element qui porte GpId mais pas
-    son drapeau (ou l'inverse) est un element partiellement hors dialecte, pas
-    un succes a moitie silencieux — sinon `manquants` sous-compte et le
-    drapeau peut rester incoherent avec un GpId pourtant mis a jour.
+    TOUT OU RIEN : on sonde les DEUX balises avant d'en ecrire une seule. Un
+    element qui porte GpId mais pas son drapeau est partiellement hors
+    dialecte ; ecrire quand meme son GpId rendrait au collegue un element
+    marque « groupe 7 » sans le drapeau qui le dit, pendant que le warning
+    annonce « groupe non ecrit ». Un fichier qu'on promet intact ne repart pas
+    avec une demi-verite.
     """
-    ok_gid = _ecrire(element, "GpId", gid)
-    ok_drapeau = _ecrire(element, balise_drapeau, "true" if gid else "false")
-    return ok_gid and ok_drapeau
+    if element.find("GpId") is None or element.find(balise_drapeau) is None:
+        return False
+    _ecrire(element, "GpId", gid)
+    _ecrire(element, balise_drapeau, "true" if gid else "false")
+    return True
 
 
 def ecrire_groupes(source, composants, resultats=None) -> str:
