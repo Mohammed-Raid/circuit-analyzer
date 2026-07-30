@@ -150,6 +150,14 @@ class TabDraw:
         if not path:
             return
         try:
+            # REGENERATION assumee, et sans avertissement — contrairement a
+            # l'onglet Analyse (`_texte_export_analyse`, gui/tab_analyze.py),
+            # qui rend la carte RECUE intacte et alerte quand il doit se
+            # replier sur `generer_xml`. Ici il n'y a pas de carte source : ce
+            # schema est dessine dans l'app, il n'y a rien a preserver. Ne PAS
+            # en conclure que l'export est fidele — l'editeur fidele est le
+            # Chantier B, differe (voir docs/superpowers/specs/
+            # 2026-07-29-retour-fidele-eretrodesign-design.md).
             with open(path, "w", encoding="utf-8") as f:
                 f.write(generer_xml(composants))
         except OSError as exc:

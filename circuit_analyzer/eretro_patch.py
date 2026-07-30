@@ -34,6 +34,33 @@ def _groupe_majoritaire(gids) -> int:
     return gagnant
 
 
+_DECALAGE_ANALYSE = 1000
+
+
+def _gpid_analyse(gid: int) -> int:
+    """@brief Numero de montage -> valeur de GpId ecrite dans SON fichier.
+
+    Nos montages sont numerotes 1, 2, 3... et les SIENS aussi : son editeur
+    attribue `Gid = GrpL.Count() + 1` a la creation (Form1.cs:8945, 9404) et
+    renumerote en `i + 1` (Form1.cs:9339). Ecrire nos numeros tels quels les
+    faisait donc entrer en COLLISION : des qu'il creait son premier groupe,
+    `UpdateGrp()` (Form1.cs:9216, 9238) reconstruit la composition des groupes
+    en comparant `CmpntL[i].GpId == GrpL[j].Gid`, et absorbait dans SON groupe
+    tous nos elements marques 1 (mesure sur `pg carte.xml` : 3 composants et
+    5 fils). Deplacer son groupe de 3 en aurait traine huit.
+
+    Ses QUATRE lectures de GpId (Form1.cs:8963, 9216, 9238, 9328) sont toutes
+    des egalites contre un Gid — jamais de l'arithmetique, jamais un indice.
+    Un GpId strictement negatif ne peut donc egaler aucun Gid : l'annotation
+    devient inerte PAR CONSTRUCTION, et non plus par circonstance (« tant que
+    <GrpL> est vide »), precondition que le premier groupe cree invalidait.
+
+    -1 est evite : c'est SA sentinelle « composant non groupe »
+    (Form1.cs:3566, 9515). 0 reste 0, valeur des cartes non groupees.
+    """
+    return -(_DECALAGE_ANALYSE + gid) if gid else 0
+
+
 def _ecrire(element, balise, valeur):
     """@brief Ecrit une balise SI elle existe deja. Renvoie False sinon.
 
@@ -82,7 +109,7 @@ def ecrire_groupes(source, composants, resultats=None) -> str:
     manquants = 0
     for element, gids in votes_par_element.items():
         gid = gids[0] if len(gids) == 1 else _groupe_majoritaire(gids)
-        if not _ecrire(element, "GpId", gid):
+        if not _ecrire(element, "GpId", _gpid_analyse(gid)):
             manquants += 1
     if manquants:
         _log.warning("%d element(s) sans balise GpId : groupe non ecrit "
@@ -93,7 +120,7 @@ def ecrire_groupes(source, composants, resultats=None) -> str:
         ra, rb = source.lignes_refs.get(idx, (None, None))
         ga, gb = gid_par_ref.get(ra, 0), gid_par_ref.get(rb, 0)
         # Un fil qui traverse deux montages n'appartient a aucun des deux.
-        if not _ecrire(ligne, "GpId", ga if (ga and ga == gb) else 0):
+        if not _ecrire(ligne, "GpId", _gpid_analyse(ga if (ga and ga == gb) else 0)):
             manquants_fils += 1
     if manquants_fils:
         # Compteur separe de celui des composants : le message doit dire

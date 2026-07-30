@@ -221,8 +221,9 @@ def test_seules_les_lignes_de_groupe_different_a_l_octet_pres(fichier, tmp_path)
     Les comparaisons d'arbres tolerent par construction toute difference que le
     parseur absorbe (balises auto-fermantes, indentation, guillemets, entites).
     Ici on compare le fichier RENDU au fichier RECU, ligne physique par ligne
-    physique : la seule difference autorisee est la valeur d'une balise
-    GpId/Begrp/BeIngrp. Tout le reste — a la virgule — doit etre identique.
+    physique : la seule difference autorisee est la valeur d'une balise GpId.
+    Tout le reste — Begrp et BeIngrp compris, depuis l'arbitrage du
+    2026-07-30 — doit etre identique a la virgule.
     """
     chemin, _comps, xml = _patcher(fichier)
     recu = _lignes_physiques(_lire_octets(

@@ -31,7 +31,12 @@ def _fichier_synthetique(tmp_path, comps=None):
 
 
 def test_source_absente_quand_la_liste_ne_vient_pas_d_un_xml():
-    assert getattr([], "source", None) is None
+    """Revue de branche : la version precedente assertait sur une `list` NUE,
+    c'est-a-dire un fait du langage CPython, sans exercer une seule ligne du
+    projet. C'est `ListeComposantsXML.__init__` qui pose `self.source = None`
+    (xml.py) — c'est donc lui qu'il faut interroger."""
+    from circuit_analyzer.xml import ListeComposantsXML
+    assert ListeComposantsXML([]).source is None
 
 
 def test_lire_xml_publie_l_arbre_et_le_pont(tmp_path):
@@ -90,6 +95,31 @@ def test_patch_ecrit_un_gpid_non_nul_sur_les_composants_groupes(tmp_path):
     assert gpids != {0}, "aucun groupe ecrit"
 
 
+def test_aucun_gpid_ecrit_ne_peut_egaler_un_gid_cote_csharp(tmp_path):
+    """Revue de branche, constat 1 : nos groupes etaient numerotes 1, 2, 3...
+    et les SIENS aussi (`_grps.Gid = GrpL.Count() + 1`, Form1.cs:8945). Des
+    qu'il creait son premier groupe, son `UpdateGrp()` (Form1.cs:9216, 9238)
+    absorbait dans SON groupe tous nos elements marques GpId=1 — mesure sur
+    `pg carte.xml` : 3 composants et 5 fils. Tirer son groupe de 3 en aurait
+    traine huit.
+
+    Ses QUATRE lectures de GpId (Form1.cs:8963, 9216, 9238, 9328) sont des
+    egalites contre un Gid, et tout Gid vaut >= 1 (creation `Count + 1`,
+    renumerotation `i + 1` en :9339). Un GpId strictement negatif est donc
+    PROUVABLEMENT inerte, quel que soit l'etat de <GrpL> — au lieu d'inerte
+    par circonstance. -1 est exclu : c'est SA sentinelle « non groupe »
+    (Form1.cs:3566, 9515)."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    comps, res = _analyser(_fichier_synthetique(tmp_path))
+    racine = ET.fromstring(ecrire_groupes(comps.source, comps, res))
+    ecrits = [int(e.findtext("GpId") or 0)
+              for e in racine.iter() if e.find("GpId") is not None]
+    assert any(g for g in ecrits), "garde-fou : au moins un element doit etre groupe"
+    for g in ecrits:
+        assert g <= 0, f"GpId {g} positif : collision possible avec un Gid C#"
+        assert g != -1, "-1 est la sentinelle « non groupe » de son editeur"
+
+
 def test_begrp_n_est_jamais_touche(tmp_path):
     """Arbitrage du boss (2026-07-30) apres la preuve C# : on n'ecrit QUE GpId.
 
@@ -128,14 +158,18 @@ def test_un_fil_intra_groupe_prend_le_groupe(tmp_path):
     items = racine.findall(".//CmpntL/DataItem")
     lignes = racine.findall(".//lineL/Line")
     assert items and lignes  # garde-fou : le fichier synthetique est non vide
-    # Des lors qu'un groupe existe, au moins un fil doit le porter.
-    if {int(d.findtext("GpId") or 0) for d in items} != {0}:
-        assert any(int(l.findtext("GpId") or 0) for l in lignes)
+    # Revue de branche : l'assertion etait sous un `if`, donc le test passait
+    # vert sans rien verifier si plus aucun groupe n'etait ecrit. La condition
+    # est desormais ASSERTEE, pas supposee.
+    assert {int(d.findtext("GpId") or 0) for d in items} != {0}, \
+        "garde-fou : au moins un composant doit etre groupe, sinon on ne prouve rien"
+    assert any(int(l.findtext("GpId") or 0) for l in lignes), \
+        "un montage groupe doit avoir au moins un fil interne qui porte son groupe"
 
 
 def test_un_fil_entre_deux_groupes_reste_a_zero(tmp_path):
     """Un fil dont les deux bouts n'ont pas le meme groupe n'est jamais groupe."""
-    from circuit_analyzer.eretro_patch import ecrire_groupes
+    from circuit_analyzer.eretro_patch import ecrire_groupes, _gpid_analyse
     chemin = _fichier_synthetique(tmp_path)
     comps, res = _analyser(chemin)
     src = comps.source
@@ -143,10 +177,22 @@ def test_un_fil_entre_deux_groupes_reste_a_zero(tmp_path):
     gid = _ids_groupes_par_ref(_grouper_par_circuit(comps, res)) if res else {}
     racine = ET.fromstring(ecrire_groupes(src, comps, res))
     lignes = racine.findall(".//lineL/Line")
+    # Revue de branche : rien n'exigeait que le cas NOMME par le test (deux
+    # bouts dans des groupes DIFFERENTS) se produise. La fixture en contient un
+    # aujourd'hui, par chance ; on l'assert desormais, sinon le test ne verifie
+    # que des fils intra-groupe sous un nom qui promet le contraire.
+    bouts = [(gid.get(ra, 0), gid.get(rb, 0)) for ra, rb in src.lignes_refs.values()]
+    assert any(ga and gb and ga != gb for ga, gb in bouts), \
+        "garde-fou : la fixture doit contenir un fil ENTRE deux groupes"
     for idx, (ra, rb) in src.lignes_refs.items():
         ga, gb = gid.get(ra, 0), gid.get(rb, 0)
-        attendu = ga if (ga and ga == gb) else 0
-        assert int(lignes[idx].findtext("GpId") or 0) == attendu
+        # On n'est pas cense reimplementer la regle de production ici, mais
+        # l'enoncer : un fil ne porte un groupe QUE si ses deux bouts sont
+        # dans le meme, sinon zero.
+        if ga and ga == gb:
+            assert int(lignes[idx].findtext("GpId") or 0) == _gpid_analyse(ga)
+        else:
+            assert int(lignes[idx].findtext("GpId") or 0) == 0
 
 
 def test_beingrp_n_est_jamais_touche(tmp_path):
@@ -165,11 +211,12 @@ def test_beingrp_n_est_jamais_touche(tmp_path):
 
 
 def test_fil_manquant_declenche_un_warning_distinct(caplog):
-    """Correction ronde 1, constat 1 : un <Line> hors dialecte (sans GpId ou
-    sans BeIngrp) doit remonter en warning, au meme titre qu'un composant hors
-    dialecte (`test_manquants_declenche_un_warning`) — mais le message doit
-    designer un FIL, pas un composant, sinon le diagnostic ne dit pas lequel
-    des deux est en cause."""
+    """Correction ronde 1, constat 1 : un <Line> hors dialecte (sans balise
+    GpId) doit remonter en warning, au meme titre qu'un composant hors dialecte
+    (`test_manquants_declenche_un_warning`) — mais le message doit designer un
+    FIL, pas un composant, sinon le diagnostic ne dit pas lequel des deux est
+    en cause. (BeIngrp n'entre plus en jeu : depuis l'arbitrage du 2026-07-30
+    on ne lit ni n'ecrit plus les drapeaux.)"""
     from circuit_analyzer.eretro import SourceXML
     from circuit_analyzer.eretro_patch import ecrire_groupes
     racine = ET.Element("BoardSCH")
@@ -327,6 +374,51 @@ def test_les_namespaces_absents_de_la_source_ne_sont_pas_fabriques(tmp_path):
     assert "xmlns" not in patche
 
 
+def test_un_xmlns_par_defaut_ne_produit_pas_de_xml_malforme(tmp_path):
+    """Revue de branche, constat 2 : `xmlns="..."` (prefixe VIDE) devenait
+    `racine.set("xmlns:", uri)`, soit un attribut litteral `xmlns:=` — du XML
+    MALFORME, ecrit sur disque avec un « Succes » a l'ecran, et que plus
+    personne (ni nous, ni son C#) ne pouvait relire.
+
+    Aucune carte connue ne porte de namespace par defaut ; c'est un garde, pas
+    une regression observee. Le fichier rendu doit rester RELISIBLE."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    contenu = generer_xml([Composant("R1", "R", {"1": "IN", "2": "GND"}, "10k")])
+    avec_defaut = contenu.replace(
+        '<BoardSCH xmlns:xsi', '<BoardSCH xmlns="urn:eretro" xmlns:xsi', 1)
+    assert 'xmlns="urn:eretro"' in avec_defaut, "le montage du test a echoue"
+    p = os.path.join(str(tmp_path), "ns_defaut.xml")
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(avec_defaut)
+
+    comps = lire_xml(p)
+    patche = ecrire_groupes(comps.source, comps, None)
+    assert "xmlns:=" not in patche, "attribut xmlns: sans prefixe = XML malforme"
+    ET.fromstring(patche)   # doit se reparser : c'est LA garantie qui compte
+
+
+def test_un_xmlns_imbrique_ne_remonte_pas_sur_la_racine(tmp_path):
+    """Revue de branche, constat 3 : la capture etait a portee DOCUMENT
+    (iterparse voit tous les start-ns, a toute profondeur) mais la restitution
+    a portee RACINE — un xmlns declare sur un enfant atterrissait sur
+    <BoardSCH>, c'est-a-dire une ligne modifiee HORS GpId, exactement ce que le
+    chantier promet de ne jamais faire."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    contenu = generer_xml([Composant("R1", "R", {"1": "IN", "2": "GND"}, "10k")])
+    avec_imbrique = contenu.replace("<CmpntL>", '<CmpntL xmlns:prof="urn:profond">', 1)
+    assert 'xmlns:prof' in avec_imbrique, "le montage du test a echoue"
+    p = os.path.join(str(tmp_path), "ns_imbrique.xml")
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(avec_imbrique)
+
+    comps = lire_xml(p)
+    assert [pre for pre, _ in comps.source.namespaces] == ["xsi", "xsd"], \
+        "seuls les xmlns de la BALISE RACINE doivent etre captures"
+    racine = ET.fromstring(ecrire_groupes(comps.source, comps, None))
+    assert "urn:profond" not in str(racine.attrib), \
+        "un xmlns d'enfant a ete remonte sur la racine"
+
+
 def test_entete_idempotente_sur_deux_ecritures_successives(tmp_path):
     """Poser les xmlns:* mute l'arbre partage (source.arbre) : ca ne doit pas
     s'accumuler ni se deformer si on rappelle ecrire_groupes plusieurs fois
@@ -433,7 +525,10 @@ def test_ecrire_groupes_agrege_les_votes_d_un_compose_avant_d_ecrire(monkeypatch
 
     racine_patchee = ET.fromstring(ecrire_groupes(src, [], resultats=["dummy"]))
     cc = racine_patchee.find(".//CCmpntL/CComp")
-    assert cc.findtext("GpId") == "2", "la majorite doit l'emporter, pas le dernier ecrit"
+    from circuit_analyzer.eretro_patch import _gpid_analyse
+    assert cc.findtext("GpId") == str(_gpid_analyse(2)), \
+        "la majorite (2) doit l'emporter, pas le dernier ecrit (5)"
+    assert cc.findtext("GpId") != str(_gpid_analyse(5)), "le vote minoritaire a gagne"
     assert cc.findtext("Begrp") == "false", "le drapeau du boitier reste intact"
 
 

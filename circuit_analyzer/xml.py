@@ -1172,6 +1172,21 @@ def _capturer_entete_source(chemin: str, tag_racine: str):
     utf-8, etc.) ne doit jamais faire echouer la lecture principale, qui a
     deja reussi via ET.parse() au moment ou cette fonction est appelee.
 
+    Tout se lit sur le MEME texte, en une passe. La version precedente tirait
+    les namespaces d'un `ET.iterparse(events=('start-ns',))`, ce qui coutait
+    un second parsing complet du document (63 ms contre 43 ms pour le ET.parse
+    principal sur `pg carte.xml`, soit 38 % du temps de lecture) pour n'en
+    extraire que deux paires de chaines. Trois defauts tombent avec :
+      - la portee : `start-ns` remonte les xmlns declares sur N'IMPORTE QUEL
+        descendant, qu'on reposait ensuite sur la RACINE — donc une ligne
+        modifiee hors GpId, ce que le chantier promet de ne jamais faire ;
+      - le namespace par DEFAUT (`xmlns="..."`, prefixe vide) devenait un
+        `xmlns:=` litteral, du XML malforme ecrit sous un « Succes » ;
+      - le cout, dans un projet qui vise 5000 composants.
+    Le motif ci-dessous ne matche que `xmlns:prefixe=` sur la balise racine :
+    le defaut (`xmlns=`) est ignore par construction, et lui reste porte par
+    ET.parse() quand il qualifie reellement des tags.
+
     @param chemin Chemin du fichier source (le meme que ET.parse(chemin)).
     @param tag_racine Nom de la balise racine deja parsee (repere la fin
     du texte a capturer, sans en dependre pour le contenu).
@@ -1179,21 +1194,20 @@ def _capturer_entete_source(chemin: str, tag_racine: str):
     listes/chaine vides si le fichier n'en portait pas (on ne fabrique rien).
     """
     namespaces: list = []
-    try:
-        for _, (prefixe, uri) in ET.iterparse(chemin, events=('start-ns',)):
-            namespaces.append((prefixe, uri))
-    except ET.ParseError:
-        pass  # deja signale par le ET.parse() principal, pas la peine de redoubler
-
     avant_racine = ""
     try:
         with open(chemin, 'rb') as f:
             brut = f.read().decode('utf-8')
-        m = re.search(r'(?s)^.*?(?=<' + re.escape(tag_racine) + r'\b)', brut)
-        if m:
-            avant_racine = m.group(0)
     except (OSError, UnicodeDecodeError):
-        pass
+        return namespaces, avant_racine
+
+    # Balise racine ouvrante, en tolerant un '>' a l'interieur d'une valeur
+    # entre guillemets (d'ou l'alternance guillemets/reste plutot qu'un [^>]*).
+    ouvrante = re.search(
+        r'<' + re.escape(tag_racine) + r'((?:"[^"]*"|\'[^\']*\'|[^>"\'])*)>', brut)
+    if ouvrante:
+        avant_racine = brut[:ouvrante.start()]
+        namespaces = re.findall(r'xmlns:([\w.-]+)\s*=\s*"([^"]*)"', ouvrante.group(1))
 
     return namespaces, avant_racine
 

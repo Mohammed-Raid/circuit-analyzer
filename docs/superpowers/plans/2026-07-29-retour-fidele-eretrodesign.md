@@ -7,8 +7,32 @@
 
 **Spec de référence :** `docs/superpowers/specs/2026-07-29-retour-fidele-eretrodesign-design.md` (commit `ad8a062`).
 
+> ## ⚠️ ARBITRÉ LE 2026-07-30 — NE PAS RECOPIER LES DRAPEAUX DE CE PLAN
+>
+> **Ce plan est LIVRÉ.** Il reste ici comme trace, mais un point a été tranché
+> en fin de chantier et **tout ce qu'il dit de `<Begrp>` / `<BeIngrp>` est
+> périmé** : la v1 livrée n'écrit **que `<GpId>`**.
+>
+> Concrètement, ne recopiez PAS d'ici :
+> - `_poser_groupe(element, gid, balise_drapeau)` (§Task 2) — **fonction
+>   supprimée du code** ; une seule balise est atomique par définition ;
+> - les assertions `attendu = "true" if int(...GpId...) else "false"`
+>   (§Task 2, §Task 4) — elles **échoueraient** aujourd'hui ;
+> - `_CHAMPS_GROUPE = {"GpId", "Begrp", "BeIngrp"}` (§Task 2) — le gardien réel
+>   est resserré à `{"GpId"}`, précisément pour faire **échouer** toute
+>   écriture de drapeau.
+>
+> **Pourquoi.** La preuve C# de la Task 7 a montré que `Begrp=true` interdit la
+> sélection individuelle d'un composant dans son éditeur
+> (`ERetroDesign/ERetroDesign/Forms/Form1.cs:2192, 2269, 2337, 2697, 3767,
+> 5510`), tandis que l'appartenance fait autorité dans `<GrpL>`, que nous
+> n'écrivons pas. Les composants groupés seraient devenus **inertes** chez lui.
+>
+> **Source de vérité :** la docstring de `ecrire_groupes`
+> (`circuit_analyzer/eretro_patch.py`).
+
 **Goal :** l'export XML de l'onglet Analyse renvoie **le fichier du collègue
-lui-même**, enrichi de la seule information d'analyse (`GpId`/`Begrp`), au lieu
+lui-même**, enrichi de la seule information d'analyse (`GpId`), au lieu
 d'une carte régénérée qui perd ses positions, ses symboles, ses angles et ses
 zooms.
 

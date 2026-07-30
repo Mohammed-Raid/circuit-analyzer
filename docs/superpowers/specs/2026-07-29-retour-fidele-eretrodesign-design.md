@@ -3,6 +3,31 @@
 **Date :** 2026-07-29
 **Statut :** design présenté, en attente de relecture spec avant plan.
 
+> ## ⚠️ ARBITRÉ LE 2026-07-30 — CE DOCUMENT EST PÉRIMÉ SUR UN POINT
+>
+> **Tout ce qui suit et qui décrit l'écriture de `<Begrp>` / `<BeIngrp>` est
+> FAUX.** La v1 livrée n'écrit **que `<GpId>`**, jamais les drapeaux.
+>
+> **Pourquoi.** La Task 7 a sondé le vrai C# (harnais net472 contre
+> `ERetroDesign.exe`). Dans son modèle, `<GrpL>` est la liste de membres
+> **faisant autorité** ; `GpId`/`Begrp`/`BeIngrp` ne sont que des
+> rétro-pointeurs. Or `Begrp=true` **interdit la sélection individuelle** d'un
+> composant (`ERetroDesign/ERetroDesign/Forms/Form1.cs:2192, 2269, 2337, 2697,
+> 3767, 5510`) et `SelectGroup` (`Form1.cs:9036`) balaye `GrpL`. Poser les
+> drapeaux sans écrire `<GrpL>` aurait rendu les composants groupés **inertes**
+> chez lui : ni sélectionnables un par un, ni en groupe.
+>
+> Les sections concernées sont §« Ce qu'on écrit », §« Invariant de test » et
+> §« Réserve `<GrpL>` ». En particulier, l'invariant y autorise `{GpId, Begrp}`
+> alors que le gardien réel (`_CHAMPS_GROUPE` dans `tests/test_eretro_patch.py`)
+> est resserré à `{"GpId"}` — **suivre la spec réintroduirait la régression que
+> ce resserrement sert justement à attraper.**
+>
+> **Source de vérité :** la docstring de `ecrire_groupes`
+> (`circuit_analyzer/eretro_patch.py`). Le reste de ce document — patcher
+> l'arbre plutôt que régénérer, le pont `ref → élément`, la capture d'en-tête,
+> les 4 niveaux de validation — reste valable.
+
 ## Context (pourquoi)
 
 Le pipeline de lecture est **à sens unique et destructeur**. `lire_xml`
