@@ -467,7 +467,15 @@ def test_export_analyse_replie_sur_le_generateur_sans_source():
 
 
 def _convention_fin_de_ligne(brut: bytes) -> str:
-    """@brief 'CRLF' ou 'LF' d'un contenu binaire — comparable d'un OS a l'autre."""
+    """@brief 'CRLF' ou 'LF' d'un contenu binaire — comparable d'un OS a l'autre.
+
+    PORTEE : compare la sortie a la SOURCE plutot que d'exiger CRLF en dur,
+    donc jamais de flake hors Windows. Contrepartie a savoir — la protection
+    contre un `newline=''` ajoute a l'ouverture n'est EFFECTIVE que sur
+    Windows : ailleurs les deux cotes valent 'LF' avec ou sans le bug, parce
+    que le bug lui-meme n'existe pas la-bas. Un CI Linux ne rattraperait donc
+    pas cette regression ; c'est le poste Windows du boss qui la voit.
+    """
     return "CRLF" if b"\r\n" in brut else "LF"
 
 
@@ -524,6 +532,11 @@ def test_export_fidele_annonce_la_carte_conservee(tmp_path, monkeypatch):
     cible = os.path.join(str(tmp_path), "sortie.xml")
     vus = _piloter_export_xml(monkeypatch, comps, res, chemin, cible)
     assert [genre for genre, _ in vus] == ["info"]
+    # Le CONTENU, pas seulement le genre : la garde « Analysez d'abord un
+    # circuit » de _export_xml affiche elle aussi un showinfo, et satisferait
+    # un `== ["info"]` nu. Symetrique de l'assertion "REDESSIN" du jumeau.
+    assert "origine" in vus[0][1].lower(), \
+        "le succes doit annoncer que la carte d'origine est conservee"
 
     brut = _lire_octets(cible)
     # Le fichier ecrit par le VRAI chemin de l'appli doit rester fidele : c'est
