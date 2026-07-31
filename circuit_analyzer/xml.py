@@ -288,6 +288,14 @@ _TYPE_VERS_FORME = {
     "F": ("Fusible",    {"1": "1", "2": "2"}),
     "L": ("Self",       {"1": "1", "2": "2"}),
     "K": ("Relais_1FormC", {"A1": "A1", "A2": "A2", "11": "COM", "12": "NC", "14": "NO"}),
+    # Les rails portent une broche NUMEROTEE ("1") : sans entree ici, ils
+    # tombaient dans la branche « toutes broches numerotees » (l. 829) et
+    # ressortaient en boitier DIP 4 broches. Mesure : 3 composants en entree,
+    # 4 en sortie, dont un fantome. Noms de broches verifies sur _FORME apres
+    # fusion (Task 2) : GND -> "GND", VCC -> "VCC", Vss -> "VCC".
+    "GND": ("GND", {"1": "GND"}),
+    "VCC": ("VCC", {"1": "VCC"}),
+    "VSS": ("Vss", {"1": "VCC"}),
     # Composant inconnu (issu d'un XML avec nom non reconnu) → rendu comme résistance placeholder
     "X": ("Résistance", {"1": "1", "2": "2"}),
 }

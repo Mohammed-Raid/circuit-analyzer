@@ -37,3 +37,34 @@ def test_les_rails_ajoutes_n_usurpent_pas_une_reference():
     refs = [(d.findtext("reference") or "").strip()
             for d in racine.findall("./CmpntL/DataItem")]
     assert refs.count("R1") == 1
+
+
+def test_une_masse_ne_devient_pas_un_boitier_dip():
+    """`_TYPE_VERS_FORME` sans entree GND -> la broche numerotee "1" faisait
+    tomber le composant dans la branche PuceN (xml.py:829)."""
+    racine = ET.fromstring(generer_xml(
+        [Composant("R1", "R", {"1": "IN", "2": "GND"}, "10k"),
+         Composant("GND1", "GND", {"1": "GND"}, "")]))
+    noms = [d.findtext("Name") for d in racine.findall("./CmpntL/DataItem")]
+    assert not any((n or "").startswith("Puce") for n in noms), \
+        f"boitier fantome : {noms}"
+
+
+def test_l_alimentation_non_plus():
+    racine = ET.fromstring(generer_xml(
+        [Composant("R1", "R", {"1": "VCC", "2": "N1"}, "10k"),
+         Composant("VCC1", "VCC", {"1": "VCC"}, "")]))
+    noms = [d.findtext("Name") for d in racine.findall("./CmpntL/DataItem")]
+    assert not any((n or "").startswith("Puce") for n in noms), \
+        f"boitier fantome : {noms}"
+
+
+def test_les_composants_declares_sont_tous_emis():
+    """Corollaire mesurable : 2 composants en entree, 2 formes en sortie
+    (plus les rails nes des nets, qui ne portent pas de reference)."""
+    racine = ET.fromstring(generer_xml(
+        [Composant("R1", "R", {"1": "IN", "2": "GND"}, "10k"),
+         Composant("GND1", "GND", {"1": "GND"}, "")]))
+    refs = [(d.findtext("reference") or "").strip()
+            for d in racine.findall("./CmpntL/DataItem")]
+    assert "R1" in refs and "GND1" in refs
