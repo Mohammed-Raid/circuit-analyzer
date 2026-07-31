@@ -369,7 +369,7 @@ _fusionner_bibliotheque_eretro()
 @dataclass
 class _Comp:
     """@brief Composant placé sur le schéma (id, nom de forme, valeur, position, forme)."""
-    cid: int; name: str; value: str; x: int; y: int; angle: int = 0; shape: str = ""; group_id: int = 0
+    cid: int; name: str; value: str; x: int; y: int; angle: int = 0; shape: str = ""; group_id: int = 0; ref: str = ""
 
 @dataclass
 class _Wire:
@@ -386,7 +386,7 @@ class _Generateur:
         self._wires: List[_Wire] = []
         self._wire_id = 0
 
-    def ajouter(self, nom, valeur="", x=0, y=0, angle=0, forme="", group_id=0) -> int:
+    def ajouter(self, nom, valeur="", x=0, y=0, angle=0, forme="", group_id=0, ref="") -> int:
         """@brief Ajoute un composant au schéma.
 
         @param nom Nom de la forme BoardSCH (ex. 'Résistance', 'AOP').
@@ -396,10 +396,11 @@ class _Generateur:
         @param angle Angle de rotation (degrés).
         @param forme Forme explicite (sinon déduite du nom).
         @param group_id Identifiant de groupe BoardSCH (0 = aucun groupe).
+        @param ref Référence du composant (ex. 'R1', 'C1').
         @return int Identifiant (cid) du composant ajouté.
         """
         cid = len(self._comps)
-        self._comps.append(_Comp(cid, nom, valeur, x, y, angle, forme, group_id))
+        self._comps.append(_Comp(cid, nom, valeur, x, y, angle, forme, group_id, ref=ref))
         return cid
 
     def relier(self, cid1, broche1, cid2, broche2):
@@ -531,7 +532,7 @@ class _Generateur:
         poly = forme.get("polygon", ""); seg = forme.get("segment", ""); arc = forme.get("arc", "")
         typ_val = _TYP_COMPOSANT.get(nom_forme, ord(nom_forme[0]) if nom_forme and nom_forme[0].isascii() else 82)
         return f"""    <DataItem>
-      <Name>{_esc(comp.name)}</Name><Group /><reference /><value>{_esc(comp.value)}</value>
+      <Name>{_esc(comp.name)}</Name><Group /><reference>{_esc(comp.ref)}</reference><value>{_esc(comp.value)}</value>
       <datapolygon>{poly}</datapolygon><datasegment>{seg}</datasegment><dataarc>{arc}</dataarc>
       <datapin>
 {''.join(parties_broches)}
@@ -946,7 +947,7 @@ def generer_xml(composants, resultats=None, results=None) -> str:
         else:
             x = 250 + (i % PER_RANGEE) * _LARG_COMP
             y = 250 + (i // PER_RANGEE) * _HAUT_RANGEE
-        cid = gen.ajouter(nom_forme, comp.value, x=x, y=y,
+        cid = gen.ajouter(nom_forme, comp.value, x=x, y=y, ref=comp.ref,
                           group_id=ids_groupes.get(comp.ref, 0))
         ref_vers_cid[comp.ref] = cid
         ref_vers_map[comp.ref] = plan_broches
