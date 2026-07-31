@@ -176,3 +176,57 @@ def test_positions_des_broches_suivent_sa_bibliotheque(tmp_path, monkeypatch):
     finally:
         monkeypatch.delenv("ERETRO_LIB")
         importlib.reload(cx)
+
+
+def test_pousser_ecrit_un_fichier_par_forme(tmp_path):
+    from circuit_analyzer.eretro_lib import ecrire_formes_dans_dossier
+    formes = {"MonSymbole": {"pins": {"1": (-80, 0, 0), "2": (80, 0, 1)},
+                             "polygon": "", "arc": "",
+                             "segment": "<DataSegment><Spoint><X>-10</X>"
+                                        "<Y>0</Y></Spoint><Epoint><X>10</X>"
+                                        "<Y>0</Y></Epoint></DataSegment>"}}
+    ecrits = ecrire_formes_dans_dossier(str(tmp_path), formes)
+    assert len(ecrits) == 1
+    assert os.path.isfile(os.path.join(str(tmp_path), "MonSymbole.xml"))
+
+
+def test_le_fichier_pousse_est_relisible_par_notre_chargeur(tmp_path):
+    """Aller-retour : ce qu'on lui envoie doit revenir identique chez nous.
+    C'est la seule verification d'integrite qu'on puisse faire sans son GUI."""
+    from circuit_analyzer.eretro_lib import ecrire_formes_dans_dossier
+    formes = {"MonSymbole": {"pins": {"1": (-80, 0, 0), "2": (80, 0, 1)},
+                             "polygon": "", "arc": "",
+                             "segment": "<DataSegment><Spoint><X>-10</X>"
+                                        "<Y>0</Y></Spoint><Epoint><X>10</X>"
+                                        "<Y>0</Y></Epoint></DataSegment>"}}
+    ecrire_formes_dans_dossier(str(tmp_path), formes)
+    relu = eretro_symboles.charger(str(tmp_path))
+    assert relu["MonSymbole"]["pins"] == {"1": (-80, 0, 0), "2": (80, 0, 1)}
+
+
+def test_on_n_ecrase_jamais_un_symbole_a_lui(tmp_path):
+    """Regle absolue : sa bibliotheque est SON travail. `ecrire_dans_dossier`
+    documente deja qu'on n'efface jamais son dossier ; ici on ne remplace pas
+    davantage un fichier existant."""
+    from circuit_analyzer.eretro_lib import ecrire_formes_dans_dossier
+    cible = os.path.join(str(tmp_path), "Sien.xml")
+    with open(cible, "w", encoding="utf-8") as f:
+        f.write("<DataItem><Name>Sien</Name></DataItem>")
+    ecrits = ecrire_formes_dans_dossier(
+        str(tmp_path), {"Sien": {"pins": {"1": (0, 0, 0)},
+                                 "polygon": "", "segment": "", "arc": ""}})
+    assert ecrits == []
+    with open(cible, encoding="utf-8") as f:
+        assert f.read() == "<DataItem><Name>Sien</Name></DataItem>"
+
+
+def test_la_boite_de_palette_porte_la_constante_de_son_format(tmp_path):
+    """A TL=BR=(0,0) le composant s'affiche dans sa palette mais est
+    IMPOSSIBLE a selectionner (eretro_lib.py:37-45)."""
+    from circuit_analyzer.eretro_lib import ecrire_formes_dans_dossier
+    ecrire_formes_dans_dossier(
+        str(tmp_path), {"S": {"pins": {"1": (0, 0, 0)},
+                              "polygon": "", "segment": "", "arc": ""}})
+    r = ET.parse(os.path.join(str(tmp_path), "S.xml")).getroot()
+    assert (r.find("TL").findtext("X"), r.find("TL").findtext("Y")) == ("50", "25")
+    assert (r.find("BR").findtext("X"), r.find("BR").findtext("Y")) == ("210", "121")

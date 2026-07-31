@@ -182,6 +182,60 @@ def ecrire_dans_dossier(dossier, composants):
     return ecrits
 
 
+def ecrire_formes_dans_dossier(dossier, formes, typs=None):
+    """@brief Pousse nos formes `_FORME` dans sa bibliotheque, geometrie verbatim.
+
+    A ne pas confondre avec `ecrire_dans_dossier`, qui part du modele
+    boite+brochage de l'onglet Composants et REGENERE une boite generique :
+    l'employer ici perdrait nos dessins (zigzag de resistance, triangle d'AOP).
+
+    @warning N'ECRASE JAMAIS un fichier existant. Sa bibliotheque est son
+        travail ; on ne pousse que ce qui lui manque. Un nom deja pris est
+        saute et n'apparait pas dans le retour.
+
+    @param dossier Dossier `LibItem/Lib` cible (cree s'il manque).
+    @param formes dict nom -> entree `_FORME` (`pins`, `polygon`, `segment`, `arc`).
+    @param typs dict nom -> `typ` entier, ou None.
+    @return list[str] Chemins reellement ecrits.
+    """
+    os.makedirs(dossier, exist_ok=True)
+    typs = typs or {}
+    ecrits = []
+    for nom, forme in sorted(formes.items()):
+        chemin = os.path.join(dossier, _nom_fichier(nom, set()) + ".xml")
+        if os.path.exists(chemin):
+            continue
+        broches = "".join(
+            f"<DataPin><Pname>{escape(str(b))}</Pname>"
+            f"<Pnumber>{escape(str(b))}</Pnumber>"
+            f"<Pin><X>{x}</X><Y>{y}</Y></Pin>"
+            f"<PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>"
+            f"<Selected>false</Selected><ShowNbTxt>false</ShowNbTxt>"
+            f"<ShowNmTxt>false</ShowNmTxt><VltgP>0</VltgP><typ>0</typ></DataPin>"
+            for b, (x, y, _rang) in sorted(forme["pins"].items(),
+                                           key=lambda kv: kv[1][2]))
+        with open(chemin, "w", encoding="utf-8") as f:
+            f.write(
+                '<?xml version="1.0" encoding="utf-8"?>\n'
+                f'<DataItem {_ENTETE_XSD}>'
+                f"<Name>{escape(nom)}</Name><Group /><reference /><value />"
+                f'<datapolygon>{forme.get("polygon", "")}</datapolygon>'
+                f'<datasegment>{forme.get("segment", "")}</datasegment>'
+                f'<dataarc>{forme.get("arc", "")}</dataarc>'
+                f"<datapin>{broches}</datapin><PinCL />"
+                f"<CtrIem><X>0</X><Y>0</Y></CtrIem><pgap><X>0</X><Y>0</Y></pgap>"
+                f"<TL><X>{_CLIC_TL[0]}</X><Y>{_CLIC_TL[1]}</Y></TL>"
+                f"<BR><X>{_CLIC_BR[0]}</X><Y>{_CLIC_BR[1]}</Y></BR>"
+                f"<angle>0</angle><id>0</id><GpId>0</GpId>"
+                f"<zmH>1</zmH><zmV>1</zmV><FlipX>n</FlipX><FlipY>n</FlipY>"
+                f"<typ>{int(typs.get(nom, 0))}</typ>"
+                f"<Bottom>false</Bottom><selected>false</selected>"
+                f"<focus>false</focus><Visible>true</Visible><Top>true</Top>"
+                f"<Begrp>false</Begrp><freeze>false</freeze></DataItem>")
+        ecrits.append(chemin)
+    return ecrits
+
+
 def _dossiers_bibliotheque(dossier):
     """@brief Dossiers à balayer pour une bibliothèque ERetroDesign.
 
