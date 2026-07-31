@@ -111,10 +111,15 @@ _FORME = {**_FORME_MAISON, **eretro_symboles.charger()}
 Son symbole l'emporte quand il existe, le nôtre sinon. Le chemin vient de la
 variable d'environnement `ERETRO_LIB`, sinon d'un défaut relatif au dépôt.
 
-Le `typ` du composant suit la même règle : celui que porte son symbole quand on
-le charge, sinon la valeur de `_TYP_COMPOSANT`. C'est ce champ qui pilote ses
-rails (`'G'`/`'V'`/`'N'`) — le laisser diverger reviendrait à changer la nature
-électrique d'un composant en changeant son dessin.
+**Le `typ`, lui, ne suit PAS le symbole.** C'est la géométrie qu'on partage, pas
+la sémantique électrique. `_TYP_COMPOSANT` reste l'autorité, et le `typ` de son
+symbole ne sert qu'à combler une entrée absente (`setdefault`).
+
+Raison mesurée : son `GND.xml` porte `typ=0`, alors que le nôtre vaut 71
+(`'G'`) — précisément la valeur dont `eretro.classer_rail` se sert pour
+reconnaître un rail de masse. Adopter son `typ` ferait perdre la classification
+des masses et des alimentations sur tous nos exports. Ses `Résistance` (0) et
+`Diode` (32) sont dans le même cas.
 
 **Le chargeur ne lève jamais d'exception.** Dossier absent → repli complet sur
 nos formes et une ligne de log. Symbole illisible → ignoré, les autres se
@@ -124,14 +129,25 @@ seul symbole.
 
 ## Ce que l'export corrige
 
-Trois défauts mesurés sur des schémas produits par `generer_xml` puis
+Deux défauts mesurés sur des schémas produits par `generer_xml` puis
 désérialisés avec **son** `XmlSerializer` :
 
 | Défaut | État actuel | Correctif |
 |---|---|---|
 | Référence absente | `<reference />` vide sur tous les composants | écrire `comp.ref` (R1, U1…) |
-| Boîte de clic fausse | `<TL>50,25</TL><BR>210,121</BR>` en dur, identiques pour tous (`xml.py:476`) | calculer la boîte englobante réelle de la forme |
 | Composant fantôme | un `GND` devient un boîtier `Puce4` | ajouter `GND`/`VCC`/`VSS` à `_TYPE_VERS_FORME` |
+
+### `TL`/`BR` : faux positif, corrigé après mesure
+
+Une première lecture avait pris `<TL>50,25</TL><BR>210,121</BR>` (`xml.py:476`)
+pour une boîte de clic codée en dur par négligence. La mesure dit le contraire :
+ces deux valeurs figurent sur **les 209 composants posés de ses 4 cartes** et sur
+**la totalité de ses symboles de bibliothèque**. C'est une constante de son
+format — la boîte cliquable de la vignette de palette, déjà documentée dans
+`eretro_lib.py:37-45` (« à TL=BR=(0,0) le composant s'affiche dans la palette
+mais est IMPOSSIBLE à sélectionner »).
+
+**Notre générateur écrit donc déjà la bonne valeur. Ne pas y toucher.**
 
 Le fantôme vient de `xml.py:829` : `_TYPE_VERS_FORME` n'a pas d'entrée `GND`,
 donc un `Composant("GND1","GND",{"1":"GND"})` tombe dans la branche « toutes
@@ -175,7 +191,7 @@ levée : le rendu de nos symboles côté C# n'a jamais été validé visuellemen
 | Chargeur | les 16 symboles réels se chargent (`skipif` si dossier absent) ; noms de broches et bornes géométriques conformes |
 | Repli | dossier absent → nos formes, aucune exception |
 | Robustesse | un symbole corrompu est ignoré, les autres se chargent |
-| Export | `reference` remplie, `TL`/`BR` cohérents avec la géométrie, plus aucun `Puce4` fantôme |
+| Export | `reference` remplie, plus aucun `Puce4` fantôme, `TL`/`BR` inchangés à (50,25)/(210,121) |
 | Sonde C# | les schémas se désérialisent, aucun composant muet, aucune boîte dégénérée |
 | Non-régression | le retour fidèle des 4 vraies cartes reste intact à l'octet près |
 
@@ -186,7 +202,7 @@ déjà que les champs existent avec les bons types.
 ## Découpage en deux plans
 
 **Plan 1 — chargeur et export.** Module `eretro_symboles.py`, résolution et
-repli, les trois correctifs d'export, poussée des orphelins. Autonome et
+repli, les deux correctifs d'export, poussée des orphelins. Autonome et
 testable ; son résultat s'ouvre dans son éditeur immédiatement.
 
 **Plan 2 — rendu.** Élément schemdraw générique construit depuis sa géométrie.
