@@ -19,6 +19,7 @@ import re
 import xml.etree.ElementTree as ET
 
 from circuit_analyzer import eretro
+from circuit_analyzer import eretro_symboles
 from circuit_analyzer.composant import Composant as Component
 from circuit_analyzer.patterns.base import (
     is_gnd, is_power, is_ground_net, is_power_net, is_protective_earth_net
@@ -295,6 +296,43 @@ _TYP_COMPOSANT = {
     "Résistance": 82, "Capa": 32, "AOP": 79,
     "GND": 71, "AGND": 71, "VCC": 86, "VCC+": 86, "VCC-": 71, "Vss": 115,
 }
+
+
+#: Nos formes historiques, AVANT fusion. Conservees telles quelles : ce sont
+#: elles qui servent de repli quand son dossier est absent (CI, .exe livre),
+#: et le point de comparaison quand un dessin diverge.
+_FORME_MAISON = {nom: dict(forme) for nom, forme in _FORME.items()}
+
+
+def _fusionner_bibliotheque_eretro():
+    """@brief Superpose SA bibliotheque vivante sur nos formes maison.
+
+    Decision du boss (2026-07-31) : sur les noms communs, SA geometrie fait
+    foi — nos deux bibliotheques sont deux copies divergees de la meme, et il
+    faut une seule source. Nos formes orphelines (MOSFET, Fusible, PuceN,
+    Relais...) sont CONSERVEES : il ne les a pas, et l'export en depend.
+
+    Le `typ`, lui, ne suit PAS le symbole. On partage la geometrie, pas la
+    semantique electrique : son `GND.xml` porte `typ=0` la ou le notre vaut 71
+    ('G'), la valeur meme dont `eretro.classer_rail` se sert pour reconnaitre
+    une masse. D'ou un `setdefault`, qui ne comble qu'une entree absente.
+
+    Les `pins` GARDENT nos noms semantiques : l'editeur utilise des noms
+    numeriques (p.ex., GND.xml porte pin "1", pas "GND"), ce qui casserait
+    la reconnaissance. On ne merge que la geometrie (polygon, segment, arc).
+    """
+    for nom, forme in eretro_symboles.charger().items():
+        _TYP_COMPOSANT.setdefault(nom, forme["typ"])
+        # Merge geometric data only, preserve our pin names
+        if nom in _FORME:
+            _FORME[nom].update({cle: valeur for cle, valeur in forme.items()
+                                if cle not in ("typ", "pins")})
+        else:
+            # New symbol from editor: use it as-is
+            _FORME[nom] = {cle: valeur for cle, valeur in forme.items() if cle != "typ"}
+
+
+_fusionner_bibliotheque_eretro()
 
 
 # =============================================================================

@@ -99,3 +99,52 @@ def test_sa_vraie_bibliotheque_se_charge():
     aop = formes["AOP"]
     assert set(aop["pins"]) == {"+", "-", "s"}, \
         "ses noms de broches sont ceux de nos plans _TYPE_VERS_FORME"
+
+
+def test_ses_formes_ecrasent_les_notres_a_nom_egal(tmp_path, monkeypatch):
+    """Decision du boss : SA geometrie fait foi sur les noms communs."""
+    _symbole(tmp_path, "Résistance", {"1": (80, 0), "2": (-80, 0)}, segments=3)
+    monkeypatch.setenv("ERETRO_LIB", str(tmp_path))
+    import importlib
+
+    from circuit_analyzer import xml as cx
+    importlib.reload(cx)
+    try:
+        assert cx._FORME["Résistance"]["segment"].count("<DataSegment>") == 3
+        assert cx._FORME_MAISON["Résistance"]["segment"].count("<DataSegment>") != 3
+    finally:
+        monkeypatch.delenv("ERETRO_LIB")
+        importlib.reload(cx)
+
+
+def test_nos_orphelines_survivent_a_la_fusion(tmp_path, monkeypatch):
+    """Il n'a ni MOSFET ni Fusible ni PuceN : les ecraser par un dict vide
+    supprimerait des formes dont l'export depend."""
+    _symbole(tmp_path, "Résistance", {"1": (80, 0), "2": (-80, 0)})
+    monkeypatch.setenv("ERETRO_LIB", str(tmp_path))
+    import importlib
+
+    from circuit_analyzer import xml as cx
+    importlib.reload(cx)
+    try:
+        assert {"MOSFET", "Fusible", "Puce4", "Puce8"} <= set(cx._FORME)
+    finally:
+        monkeypatch.delenv("ERETRO_LIB")
+        importlib.reload(cx)
+
+
+def test_le_typ_reste_le_notre(tmp_path, monkeypatch):
+    """MESURE : son GND.xml porte typ=0 alors que le notre vaut 71 ('G'),
+    valeur dont `eretro.classer_rail` se sert pour reconnaitre une masse.
+    Adopter son typ ferait perdre la classification des rails."""
+    _symbole(tmp_path, "GND", {"1": (0, -47)}, typ="0")
+    monkeypatch.setenv("ERETRO_LIB", str(tmp_path))
+    import importlib
+
+    from circuit_analyzer import xml as cx
+    importlib.reload(cx)
+    try:
+        assert cx._TYP_COMPOSANT["GND"] == 71
+    finally:
+        monkeypatch.delenv("ERETRO_LIB")
+        importlib.reload(cx)
