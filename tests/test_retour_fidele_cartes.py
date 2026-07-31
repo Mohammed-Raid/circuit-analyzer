@@ -27,10 +27,10 @@ _DOSSIER = "CARTE POUR TESTER (VRAI TEST)"
 _FICHIERS = ["PG 2.xml", "PG 3.xml", "PowtranAlim20260809.xml", "pg carte.xml"]
 
 #: Balises dont la VALEUR a le droit de changer : c'est tout l'apport du patch.
-# `GpId` SEUL (arbitrage du boss, 2026-07-30). Begrp/BeIngrp en sont exclus a
-# dessein : on ne les ecrit plus, donc une ligne de drapeau qui changerait doit
-# etre comptee comme une difference HORS groupe, et faire rougir le test.
-_LIGNES_DE_GROUPE = ("GpId",)
+# Option A du boss (2026-07-31) : on ecrit de VRAIS groupes, donc les drapeaux
+# d'appartenance rejoignent GpId. La liste reste volontairement ETROITE — toute
+# autre balise qui changerait doit continuer a faire rougir le test.
+_LIGNES_DE_GROUPE = ("GpId", "Begrp", "BeIngrp")
 
 pytestmark = pytest.mark.skipif(
     not os.path.isdir(_DOSSIER), reason="cartes reelles absentes")
@@ -76,9 +76,31 @@ def _lignes_physiques(brut):
 
 
 def _est_une_ligne_de_groupe(ligne):
-    """@brief Vrai si la ligne ne porte qu'une balise GpId — la seule qu'on ecrit."""
+    """@brief Vrai si la ligne porte une des balises d'appartenance a un groupe."""
     nue = ligne.strip()
     return any(nue.startswith(b"<%s>" % b.encode()) for b in _LIGNES_DE_GROUPE)
+
+
+def _sans_bloc_grpl(lignes):
+    """@brief Retire le bloc `<GrpL>...</GrpL>` — les seules lignes AJOUTEES.
+
+    Le patch ne modifie plus seulement des valeurs : il INSERE la liste des
+    groupes, absente des 4 cartes reelles. On l'ote des deux cotes pour que la
+    comparaison ligne a ligne continue de prouver ce qu'elle prouvait — que
+    RIEN d'autre n'a bouge. La presence du bloc est assertee separement, sinon
+    ce filtre pourrait masquer un patch qui n'ecrit plus rien.
+    """
+    sortie, dedans = [], False
+    for ligne in lignes:
+        nue = ligne.strip()
+        if not dedans and nue.startswith(b"<GrpL"):
+            dedans = not nue.endswith(b"/>")      # `<GrpL />` tient sur 1 ligne
+            continue
+        if dedans:
+            dedans = nue != b"</GrpL>"
+            continue
+        sortie.append(ligne)
+    return sortie
 
 
 # --------------------------------------------------------------------------
@@ -204,11 +226,14 @@ def test_entete_et_fins_de_ligne_a_l_octet_pres(fichier, tmp_path):
     assert b"\r\r\n" not in recu, f"{fichier} : fin de ligne CRLF doublee"
     assert _convention_fin_de_ligne(recu) == _convention_fin_de_ligne(source), \
         f"{fichier} : convention de fin de ligne changee"
-    # Les 4 cartes sont a 100 % CRLF : on exige le MEME compte, et zero LF nu.
-    # Un simple `in` ne verrait pas un fichier a moitie converti.
+    # Les 4 cartes sont a 100 % CRLF. Depuis l'option A le patch AJOUTE le bloc
+    # <GrpL> : on exige donc exactement autant de CRLF en plus qu'il n'a ajoute
+    # de lignes — ni une de moins (conversion partielle), ni une de plus.
+    ajoutees = (len(_lignes_physiques(recu)) - len(_lignes_physiques(source)))
+    assert ajoutees > 0, f"{fichier} : aucun bloc <GrpL> ajoute"
     crlf_source, crlf_recu = source.count(b"\r\n"), recu.count(b"\r\n")
-    assert crlf_recu == crlf_source, \
-        f"{fichier} : {crlf_source} CRLF en entree, {crlf_recu} en sortie"
+    assert crlf_recu == crlf_source + ajoutees, \
+        f"{fichier} : {crlf_source} CRLF + {ajoutees} lignes, {crlf_recu} en sortie"
     assert recu.count(b"\n") - recu.count(b"\r\n") == \
         source.count(b"\n") - source.count(b"\r\n"), \
         f"{fichier} : des fins de ligne LF nues sont apparues"
@@ -221,14 +246,18 @@ def test_seules_les_lignes_de_groupe_different_a_l_octet_pres(fichier, tmp_path)
     Les comparaisons d'arbres tolerent par construction toute difference que le
     parseur absorbe (balises auto-fermantes, indentation, guillemets, entites).
     Ici on compare le fichier RENDU au fichier RECU, ligne physique par ligne
-    physique : la seule difference autorisee est la valeur d'une balise GpId.
-    Tout le reste — Begrp et BeIngrp compris, depuis l'arbitrage du
-    2026-07-30 — doit etre identique a la virgule.
+    physique. Depuis l'option A (2026-07-31), deux differences sont autorisees
+    et DEUX SEULEMENT : la valeur d'une balise d'appartenance (GpId, Begrp,
+    BeIngrp) et l'insertion du bloc `<GrpL>`, qu'on retire ici pour comparer le
+    reste. Tout le reste doit etre identique a la virgule.
     """
     chemin, _comps, xml = _patcher(fichier)
-    recu = _lignes_physiques(_lire_octets(
-        _ecrire_comme_l_appli(xml, os.path.join(str(tmp_path), "recu.xml"))))
-    source = _lignes_physiques(_lire_octets(chemin))
+    brut = _lire_octets(
+        _ecrire_comme_l_appli(xml, os.path.join(str(tmp_path), "recu.xml")))
+    assert b"<GRPS>" in brut, f"{fichier} : aucun groupe ecrit — test creux"
+
+    recu = _sans_bloc_grpl(_lignes_physiques(brut))
+    source = _sans_bloc_grpl(_lignes_physiques(_lire_octets(chemin)))
 
     assert len(recu) == len(source), \
         f"{fichier} : {len(source)} lignes recues, {len(recu)} rendues"

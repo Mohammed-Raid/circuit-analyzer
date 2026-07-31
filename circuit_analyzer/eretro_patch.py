@@ -34,31 +34,44 @@ def _groupe_majoritaire(gids) -> int:
     return gagnant
 
 
-_DECALAGE_ANALYSE = 1000
+_BASE_ANALYSE = 1000
+_MARGE_GROUPE = 24
 
 
-def _gpid_analyse(gid: int) -> int:
-    """@brief Numero de montage -> valeur de GpId ecrite dans SON fichier.
+def _gid_analyse(gid: int) -> int:
+    """@brief Numero de montage -> Gid du groupe ecrit dans SON fichier.
 
-    Nos montages sont numerotes 1, 2, 3... et les SIENS aussi : son editeur
-    attribue `Gid = GrpL.Count() + 1` a la creation (Form1.cs:8945, 9404) et
-    renumerote en `i + 1` (Form1.cs:9339). Ecrire nos numeros tels quels les
-    faisait donc entrer en COLLISION : des qu'il creait son premier groupe,
-    `UpdateGrp()` (Form1.cs:9216, 9238) reconstruit la composition des groupes
-    en comparant `CmpntL[i].GpId == GrpL[j].Gid`, et absorbait dans SON groupe
-    tous nos elements marques 1 (mesure sur `pg carte.xml` : 3 composants et
-    5 fils). Deplacer son groupe de 3 en aurait traine huit.
+    Ses Gid a lui valent `GrpL.Count() + 1` a la creation (Form1.cs:8945, 9404)
+    puis `i + 1` a la renumerotation (Form1.cs:9339) : toujours petits et
+    contigus depuis 1. Nos montages sont numerotes 1, 2, 3... eux aussi, donc
+    les ecrire tels quels ferait entrer les deux jeux en COLLISION — son
+    `UpdateGrp()` reconstruit la composition en comparant `GpId == Gid`
+    (Form1.cs:9216, 9238) et absorberait nos elements dans son groupe.
 
-    Ses QUATRE lectures de GpId (Form1.cs:8963, 9216, 9238, 9328) sont toutes
-    des egalites contre un Gid — jamais de l'arithmetique, jamais un indice.
-    Un GpId strictement negatif ne peut donc egaler aucun Gid : l'annotation
-    devient inerte PAR CONSTRUCTION, et non plus par circonstance (« tant que
-    <GrpL> est vide »), precondition que le premier groupe cree invalidait.
-
-    -1 est evite : c'est SA sentinelle « composant non groupe »
-    (Form1.cs:3566, 9515). 0 reste 0, valeur des cartes non groupees.
+    On decale donc au-dessus de _BASE_ANALYSE. Contrairement au choix du
+    2026-07-30 (GpId NEGATIF, inerte par construction), la valeur est ici
+    POSITIVE et volontairement vivante : elle designe un `<GRPS>` que nous
+    ecrivons vraiment, et que son editeur doit afficher.
     """
-    return -(_DECALAGE_ANALYSE + gid) if gid else 0
+    return _BASE_ANALYSE + gid
+
+
+def _est_a_lui(gpid: int) -> bool:
+    """@brief Ce GpId designe-t-il un groupe cree A LA MAIN par le collegue ?
+
+    0 = jamais groupe, -1 = SA sentinelle « degroupe » (Form1.cs:3566, 9515),
+    >= _BASE_ANALYSE = un des notres. Entre les deux, c'est son travail : on
+    n'y touche pas (risque acte le 2026-07-30, jamais traite jusqu'ici).
+    """
+    return 0 < gpid < _BASE_ANALYSE
+
+
+def _entier(element, balise: str, defaut: int = 0) -> int:
+    """@brief Lit une balise entiere, tolerante au vide et au non-numerique."""
+    try:
+        return int((element.findtext(balise) or "").strip())
+    except ValueError:
+        return defaut
 
 
 def _ecrire(element, balise, valeur):
@@ -85,18 +98,37 @@ def ecrire_groupes(source, composants, resultats=None) -> str:
     @param resultats Sortie de detecteur.match_patterns, ou None (aucun groupe).
     @return str Document BoardSCH patche.
 
-    ON N'ECRIT QUE `GpId` (arbitrage du boss, 2026-07-30, apres la preuve C#
-    de la Task 7). Ses drapeaux `Begrp`/`BeIngrp` ne sont PAS des compagnons
-    decoratifs de `GpId` : dans son editeur, `Begrp=true` INTERDIT la selection
-    individuelle du composant (Form1.cs:2192, 2269, 2337, 2697, 3767, 5510),
-    et l'appartenance a un groupe fait autorite dans `<GrpL>`, que nous
-    n'ecrivons pas. Poser les drapeaux sans `<GrpL>` rendrait les composants
-    groupes INERTES chez lui : ni selectionnables un par un, ni en groupe.
-    `GpId` seul est inerte tant que `<GrpL>` est vide — l'information d'analyse
-    voyage dans le fichier sans jamais perturber son application.
+    ON ECRIT DE VRAIS GROUPES (arbitrage du boss, 2026-07-31, option A), apres
+    le diagnostic qui a montre que `GpId` seul etait un NO-OP VISUEL : `<GrpL>`
+    est la SEULE source d'affichage de groupe de son editeur — il dessine
+    `GrpL[i].GRect` et `GrpL[i].Name` (Form1.cs:12096-12108) et y fait le test
+    de clic (Form1.cs:9095). Un `GpId` que ne reference aucun `<GRPS>` n'est
+    lu par rien : l'information voyageait dans le fichier sans jamais devenir
+    visible.
+
+    Les drapeaux `Begrp`/`BeIngrp` sont donc ecrits, cette fois a JUSTE TITRE :
+    poses SANS `<GrpL>` ils rendaient les composants inertes (ni selectionnables
+    un par un, ni en groupe), poses AVEC ils sont exactement l'etat que produit
+    son propre `CreateGrpFun` (Form1.cs:8954, 8967).
+
+    CONSEQUENCE VISIBLE ASSUMEE : un composant groupe n'est plus selectionnable
+    individuellement dans son editeur (Form1.cs:2192, 2269, 2337, 2697, 3767,
+    5510) — c'est le sens meme d'un groupe chez lui, et son menu de degroupage
+    le rend a l'unite (Form1.cs:9515).
     """
     blocs = _grouper_par_circuit(composants, resultats) if resultats else []
     gid_par_ref = _ids_groupes_par_ref(blocs) if blocs else {}
+    # `getattr` et non `.label` : le nom est DECORATIF (il s'affiche sur le
+    # cadre du groupe), il ne doit jamais faire echouer l'ecriture d'un groupe.
+    noms = {i: getattr(b, "label", "") or "Montage"
+            for i, b in enumerate(blocs, start=1)}
+
+    racine = source.arbre.getroot()
+    zoom = _zoom(racine)
+    # `or []` serait un piege : un <CmpntL> vide est faux au sens booleen mais
+    # n'est pas None, et ET deprecie ce test. On teste l'absence explicitement.
+    cmpntl = racine.find("CmpntL")
+    position = {e: i for i, e in enumerate(cmpntl if cmpntl is not None else [])}
 
     votes_par_element = {}
     for ref, element in source.elements.items():
@@ -106,11 +138,17 @@ def ecrire_groupes(source, composants, resultats=None) -> str:
         # ici inutile puisque le dict garde l'objet en vie.
         votes_par_element.setdefault(element, []).append(gid_par_ref.get(ref, 0))
 
+    membres, fils_membres = {}, {}
     manquants = 0
     for element, gids in votes_par_element.items():
         gid = gids[0] if len(gids) == 1 else _groupe_majoritaire(gids)
-        if not _ecrire(element, "GpId", _gpid_analyse(gid)):
+        retenu = _appliquer(element, "Begrp", gid)
+        if retenu is None:
             manquants += 1
+        elif retenu and element in position:
+            # Un composé (CComp) n'a pas de place dans IidL, qui indexe CmpntL
+            # (Form1.cs:9221) : il porte son GpId, mais ne peut pas etre liste.
+            membres.setdefault(retenu, []).append(element)
     if manquants:
         _log.warning("%d element(s) sans balise GpId : groupe non ecrit "
                      "(fichier hors dialecte BoardSCH connu)", manquants)
@@ -120,8 +158,11 @@ def ecrire_groupes(source, composants, resultats=None) -> str:
         ra, rb = source.lignes_refs.get(idx, (None, None))
         ga, gb = gid_par_ref.get(ra, 0), gid_par_ref.get(rb, 0)
         # Un fil qui traverse deux montages n'appartient a aucun des deux.
-        if not _ecrire(ligne, "GpId", _gpid_analyse(ga if (ga and ga == gb) else 0)):
+        retenu = _appliquer(ligne, "BeIngrp", ga if (ga and ga == gb) else 0)
+        if retenu is None:
             manquants_fils += 1
+        elif retenu:
+            fils_membres.setdefault(retenu, []).append((idx, ligne))
     if manquants_fils:
         # Compteur separe de celui des composants : le message doit dire
         # lequel des deux est en cause (correction ronde 1, constat 1),
@@ -129,7 +170,162 @@ def ecrire_groupes(source, composants, resultats=None) -> str:
         _log.warning("%d fil(s) sans balise GpId : groupe non ecrit "
                      "(fichier hors dialecte BoardSCH connu)", manquants_fils)
 
+    _ecrire_grpl(racine, membres, fils_membres, position, noms, zoom)
     return _serialiser_avec_entete(source)
+
+
+def _appliquer(element, drapeau: str, gid: int):
+    """@brief Pose (ou retire) l'appartenance d'un element a un groupe d'analyse.
+
+    @return Le Gid ecrit, 0 si l'element est laisse libre, None si le dialecte
+            ne porte pas `GpId` (rien n'a ete ecrit).
+
+    Trois cas, dans cet ordre :
+    - le groupe est A LUI -> on ne touche a RIEN, ni GpId ni drapeau ;
+    - le montage est detecte -> GpId + drapeau leve ;
+    - sinon -> on ne rabaisse que ce que NOUS avions pose, pour ne pas
+      transformer gratuitement un `-1` (sa sentinelle) en `0`, ce qui ferait
+      diverger le fichier hors de tout groupe.
+    """
+    if element.find("GpId") is None:
+        return None
+    ancien = _entier(element, "GpId")
+    if _est_a_lui(ancien):
+        return 0
+    if gid:
+        _ecrire(element, "GpId", _gid_analyse(gid))
+        _ecrire(element, drapeau, "true")
+        return _gid_analyse(gid)
+    if ancien >= _BASE_ANALYSE:
+        _ecrire(element, "GpId", 0)
+        _ecrire(element, drapeau, "false")
+    return 0
+
+
+def _zoom(racine) -> float:
+    """@brief Zoom du document — `GRect` vit en pixels ECRAN, pas en modele.
+
+    Son transform d'affichage est `ecran = imgL + modele * zm` (Form1.cs:3268,
+    5001) et `UpdateGrp` construit GRect depuis `DitList[].rect`, donc de
+    l'ecran (Form1.cs:9276-9306). A l'ouverture `imgL` vaut (0,0) — jamais
+    recalcule par RestoreBoard — d'ou `ecran = modele * zoom`.
+    """
+    try:
+        return float((racine.findtext("zoom") or "1").strip()) or 1.0
+    except ValueError:
+        return 1.0
+
+
+def _rectangle(elements, zoom: float):
+    """@brief Rectangle ecran englobant des elements, marge comprise.
+
+    Son `CreateGrpFun` ecrit `Rectangle(0,0,0,0)` et compte sur `UpdateGrp()`
+    pour le calculer — mais `RestoreBoard` n'appelle JAMAIS `UpdateGrp` au
+    chargement : un rectangle nul resterait invisible tant que l'utilisateur
+    n'a pas touche a un groupe. On le calcule donc nous-memes.
+    """
+    pts = []
+    for e in elements:
+        centre = e.find("CtrIem")
+        if centre is not None:
+            pts.append((_entier(centre, "X"), _entier(centre, "Y")))
+        for p in e.findall("./LP/PointF"):
+            pts.append((_entier(p, "X"), _entier(p, "Y")))
+    if not pts:
+        return (0, 0, 0, 0)
+    xs = [int(x * zoom) for x, _ in pts]
+    ys = [int(y * zoom) for _, y in pts]
+    x, y = min(xs) - _MARGE_GROUPE, min(ys) - _MARGE_GROUPE
+    return (x, y, max(xs) + _MARGE_GROUPE - x, max(ys) + _MARGE_GROUPE - y)
+
+
+def _sous(parent, balise, texte=None):
+    """@brief Sous-element, avec son texte eventuel (raccourci de lisibilite)."""
+    e = ET.SubElement(parent, balise)
+    if texte is not None:
+        e.text = str(texte)
+    return e
+
+
+def _bloc_grps(gid: int, nom: str, iidl, lidl, rect):
+    """@brief Un `<GRPS>` conforme a SON XmlSerializer.
+
+    L'ordre des champs (CtrG, Gid, Name, NameOffset, GRect, Selected, IidL,
+    LidL) n'est pas devine : il a ete produit en serialisant un `GRPS` avec le
+    serialiseur de son propre binaire. Un XmlSerializer .NET lit une SEQUENCE —
+    un champ hors rang et tout ce qui suit est perdu.
+    """
+    x, y, w, h = rect
+    grps = ET.Element("GRPS")
+    ctr = _sous(grps, "CtrG")
+    _sous(ctr, "X", w // 2)
+    _sous(ctr, "Y", h // 2)
+    _sous(grps, "Gid", gid)
+    _sous(grps, "Name", nom)
+    offset = _sous(grps, "NameOffset")
+    _sous(offset, "X", 0)
+    _sous(offset, "Y", 0)
+    grect = _sous(grps, "GRect")
+    # System.Drawing.Rectangle expose Location/Size ET X/Y/Width/Height : son
+    # serialiseur emet LES DEUX jeux. N'en ecrire qu'un donne un rectangle nul.
+    loc = _sous(grect, "Location")
+    _sous(loc, "X", x)
+    _sous(loc, "Y", y)
+    taille = _sous(grect, "Size")
+    _sous(taille, "Width", w)
+    _sous(taille, "Height", h)
+    for balise, valeur in (("X", x), ("Y", y), ("Width", w), ("Height", h)):
+        _sous(grect, balise, valeur)
+    _sous(grps, "Selected", "false")
+    for balise, valeurs in (("IidL", iidl), ("LidL", lidl)):
+        liste = _sous(grps, balise)
+        for v in valeurs:
+            _sous(liste, "int", v)
+    return grps
+
+
+def _grpl(racine):
+    """@brief `<GrpL>` du document, creee AU BON RANG si elle manque.
+
+    Les 4 cartes reelles n'en portent aucune. L'ordre des champs de BoardSCH
+    est une sequence (CmpntL, lineL, CCmpntL, GrpL, zoom, ...) : inserer
+    `<GrpL>` ailleurs qu'apres `CCmpntL` casserait tout ce qui suit.
+    """
+    grpl = racine.find("GrpL")
+    if grpl is not None:
+        return grpl
+    grpl = ET.Element("GrpL")
+    rang = 0
+    for i, e in enumerate(racine):
+        if e.tag in ("CmpntL", "lineL", "CCmpntL"):
+            rang = i + 1
+    racine.insert(rang, grpl)
+    grpl.tail = "\n  "
+    return grpl
+
+
+def _ecrire_grpl(racine, membres, fils_membres, position, noms, zoom):
+    """@brief Reconstruit la liste des groupes d'analyse, en gardant les siens.
+
+    Idempotent : on retire d'abord les `<GRPS>` que NOUS avions poses (Gid
+    au-dessus de _BASE_ANALYSE), jamais les siens, puis on reecrit. Rejouer le
+    patch ne peut donc ni empiler ni effacer son travail.
+    """
+    grpl = _grpl(racine)
+    for ancien in [g for g in grpl.findall("GRPS")
+                   if _entier(g, "Gid") >= _BASE_ANALYSE]:
+        grpl.remove(ancien)
+
+    for gid in sorted(membres):
+        elements = membres[gid]
+        fils = fils_membres.get(gid, [])
+        rect = _rectangle(elements + [l for _, l in fils], zoom)
+        grpl.append(_bloc_grps(
+            gid, noms.get(gid - _BASE_ANALYSE, "Montage"),
+            sorted(position[e] for e in elements),
+            sorted(idx for idx, _ in fils), rect))
+
+    ET.indent(grpl, space="  ", level=1)
 
 
 def _normaliser_fins_de_ligne(texte: str) -> str:

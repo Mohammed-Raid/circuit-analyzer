@@ -105,30 +105,26 @@ def test_aucun_gpid_ecrit_ne_peut_egaler_un_gid_cote_csharp(tmp_path):
 
     Ses QUATRE lectures de GpId (Form1.cs:8963, 9216, 9238, 9328) sont des
     egalites contre un Gid, et tout Gid vaut >= 1 (creation `Count + 1`,
-    renumerotation `i + 1` en :9339). Un GpId strictement negatif est donc
-    PROUVABLEMENT inerte, quel que soit l'etat de <GrpL> — au lieu d'inerte
-    par circonstance. -1 est exclu : c'est SA sentinelle « non groupe »
-    (Form1.cs:3566, 9515)."""
-    from circuit_analyzer.eretro_patch import ecrire_groupes
+    renumerotation `i + 1` en :9339) donc PETIT et contigu. Depuis l'option A
+    (2026-07-31) nos GpId ne sont plus negatifs — ils designent un `<GRPS>` que
+    nous ecrivons vraiment — mais ils restent hors de son domaine, au-dessus de
+    _BASE_ANALYSE, pour que les deux jeux de groupes coexistent."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes, _BASE_ANALYSE
     comps, res = _analyser(_fichier_synthetique(tmp_path))
     racine = ET.fromstring(ecrire_groupes(comps.source, comps, res))
     ecrits = [int(e.findtext("GpId") or 0)
               for e in racine.iter() if e.find("GpId") is not None]
     assert any(g for g in ecrits), "garde-fou : au moins un element doit etre groupe"
     for g in ecrits:
-        assert g <= 0, f"GpId {g} positif : collision possible avec un Gid C#"
-        assert g != -1, "-1 est la sentinelle « non groupe » de son editeur"
+        assert g == 0 or g > _BASE_ANALYSE, \
+            f"GpId {g} dans le domaine de ses Gid : collision possible"
 
 
-def test_begrp_n_est_jamais_touche(tmp_path):
-    """Arbitrage du boss (2026-07-30) apres la preuve C# : on n'ecrit QUE GpId.
-
-    `Begrp=true` INTERDIT la selection individuelle du composant dans son
-    editeur (Form1.cs:2192, 2269, 2337...), et l'appartenance a un groupe fait
-    autorite dans `<GrpL>`, que nous n'ecrivons pas. Poser le drapeau rendrait
-    les composants groupes INERTES chez lui. On verifie donc que le drapeau
-    ressort EXACTEMENT comme il est entre, meme sur un composant groupe.
-    """
+def test_un_composant_hors_montage_garde_son_drapeau(tmp_path):
+    """Contrepoint de l'option A : on leve `Begrp` sur les MEMBRES, et sur eux
+    seuls. Un composant qu'aucun montage ne reclame doit ressortir tel quel —
+    le rabaisser d'office ecraserait un groupe fait a la main par le collegue
+    (Form1.cs:8954 est le seul endroit ou LUI le leve)."""
     from circuit_analyzer.eretro_patch import ecrire_groupes
     chemin = _fichier_synthetique(tmp_path)
     comps, res = _analyser(chemin)
@@ -138,9 +134,11 @@ def test_begrp_n_est_jamais_touche(tmp_path):
     items = racine.findall(".//CmpntL/DataItem")
     assert any(int(d.findtext("GpId") or 0) for d in items), \
         "garde-fou : au moins un composant doit etre groupe, sinon on ne prouve rien"
-    for d in items:
+    libres = [d for d in items if not int(d.findtext("GpId") or 0)]
+    assert libres, "garde-fou : la fixture doit contenir un composant non groupe"
+    for d in libres:
         assert (d.findtext("Begrp") or "").strip() == avant[d.findtext("ID")], \
-            "Begrp a ete modifie — les composants deviendraient inertes chez lui"
+            "le drapeau d'un composant hors montage a ete modifie"
 
 
 def test_patch_sans_resultats_ne_groupe_rien(tmp_path):
@@ -169,7 +167,7 @@ def test_un_fil_intra_groupe_prend_le_groupe(tmp_path):
 
 def test_un_fil_entre_deux_groupes_reste_a_zero(tmp_path):
     """Un fil dont les deux bouts n'ont pas le meme groupe n'est jamais groupe."""
-    from circuit_analyzer.eretro_patch import ecrire_groupes, _gpid_analyse
+    from circuit_analyzer.eretro_patch import ecrire_groupes, _gid_analyse
     chemin = _fichier_synthetique(tmp_path)
     comps, res = _analyser(chemin)
     src = comps.source
@@ -190,13 +188,13 @@ def test_un_fil_entre_deux_groupes_reste_a_zero(tmp_path):
         # l'enoncer : un fil ne porte un groupe QUE si ses deux bouts sont
         # dans le meme, sinon zero.
         if ga and ga == gb:
-            assert int(lignes[idx].findtext("GpId") or 0) == _gpid_analyse(ga)
+            assert int(lignes[idx].findtext("GpId") or 0) == _gid_analyse(ga)
         else:
             assert int(lignes[idx].findtext("GpId") or 0) == 0
 
 
-def test_beingrp_n_est_jamais_touche(tmp_path):
-    """Pendant fil de `test_begrp_n_est_jamais_touche` : on n'ecrit que GpId."""
+def test_un_fil_hors_montage_garde_son_drapeau(tmp_path):
+    """Pendant fil de `test_un_composant_hors_montage_garde_son_drapeau`."""
     from circuit_analyzer.eretro_patch import ecrire_groupes
     chemin = _fichier_synthetique(tmp_path)
     comps, res = _analyser(chemin)
@@ -206,8 +204,11 @@ def test_beingrp_n_est_jamais_touche(tmp_path):
         .findall(".//lineL/Line")
     assert any(int(l.findtext("GpId") or 0) for l in lignes), \
         "garde-fou : au moins un fil doit etre groupe, sinon on ne prouve rien"
-    assert [(l.findtext("BeIngrp") or "").strip() for l in lignes] == avant, \
-        "BeIngrp a ete modifie — le fil serait vu comme membre d'un groupe absent"
+    libres = [n for n, l in enumerate(lignes) if not int(l.findtext("GpId") or 0)]
+    assert libres, "garde-fou : la fixture doit contenir un fil non groupe"
+    for n in libres:
+        assert (lignes[n].findtext("BeIngrp") or "").strip() == avant[n], \
+            "le drapeau d'un fil hors montage a ete modifie"
 
 
 def test_fil_manquant_declenche_un_warning_distinct(caplog):
@@ -525,11 +526,13 @@ def test_ecrire_groupes_agrege_les_votes_d_un_compose_avant_d_ecrire(monkeypatch
 
     racine_patchee = ET.fromstring(ecrire_groupes(src, [], resultats=["dummy"]))
     cc = racine_patchee.find(".//CCmpntL/CComp")
-    from circuit_analyzer.eretro_patch import _gpid_analyse
-    assert cc.findtext("GpId") == str(_gpid_analyse(2)), \
+    from circuit_analyzer.eretro_patch import _gid_analyse
+    assert cc.findtext("GpId") == str(_gid_analyse(2)), \
         "la majorite (2) doit l'emporter, pas le dernier ecrit (5)"
-    assert cc.findtext("GpId") != str(_gpid_analyse(5)), "le vote minoritaire a gagne"
-    assert cc.findtext("Begrp") == "false", "le drapeau du boitier reste intact"
+    assert cc.findtext("GpId") != str(_gid_analyse(5)), "le vote minoritaire a gagne"
+    # Option A : le boitier devenant membre d'un groupe, son drapeau se leve —
+    # c'est l'etat que produit son propre editeur (Form1.cs:8954).
+    assert cc.findtext("Begrp") == "true", "le boitier groupe doit porter Begrp"
 
 
 def test_un_element_sans_gpid_ne_recoit_rien():
@@ -661,12 +664,15 @@ def test_export_fidele_annonce_la_carte_conservee(tmp_path, monkeypatch):
     _comparer_sauf_groupes(ET.parse(chemin).getroot(), ET.fromstring(brut.decode("utf-8")))
 
 
-# `GpId` SEUL (arbitrage du boss, 2026-07-30). Begrp/BeIngrp sont volontairement
-# ABSENTS de cet ensemble : on ne les ecrit plus, donc le comparateur doit les
-# traiter comme n'importe quel autre champ a preserver. C'est ce qui fait de ce
-# gardien l'executeur du nouveau contrat — toucher un drapeau ferait rougir
-# l'invariance sur les 4 vraies cartes.
-_CHAMPS_GROUPE = {"GpId"}
+# Option A du boss (2026-07-31) : on ecrit de VRAIS groupes, donc les drapeaux
+# d'appartenance rejoignent GpId. L'ensemble reste volontairement ETROIT — tout
+# autre champ modifie doit faire rougir l'invariance sur les 4 vraies cartes.
+_CHAMPS_GROUPE = {"GpId", "Begrp", "BeIngrp"}
+
+#: Seule BRANCHE que le patch a le droit d'ajouter (elle n'existe dans aucune
+#: des 4 cartes reelles). Elle est verifiee par test_eretro_groupes_reels.py ;
+#: ici on l'ecarte pour que la comparaison prouve que RIEN d'autre ne bouge.
+_BRANCHE_AJOUTEE = "GrpL"
 
 
 def _comparer_sauf_groupes(a, b, chemin="/"):
@@ -679,7 +685,8 @@ def _comparer_sauf_groupes(a, b, chemin="/"):
     """
     assert a.tag == b.tag, f"{chemin} : {a.tag} != {b.tag}"
     assert a.attrib == b.attrib, f"{chemin}{a.tag} : attributs modifies"
-    ea, eb = list(a), list(b)
+    ea = [x for x in a if x.tag != _BRANCHE_AJOUTEE]
+    eb = [x for x in b if x.tag != _BRANCHE_AJOUTEE]
     assert [x.tag for x in ea] == [x.tag for x in eb], \
         f"{chemin}{a.tag} : enfants ajoutes, retires ou reordonnes"
     if a.tag not in _CHAMPS_GROUPE:
