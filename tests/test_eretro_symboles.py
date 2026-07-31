@@ -148,3 +148,31 @@ def test_le_typ_reste_le_notre(tmp_path, monkeypatch):
     finally:
         monkeypatch.delenv("ERETRO_LIB")
         importlib.reload(cx)
+
+
+def test_positions_des_broches_suivent_sa_bibliotheque(tmp_path, monkeypatch):
+    """Les positions (x, y) viennent de SA bibliotheque, les noms de CLE
+    restent les notres. Fusionner par RANG : pour chaque broche de notre
+    forme (triée par rang), prendre la POSITION de la sienne au même rang,
+    en gardant NOTRE nom de clé."""
+    # Notre Résistance a pins {"1": (80, 0, 1), "2": (-80, 0, 0)}
+    # Rangs : "2" rank 0, "1" rank 1
+    # Créer un symbole avec les mêmes rangs mais positions DIFFÉRENTES
+    _symbole(tmp_path, "Résistance", {"2": (-85, -3), "1": (90, 5)})
+    monkeypatch.setenv("ERETRO_LIB", str(tmp_path))
+    import importlib
+
+    from circuit_analyzer import xml as cx
+    importlib.reload(cx)
+    try:
+        # Vérifier que les positions viennent de la sienne
+        r1_pos = cx._FORME["Résistance"]["pins"]["1"][:2]
+        r2_pos = cx._FORME["Résistance"]["pins"]["2"][:2]
+        assert r1_pos == (90, 5), f"Position de '1' (rang 1) doit venir de sa biblio"
+        assert r2_pos == (-85, -3), f"Position de '2' (rang 0) doit venir de sa biblio"
+        # Vérifier que les noms de clé restent les nôtres
+        assert "1" in cx._FORME["Résistance"]["pins"]
+        assert "2" in cx._FORME["Résistance"]["pins"]
+    finally:
+        monkeypatch.delenv("ERETRO_LIB")
+        importlib.reload(cx)

@@ -11,6 +11,7 @@ pour ne pas casser le reste du code.
 """
 
 from __future__ import annotations
+from copy import deepcopy
 from dataclasses import dataclass
 from html import escape as _esc
 from typing import Dict, List, Tuple
@@ -301,7 +302,8 @@ _TYP_COMPOSANT = {
 #: Nos formes historiques, AVANT fusion. Conservees telles quelles : ce sont
 #: elles qui servent de repli quand son dossier est absent (CI, .exe livre),
 #: et le point de comparaison quand un dessin diverge.
-_FORME_MAISON = {nom: dict(forme) for nom, forme in _FORME.items()}
+#: Deep copy garantit l'indépendance complète, y compris les sous-dicts pins.
+_FORME_MAISON = deepcopy(_FORME)
 
 
 def _fusionner_bibliotheque_eretro():
@@ -317,16 +319,41 @@ def _fusionner_bibliotheque_eretro():
     ('G'), la valeur meme dont `eretro.classer_rail` se sert pour reconnaitre
     une masse. D'ou un `setdefault`, qui ne comble qu'une entree absente.
 
-    Les `pins` GARDENT nos noms semantiques : l'editeur utilise des noms
-    numeriques (p.ex., GND.xml porte pin "1", pas "GND"), ce qui casserait
-    la reconnaissance. On ne merge que la geometrie (polygon, segment, arc).
+    Les `pins` FUSIONNENT par RANG : on garde nos noms de clé (pour que
+    _TYPE_VERS_FORME et _idx_broche continuent de fonctionner), mais on prend
+    les POSITIONS (x, y) de SA bibliotheque au même rang. Cela garantit que la
+    géométrie dessinée (segments/polygones) et l'ancrage des fils coïncident.
     """
     for nom, forme in eretro_symboles.charger().items():
         _TYP_COMPOSANT.setdefault(nom, forme["typ"])
-        # Merge geometric data only, preserve our pin names
+
         if nom in _FORME:
+            # Merge: prendre sa géométrie, fusionner ses pins par rang
             _FORME[nom].update({cle: valeur for cle, valeur in forme.items()
                                 if cle not in ("typ", "pins")})
+
+            # Fusionner les pins par RANG : garder nos noms, prendre ses positions
+            nos_pins = _FORME[nom]["pins"]
+            ses_pins = forme["pins"]
+
+            # Créer un map rang -> (nom_notre_clé, position_notre)
+            nos_pins_par_rang = {rang: (nom_clé, (x, y))
+                                 for nom_clé, (x, y, rang) in nos_pins.items()}
+            ses_pins_par_rang = {rang: (x, y)
+                                 for nom_clé, (x, y, rang) in ses_pins.items()}
+
+            # Construire les pins fusionnées
+            pins_fusionnées = {}
+            for rang, (nom_clé, _) in nos_pins_par_rang.items():
+                if rang in ses_pins_par_rang:
+                    # Prendre SA position au même rang, garder NOTRE nom
+                    x, y = ses_pins_par_rang[rang]
+                    pins_fusionnées[nom_clé] = (x, y, rang)
+                else:
+                    # Pas de broche au même rang chez lui : garder la nôtre
+                    pins_fusionnées[nom_clé] = nos_pins[nom_clé]
+
+            _FORME[nom]["pins"] = pins_fusionnées
         else:
             # New symbol from editor: use it as-is
             _FORME[nom] = {cle: valeur for cle, valeur in forme.items() if cle != "typ"}
