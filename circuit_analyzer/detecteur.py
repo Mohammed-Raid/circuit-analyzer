@@ -1167,21 +1167,35 @@ def detecter_pont_redresseur(graphe):
                     # Vérifier si n4 reboucle sur n1 avec une 4e diode différente
                     for retour, d4 in adj_diodes.get(n4, []):
                         if retour == n1 and len({d1, d2, d3, d4}) == 4:
-                            noeuds_cycle = {n1, n2, n3, n4}
-                            # Exclure les arrays ESD (qui ont à la fois une alim ET une masse)
+                            # Un nœud à la fois alim ET masse (aliasing de net
+                            # douteux) : jamais un pont crédible.
                             if est_alimentation(n1) and est_masse(n1):
                                 continue
-                            a_alim = any(est_alimentation(n) for n in noeuds_cycle)
-                            a_masse = any(est_masse(n) for n in noeuds_cycle)
-                            if a_alim and a_masse:
-                                continue  # Array ESD, pas un pont redresseur
                             cle = frozenset([d1, d2, d3, d4])
                             if cle not in cycles_vus:
                                 cycles_vus.add(cle)
+                                noeuds_cycle = [n1, n2, n3, n4]
+                                # Un vrai pont a très souvent son alim ET sa
+                                # masse sur le cycle (c'est justement ce qu'il
+                                # PRODUIT en sortie DC) — mais un array de
+                                # diodes de protection ESD sur 2 lignes signal
+                                # indépendantes, chacune clampée sur alim et
+                                # masse, forme la MÊME topologie de cycle à 4
+                                # nœuds (aucune différence purement
+                                # topologique). Impossible à trancher ici :
+                                # signalé pour l'ingénieur plutôt que deviné
+                                # (cf. _enrichir), jamais exclu en silence —
+                                # bug réel trouvé sur
+                                # schema_test/5_pont_redresseur.xml, dont la
+                                # sortie DC nommée VCC/GND était rejetée à tort.
+                                rails_sur_cycle = (
+                                    any(est_alimentation(n) for n in noeuds_cycle)
+                                    and any(est_masse(n) for n in noeuds_cycle))
                                 resultats.append({
                                     'circuit_type': 'Pont redresseur (Graetz)',
                                     'components': [d1, d2, d3, d4],
-                                    'nodes': [n1, n2, n3, n4],
+                                    'nodes': noeuds_cycle,
+                                    'rails_sur_cycle': rails_sur_cycle,
                                 })
     return resultats
 
@@ -1525,8 +1539,15 @@ def _enrichir(match: dict, graphe) -> dict:
         reasons.append("Bobine de relais + transistor (collecteur/drain sur bobine)")
 
     elif ct == 'Pont redresseur (Graetz)':
-        confidence = 0.95
         reasons.append("Cycle fermé de 4 diodes détecté")
+        if match.get('rails_sur_cycle'):
+            confidence = 0.60
+            warnings.append(
+                "Topologie compatible avec un réseau de diodes de protection "
+                "ESD sur 2 lignes signal indépendantes (chacune clampée sur "
+                "l'alimentation et la masse) selon le contexte")
+        else:
+            confidence = 0.95
 
     elif ct == 'Diode de roue libre':
         confidence = 0.70
