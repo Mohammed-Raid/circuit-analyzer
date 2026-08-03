@@ -350,6 +350,20 @@ def _fusionner_bibliotheque_eretro():
             ses_pins_par_rang = {rang: (x, y)
                                  for nom_clé, (x, y, rang) in ses_pins.items()}
 
+            # Les rangs doivent correspondre EXACTEMENT : un decompte egal
+            # mais des rangs differents est tout aussi desynchronisant qu'un
+            # decompte different. Le repli (garder notre position d'origine
+            # pour un rang orphelin) reste inchange ; on ajoute seulement la
+            # visibilite, faute de quoi ce cas passe en silence (cf. Tour de
+            # Correction 1, ou la meme desync geometrie/broches est apparue
+            # pour une autre cause).
+            if set(nos_pins_par_rang) != set(ses_pins_par_rang):
+                _log.warning(
+                    "forme %s : rangs de broches divergents apres fusion "
+                    "(%d chez nous, %d chez lui) - les rangs orphelins "
+                    "gardent notre position d'origine", nom,
+                    len(nos_pins_par_rang), len(ses_pins_par_rang))
+
             # Construire les pins fusionnées
             pins_fusionnées = {}
             for rang, (nom_clé, _) in nos_pins_par_rang.items():
@@ -365,6 +379,34 @@ def _fusionner_bibliotheque_eretro():
         else:
             # New symbol from editor: use it as-is
             _FORME[nom] = {cle: valeur for cle, valeur in forme.items() if cle != "typ"}
+
+    # Garde-fou (revue finale) : `_idx_broche_forme` (plus bas) fait un
+    # lookup NON protege `_FORME[nom]["pins"][broche][2]`. Si un plan de
+    # _TYPE_VERS_FORME reclame un nom de broche que la forme fusionnee ne
+    # porte plus — typiquement une forme NEUVE arrivee via la branche
+    # ci-dessus, dont les noms de broches sont les siens et pas les notres —
+    # generer_xml() plante avec un KeyError brut. Le chargeur ne leve JAMAIS
+    # pour cette meme raison (son dossier est un tiers, mouvant sans
+    # prevenir) ; ce garde-fou etend la garantie un niveau plus haut : on
+    # revient a notre forme maison plutot que de laisser l'export exploser.
+    for nom_forme, plan_broches in _TYPE_VERS_FORME.values():
+        if nom_forme not in _FORME:
+            continue
+        pins_disponibles = _FORME[nom_forme]["pins"]
+        manquantes = sorted({nom_broche for nom_broche in plan_broches.values()
+                             if nom_broche not in pins_disponibles})
+        if not manquantes:
+            continue
+        if nom_forme in _FORME_MAISON:
+            _FORME[nom_forme] = deepcopy(_FORME_MAISON[nom_forme])
+            _log.warning(
+                "forme %s : broches manquantes apres fusion (%s) - "
+                "repli sur notre forme maison", nom_forme, ", ".join(manquantes))
+        else:
+            _log.warning(
+                "forme %s : broches manquantes apres fusion (%s) et aucune "
+                "forme maison de repli disponible - la forme reste telle quelle",
+                nom_forme, ", ".join(manquantes))
 
 
 _fusionner_bibliotheque_eretro()

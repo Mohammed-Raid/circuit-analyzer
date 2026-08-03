@@ -74,6 +74,8 @@ def _lire_symbole(chemin):
     for rang, broche in enumerate(racine.findall("./datapin/DataPin")):
         point = broche.find("Pin")
         if point is None:
+            _log.warning("%s : DataPin sans <Pin> ignoree (rang %d)",
+                        os.path.basename(chemin), rang)
             continue
         pins[_nom_broche(broche, rang)] = (int(point.findtext("X") or 0),
                                            int(point.findtext("Y") or 0), rang)

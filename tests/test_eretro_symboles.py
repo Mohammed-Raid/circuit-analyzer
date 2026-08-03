@@ -7,6 +7,7 @@ fonds MORT dont les symboles font ~997x201 et n'ont ni Name ni typ.
 """
 import os
 import xml.etree.ElementTree as ET
+from copy import deepcopy
 
 import pytest
 
@@ -178,6 +179,66 @@ def test_positions_des_broches_suivent_sa_bibliotheque(tmp_path, monkeypatch):
         importlib.reload(cx)
 
 
+def test_broches_manquantes_du_plan_replient_sur_la_forme_maison(tmp_path, monkeypatch, caplog):
+    """Revue finale, Important #1 : `_idx_broche_forme` (xml.py:1053) fait un
+    lookup NON protege `_FORME[nom]["pins"][broche][2]`. Si un plan de
+    `_TYPE_VERS_FORME` reclame un nom de broche absent de la forme fusionnee
+    (typiquement une forme neuve arrivee via son dossier, dont les noms de
+    broches ne couvrent pas notre plan), `generer_xml()` plante avec un
+    KeyError brut. Latent aujourd'hui (aucun plan reel n'est dans ce cas),
+    mais son dossier bouge sans nous prevenir : on valide apres fusion et on
+    replie sur la forme maison plutot que de laisser le plantage arriver."""
+    from circuit_analyzer import xml as cx
+
+    monkeypatch.setenv("ERETRO_LIB", str(tmp_path))   # dossier vide -> {}
+    plan_original = cx._TYPE_VERS_FORME["R"]
+    forme_avant = deepcopy(cx._FORME["Résistance"])
+    forme_maison_attendue = deepcopy(cx._FORME_MAISON["Résistance"])
+    cx._TYPE_VERS_FORME["R"] = ("Résistance",
+                                {"1": "1", "2": "2", "3": "broche_fantome"})
+    try:
+        with caplog.at_level("WARNING", logger="circuit_analyzer.xml"):
+            cx._fusionner_bibliotheque_eretro()
+        messages = [rec.getMessage() for rec in caplog.records]
+        assert any("Résistance" in m and "broche_fantome" in m for m in messages), \
+            "la broche manquante du plan doit etre journalisee, nommant la forme"
+        assert cx._FORME["Résistance"] == forme_maison_attendue, \
+            "repli integral sur la forme maison : aucun risque de KeyError plus tard"
+    finally:
+        cx._TYPE_VERS_FORME["R"] = plan_original
+        cx._FORME["Résistance"] = forme_avant
+        monkeypatch.delenv("ERETRO_LIB")
+
+
+def test_ecart_de_rangs_entre_nos_broches_et_les_siennes_est_journalise(tmp_path, monkeypatch, caplog):
+    """Revue finale, Important #2 : quand sa forme et la notre partagent un
+    nom mais n'ont pas le meme NOMBRE de broches (ou pas les memes rangs), la
+    fusion par rang (Tour de Correction 1) garde silencieusement notre
+    position d'origine pour le rang orphelin, et laisse tomber ses broches
+    en trop. Comportement de repli inchange : ce test verifie seulement que
+    l'ecart est desormais journalise et que la fusion ne plante pas."""
+    # Notre Résistance a 2 broches : "1" au rang 1, "2" au rang 0. On ne lui
+    # en donne qu'une seule (rang 0) : rangs qui ne correspondent plus.
+    _symbole(tmp_path, "Résistance", {"1": (90, 5)})
+    monkeypatch.setenv("ERETRO_LIB", str(tmp_path))
+    import importlib
+
+    from circuit_analyzer import xml as cx
+    with caplog.at_level("WARNING", logger="circuit_analyzer.xml"):
+        importlib.reload(cx)
+    try:
+        messages = [rec.getMessage() for rec in caplog.records]
+        assert any("Résistance" in m for m in messages), \
+            "l'ecart de rangs de broches doit etre journalise"
+        # Rang orphelin (rang 1, notre "1") : on garde NOTRE position d'origine.
+        assert cx._FORME["Résistance"]["pins"]["1"][:2] == (80, 0)
+        # Rang qui correspond (rang 0, notre "2") : sa position est prise.
+        assert cx._FORME["Résistance"]["pins"]["2"][:2] == (90, 5)
+    finally:
+        monkeypatch.delenv("ERETRO_LIB")
+        importlib.reload(cx)
+
+
 def test_pousser_ecrit_un_fichier_par_forme(tmp_path):
     from circuit_analyzer.eretro_lib import ecrire_formes_dans_dossier
     formes = {"MonSymbole": {"pins": {"1": (-80, 0, 0), "2": (80, 0, 1)},
@@ -218,6 +279,30 @@ def test_on_n_ecrase_jamais_un_symbole_a_lui(tmp_path):
     assert ecrits == []
     with open(cible, encoding="utf-8") as f:
         assert f.read() == "<DataItem><Name>Sien</Name></DataItem>"
+
+
+def test_pin_absente_est_journalisee(tmp_path, caplog):
+    """Revue finale, correctif groupe : un <DataPin> sans <Pin> est deja
+    ecarte en silence (comportement voulu, cf. docstring de _lire_symbole),
+    mais rien ne le journalisait. Sans log, ce mode de defaillance n'est pas
+    diagnosticable sur le terrain."""
+    chemin = os.path.join(str(tmp_path), "Trou.xml")
+    with open(chemin, "w", encoding="utf-8") as f:
+        f.write(
+            '<?xml version="1.0" encoding="utf-8"?>'
+            "<DataItem><Name>Trou</Name><datapolygon /><datasegment />"
+            "<dataarc /><datapin>"
+            "<DataPin><Pname>1</Pname></DataPin>"  # pas de <Pin> : ecartee
+            "<DataPin><Pname>2</Pname><Pnumber>2</Pnumber>"
+            "<Pin><X>10</X><Y>0</Y></Pin></DataPin>"
+            "</datapin><typ>0</typ></DataItem>")
+    with caplog.at_level("WARNING", logger="circuit_analyzer.eretro_symboles"):
+        formes = eretro_symboles.charger(str(tmp_path))
+    assert set(formes["Trou"]["pins"]) == {"2"}, \
+        "la broche sans <Pin> reste ecartee : comportement inchange"
+    messages = [rec.getMessage() for rec in caplog.records]
+    assert any("Trou" in m for m in messages), \
+        "la broche manquante doit etre journalisee, pas juste disparaitre"
 
 
 def test_la_boite_de_palette_porte_la_constante_de_son_format(tmp_path):
