@@ -52,7 +52,8 @@ def main():
     graph = build_graph(components)
     results = match_patterns(graph)
     violations = verifier_drc(results, graph)
-    report = generate(results, args.input, len(components), all_refs=all_refs, format=args.format)
+    report = generate(results, args.input, len(components), all_refs=all_refs,
+                      format=args.format, composants=components)
 
     if violations:
         lines = ["\n\n── RÈGLES DE CONCEPTION (DRC) ──"]
