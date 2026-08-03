@@ -146,6 +146,23 @@ def test_import_diode_plan_anode_cathode():
     assert set(d.pins) == {'A', 'K'}
 
 
+def test_import_diode_plan_plus_moins():
+    # Bug reel : plusieurs diodes ERetroDesign (cartes reelles et schemas de
+    # test) utilisent des broches '+'/'-' plutot que A/K ou 1/2. Sans plan
+    # pour ce cas, les broches restaient '+'/'-' telles quelles -> les
+    # detecteurs qui lisent comp.pins.get('A')/.get('K') (roue libre, ESD,
+    # redresseur simple, detecteur de crete) ignoraient silencieusement ces
+    # diodes. '+' = anode (le courant y entre en polarisation directe).
+    xml = _boardsch(
+        [_item('DIODE', pins=[_pin(pnumber='+'),
+                              _pin(pnumber='-')])],
+        [],
+    )
+    comps = _lire(xml)
+    d = next(c for c in comps if c.type == 'D')
+    assert set(d.pins) == {'A', 'K'}
+
+
 def test_import_inconnu_reste_boite_x():
     xml = _boardsch([_item('transfo', pins=[_pin(), _pin(), _pin(), _pin()])], [])
     comps = _lire(xml)

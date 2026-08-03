@@ -43,7 +43,7 @@ def normaliser_nom(nom: str) -> str:
 
 
 _PLAN_D = {'A': 'A', 'K': 'K', '1': 'A', '2': 'K',
-           'ANODE': 'A', 'CATHODE': 'K'}
+           'ANODE': 'A', 'CATHODE': 'K', '+': 'A', '-': 'K'}
 _PLAN_Q = {'B': 'B', 'C': 'C', 'E': 'E'}
 _PLAN_M = {'G': 'G', 'D': 'D', 'S': 'S'}
 

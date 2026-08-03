@@ -1160,10 +1160,16 @@ _NOM_VERS_TYPE = {
     'Inductor':    ('L', {'1': '1', '2': '2'}),
     'Self':        ('L', {'1': '1', '2': '2'}),
     # ── Diodes ───────────────────────────────────────────────────────────────
-    'Diode':       ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K'}),
-    'LED':         ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K'}),
-    'Zener':       ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K'}),
-    'TVS':         ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K'}),
+    # '+'/'-' : convention de polarite vue sur de vraies diodes ERetroDesign
+    # (cartes industrielles et schemas de test) — '+' = anode (le courant y
+    # entre en polarisation directe). Sans ce plan, ces broches restaient
+    # '+'/'-' telles quelles et les 4 detecteurs de diode qui lisent
+    # comp.pins.get('A')/.get('K') par nom litteral (roue libre, ESD,
+    # redresseur simple, detecteur de crete) ignoraient ces diodes en silence.
+    'Diode':       ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K', '+': 'A', '-': 'K'}),
+    'LED':         ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K', '+': 'A', '-': 'K'}),
+    'Zener':       ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K', '+': 'A', '-': 'K'}),
+    'TVS':         ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K', '+': 'A', '-': 'K'}),
     # ── Puces génériques à broches numérotées (catalogue, plan vide =
     #    passthrough : broche_lib = Pname tel quel) ─────────────────────────
     'Puce4':       ('U', {}),
