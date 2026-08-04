@@ -9,7 +9,7 @@ Charge un fichier netlist ou un schéma XML, identifie les sous-circuits connus,
 
 - **Analyse de netlists** au format texte — compatible exports KiCad et formats maison
 - **Import XML BoardSCH** — lit directement les schémas du logiciel de design (noms FR/EN acceptés)
-- **26 circuits reconnus** : 11 montages AOP, 9 montages transistors (BJT/MOSFET, Darlington, push-pull…), redressement et protections diode — les réseaux passifs restants sont réduits en dipôles « Impédance Z »
+- **28 circuits reconnus** : 11 montages AOP, 9 montages transistors (BJT/MOSFET, Darlington, push-pull…), 3 portes logiques CMOS (inverseur, NAND, NOR), redressement et protections diode — les réseaux passifs résiduels sont réduits en dipôles « Impédance Z », les diodes isolées classées « Diode non classifiée »
 - **Score de confiance** — chaque circuit détecté reçoit un score (élevé/moyen/faible) avec les raisons et les avertissements
 - **Composants satellites** — les composants autour d'un circuit détecté (pull-up, découplage, roue libre, R série…) lui sont rattachés avec un statut sûr/possible
 - **Îlots fonctionnels** — le schéma est découpé en étages (connexité hors rails) : rapport, export XML et GUI montrent la structure en blocs fonctionnels
@@ -389,7 +389,7 @@ Ces topologies ne sont **pas détectables** depuis la netlist seule :
 python -m pytest -q
 ```
 
-590 tests automatisés couvrant le parseur, les 26 circuits reconnus, le score de confiance, les composants satellites, les îlots fonctionnels, la réduction en impédances Z, la performance, les chemins d'application, les alias de nets, le parser de valeurs, le générateur XML, l'import XML, les circuits industriels et la GUI.
+2229 tests automatisés (`pytest --collect-only -q`) couvrant le parseur, les 28 circuits reconnus, le score de confiance, les composants satellites, les îlots fonctionnels, la réduction en impédances Z, la performance, les chemins d'application, les alias de nets, le parser de valeurs, le générateur XML, l'import XML, les circuits industriels, l'interopérabilité ERetroDesign et la GUI.
 
 > **Note :** certains tests (reporter, intégration) utilisent des résultats
 > synthétiques portant d'anciens noms de patterns passifs (« Filtre RC
@@ -404,13 +404,20 @@ python -m pytest -q
 ```
 circuit_analyzer/
 ├── composant.py           ← lecture netlist + graphe NetworkX + bibliothèque
-├── detecteur.py           ← 26 circuits détectés + score de confiance
+├── detecteur.py           ← 28 circuits détectés + score de confiance
 ├── satellites.py          ← rattachement des composants satellites
 ├── ilots.py               ← îlots fonctionnels (structure en étages)
 ├── impedance.py           ← réduction des réseaux passifs en impédances Z
+├── logique.py             ← détection des portes logiques CMOS (NOT/NAND/NOR)
+├── catalogue.py           ← catalogue déclaratif de composants réels (référence → pinout)
+├── saisie.py              ← modèle pur de l'onglet Saisie rapide (tableau netlist en mémoire)
 ├── drc.py                 ← vérification de règles de conception (DRC)
 ├── rapport.py             ← génération du rapport texte
-├── xml.py                 ← import/export BoardSCH XML
+├── xml.py                 ← import/export BoardSCH XML + bibliothèque de formes + fusion ERetroDesign
+├── eretro.py              ← quirks des fichiers ERetroDesign réels (refs packées, puces composées, typ C#…)
+├── eretro_patch.py        ← patch non-destructif : écrit les groupes d'analyse DANS le fichier XML d'origine
+├── eretro_symboles.py     ← chargeur de la bibliothèque de symboles live d'ERetroDesign (LibItem/Lib/*.xml)
+├── eretro_lib.py          ← échange bidirectionnel de bibliothèque de composants avec ERetroDesign
 ├── chemins.py             ← résolution des chemins (portable / PyInstaller)
 ├── value_parser.py        ← parse 10k / 100nF / 1mH / 4K7 / 0R…
 │
@@ -458,9 +465,9 @@ tools/                     ← build_exe.py, benchmark.py, gen_icons.py…
 custom_circuits/
 └── loader.py              ← circuits personnalisés (JSON)
 
-circuits_industriels/      ← schémas BoardSCH d'exemple (44 circuits)
+circuits_industriels/      ← schémas BoardSCH d'exemple (62 fichiers .xml, générés par tools/gen_*.py)
 exemples/                  ← netlists et schéma XML d'exemple (entrées de test)
-tests/                     ← 590 tests pytest
+tests/                     ← 2229 tests pytest
 docs/
 └── explication_logiciel.md ← explication pédagogique du fonctionnement
 
