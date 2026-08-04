@@ -110,7 +110,6 @@ _CHIP_MSG_DELAY_MS = 2500
 # unites data appliquee de chaque cote de la bbox de contenu avant savefig.
 _EXPORT_MARGE_DATA = 0.5
 
-_Z_DETAIL_PERP_MIN_SCALE = 0.85
 _Z_DETAIL_LABEL_AXIS_EPS = 0.05
 # 7 illisible en fenetre compressee (audit fenetre F2) ; 8 reste compact tout
 # en restant net une fois la figure redimensionnee dans le popup.
@@ -3456,46 +3455,6 @@ def _sum_input_label_anchor(dot_pt):
     }
 
 
-def _agencement_entre(p1, p2, arbre):
-    """@brief Place le réseau R/L/C de `arbre` entre p1 et p2 (coordonnées globales).
-
-    Réutilise impedance_schematic.agencer(arbre) (mise en page locale ; borne
-    gauche (0, dims.y_borne), borne droite (dims.largeur, dims.y_borne)) puis
-    applique translation p1 + rotation (angle p1->p2) + échelle uniforme
-    (dist(p1,p2) / dims.largeur), pour amener les deux bornes locales sur p1/p2.
-    Le perpendiculaire local (écart à l'axe des bornes) utilise la même échelle
-    avec un minimum lisible pour ne pas écraser les branches parallèles courtes.
-
-    @param p1, p2 Bornes globales (x, y) entre lesquelles agencer le réseau.
-    @param arbre Arbre série/parallèle (cf. circuit_analyzer.impedance.arbre_expr).
-    @return (symboles, fils) en coordonnées globales :
-        symboles = [(ref, (xa,ya), (xb,yb))] ; fils = [((xa,ya),(xb,yb))].
-    """
-    from gui import impedance_schematic
-    symboles_loc, fils_loc, dims = impedance_schematic.agencer(arbre)
-    dx, dy = p2[0] - p1[0], p2[1] - p1[1]
-    dist = math.hypot(dx, dy)
-    echelle = dist / dims.largeur if dims.largeur else 0.0
-    # Les couplages courts compriment fortement les branches paralleles si l'on
-    # applique l'echelle uniforme aux deux axes. Garder un minimum perpendiculaire
-    # preserve la lisibilite des labels sans changer les bornes p1/p2.
-    echelle_perp = max(echelle, _Z_DETAIL_PERP_MIN_SCALE)
-    theta = math.atan2(dy, dx)
-    cos_t, sin_t = math.cos(theta), math.sin(theta)
-
-    def _vers_global(lx, ly):
-        along = lx * echelle
-        perp = (ly - dims.y_borne) * echelle_perp
-        return (p1[0] + along * cos_t - perp * sin_t,
-                p1[1] + along * sin_t + perp * cos_t)
-
-    symboles = [(ref, _vers_global(x1, y), _vers_global(x2, y))
-                for ref, x1, x2, y in symboles_loc]
-    fils = [(_vers_global(xa, ya), _vers_global(xb, yb))
-            for (xa, ya), (xb, yb) in fils_loc]
-    return symboles, fils
-
-
 def _label_loc_side(label_loc, nx, ny):
     """@brief Signe du cote de decalage correspondant a un label_loc."""
     vecteurs = {
@@ -3617,7 +3576,7 @@ def _z_reseau(d, p1, p2, bloc, ci, label_loc="top", wire_color=_WIRE) -> bool:
         symboles, fils, label_p1, label_p2 = _agencement_compact_decale(
             p1, p2, arbre, label_loc)
     else:
-        symboles, fils = _agencement_entre(p1, p2, arbre)
+        symboles, fils = impedance_schematic.agencement_entre(p1, p2, arbre)
         label_p1, label_p2 = p1, p2
     dx, dy = label_p2[0] - label_p1[0], label_p2[1] - label_p1[1]
     dist = math.hypot(dx, dy) or 1.0
@@ -4279,7 +4238,7 @@ def _fil_canal_avec_couplage(d, out_pt, in_pt, channel_x, cc, ci):
     dans l'espace alloué) et on repousse le canal vertical à gauche pour
     rejoindre sa borne réelle d'entrée -- jamais l'inverse : les fils du
     caller se terminent toujours sur les bornes réelles p1/p2 du réseau
-    (cf. `_agencement_entre`), sans jamais les dépasser.
+    (cf. `impedance_schematic.agencement_entre`), sans jamais les dépasser.
     """
     cap_x = (channel_x + in_pt[0]) / 2
     demi = 0.6 + _z_locale_extra(d, cc, 1.2) / 2

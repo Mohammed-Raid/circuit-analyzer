@@ -9,6 +9,7 @@ ligne, parallèle = branches empilées entre deux rails. Module isolé : la vue
 """
 import collections
 import logging
+import math
 
 import schemdraw
 import schemdraw.elements as elm
@@ -109,6 +110,53 @@ def agencer(arbre):
     symboles, fils = [], []
     dims = _emettre(arbre, 0.0, 0.0, symboles, fils)
     return symboles, fils, dims
+
+
+# Echelle perpendiculaire minimale pour agencement_entre (cf. sa docstring).
+_PERP_MIN_SCALE = 0.85
+
+
+def agencement_entre(p1, p2, arbre):
+    """@brief Place le réseau R/L/C de `arbre` entre p1 et p2 (coordonnées globales).
+
+    Réutilise agencer(arbre) (mise en page locale ; borne gauche
+    (0, dims.y_borne), borne droite (dims.largeur, dims.y_borne)) puis
+    applique translation p1 + rotation (angle p1->p2) + échelle uniforme
+    (dist(p1,p2) / dims.largeur), pour amener les deux bornes locales sur p1/p2.
+    Le perpendiculaire local (écart à l'axe des bornes) utilise la même échelle
+    avec un minimum lisible pour ne pas écraser les branches parallèles courtes.
+
+    Utilisée par ce module (`_bras_detaille`) et par `circuit_viewer.py`
+    (vue îlot, dépliage d'un bloc Z) : fonction publique, pas un détail privé
+    de l'un ou l'autre.
+
+    @param p1, p2 Bornes globales (x, y) entre lesquelles agencer le réseau.
+    @param arbre Arbre série/parallèle (cf. circuit_analyzer.impedance.arbre_expr).
+    @return (symboles, fils) en coordonnées globales :
+        symboles = [(ref, (xa,ya), (xb,yb))] ; fils = [((xa,ya),(xb,yb))].
+    """
+    symboles_loc, fils_loc, dims = agencer(arbre)
+    dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+    dist = math.hypot(dx, dy)
+    echelle = dist / dims.largeur if dims.largeur else 0.0
+    # Les couplages courts compriment fortement les branches paralleles si l'on
+    # applique l'echelle uniforme aux deux axes. Garder un minimum perpendiculaire
+    # preserve la lisibilite des labels sans changer les bornes p1/p2.
+    echelle_perp = max(echelle, _PERP_MIN_SCALE)
+    theta = math.atan2(dy, dx)
+    cos_t, sin_t = math.cos(theta), math.sin(theta)
+
+    def _vers_global(lx, ly):
+        along = lx * echelle
+        perp = (ly - dims.y_borne) * echelle_perp
+        return (p1[0] + along * cos_t - perp * sin_t,
+                p1[1] + along * sin_t + perp * cos_t)
+
+    symboles = [(ref, _vers_global(x1, y), _vers_global(x2, y))
+                for ref, x1, x2, y in symboles_loc]
+    fils = [(_vers_global(xa, ya), _vers_global(xb, yb))
+            for (xa, ya), (xb, yb) in fils_loc]
+    return symboles, fils
 
 
 # --- Couleurs de rendu — alignées tokens (canvas clair préservé, cf. brief) -
@@ -334,8 +382,7 @@ def _elem_bras(bras, comps, p1, p2):
 def _bras_detaille(d, p1, p2, bras, comps):
     """@brief Tente de déplier un bras composite entre p1 et p2 (mode détaillé).
 
-    Réutilise `circuit_viewer._agencement_entre` (import LAZY : pas de cycle,
-    ce module n'est importé par circuit_viewer qu'à l'appel) pour placer les
+    Réutilise `agencement_entre` (défini dans ce module) pour placer les
     symboles réels R/L/C le long du segment p1->p2.
 
     @param d Dessin schemdraw en cours.
@@ -346,11 +393,10 @@ def _bras_detaille(d, p1, p2, bras, comps):
         bras n'est pas dépliable (l'appelant garde alors la boîte Z).
     """
     from circuit_analyzer import impedance
-    from gui.circuit_viewer import _agencement_entre
     arbre = impedance.arbre_expr(bras["composition"])
     if arbre is None or arbre[0] not in ("serie", "parallele"):
         return False
-    symboles, fils = _agencement_entre(p1, p2, arbre)
+    symboles, fils = agencement_entre(p1, p2, arbre)
     for ref, pa, pb in symboles:
         comp = comps.get(ref)
         typ = getattr(comp, "type", "")
