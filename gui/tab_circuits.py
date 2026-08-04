@@ -16,7 +16,7 @@ from custom_circuits.loader import (
 from gui.theme import (BG, CARD, CARD2, TEXT, TEXT_MUTED, TEXT_DIM,
                        BLUE, BLUE_PRESS, R)
 from gui import ui_kit
-from gui.widgets import lier_molette
+from gui.widgets import lier_molette, ListeSectionnee
 
 _BASE_NAMES = NOMS_CIRCUITS
 
@@ -53,7 +53,6 @@ class TabCircuits:
         self._comp_boxes: list = []                 # CTkCheckBox composants
         self._cond_vars: dict[str, tk.BooleanVar] = {}
         self._cond_boxes: list = []                 # CTkCheckBox conditions
-        self._lignes: list[tuple] = []               # rangées listbox (section, index)
         self._etat_initial: tuple = ('', frozenset(), frozenset())
         self._build()
         self._load()
@@ -81,7 +80,13 @@ class TabCircuits:
         body.grid_columnconfigure(1, weight=1)
         body.grid_rowconfigure(0, weight=1)
 
-        self._build_liste(body)
+        self._liste = ListeSectionnee(
+            body, titre="Circuits reconnus",
+            on_select=self._sur_selection,
+            on_new=self._nouveau,
+            on_delete=self._supprimer,
+        )
+        self._liste.frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
 
         # ── Droite : bandeau + formulaire + pied épinglé
         right = ui_kit.Card(body)
@@ -154,45 +159,6 @@ class TabCircuits:
             pied, "Sauvegarder ce circuit", self._sauvegarder,
             icon_name="save", height=42)
         self._btn_save.grid(row=0, column=0, sticky="ew")
-
-    def _build_liste(self, body):
-        """@brief Construit la carte de liste sectionnée (intégrés / personnalisés).
-
-        @param body Conteneur parent (grille de l'onglet).
-        @return None
-        """
-        liste_card = ui_kit.Card(body)
-        liste_card.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-        liste_card.grid_rowconfigure(1, weight=1)
-        liste_card.grid_columnconfigure(0, weight=1)
-
-        ui_kit.SectionHeader(liste_card, "Circuits reconnus").grid(
-            row=0, column=0, sticky="w", padx=14, pady=(14, 6))
-
-        lb_f = ctk.CTkFrame(liste_card, fg_color=CARD2, corner_radius=R["md"])
-        lb_f.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 8))
-        self._listbox = tk.Listbox(
-            lb_f, width=32, height=24,
-            bg=CARD2, fg=TEXT_MUTED,
-            selectbackground=BLUE_PRESS, selectforeground=TEXT,
-            font=ui_kit.font("body"), relief="flat", bd=0,
-            activestyle="none", highlightthickness=0,
-        )
-        sb = tk.Scrollbar(lb_f, command=self._listbox.yview,
-                          bg=CARD, troughcolor=CARD2)
-        self._listbox.configure(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        self._listbox.pack(fill="both", expand=True, padx=6, pady=6)
-        self._listbox.bind("<<ListboxSelect>>", self._sur_selection_liste)
-
-        br = ctk.CTkFrame(liste_card, fg_color="transparent")
-        br.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 12))
-        ui_kit.PrimaryButton(
-            br, "Nouveau", self._nouveau, icon_name="plus",
-            height=36).pack(side="left", expand=True, fill="x", padx=(0, 4))
-        ui_kit.DangerButton(
-            br, "Supprimer", self._supprimer, icon_name="trash-2",
-            height=36).pack(side="left", expand=True, fill="x")
 
     def _build_conditions(self):
         """@brief Cases à cocher des conditions, regroupées par famille, libellés clairs.
@@ -346,74 +312,13 @@ class TabCircuits:
             "Le formulaire contient des modifications non sauvegardées.\n"
             "Les abandonner ?")
 
-    # ── Liste sectionnée ─────────────────────────────────────────────────────
-
-    def _remplir_liste(self, integres: list[str], personnalises: list[str]) -> None:
-        """@brief (Re)peuple la liste : section intégrés puis section personnalisés.
-
-        @param integres Libellés des éléments intégrés (consultables).
-        @param personnalises Libellés des éléments personnalisés (modifiables).
-        @return None
-        """
-        self._listbox.delete(0, "end")
-        self._lignes = []
-
-        self._ajouter_entete(f"INTÉGRÉS ({len(integres)}) — consultables")
-        for texte in integres:
-            self._listbox.insert("end", f"   {texte}")
-            self._listbox.itemconfig("end", foreground=TEXT_MUTED)
-            self._lignes.append(('integre', len(self._lignes_section('integre'))))
-
-        self._ajouter_entete(f"PERSONNALISÉS ({len(personnalises)}) — modifiables")
-        if not personnalises:
-            self._listbox.insert("end", "   (aucun — bouton ＋ Nouveau)")
-            self._listbox.itemconfig("end", foreground=TEXT_DIM)
-            self._lignes.append(('entete', None))
-        for texte in personnalises:
-            self._listbox.insert("end", f"   ★  {texte}")
-            self._listbox.itemconfig("end", foreground=BLUE)
-            self._lignes.append(('perso', len(self._lignes_section('perso'))))
-
-    def _lignes_section(self, section: str) -> list:
-        """@brief Lignes appartenant à une section donnée.
-
-        @param section Nom de section ('integre', 'perso', 'entete').
-        @return list Lignes (tuples) de cette section.
-        """
-        return [l for l in self._lignes if l[0] == section]
-
-    def _ajouter_entete(self, texte: str) -> None:
-        """@brief Insère une ligne d'en-tête non sélectionnable.
-
-        @param texte Libellé de l'en-tête.
-        @return None
-        """
-        self._listbox.insert("end", f" — {texte} —")
-        self._listbox.itemconfig("end", foreground=TEXT_DIM)
-        self._lignes.append(('entete', None))
-
-    def _sur_selection_liste(self, _=None):
-        """@brief Gestionnaire d'événement de sélection de la liste : route vers le callback.
-
-        @param _ Événement Tk (ignoré).
-        @return None
-        """
-        sel = self._listbox.curselection()
-        if not sel:
-            return
-        section, index = self._lignes[sel[0]]
-        if section == 'entete':
-            self._listbox.selection_clear(0, "end")
-            return
-        self._sur_selection(section, index)
-
     # ── Données ──────────────────────────────────────────────────────────────
 
     def _load(self):
         """@brief Reconstruit les cases composants, charge les circuits personnalisés et peuple la liste."""
         self._build_comp_checkboxes()
         self._custom = load_custom_circuits()
-        self._remplir_liste(
+        self._liste.remplir(
             integres=list(_BASE_NAMES),
             personnalises=[c.get("name", "") for c in self._custom],
         )
@@ -426,7 +331,7 @@ class TabCircuits:
         prochain démarrage. Ne touche pas au formulaire en cours d'édition.
         """
         self._custom = load_custom_circuits()
-        self._remplir_liste(
+        self._liste.remplir(
             integres=list(_BASE_NAMES),
             personnalises=[c.get("name", "") for c in self._custom],
         )
@@ -453,7 +358,7 @@ class TabCircuits:
         @return None
         """
         if not self._confirmer_abandon():
-            self._listbox.selection_clear(0, "end")
+            self._liste.deselectionner()
             return
         if section == 'integre':
             self._afficher_integre(list(_BASE_NAMES)[index])
@@ -464,7 +369,7 @@ class TabCircuits:
         """@brief Démarre la création d'un nouveau circuit (après confirmation d'abandon)."""
         if not self._confirmer_abandon():
             return
-        self._listbox.selection_clear(0, "end")
+        self._liste.deselectionner()
         self._afficher_nouveau()
 
     def _supprimer(self):
