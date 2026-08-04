@@ -4,6 +4,18 @@
 
 Analyse les résultats de détection et signale les violations courantes :
 découplage manquant, diode de roue libre absente, résistance de base surdimensionnée, etc.
+
+Numérotation des règles : saute volontairement de 3 à 6 — retrait
+délibéré, pas un oubli :
+  - Règle 4 « Pont diviseur déséquilibré » (commit `76535a2`) : devenue
+    du code mort quand les détecteurs passifs nommés ont été remplacés
+    par le moteur Z unique (`impedance.reduire`) — le `circuit_type`
+    'Pont diviseur de tension' qu'elle testait n'est plus jamais émis.
+  - Règle 5 « Filtre RC sans découplage » (commit `8fa4e91`) : retirée
+    pour faux positifs constants (message du commit).
+Ne pas réutiliser les numéros 4/5 pour de nouvelles règles : les commits
+ci-dessus restent la référence si l'une des deux doit un jour être
+réintroduite sous une forme adaptée au modèle Impédance Z.
 """
 from circuit_analyzer.value_parser import parse_valeur
 from circuit_analyzer.patterns.base import is_power, is_gnd
