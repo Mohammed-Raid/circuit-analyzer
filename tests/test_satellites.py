@@ -551,16 +551,19 @@ def _resultats_filtre_avec_satellites():
     """@brief Helper de test pour resultats filtre avec satellites.
 
     Depuis le modèle Impédance Z, un circuit purement passif ne produit plus de
-    satellites. On utilise un transistor en commutation (circuit actif) avec :
+    satellites, et depuis le filet « Diode non classifiée » (detecter_diodes_
+    non_classifiees), plus aucune diode ne peut rester non réclamée non plus.
+    On utilise un transistor en commutation (circuit actif) avec :
     - Q1, R1 : transistor en commutation (R1 = résistance de base, consommée)
     - D1 (roue libre NET_COLL→VCC) : satellite sûr (flyback)
-    - D2 (anode VCC, cathode NET_COLL) : satellite possible (unknown-neighbor)
+    - SW1 (sur NET_COLL) : satellite possible (unknown-neighbor) — un
+      interrupteur n'a aucun détecteur ni filet, donc reste non classifié.
     """
     comps = [
         Component('Q1', 'Q', {'B': 'NET_BASE', 'C': 'NET_COLL', 'E': 'GND'}),
         Component('R1', 'R', {'1': 'NET_CMD', '2': 'NET_BASE'}, '1k'),
         Component('D1', 'D', {'A': 'NET_COLL', 'K': 'VCC'}),   # roue libre → sûr
-        Component('D2', 'D', {'A': 'VCC', 'K': 'NET_COLL'}),   # anode sur rail → possible
+        Component('SW1', 'SW', {'1': 'NET_COLL', '2': 'NET_EXT'}),  # possible
     ]
     refs = [c.ref for c in comps]
     return match_patterns(build_graph(comps)), refs
@@ -584,7 +587,7 @@ def test_rapport_affiche_satellites_possibles_avec_marqueur():
     results, refs = _resultats_filtre_avec_satellites()
     rapport = generer_rapport(results, 'test.txt', len(refs), refs)
     assert 'Satellites possibles' in rapport
-    assert 'D2 ?' in rapport
+    assert 'SW1 ?' in rapport
 
 def test_rapport_sur_quitte_non_classifies_possible_va_dans_a_verifier():
     """@brief Verifie rapport sur quitte non classifies possible va dans a verifier.
@@ -597,7 +600,7 @@ def test_rapport_sur_quitte_non_classifies_possible_va_dans_a_verifier():
     rapport = generer_rapport(results, 'test.txt', len(refs), refs)
     assert 'À vérifier (rattachement possible)' in rapport
     section = rapport.split('À vérifier')[1]
-    assert 'D2' in section
+    assert 'SW1' in section
     if 'non classifiés' in rapport:
         section_nc = rapport.split('non classifiés')[1].split('À vérifier')[0]
         assert 'D1' not in section_nc

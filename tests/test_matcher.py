@@ -25,6 +25,23 @@ def test_matcher_finds_rc_lowpass():
     assert 'Filtre RC passe-bas' not in types
 
 
+def test_diode_isolee_hors_rail_devient_non_classifiee():
+    """@brief Une diode entre deux nœuds signal (ni rail ni bord d'un pont)
+    ne correspond a AUCUN des 5 patterns diode (tous exigent un rail/GND ou
+    un cycle a 4). Contrairement a R/L/C (-> Impedance Z), elle disparaissait
+    en silence, sans meme un statut "non classifie" — bug reel trouve sur
+    de vraies cartes (D1-D4 de PG 3.xml). Meme philosophie que les
+    impedances : jamais de diode non representee du tout."""
+    comps = [
+        Component('D1', 'D', {'A': 'NET_A', 'K': 'NET_B'}),
+    ]
+    results = match_patterns(build_graph(comps))
+    types = [r['circuit_type'] for r in results]
+    assert 'Diode non classifiée' in types
+    d1 = next(r for r in results if r['circuit_type'] == 'Diode non classifiée')
+    assert d1['components'] == ['D1']
+
+
 def test_matcher_returns_circuit_type_field():
     """@brief Verifie matcher returns circuit type field.
 

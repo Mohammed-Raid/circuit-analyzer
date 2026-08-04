@@ -92,6 +92,9 @@ DESCRIPTIONS_CIRCUITS = {
     "Détecteur de crête":
         "Mémorise la tension maximale du signal. Diode en série + "
         "condensateur vers GND.",
+    "Diode non classifiée":
+        "Diode isolée entre deux nœuds signal : aucun pattern reconnu "
+        "(ni rail, ni cycle à 4 diodes).",
     "Impédance Z":
         "Dipôle passif équivalent : R/L/C combinés en série puis en "
         "parallèle (la composition détaille les éléments d'origine).",

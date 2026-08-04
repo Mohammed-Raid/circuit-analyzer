@@ -1382,6 +1382,34 @@ def detecter_impedances(graphe):
     return resultats
 
 
+def detecter_diodes_non_classifiees(graphe):
+    """
+    @brief Émet chaque diode non capturée par un autre pattern.
+
+    @param graphe Graphe RÉDUIT (sortie de impedance.reduire()).
+    @return list[dict] Un match par diode isolée restante.
+
+    Contrairement à R/L/C (-> Impédance Z), les diodes n'avaient AUCUN
+    filet de sécurité : une diode entre deux nœuds signal, ni sur un rail
+    ni dans un cycle à 4 (aucun des 5 patterns diode ne s'applique alors),
+    disparaissait du rapport sans même un statut « non classifié ».
+
+    Placé en dernier dans la chaîne de détection (_DETECTEURS_SIMPLES,
+    après detecter_impedances) : l'anti-vol d'analyser() saute les diodes
+    déjà prises par un montage (pont, roue libre, ESD, redresseur...).
+    """
+    resultats = []
+    for u, v, data in graphe.edges(data=True):
+        if data.get('type') != 'D':
+            continue
+        resultats.append({
+            'circuit_type': 'Diode non classifiée',
+            'components': [data['ref']],
+            'nodes': [u, v],
+        })
+    return resultats
+
+
 # =============================================================================
 # FONCTION PRINCIPALE
 # =============================================================================
@@ -1436,6 +1464,7 @@ _CATEGORIES: dict[str, str] = {
     'Redresseur simple alternance':        'alimentation',
     'Détecteur de crête':                  'traitement_signal',
     'Impédance Z':                         'impedance',
+    'Diode non classifiée':                'protection',
 }
 
 
@@ -1568,6 +1597,10 @@ def _enrichir(match: dict, graphe) -> dict:
         confidence = 0.75
         reasons.append("Diode en série + condensateur vers GND")
 
+    elif ct == 'Diode non classifiée':
+        confidence = 0.50
+        reasons.append("Diode isolée, aucune topologie reconnue (ni rail, ni cycle à 4)")
+
     elif ct == 'Impédance Z':
         confidence = 0.80
         compo = match.get('composition', '')
@@ -1632,6 +1665,7 @@ _DETECTEURS_COMPLEXES = [
 # il n'existe plus de détecteur passif nommé (filtre RC, pont diviseur, etc.).
 _DETECTEURS_SIMPLES = [
     detecter_impedances,
+    detecter_diodes_non_classifiees,
 ]
 
 # Noms de tous les circuits intégrés, dans l'ordre d'affichage de l'interface
@@ -1649,6 +1683,7 @@ NOMS_CIRCUITS = [
     "Inverseur (CMOS)", "Porte NAND (CMOS)", "Porte NOR (CMOS)",
     "Pont redresseur (Graetz)", "Diode de roue libre",
     "Diode de protection ESD", "Redresseur simple alternance", "Détecteur de crête",
+    "Diode non classifiée",
     "Impédance Z",
 ]
 
