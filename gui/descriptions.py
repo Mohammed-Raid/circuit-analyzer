@@ -31,10 +31,10 @@ DESCRIPTIONS_CIRCUITS = {
         "de contre-réaction sur IN-.",
     "Ampli inverseur + boost HF (AOP)":
         "Variante inverseuse avec Zin = R//C. Le gain reste fini en continu "
-        "et augmente aux hautes frÃ©quences.",
+        "et augmente aux hautes fréquences.",
     "Ampli inverseur + action intégrale (AOP)":
-        "Variante inverseuse avec Zf = R+C en sÃ©rie. Le comportement ajoute "
-        "une action intÃ©grale aux basses frÃ©quences.",
+        "Variante inverseuse avec Zf = R+C en série. Le comportement ajoute "
+        "une action intégrale aux basses fréquences.",
     "Suiveur de tension (AOP)":
         "Recopie la tension d'entrée (gain 1) en isolant la source. "
         "Sortie directement reliée à IN-.",
