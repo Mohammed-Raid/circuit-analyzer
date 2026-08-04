@@ -6,8 +6,10 @@ depuis son [MODIF 2026-07-24] (Form1.cs:6104). NE PAS confondre avec
 `bin/Debug/Lib/` : fonds MORT, symboles a ~997x201, sans Name ni typ, dont 2
 noms seulement sur les 36 employes par ses vraies cartes.
 
-Aucune dependance au reste du projet : c'est `xml.py` qui importe ce module,
-l'inverse ferait un cycle.
+Aucune dependance AU CHARGEMENT du reste du projet : c'est `xml.py` qui
+importe ce module, l'inverse ferait un cycle. `chemin_par_defaut()` importe
+`eretro_lib` en LOCAL (dans la fonction) pour le dossier partage GUI, sans
+alourdir ce module pour la CLI qui n'en a pas besoin.
 """
 import glob
 import logging
@@ -24,13 +26,25 @@ DOSSIER_RELATIF = os.path.join("ERetroDesign", "ERetroDesign", "bin", "Debug",
 def chemin_par_defaut():
     """@brief Dossier de bibliotheque, ou None s'il est introuvable.
 
-    `ERETRO_LIB` l'emporte : le dossier du collegue n'est pas toujours dans le
-    depot, et un chemin en dur serait le meme piege que ses `<ImageTop>`
-    absolus, qui cassent des qu'un fichier bouge.
+    Ordre de priorite :
+      1. `ERETRO_LIB` (surcharge developpeur/CI, explicite pour ce process) ;
+      2. le dossier memorise via l'onglet Composants (`eretro_lib.
+         dossier_partage`, persistant dans config/eretro_biblio.json) —
+         reglable a la souris, sans variable d'environnement, et modifiable
+         a tout moment ;
+      3. le chemin relatif au depot, si present.
+
+    Import de `eretro_lib` fait EN LOCAL (pas en tete de module) : ce module
+    est charge par `xml.py`, lui-meme utilise par la CLI, et ne doit pas
+    trainer les dependances d'`eretro_lib` (cote GUI) a chaque lancement.
     """
     depuis_env = os.environ.get("ERETRO_LIB")
     if depuis_env:
         return depuis_env
+    from circuit_analyzer.eretro_lib import dossier_partage
+    depuis_partage = dossier_partage()
+    if depuis_partage:
+        return depuis_partage
     racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     candidat = os.path.join(racine, DOSSIER_RELATIF)
     return candidat if os.path.isdir(candidat) else None

@@ -87,6 +87,39 @@ def test_le_chemin_vient_de_la_variable_d_environnement(tmp_path, monkeypatch):
     assert eretro_symboles.chemin_par_defaut() == str(tmp_path)
 
 
+def test_le_chemin_vient_du_dossier_partage_gui_si_pas_de_variable_env(
+        tmp_path, monkeypatch):
+    """Bug reel : sans ERETRO_LIB, seul un chemin relatif code en dur etait
+    tente — l'utilisateur devait poser une variable d'environnement pour
+    pointer vers la bibliotheque du collegue. Le dossier deja choisi via
+    l'onglet Composants (persistant dans config/eretro_biblio.json, via
+    eretro_lib.dossier_partage) doit desormais servir de secours
+    automatique et reconfigurable sans variable d'environnement."""
+    from circuit_analyzer import eretro_lib
+    monkeypatch.delenv("ERETRO_LIB", raising=False)
+    monkeypatch.setattr(eretro_lib, "_chemin_config", lambda: tmp_path / "cfg.json")
+    dossier_lib = tmp_path / "biblio_partagee"
+    dossier_lib.mkdir()
+    eretro_lib.definir_dossier_partage(str(dossier_lib))
+    assert eretro_symboles.chemin_par_defaut() == str(dossier_lib)
+
+
+def test_la_variable_d_environnement_l_emporte_sur_le_dossier_partage_gui(
+        tmp_path, monkeypatch):
+    """La variable d'environnement reste la surcharge « développeur/CI » :
+    un dossier partagé déjà mémorisé sur la machine ne doit jamais la
+    court-circuiter silencieusement."""
+    from circuit_analyzer import eretro_lib
+    monkeypatch.setattr(eretro_lib, "_chemin_config", lambda: tmp_path / "cfg.json")
+    dossier_lib = tmp_path / "biblio_partagee"
+    dossier_lib.mkdir()
+    eretro_lib.definir_dossier_partage(str(dossier_lib))
+    dossier_env = tmp_path / "biblio_env"
+    dossier_env.mkdir()
+    monkeypatch.setenv("ERETRO_LIB", str(dossier_env))
+    assert eretro_symboles.chemin_par_defaut() == str(dossier_env)
+
+
 @pytest.mark.skipif(not os.path.isdir(_DOSSIER_REEL), reason="ERetroDesign absent")
 def test_sa_vraie_bibliotheque_se_charge():
     """Garde-fou anti-test-creux : les tests ci-dessus tournent sur des
