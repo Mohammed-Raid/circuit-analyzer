@@ -332,11 +332,11 @@ class TabDraw:
         )
 
     def _pattern_created(self):
-        """@brief Après création d'un pattern : rafraîchit Circuits et confirme."""
+        """@brief Après création d'un pattern : notifie l'appelant et confirme."""
         if self._on_pattern_created:
             self._on_pattern_created()
         messagebox.showinfo(
             "Pattern créé",
-            "Le pattern a été enregistré et ajouté à l'onglet « Circuits ».\n"
+            "Le pattern a été enregistré.\n"
             "Il sera reconnu à la prochaine analyse.",
             parent=self.frame)

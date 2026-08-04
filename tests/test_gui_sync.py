@@ -4,46 +4,13 @@
 """
 
 """
-test_gui_sync.py — Synchronisation entre les onglets Composants et Circuits.
-
-Les deux onglets partagent la bibliothèque component_library.json. Quand on
-crée, modifie ou supprime un composant dans l'onglet Composants, l'onglet
-Circuits (qui propose ces composants dans « Composants requis ») doit se mettre
-à jour. Test d'intégration léger sur un vrai root Tk (sauté sans affichage).
+test_gui_sync.py — Résumé exécutif et aperçu de groupes de l'onglet Analyser.
 """
-import pytest
-
 from gui.tab_analyze import (
     _build_executive_summary,
     _build_group_preview,
     _find_demo_file,
 )
-
-
-@pytest.fixture
-def ctk_root():
-    """@brief Helper de test pour ctk root."""
-    ctk = pytest.importorskip("customtkinter")
-    import tkinter as tk
-    try:
-        root = ctk.CTk()
-    except tk.TclError:
-        pytest.skip("pas d'affichage Tk disponible")
-    root.withdraw()
-    yield root
-    root.destroy()
-
-
-def _bibliotheque_temporaire(monkeypatch, tmp_path):
-    """@brief Helper de test pour bibliotheque temporaire."""
-    """Redirige la bibliothèque vers un fichier temporaire pour les deux onglets."""
-    chemin = tmp_path / "component_library.json"
-    chemin.write_text("{}", encoding="utf-8")
-    from circuit_analyzer import composant
-    from gui import tab_components
-    monkeypatch.setattr(composant, "chemin_bibliotheque", lambda: chemin)
-    monkeypatch.setattr(tab_components, "chemin_bibliotheque", lambda: chemin)
-    return chemin
 
 
 def test_executive_summary_highlights_detected_circuits():
@@ -136,40 +103,3 @@ def test_build_group_preview_keeps_circuit_and_satellite_refs():
     assert preview[0]["category"] == "TRANSISTORS & COMMUTATION"
     assert preview[0]["confidence"] == "92%"
     assert preview[1]["confidence"] == "75%"
-
-
-def test_suppression_composant_retiree_de_l_onglet_circuits(
-        ctk_root, monkeypatch, tmp_path):
-    """@brief Verifie suppression composant retiree de l onglet circuits.
-
-    @return None
-    """
-    _bibliotheque_temporaire(monkeypatch, tmp_path)
-    from tkinter import messagebox
-
-    from gui.tab_circuits import TabCircuits
-    from gui.tab_components import TabComponents
-
-    # Pas de boîtes de dialogue bloquantes pendant le test
-    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: True)
-    monkeypatch.setattr(messagebox, "showinfo", lambda *a, **k: None)
-    monkeypatch.setattr(messagebox, "showerror", lambda *a, **k: None)
-
-    tab_c = TabCircuits(ctk_root)
-    tab_p = TabComponents(ctk_root, on_save=tab_c.refresh_component_list)
-
-    # 1) Créer un composant personnalisé 'X'
-    tab_p._prefix_var.set("X")
-    tab_p._name_var.set("Test")
-    # Le brochage est désormais une liste ordonnée (nom, côté, décalage).
-    tab_p._brochage = [("1", "L", 0)]
-    tab_p._sauvegarder()
-    assert "X" in tab_c._comp_vars, \
-        "le composant créé devrait apparaître dans l'onglet Circuits"
-
-    # 2) Le supprimer (il est en mode édition juste après la sauvegarde)
-    tab_p._supprimer()
-
-    # 3) Il ne doit plus être proposé dans l'onglet Circuits
-    assert "X" not in tab_c._comp_vars, \
-        "le composant supprimé ne doit plus apparaître dans l'onglet Circuits"

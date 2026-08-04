@@ -1,7 +1,6 @@
 """
 @file test_palette_et_doublon.py
-@brief Tests des composants étendus, de la synchronisation palette éditeur, et du
-       contrôle de doublon à la création d'un pattern.
+@brief Tests des composants étendus et de la synchronisation palette éditeur.
 """
 import pytest
 
@@ -111,36 +110,3 @@ def test_composant_perso_apparait_et_disparait_de_la_palette(
     tab_p._supprimer()
     assert "IC" not in editor._palette_btns
     assert not any(c.comp_type == "IC" for c in editor._comps.values())
-
-
-# ── Partie 3 : doublon de pattern ─────────────────────────────────────────────
-
-def test_doublon_pattern_refuse(ctk_root, monkeypatch, tmp_path):
-    """Sauvegarder un pattern dont le nom existe déjà n'ajoute rien."""
-    chemin = tmp_path / "custom_circuits.json"
-    from custom_circuits import loader
-    monkeypatch.setattr(loader, "chemin_custom_circuits", lambda: chemin)
-
-    from tkinter import messagebox
-
-    from gui.tab_circuits import TabCircuits
-
-    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: True)
-    monkeypatch.setattr(messagebox, "showinfo", lambda *a, **k: None)
-    monkeypatch.setattr(messagebox, "showerror", lambda *a, **k: None)
-
-    tab = TabCircuits(ctk_root)
-
-    # 1) Premier enregistrement
-    tab._afficher_nouveau()
-    tab._name_var.set("Mon montage")
-    list(tab._comp_vars.values())[0].set(True)
-    tab._sauvegarder()
-    assert len(tab._custom) == 1
-
-    # 2) Même nom → refusé, rien d'ajouté
-    tab._afficher_nouveau()
-    tab._name_var.set("Mon montage")
-    list(tab._comp_vars.values())[0].set(True)
-    tab._sauvegarder()
-    assert len(tab._custom) == 1, "un doublon ne doit pas être ajouté"

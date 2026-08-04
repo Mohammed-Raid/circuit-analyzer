@@ -761,7 +761,7 @@ class TabAnalyze:
         if self._on_pattern_created_cb:
             self._on_pattern_created_cb()
         messagebox.showinfo("Pattern créé ✓",
-            "Le pattern a été sauvegardé et ajouté à l'onglet « Circuits ».\n"
+            "Le pattern a été sauvegardé.\n"
             "Il sera actif à la prochaine analyse.")
 
     def _ouvrir_wizard_pattern(self):

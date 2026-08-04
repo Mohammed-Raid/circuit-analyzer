@@ -57,13 +57,12 @@ python -m pytest -q
 python app.py
 ```
 
-La fenêtre s'ouvre avec 4 onglets :
+La fenêtre s'ouvre avec 3 onglets :
 
 | Onglet | Rôle |
 |--------|------|
 | **Analyser** | Charger un fichier netlist (`.txt`) ou schéma (`.xml`) et lancer l'analyse |
 | **Schéma** | Dessiner un circuit à la souris (palette, câblage) puis l'analyser directement |
-| **Circuits** | Voir les circuits reconnus, ajouter des circuits personnalisés |
 | **Composants** | Ajouter de nouveaux types de composants à la bibliothèque |
 
 **Procédure d'analyse :**
@@ -359,12 +358,16 @@ Les composants avec un nom inconnu sont conservés sous le type `X` (visibles da
 
 ## Ajouter un circuit personnalisé (via l'interface)
 
-1. Ouvrir l'onglet **Circuits**
-2. Cliquer **+ Nouveau**
-3. Renseigner le nom du circuit
-4. Cocher les types de composants requis
-5. Cocher les conditions topologiques applicables
-6. Cliquer **Sauvegarder**
+Le point d'entrée est l'assistant **PatternWizard** (4 étapes), accessible
+depuis deux endroits :
+
+- Onglet **Analyser** : après une analyse laissant des composants non
+  classifiés, cliquer **Suggérer un pattern**.
+- Onglet **Schéma** : après avoir dessiné un circuit, cliquer
+  **Enregistrer comme pattern**.
+
+L'assistant guide ensuite : nom du circuit, composants requis, conditions
+topologiques, puis un aperçu schématique du pattern avant sauvegarde.
 
 ---
 
@@ -440,12 +443,11 @@ config/
 └── net_aliases.json       ← alias GND / alimentation / terre de protection
 
 gui/
-├── app_window.py          ← fenêtre principale CustomTkinter (4 onglets)
+├── app_window.py          ← fenêtre principale CustomTkinter (3 onglets)
 ├── tab_analyze.py         ← onglet Analyser (KPI, cartes, exports)
 ├── tab_draw.py            ← onglet Schéma (toolbar de l'éditeur)
 ├── schematic_editor.py    ← éditeur de schéma tkinter (palette, câblage)
 ├── schematic_io.py        ← sérialisation éditeur ↔ netlist
-├── tab_circuits.py        ← onglet Circuits
 ├── tab_components.py      ← onglet Composants
 ├── pattern_wizard.py      ← wizard de création de pattern personnalisé
 ├── circuit_viewer.py      ← rendu schemdraw des circuits et îlots
