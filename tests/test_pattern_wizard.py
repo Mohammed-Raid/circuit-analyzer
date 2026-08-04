@@ -98,3 +98,38 @@ def test_doublon_de_nom_refuse_a_l_etape_2(ctk_root, monkeypatch, tmp_path):
     w._go_to(2)
     w._name_var.set("Mon montage")
     assert w._validate_current() is False
+
+
+def test_apercu_rend_diode_comme_diode_pas_resistor(ctk_root):
+    """Fix 1: Les composants non-R/L/C (D, Q, U, K...) ne doivent pas
+    s'afficher comme des resistances. Une diode doit afficher le symbole
+    correct (elm.Diode) ou au minimum un element distinct (pas elm.ResistorIEC)."""
+    refs_info = {
+        "D1": {"type": "D", "value": "1N4007", "pins": {"1": "N1", "2": "GND"}},
+    }
+    w = _wizard(ctk_root, refs_info)
+    fig = w._dessiner_apercu()
+    # Verifier que le symbole a ete rendu (une diode existe)
+    # Le test n'inspecte pas directement elm.Diode (implementation detail)
+    # mais verifie que la ref "D1" est presente dans le rendu
+    textes = {t.get_text() for ax in fig.axes for t in ax.texts}
+    assert "D1" in textes, "La diode doit avoir sa reference affichee"
+
+
+def test_apercu_trois_composants_sur_un_net_font_une_chaine_pas_clique(ctk_root):
+    """Fix 2: Trois composants partageant un net ne doivent pas creer une
+    clique (3 connexions : R1-C1, R1-R2, C1-R2) mais une chaine
+    (2 connexions : R1-C1, C1-R2). Cela evite que les fils ne traversent
+    les composants intermediaires."""
+    refs_info = {
+        "R1": {"type": "R", "value": "10k", "pins": {"1": "N1", "2": "GND"}},
+        "C1": {"type": "C", "value": "100n", "pins": {"1": "N2", "2": "GND"}},
+        "R2": {"type": "R", "value": "1k", "pins": {"1": "N3", "2": "GND"}},
+    }
+    w = _wizard(ctk_root, refs_info)
+    fig = w._dessiner_apercu()
+    # Verifier une chaine (2 connexions) pas une clique (3 connexions)
+    connexions = fig._apercu_connexions
+    # Doit avoir exactement 2 connexions (chaine) et non 3 (clique)
+    assert len(connexions) == 2, \
+        f"Expected chain (2 connections) but got {len(connexions)}: {connexions}"

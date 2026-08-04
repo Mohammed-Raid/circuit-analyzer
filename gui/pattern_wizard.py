@@ -698,18 +698,33 @@ class PatternWizard(ctk.CTkToplevel):
                 d.add(el)
                 bornes[ref] = (x0, x1)
 
-            for i, ref_a in enumerate(refs):
-                nets_a = set((self._comp_info.get(ref_a, {})
-                             .get("pins") or {}).values())
-                for ref_b in refs[i + 1:]:
-                    nets_b = set((self._comp_info.get(ref_b, {})
-                                 .get("pins") or {}).values())
-                    if nets_a & nets_b:
-                        _xa0, xa1 = bornes[ref_a]
-                        xb0, _xb1 = bornes[ref_b]
-                        d.add(elm.Line().at((xa1, 0)).to((xb0, 0))
-                              .color("#64748b"))
-                        fig._apercu_connexions.append((ref_a, ref_b))
+            # Câblage par net : chaîne (non clique) pour éviter que les fils
+            # ne traversent les composants intermédiaires.
+            # Pour chaque net unique, connecter uniquement les composants
+            # CONSÉCUTIFS (dans l'ordre de refs) qui le partagent.
+            nets_by_ref = {}
+            for ref in refs:
+                nets_by_ref[ref] = set((self._comp_info.get(ref, {})
+                                       .get("pins") or {}).values())
+
+            # Recenser tous les nets
+            all_nets = set()
+            for nets_set in nets_by_ref.values():
+                all_nets.update(nets_set)
+
+            # Pour chaque net, connecter les composants consécutifs qui le partagent
+            for net in all_nets:
+                components_on_net = [ref for ref in refs
+                                    if net in nets_by_ref[ref]]
+                # Connecter chaque composant au suivant (dans l'ordre)
+                for j in range(len(components_on_net) - 1):
+                    ref_a = components_on_net[j]
+                    ref_b = components_on_net[j + 1]
+                    _xa0, xa1 = bornes[ref_a]
+                    xb0, _xb1 = bornes[ref_b]
+                    d.add(elm.Line().at((xa1, 0)).to((xb0, 0))
+                          .color("#64748b"))
+                    fig._apercu_connexions.append((ref_a, ref_b))
         try:
             fig.tight_layout(pad=0.4)
         except Exception:
