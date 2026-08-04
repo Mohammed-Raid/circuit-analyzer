@@ -3,12 +3,13 @@
 @brief Tests automatises pour test_integration.
 """
 
-import subprocess, sys, os, tempfile
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 from circuit_analyzer.composant import Composant, construire_graphe
-from circuit_analyzer.detecteur import detecter_impedances, analyser
-
+from circuit_analyzer.detecteur import analyser, detecter_impedances
 
 SAMPLE_NETLIST = """\
 # Filtre RC passe-bas

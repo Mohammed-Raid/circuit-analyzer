@@ -16,7 +16,9 @@ import re
 import networkx as nx
 
 from circuit_analyzer.patterns.base import (
-    is_ground_net, is_power_net, is_protective_earth_net,
+    is_ground_net,
+    is_power_net,
+    is_protective_earth_net,
 )
 
 # Seuls ces types fusionnent en impédance.

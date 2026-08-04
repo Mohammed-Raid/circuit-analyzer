@@ -3,13 +3,19 @@
 @brief Tests automatises pour test_custom_circuits.
 """
 
-import json, os, tempfile, pytest
-from circuit_analyzer.parser import Component
+import json
+import os
+import tempfile
+
 from circuit_analyzer.graph_builder import build_graph
+from circuit_analyzer.parser import Component
 from custom_circuits.loader import (
-    load_custom_circuits, save_custom_circuits,
-    CustomCircuitPattern, get_custom_patterns,
-    CONDITION_LABELS, CONDITION_DESCRIPTIONS,
+    CONDITION_DESCRIPTIONS,
+    CONDITION_LABELS,
+    CustomCircuitPattern,
+    get_custom_patterns,
+    load_custom_circuits,
+    save_custom_circuits,
 )
 
 

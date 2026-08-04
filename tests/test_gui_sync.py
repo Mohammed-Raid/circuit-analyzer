@@ -39,8 +39,8 @@ def _bibliotheque_temporaire(monkeypatch, tmp_path):
     """Redirige la bibliothèque vers un fichier temporaire pour les deux onglets."""
     chemin = tmp_path / "component_library.json"
     chemin.write_text("{}", encoding="utf-8")
-    import circuit_analyzer.composant as composant
-    import gui.tab_components as tab_components
+    from circuit_analyzer import composant
+    from gui import tab_components
     monkeypatch.setattr(composant, "chemin_bibliotheque", lambda: chemin)
     monkeypatch.setattr(tab_components, "chemin_bibliotheque", lambda: chemin)
     return chemin
@@ -145,9 +145,10 @@ def test_suppression_composant_retiree_de_l_onglet_circuits(
     @return None
     """
     _bibliotheque_temporaire(monkeypatch, tmp_path)
-    from gui.tab_components import TabComponents
-    from gui.tab_circuits import TabCircuits
     from tkinter import messagebox
+
+    from gui.tab_circuits import TabCircuits
+    from gui.tab_components import TabComponents
 
     # Pas de boîtes de dialogue bloquantes pendant le test
     monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: True)

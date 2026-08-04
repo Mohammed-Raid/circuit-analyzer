@@ -4,7 +4,7 @@ matcher ne doit rien coûter aux corpus analogiques (garde zéro-M) et rester
 linéaire sur un circuit de 500 portes (protège l'acquis 5000 comps ≈ 3,3 s)."""
 import time
 
-from circuit_analyzer import detecteur, logique
+from circuit_analyzer import logique
 from circuit_analyzer.composant import Composant, construire_graphe
 
 

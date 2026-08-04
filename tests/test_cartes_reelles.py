@@ -1,5 +1,9 @@
-import os, collections, tempfile
+import collections
+import os
+import tempfile
+
 import pytest
+
 from circuit_analyzer.xml import lire_xml
 
 _DOSSIER = "CARTE POUR TESTER (VRAI TEST)"
@@ -71,8 +75,9 @@ def test_cartes_reelles_ilots_sans_chevauchement_de_labels():
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from circuit_analyzer.composant import construire_graphe
+
     from circuit_analyzer import detecteur
+    from circuit_analyzer.composant import construire_graphe
     from tools import render_ilots_v2 as R
 
     residuels = []

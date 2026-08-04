@@ -1,9 +1,9 @@
 """@file fonts.py
 @brief Enregistrement privé (sans installation système) de la police Inter.
 Windows : AddFontResourceEx(FR_PRIVATE). Fallback Segoe UI si absent/échec."""
+import ctypes
 import os
 import sys
-import ctypes
 
 FONT_FAMILY = "Segoe UI"
 

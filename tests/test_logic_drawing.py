@@ -2,6 +2,7 @@
 @brief Drawers des portes CMOS (gui/logic_schematic.py) : ancres, registre
 de positions (contrat puces), expression en en-tête."""
 import matplotlib
+
 matplotlib.use("Agg")
 import pytest
 import schemdraw

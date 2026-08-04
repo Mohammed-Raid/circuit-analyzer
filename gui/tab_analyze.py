@@ -4,27 +4,48 @@
 """
 import logging
 import tkinter as tk
-import customtkinter as ctk
 from pathlib import Path
 from tkinter import filedialog, messagebox
+
+import customtkinter as ctk
+
+
 # Le cœur d'analyse tire networkx (~1 s). Importé à la demande (chargement /
 # analyse d'un circuit) via _coeur_analyse(), pas au démarrage : la fenêtre
 # s'affiche sans attendre networkx.
 def _coeur_analyse():
     """@brief Importe et renvoie les fonctions du cœur d'analyse (lazy, networkx)."""
-    from circuit_analyzer.composant import lire_netlist as parse_file, construire_graphe as build_graph
-    from circuit_analyzer.xml import lire_xml as parse_xml, generer_xml as components_to_xml
+    from circuit_analyzer.composant import construire_graphe as build_graph
+    from circuit_analyzer.composant import lire_netlist as parse_file
     from circuit_analyzer.detecteur import analyser as match_patterns
-    from circuit_analyzer.rapport import generate
     from circuit_analyzer.drc import verifier_drc
+    from circuit_analyzer.rapport import generate
+    from circuit_analyzer.xml import generer_xml as components_to_xml
+    from circuit_analyzer.xml import lire_xml as parse_xml
     return (parse_file, build_graph, parse_xml, components_to_xml,
             match_patterns, generate, verifier_drc)
 # gui.circuit_viewer importe matplotlib + schemdraw (~2 s). On le charge à la
 # demande (ouverture d'un schéma), pas au démarrage : la fenêtre s'affiche vite.
 
-from gui.theme import (BG, CARD, CARD2, BORDER, BORDER_SOFT, TEXT, MUTED, BLUE,
-                       TEXT_MUTED, TEXT_DIM, SUCCESS, CYAN, ERROR, WARN, SP, R)
 from gui import ui_kit
+from gui.theme import (
+    BG,
+    BLUE,
+    BORDER,
+    BORDER_SOFT,
+    CARD,
+    CARD2,
+    CYAN,
+    ERROR,
+    MUTED,
+    SP,
+    SUCCESS,
+    TEXT,
+    TEXT_DIM,
+    TEXT_MUTED,
+    WARN,
+    R,
+)
 
 _log = logging.getLogger(__name__)
 

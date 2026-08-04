@@ -10,23 +10,24 @@ dans _DRAWERS. Les fonctions _draw_* reçoivent toutes (d, result, ci) :
 """
 import logging
 import math
+import tkinter as tk
 
 import customtkinter as ctk
-import tkinter as tk
 import matplotlib
+
 matplotlib.use("TkAgg")
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.patches as mpatches
 import schemdraw
 import schemdraw.elements as elm
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+
 from circuit_analyzer.patterns.base import (
     is_ground_net,
     is_power_net,
     is_protective_earth_net,
 )
-from gui import theme
-from gui import ui_kit
+from gui import theme, ui_kit
 from gui.schema_labels import ajuster_labels, obtenir_renderer
 from gui.theme import BLUE_HOVER
 
@@ -714,7 +715,7 @@ def _reseau_derive_ilot(ilot, graph):
     @param graph Graphe original (porte graph['components']).
     @return dict {top, prise, serie, shunt} ou None si la forme ne s'applique pas.
     """
-    from circuit_analyzer.ilots import _nets_derives, _est_gnd, _PASSIFS
+    from circuit_analyzer.ilots import _PASSIFS, _est_gnd, _nets_derives
     from circuit_analyzer.patterns.base import is_power_net
 
     raw = getattr(graph, "graph", {}).get("components", {}) or {}

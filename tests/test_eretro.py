@@ -10,9 +10,8 @@ import tempfile
 
 import pytest
 
-from circuit_analyzer.eretro import normaliser_nom, mapper_nom
-from circuit_analyzer.xml import lire_xml, _analyser_ref_packee
-
+from circuit_analyzer.eretro import mapper_nom, normaliser_nom
+from circuit_analyzer.xml import _analyser_ref_packee, lire_xml
 
 # ── Helpers fixtures ──────────────────────────────────────────────────────────
 
@@ -65,7 +64,7 @@ def _fil(cfirst, clast):
 def _boardsch(items, fils, ccomps=''):
     """@brief Document BoardSCH complet à partir des fragments."""
     return (f'{ENTETE}\n<CmpntL>\n' + '\n'.join(items) + '\n</CmpntL>\n'
-            f'<lineL>\n' + '\n'.join(fils) + '\n</lineL>\n'
+            '<lineL>\n' + '\n'.join(fils) + '\n</lineL>\n'
             f'<CCmpntL>{ccomps}</CCmpntL>\n</BoardSCH>')
 
 
@@ -238,10 +237,10 @@ def _ccomp(name, pins_ext=(), items_int=(), fils_int=()):
     return (f'  <CComp>\n'
             f'    <Name>{name}</Name><value />\n'
             f'    <datapin>\n' + '\n'.join(pins_ext) + '\n    </datapin>\n'
-            f'    <id>0</id>\n'
-            f'    <DItemL>\n' + '\n'.join(items_int) + '\n    </DItemL>\n'
-            f'    <CCLine>\n' + '\n'.join(fils_int) + '\n    </CCLine>\n'
-            f'  </CComp>')
+            '    <id>0</id>\n'
+            '    <DItemL>\n' + '\n'.join(items_int) + '\n    </DItemL>\n'
+            '    <CCLine>\n' + '\n'.join(fils_int) + '\n    </CCLine>\n'
+            '  </CComp>')
 
 
 def test_compose_aplati_en_items_internes():

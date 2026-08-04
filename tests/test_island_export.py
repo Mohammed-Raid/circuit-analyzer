@@ -15,10 +15,10 @@ import pytest
 PIL = pytest.importorskip("PIL.Image")
 from PIL import Image
 
+import gui.circuit_viewer as cv
 from circuit_analyzer.composant import construire_graphe
 from circuit_analyzer.detecteur import analyser
 from circuit_analyzer.xml import lire_xml
-import gui.circuit_viewer as cv
 
 _MARGE_TOLERANCE_PX = 8
 _FOND = (0xFA, 0xFA, 0xFA)   # SCH_BG "#fafafa"

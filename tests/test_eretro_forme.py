@@ -1,7 +1,9 @@
-import os
 import glob
+import os
 import xml.etree.ElementTree as ET
+
 import pytest
+
 from circuit_analyzer import eretro
 
 

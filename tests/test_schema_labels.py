@@ -4,6 +4,7 @@
 condition explicite du design), résolution effective sur collision réelle,
 et non-régression des symboles (seuls les Text bougent)."""
 import matplotlib
+
 matplotlib.use("Agg")
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure

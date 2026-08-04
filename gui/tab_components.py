@@ -3,24 +3,31 @@
 @brief Onglet « Composants » : consultation des types intégrés et édition des types personnalisés.
 """
 import json
-import xml.etree.ElementTree as ET
 import tkinter as tk
+import xml.etree.ElementTree as ET
+from tkinter import filedialog, messagebox
+
 import customtkinter as ctk
-from tkinter import messagebox, filedialog
 
 from circuit_analyzer.composant import (
-    TYPES_COMPOSANTS as COMPONENT_TYPES, chemin_bibliotheque,
+    TYPES_COMPOSANTS as COMPONENT_TYPES,
+)
+from circuit_analyzer.composant import (
+    chemin_bibliotheque,
 )
 from circuit_analyzer.eretro_lib import (
-    composant_vers_symbole_xml, composants_depuis_xml,
-    definir_dossier_partage, dossier_partage, ecrire_dans_dossier,
+    composant_vers_symbole_xml,
+    composants_depuis_xml,
+    definir_dossier_partage,
+    dossier_partage,
+    ecrire_dans_dossier,
     ecrire_formes_dans_dossier,
 )
 from circuit_analyzer.xml import formes_orphelines
-from gui.pin_canvas import GRILLE, PinCanvas
-from gui.theme import BG, CARD, CARD2, TEXT, TEXT_MUTED, BLUE, ERROR
 from gui import ui_kit
-from gui.widgets import ListeSectionnee, BandeauEtat, ligne_aide, lier_molette
+from gui.pin_canvas import GRILLE, PinCanvas
+from gui.theme import BG, BLUE, CARD, ERROR, TEXT, TEXT_MUTED
+from gui.widgets import BandeauEtat, ListeSectionnee, lier_molette, ligne_aide
 
 
 def _amorcer(broches: list) -> list:

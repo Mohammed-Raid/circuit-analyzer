@@ -156,9 +156,10 @@ def test_z_reseau_compact_trop_dense_dessine_des_symboles_reels():
     """Un reseau composite trop compresse dans un montage principal reste en
     vue detaillee R/L/C : il est decale, mais avec les vrais symboles, pas une
     simple ligne annotee."""
+    import schemdraw
     from matplotlib.figure import Figure
     from schemdraw.elements.lines import Label
-    import schemdraw
+
     import gui.circuit_viewer as cv
 
     fig = Figure(figsize=(4, 3))
@@ -253,8 +254,9 @@ def test_z_reseau_decale_place_les_labels_hors_du_rail():
     doivent jamais poser leur étiquette dans l'entrefer symbole<->rail (trop
     étroit pour un texte lisible) : chaque label tombe au-delà du rail le
     plus proche de sa branche."""
-    from matplotlib.figure import Figure
     import schemdraw
+    from matplotlib.figure import Figure
+
     import gui.circuit_viewer as cv
 
     fig = Figure(figsize=(4, 3))
@@ -311,8 +313,9 @@ def test_fil_canal_avec_couplage_reseau_large_reste_dans_le_segment_alloue():
     Reproduit les coordonnées réelles de ce circuit (cf.
     tools/render_ilots_v2.py + circuits_industriels/ilot_reel_fanout_filtres_rlc.xml).
     """
-    from matplotlib.figure import Figure
     import schemdraw
+    from matplotlib.figure import Figure
+
     import gui.circuit_viewer as cv
 
     fig = Figure(figsize=(6, 4))

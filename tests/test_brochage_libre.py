@@ -6,7 +6,7 @@ import pytest
 
 ctk = pytest.importorskip("customtkinter")
 
-from gui.schematic_editor import SchematicEditor        # noqa: E402
+from gui.schematic_editor import SchematicEditor
 
 
 @pytest.fixture

@@ -13,7 +13,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from circuit_analyzer import impedance
 from gui import impedance_schematic
-from gui.theme import BG, CARD, CARD2, BORDER, TEXT, MUTED, BLUE
+from gui.theme import BG, BLUE, CARD, CARD2, MUTED, TEXT
 
 SCH_BG = "#fafafa"   # fond clair standard de schema (idem circuit_viewer)
 

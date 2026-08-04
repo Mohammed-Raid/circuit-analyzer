@@ -5,24 +5,24 @@
 import json
 import os
 import tempfile
-from typing import Callable, Optional
+from collections.abc import Callable
+from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
-from tkinter import messagebox, filedialog
 
-from gui.theme import BG, CARD, CARD2, TEXT, TEXT_MUTED
+from circuit_analyzer.composant import construire_graphe, lire_netlist
+from circuit_analyzer.xml import generer_xml, lire_xml
 from gui import ui_kit
 from gui.schematic_editor import SchematicEditor
 from gui.schematic_io import build_from_components
-from circuit_analyzer.composant import lire_netlist, construire_graphe
-from circuit_analyzer.xml import generer_xml, lire_xml
+from gui.theme import BG, CARD, CARD2, TEXT, TEXT_MUTED
 
 
 class TabDraw:
     """@brief Onglet éditeur de schéma (palette + canvas + barre d'actions)."""
 
-    def __init__(self, parent, on_analyze: Optional[Callable[[str], None]] = None,
-                 on_pattern_created: Optional[Callable[[], None]] = None):
+    def __init__(self, parent, on_analyze: Callable[[str], None] | None = None,
+                 on_pattern_created: Callable[[], None] | None = None):
         """@brief Construit l'onglet.
 
         @param parent     Widget parent (zone de contenu).

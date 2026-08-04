@@ -23,7 +23,7 @@ import os
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
-from gui.schematic_symbols import geometrie_libre, aimanter_bord
+from gui.schematic_symbols import aimanter_bord, geometrie_libre
 
 # Unites ERetroDesign par pixel de l'editeur ; geometrie CENTREE sur (0,0).
 # ECHELLE=1 : les vrais symboles de Lib.xml sont centres avec des coords ~±48..80

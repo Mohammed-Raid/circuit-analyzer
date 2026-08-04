@@ -4,15 +4,16 @@
 """
 
 """Tests for the BoardSCH XML generator and the components→XML→components round-trip."""
-import tempfile
 import os
+import tempfile
+
 import pytest
 
+from circuit_analyzer.graph_builder import build_graph
+from circuit_analyzer.matcher import match_patterns
 from circuit_analyzer.parser import Component
 from circuit_analyzer.xml_generator import BoardSCHGenerator, components_to_xml
 from circuit_analyzer.xml_parser import parse_xml
-from circuit_analyzer.graph_builder import build_graph
-from circuit_analyzer.matcher import match_patterns
 
 
 def _xml_to_components(xml: str):
@@ -221,8 +222,9 @@ def test_industrial_netlist_roundtrip_no_loss():
     """
     # A multi-rail industrial-style circuit must not LOSE any pattern through XML
     # (the greedy matcher may add an equivalent one, but never drop structure).
-    from circuit_analyzer.parser import parse_file
     import os
+
+    from circuit_analyzer.parser import parse_file
     sim = os.path.join("simulations", "ldo_regulator.txt")
     if not os.path.exists(sim):
         return  # simulations folder optional
@@ -237,7 +239,7 @@ def test_industrial_netlist_roundtrip_no_loss():
 
 # ── _Block / _layout_groups ───────────────────────────────────────────────────
 
-from circuit_analyzer.xml_generator import _layout_groups, _Block, _place_blocks
+from circuit_analyzer.xml_generator import _Block, _layout_groups, _place_blocks
 
 
 def test_layout_groups_one_block_per_pattern():
@@ -493,8 +495,8 @@ def test_circuits_industriels_sans_bobine():
 
     @return None
     """
-    from pathlib import Path
     import re
+    from pathlib import Path
     dossier = Path(__file__).resolve().parent.parent / "circuits_industriels"
     fichiers_avec_bobine = []
     for f in sorted(dossier.glob("*.xml")):
@@ -512,6 +514,7 @@ def test_connecteur_J_n_est_pas_perdu_a_l_export():
     `if spec is None: continue` le supprimait EN SILENCE. Sur PG 2, 9 des 23
     composants disparaissaient a l'export."""
     import xml.etree.ElementTree as ET
+
     from circuit_analyzer.composant import Composant
     from circuit_analyzer.xml import generer_xml
 
@@ -537,6 +540,7 @@ def test_aucun_type_n_est_supprime_en_silence():
     """Contrat general : tout composant a broches ressort a l'export, quel que
     soit son type — sinon la carte du collegue revient amputee."""
     import xml.etree.ElementTree as ET
+
     from circuit_analyzer.composant import Composant
     from circuit_analyzer.xml import generer_xml
 
@@ -555,6 +559,7 @@ def test_broche_au_nom_inattendu_n_est_pas_perdue():
     Vu sur PowtranAlim : D1 a des broches '-'/'+' et U2.1 des 'C'/'E', absentes
     du plan Diode {A,K,1,2} -> toutes leurs liaisons disparaissaient."""
     import xml.etree.ElementTree as ET
+
     from circuit_analyzer.composant import Composant
     from circuit_analyzer.xml import generer_xml
 
@@ -576,7 +581,7 @@ def test_le_plan_de_forme_partage_n_est_jamais_mute():
     """Les plans de _TYPE_VERS_FORME sont des dicts PARTAGES au niveau module :
     les completer en place empoisonnerait tous les exports suivants."""
     from circuit_analyzer.composant import Composant
-    from circuit_analyzer.xml import generer_xml, _TYPE_VERS_FORME
+    from circuit_analyzer.xml import _TYPE_VERS_FORME, generer_xml
 
     avant = dict(_TYPE_VERS_FORME["D"][1])
     generer_xml([Composant(ref="D1", type="D", value="x",

@@ -3,8 +3,8 @@
 @brief Tests des patterns à diodes (les passifs sont devenus des « Impédance Z »).
 """
 
-from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
+from circuit_analyzer.parser import Component
 from circuit_analyzer.patterns.basic_circuits import BridgeRectifier
 
 

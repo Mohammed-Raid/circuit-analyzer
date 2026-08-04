@@ -6,22 +6,38 @@ import copy
 import logging
 import math
 import tkinter as tk
+from dataclasses import dataclass
 from tkinter import simpledialog
-from dataclasses import dataclass, field
 from typing import Optional
 
 from circuit_analyzer.catalogue import entrees_catalogue, identifier
-from circuit_analyzer.composant import charger_bibliotheque, Composant
+from circuit_analyzer.composant import Composant, charger_bibliotheque
 from gui.fonts import FONT_FAMILY
 from gui.schematic_io import editor_to_dict, points_jonction, type_reel
-from gui.schematic_symbols import (primitives, rotate_pin as _rotate_pin,
-                                    def_puce, est_boite_generique,
-                                    aimanter_bord, geometrie_libre,
-                                    AUTO_COLOR as _AUTO_COLOR,
-                                    BOITE_MIN_W, BOITE_MIN_H,
-                                    TYPE_LIBRE)
-from gui.theme import (SURFACE, RAISED, OVERLAY, BORDER, TEXT, TEXT_MUTED,
-                        TEXT_DIM, BLUE, ERROR, SCHEMA_COLORS)
+from gui.schematic_symbols import AUTO_COLOR as _AUTO_COLOR
+from gui.schematic_symbols import (
+    BOITE_MIN_H,
+    BOITE_MIN_W,
+    TYPE_LIBRE,
+    aimanter_bord,
+    def_puce,
+    est_boite_generique,
+    geometrie_libre,
+    primitives,
+)
+from gui.schematic_symbols import rotate_pin as _rotate_pin
+from gui.theme import (
+    BLUE,
+    BORDER,
+    ERROR,
+    OVERLAY,
+    RAISED,
+    SCHEMA_COLORS,
+    SURFACE,
+    TEXT,
+    TEXT_DIM,
+    TEXT_MUTED,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -172,7 +188,7 @@ class CompInst:
     # Brochage LIBRE de cette instance : {nom: (côté 'L'/'R'/'T'/'B', décalage)}.
     # None = la géométrie du TYPE fait foi (comportement historique) ; un dict
     # (même vide) prend le pas dessus — cf. `_geom` (spec 2026-07-23).
-    pinout:    Optional[dict] = None
+    pinout:    dict | None = None
 
 
 @dataclass
@@ -199,19 +215,19 @@ class SchematicEditor(tk.Frame):
 
         # machine à états : idle | placing | wiring
         self._state       = "idle"
-        self._place_type: Optional[str]            = None
+        self._place_type: str | None            = None
         self._place_rotation: int                   = 0
         self._selected_ids: set[int]               = set()
-        self._wire_src:   Optional[tuple[int, str]] = None
-        self._rubber_band: Optional[int]           = None
+        self._wire_src:   tuple[int, str] | None = None
+        self._rubber_band: int | None           = None
 
         # drag
-        self._drag_comp_id: Optional[int] = None
+        self._drag_comp_id: int | None = None
         self._drag_moved:   bool          = False
         self._drag_origins: dict[int, tuple[int, int]] = {}
-        self._sel_rect_start: Optional[tuple[float, float]] = None
-        self._sel_rect: Optional[int] = None
-        self._pan_start: Optional[tuple[float, float, float, float]] = None
+        self._sel_rect_start: tuple[float, float] | None = None
+        self._sel_rect: int | None = None
+        self._pan_start: tuple[float, float, float, float] | None = None
 
         # piles d'annulation/rétablissement (Ctrl+Z / Ctrl+Y)
         self._undo_stack: list = []
@@ -219,25 +235,25 @@ class SchematicEditor(tk.Frame):
         self._UNDO_MAX = 50
 
         # presse-papier (Ctrl+C/V/D) : {type, value, rotation}
-        self._clipboard: Optional[dict] = None
+        self._clipboard: dict | None = None
         # valeur imposée par le catalogue pour le PROCHAIN placement (Task 5) —
         # ex. "LED rouge" pour une entrée D du catalogue (les U catalogue n'en
         # ont pas besoin : def_puce() range déjà la ref dans default_value).
-        self._place_value: Optional[str] = None
+        self._place_value: str | None = None
         # dernière position monde du curseur (cible du coller)
         self._cursor_w: tuple = (200, 200)
 
         # boutons palette (pour feedback visuel actif/inactif)
         self._palette_btns: dict[str, tk.Button] = {}
-        self._palette_parent: Optional[tk.Frame] = None
+        self._palette_parent: tk.Frame | None = None
 
         # géométrie effective : intégrés + types personnalisés (bibliothèque)
         self._defs: dict = _compute_defs()
         # Mémoïsation des géométries d'instance (brochage libre) — cf. `_geom`.
         self._geom_cache: dict[int, dict] = {}
         # Édition de broches : composant ciblé et broche sélectionnée.
-        self._pinedit_id: Optional[int] = None
-        self._pin_selectionnee: Optional[str] = None
+        self._pinedit_id: int | None = None
+        self._pin_selectionnee: str | None = None
 
         self._build()
 
@@ -717,7 +733,7 @@ class SchematicEditor(tk.Frame):
             self._geom_cache[comp.id] = d
         return d
 
-    def _invalider_geom(self, comp_id: Optional[int] = None):
+    def _invalider_geom(self, comp_id: int | None = None):
         """@brief Purge le cache de géométrie (tout, ou un seul composant)."""
         if comp_id is None:
             self._geom_cache.clear()
@@ -1016,7 +1032,7 @@ class SchematicEditor(tk.Frame):
 
     # ── Hit-testing (en coordonnées monde) ───────────────────────────────────
 
-    def _find_pin_at(self, wx, wy) -> Optional[tuple[int, str]]:
+    def _find_pin_at(self, wx, wy) -> tuple[int, str] | None:
         tol = _HIT_R / self._zoom  # rayon de détection en coordonnées monde
         for comp in self._comps.values():
             for pn, (dx, dy) in self._geom(comp)["pins"].items():
@@ -1026,7 +1042,7 @@ class SchematicEditor(tk.Frame):
                     return (comp.id, pn)
         return None
 
-    def _find_comp_at(self, wx, wy) -> Optional[int]:
+    def _find_comp_at(self, wx, wy) -> int | None:
         for comp in self._comps.values():
             defn = self._geom(comp)
             rot  = comp.rotation
@@ -1036,7 +1052,7 @@ class SchematicEditor(tk.Frame):
                 return comp.id
         return None
 
-    def _find_wire_at(self, wx, wy, tol=8) -> Optional[int]:
+    def _find_wire_at(self, wx, wy, tol=8) -> int | None:
         """Cherche un fil proche de (wx,wy) en coordonnées monde."""
         tol_w = tol / self._zoom
         for w in self._wires:
@@ -1263,7 +1279,7 @@ class SchematicEditor(tk.Frame):
     # ── Copier / coller / dupliquer ───────────────────────────────────────────
 
     def _add_comp(self, comp_type: str, value: str, rotation: int,
-                  wx: int, wy: int, pinout: Optional[dict] = None
+                  wx: int, wy: int, pinout: dict | None = None
                   ) -> Optional['CompInst']:
         """@brief Crée, dessine et sélectionne un nouveau composant.
 

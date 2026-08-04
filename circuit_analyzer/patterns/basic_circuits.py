@@ -11,8 +11,8 @@ n'existent plus : tout passif R/L/C est désormais réduit en « Impédance Z »
 les circuits à diodes conservent un Pattern dédié.
 """
 
-from circuit_analyzer.patterns.base import Pattern, is_gnd, is_power
 from circuit_analyzer import detecteur
+from circuit_analyzer.patterns.base import Pattern
 
 
 class ESDProtectionDiode(Pattern):

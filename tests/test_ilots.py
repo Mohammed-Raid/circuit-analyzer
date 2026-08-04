@@ -6,11 +6,10 @@
 """
 test_ilots.py — Tests de la détection d'îlots fonctionnels.
 """
-import pytest
-from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
-from circuit_analyzer.matcher import match_patterns
 from circuit_analyzer.ilots import detecter_ilots
+from circuit_analyzer.matcher import match_patterns
+from circuit_analyzer.parser import Component
 
 
 def _match(circuit_type, components, nodes, categorie='divers', confidence=0.8):

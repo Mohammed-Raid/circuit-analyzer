@@ -10,8 +10,11 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from circuit_analyzer.eretro_lib import (
-    composant_vers_symbole_xml, composants_depuis_xml, ecrire_dans_dossier,
-    symbole_vers_composant)
+    composant_vers_symbole_xml,
+    composants_depuis_xml,
+    ecrire_dans_dossier,
+    symbole_vers_composant,
+)
 
 
 def test_export_est_un_dataitem_importable():
@@ -115,8 +118,8 @@ def test_export_circuit_est_lisible_par_le_nouveau_format():
 
 def test_export_circuit_conserve_la_connexite():
     """Aller-retour : exporte puis relu, le point milieu reste partage."""
-    import tempfile
     import os
+    import tempfile
 
     from circuit_analyzer.composant import Composant
     from circuit_analyzer.xml import generer_xml, lire_xml

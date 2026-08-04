@@ -202,8 +202,8 @@ def test_positions_des_broches_suivent_sa_bibliotheque(tmp_path, monkeypatch):
         # Vérifier que les positions viennent de la sienne
         r1_pos = cx._FORME["Résistance"]["pins"]["1"][:2]
         r2_pos = cx._FORME["Résistance"]["pins"]["2"][:2]
-        assert r1_pos == (90, 5), f"Position de '1' (rang 1) doit venir de sa biblio"
-        assert r2_pos == (-85, -3), f"Position de '2' (rang 0) doit venir de sa biblio"
+        assert r1_pos == (90, 5), "Position de '1' (rang 1) doit venir de sa biblio"
+        assert r2_pos == (-85, -3), "Position de '2' (rang 0) doit venir de sa biblio"
         # Vérifier que les noms de clé restent les nôtres
         assert "1" in cx._FORME["Résistance"]["pins"]
         assert "2" in cx._FORME["Résistance"]["pins"]
@@ -274,7 +274,7 @@ def test_ecart_de_rangs_entre_nos_broches_et_les_siennes_est_journalise(tmp_path
 
 def test_formes_orphelines_sans_dossier_donne_tout_le_maison():
     """Sans dossier partage, rien a comparer : tout ce qu'on a est "orphelin"."""
-    from circuit_analyzer.xml import formes_orphelines, _FORME_MAISON
+    from circuit_analyzer.xml import _FORME_MAISON, formes_orphelines
     orph, _typs = formes_orphelines(None)
     assert set(orph) == set(_FORME_MAISON)
 

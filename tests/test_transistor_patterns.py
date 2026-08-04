@@ -3,11 +3,16 @@
 @brief Tests automatises pour test_transistor_patterns.
 """
 
-from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
+from circuit_analyzer.parser import Component
 from circuit_analyzer.patterns.transistor import (
-    TransistorSwitch, CommonEmitterAmp, CurrentMirror, MosfetSwitch, SuiveurEmetteur,
-    PushPull, Darlington
+    CommonEmitterAmp,
+    CurrentMirror,
+    Darlington,
+    MosfetSwitch,
+    PushPull,
+    SuiveurEmetteur,
+    TransistorSwitch,
 )
 
 

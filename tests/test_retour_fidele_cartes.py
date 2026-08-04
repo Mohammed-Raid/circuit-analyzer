@@ -18,10 +18,13 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from circuit_analyzer.xml import lire_xml
 from circuit_analyzer.eretro_patch import ecrire_groupes
+from circuit_analyzer.xml import lire_xml
 from tests.test_eretro_patch import (
-    _comparer_sauf_groupes, _convention_fin_de_ligne, _lire_octets)
+    _comparer_sauf_groupes,
+    _convention_fin_de_ligne,
+    _lire_octets,
+)
 
 _DOSSIER = "CARTE POUR TESTER (VRAI TEST)"
 _FICHIERS = ["PG 2.xml", "PG 3.xml", "PowtranAlim20260809.xml", "pg carte.xml"]

@@ -1,10 +1,10 @@
 from circuit_analyzer.composant import Composant, construire_graphe
 from gui.circuit_viewer import (
-    _build_island_model,
+    MULTI_PITCH,
     _build_dipole_model,
+    _build_island_model,
     _build_island_schematic_plan,
     _make_island_fig,
-    MULTI_PITCH,
 )
 
 
@@ -22,6 +22,7 @@ def test_z_locale_net_non_rail_termine_par_label():
     import matplotlib
     matplotlib.use("Agg")
     import schemdraw
+
     from gui import circuit_viewer as cv
     fig = cv.Figure(figsize=(4, 4))
     ax = fig.add_subplot(111)

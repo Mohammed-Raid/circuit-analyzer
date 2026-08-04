@@ -5,14 +5,16 @@
 
 """Tests for new industrial patterns: FlybackDiode, ESDProtectionDiode,
 HighSideMosfet, RelayDriver, and BridgeRectifier ESD-exclusion fix."""
-from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
+from circuit_analyzer.parser import Component
 from circuit_analyzer.patterns.basic_circuits import (
-    FlybackDiode, ESDProtectionDiode, HalfWaveRectifier, PeakDetector,
     BridgeRectifier,
+    ESDProtectionDiode,
+    FlybackDiode,
+    HalfWaveRectifier,
+    PeakDetector,
 )
 from circuit_analyzer.patterns.transistor import HighSideMosfet, RelayDriver
-
 
 # ---------------------------------------------------------------------------
 # FlybackDiode

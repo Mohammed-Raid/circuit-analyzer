@@ -1,4 +1,5 @@
 import pytest
+
 from circuit_analyzer.eretro import decoder_valeur_resistance, mapper_nom
 
 
@@ -55,7 +56,7 @@ def test_composant_boite_ic_defaut_false():
 
 def test_ic_nommee_multibroches_devient_boite_ic():
     # helpers _item/_pin/_boardsch/_lire réutilisés depuis test_eretro.
-    from tests.test_eretro import _item, _pin, _boardsch, _lire
+    from tests.test_eretro import _boardsch, _item, _lire, _pin
     # Reference VOLONTAIREMENT fictive : ce test porte sur le catch-all des
     # puces INCONNUES. Une vraie reference finit tot ou tard au catalogue
     # (c'est arrive a 'SI844AB'), ce qui invaliderait la premisse en silence.
@@ -67,7 +68,7 @@ def test_ic_nommee_multibroches_devient_boite_ic():
 
 
 def test_rcode_porte_sa_valeur_decodee():
-    from tests.test_eretro import _item, _pin, _boardsch, _lire
+    from tests.test_eretro import _boardsch, _item, _lire, _pin
     item = _item('R 1001', pins=[_pin(refs=['a']), _pin(refs=['b'])])
     comps = _lire(_boardsch([item], []))
     c = comps[0]
@@ -77,8 +78,8 @@ def test_rcode_porte_sa_valeur_decodee():
 # ── Task 6 : le n° de pièce survit dans value jusqu'au rendu ─────────────────
 
 def test_78L05_garde_son_identite_de_piece():
-    from tests.test_eretro import _item, _pin, _boardsch, _lire
     from circuit_analyzer.catalogue import identifier
+    from tests.test_eretro import _boardsch, _item, _lire, _pin
     pins = [_pin(refs=[f'n{i}']) for i in range(3)]
     item = _item('78L05CP', pins=pins)          # nom = n° de pièce, value XML vide
     comps = _lire(_boardsch([item], []))

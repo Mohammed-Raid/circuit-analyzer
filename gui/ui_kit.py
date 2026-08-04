@@ -12,7 +12,6 @@ import customtkinter as ctk
 from gui import theme
 from gui.fonts import FONT_FAMILY
 
-
 # ---------------------------------------------------------------------------
 # Helpers internes
 # ---------------------------------------------------------------------------

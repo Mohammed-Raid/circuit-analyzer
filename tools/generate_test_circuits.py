@@ -25,8 +25,8 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
 from circuit_analyzer.composant import Composant
-from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.detecteur import match_patterns
+from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.xml import generer_xml
 
 OUT_DIR = RACINE / "circuits_industriels"

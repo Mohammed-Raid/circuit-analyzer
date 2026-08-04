@@ -4,6 +4,7 @@
 """
 import math
 import tkinter as tk
+
 import customtkinter as ctk
 
 # Couleur de fond par type de composant

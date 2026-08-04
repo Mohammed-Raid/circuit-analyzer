@@ -22,11 +22,11 @@ def ctk_root():
 def test_pattern_cree_apparait_dans_circuits(ctk_root, monkeypatch, tmp_path):
     """Sauvegarder un pattern via le loader puis refresh_circuits le fait apparaître."""
     chemin = tmp_path / "custom_circuits.json"
-    import custom_circuits.loader as loader
+    from custom_circuits import loader
     monkeypatch.setattr(loader, "chemin_custom_circuits", lambda: chemin)
 
-    from gui.tab_circuits import TabCircuits
     from custom_circuits.loader import save_custom_circuits
+    from gui.tab_circuits import TabCircuits
 
     tab_c = TabCircuits(ctk_root)
     # Aucun personnalisé au départ

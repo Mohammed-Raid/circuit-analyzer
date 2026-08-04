@@ -3,9 +3,9 @@
 @brief Tests automatises pour test_matcher.
 """
 
-from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
+from circuit_analyzer.parser import Component
 
 
 def test_matcher_finds_rc_lowpass():
@@ -97,7 +97,8 @@ def test_matcher_loads_custom_patterns(tmp_path, monkeypatch):
     """
     # custom_circuits.json est cherché à la racine de l'application (à côté
     # de l'exe une fois gelée), plus au répertoire courant.
-    import json, sys
+    import json
+    import sys
     custom = [{'name': 'Circuit test', 'components': ['R', 'C'], 'conditions': []}]
     (tmp_path / 'custom_circuits.json').write_text(json.dumps(custom), encoding='utf-8')
     monkeypatch.setattr(sys, 'frozen', True, raising=False)

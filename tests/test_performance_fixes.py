@@ -5,9 +5,9 @@
 
 """Tests des correctifs de performance (sous-projet 3) :
 détecteurs corrigés électriquement + enrichissement différé."""
-from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
+from circuit_analyzer.parser import Component
 
 
 def test_pas_de_diviseur_avec_rail_en_noeud_milieu():
@@ -158,7 +158,6 @@ def test_rapport_plafonne_les_supprimes_a_50():
 
     class FauxResultats(list):
         """@brief Classe utilitaire de test FauxResultats."""
-        pass
 
     resultats = FauxResultats([])
     resultats.ilots = []

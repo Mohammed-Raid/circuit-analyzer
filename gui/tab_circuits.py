@@ -3,20 +3,22 @@
 @brief Onglet « Circuits » : patterns reconnus (intégrés consultables, personnalisés éditables).
 """
 import tkinter as tk
-import customtkinter as ctk
 from tkinter import messagebox
+
+import customtkinter as ctk
+
 from circuit_analyzer.composant import charger_bibliotheque as load_library
 from circuit_analyzer.detecteur import NOMS_CIRCUITS
 from custom_circuits.loader import (
-    load_custom_circuits, save_custom_circuits,
-    CONDITION_LABELS, CONDITION_DESCRIPTIONS,
-    CONDITION_GROUPS, condition_display,
+    CONDITION_DESCRIPTIONS,
+    CONDITION_GROUPS,
+    condition_display,
+    load_custom_circuits,
+    save_custom_circuits,
 )
-
-from gui.theme import (BG, CARD, CARD2, TEXT, TEXT_MUTED, TEXT_DIM,
-                       BLUE, BLUE_PRESS, R)
 from gui import ui_kit
-from gui.widgets import lier_molette, ListeSectionnee
+from gui.theme import BG, BLUE, BLUE_PRESS, CARD, CARD2, TEXT, TEXT_DIM, TEXT_MUTED, R
+from gui.widgets import ListeSectionnee, lier_molette
 
 _BASE_NAMES = NOMS_CIRCUITS
 

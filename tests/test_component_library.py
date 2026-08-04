@@ -3,9 +3,12 @@
 @brief Tests automatises pour test_component_library.
 """
 
-import json, os, tempfile
+import json
+import os
+import tempfile
+
 from circuit_analyzer.component_library.base import COMPONENT_TYPES
-from circuit_analyzer.component_library.loader import load_library, get_pins
+from circuit_analyzer.component_library.loader import get_pins, load_library
 
 
 def test_base_library_has_standard_types():

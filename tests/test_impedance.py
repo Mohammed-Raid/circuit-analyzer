@@ -2,8 +2,8 @@
 @file test_impedance.py
 @brief Tests du moteur de réduction Z (circuit_analyzer/impedance.py).
 """
-from circuit_analyzer.composant import Composant, construire_graphe
 from circuit_analyzer import impedance
+from circuit_analyzer.composant import Composant, construire_graphe
 
 
 def _graphe(*composants):

@@ -2,6 +2,7 @@
 @brief Dessin SIMPLE des montages transistor : symboles classiques + titre du
 montage, sans boîtes Z cliquables (cf. spec 2026-06-26-transistors-schemas-simples)."""
 import matplotlib
+
 matplotlib.use("Agg")
 
 import schemdraw

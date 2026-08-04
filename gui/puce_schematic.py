@@ -15,7 +15,6 @@ import re
 import schemdraw.elements as elm
 from schemdraw.elements import intcircuits as ic
 
-
 _HAUT = {"VCC", "VDD", "V+"}
 _BAS = {"GND", "VSS", "V-"}
 
@@ -201,7 +200,7 @@ def dessiner_z_locales(d, res, z_matches, ci):
     nœud du couplage n'est pas littéralement nommé "VCC" (cas réel et
     fréquent : R du réseau de temporisation d'un 555 entre VCC et DIS).
     """
-    from gui.circuit_viewer import _z_box, _bloc_couplage, _est_couplage, _BUS
+    from gui.circuit_viewer import _BUS, _bloc_couplage, _est_couplage, _z_box
     nets = res.get("nets", {})
     cotes = res.get("_cotes", {})
     offsets = {}

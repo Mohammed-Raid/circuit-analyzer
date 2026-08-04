@@ -2,15 +2,16 @@
 @brief Boîte puce (elm.Ic) : ancres par fonction, nets, contrat puces bandeau,
 jamais de grille générique pour un îlot à puce identifiée."""
 import matplotlib
+
 matplotlib.use("Agg")
 import pytest
 import schemdraw
 
+import gui.circuit_viewer as cv
 from circuit_analyzer import catalogue
 from circuit_analyzer.composant import construire_graphe
 from circuit_analyzer.detecteur import analyser
 from circuit_analyzer.xml import lire_xml
-import gui.circuit_viewer as cv
 from gui import puce_schematic
 
 CI_555 = {"U1": {"type": "U", "value": "NE555",
@@ -68,7 +69,8 @@ def test_puce_ilot_gate_par_forme_donne_boite_ic_neutre():
     assert ref == "U1"
     assert entree["categorie"] != "AOP"             # boîte neutre, pas un AOP
     # l'entrée neutre est bien dessinable par le drawer boîte IC existant
-    import schemdraw, schemdraw.elements as elm
+    import schemdraw
+
     from gui import puce_schematic
     ci = {"U1": {"type": "U", "value": "4000", "pins": comp.pins}}
     with schemdraw.Drawing(show=False) as d:
@@ -188,7 +190,7 @@ def test_led_dessinee_en_led_coloree():
     g = construire_graphe(comps)
     res = analyser(g)
     ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
-    from tools.render_ilots_v2 import _fig_for_ilot   # via sys.path tools/
+    from tools.render_ilots_v2 import _fig_for_ilot  # via sys.path tools/
     ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins}
           for c in comps}
     fig = _fig_for_ilot(ilot, g, ci, res, detaille=True)
@@ -211,8 +213,9 @@ def _dots_et_lignes(fichier):
     ilot = max(res.ilots, key=lambda i: len(i.get("composants", [])))
     ci = {c.ref: {"type": c.type, "value": c.value, "pins": c.pins} for c in comps}
     ref, entree = cv._puce_ilot(ilot, g)
-    from gui import puce_schematic
     import schemdraw.elements as elm
+
+    from gui import puce_schematic
     with schemdraw.Drawing(show=False) as d:
         d._comp_positions = {}
         d._z_hitboxes = []
@@ -438,6 +441,7 @@ def test_compactage_reserve_la_largeur_de_l_etiquette():
 
 def test_jumper_2_broches_se_dessine_sans_crash():
     import schemdraw
+
     from gui import circuit_viewer as cv
     row = {"type": "J", "value": "JMP", "boite_ic": False, "ref": "JP1",
            "symbol": "jumper", "y": 0.0, "pins": [("1", "A"), ("2", "B")], "stubs": []}

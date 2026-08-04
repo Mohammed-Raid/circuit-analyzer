@@ -1,8 +1,8 @@
 """@file test_chaine_ilot.py
 @brief Vue îlot multi-AOP : ordonnancement par flux + chaîne de schémas connectés."""
-from circuit_analyzer.xml import lire_xml
 from circuit_analyzer.composant import construire_graphe
 from circuit_analyzer.detecteur import analyser
+from circuit_analyzer.xml import lire_xml
 from gui import circuit_viewer as cv
 
 

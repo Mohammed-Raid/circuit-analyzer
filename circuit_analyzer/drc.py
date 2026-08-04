@@ -17,8 +17,8 @@ Ne pas réutiliser les numéros 4/5 pour de nouvelles règles : les commits
 ci-dessus restent la référence si l'une des deux doit un jour être
 réintroduite sous une forme adaptée au modèle Impédance Z.
 """
+from circuit_analyzer.patterns.base import is_power
 from circuit_analyzer.value_parser import parse_valeur
-from circuit_analyzer.patterns.base import is_power, is_gnd
 
 
 def verifier_drc(resultats, graphe) -> list[dict]:

@@ -17,17 +17,17 @@ Ordre d'appel important (voir la fonction principale `analyser`) :
   détectée comme un "pont diviseur de tension".
 """
 
-import networkx as nx
-from circuit_analyzer.patterns.base import (
-    is_ground_net, is_power_net, is_protective_earth_net, classify_net,
-    nodes_aplatis,
-)
-from circuit_analyzer.value_parser import parse_valeur
-from circuit_analyzer.satellites import rattacher_satellites
-from circuit_analyzer.ilots import detecter_ilots
 from circuit_analyzer import impedance
+from circuit_analyzer.ilots import detecter_ilots
 from circuit_analyzer.impedance import expandre_composites
 from circuit_analyzer.logique import detecter_portes_cmos
+from circuit_analyzer.patterns.base import (
+    is_ground_net,
+    is_power_net,
+    is_protective_earth_net,
+    nodes_aplatis,
+)
+from circuit_analyzer.satellites import rattacher_satellites
 
 # Alias français (= les nouvelles fonctions enrichies par le fichier de config)
 est_masse        = is_ground_net

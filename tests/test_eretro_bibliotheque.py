@@ -15,7 +15,6 @@ import pytest
 
 from circuit_analyzer.eretro import classer_rail, mapper_nom, normaliser_nom
 
-
 # ── Vocabulaire de la bibliothèque ───────────────────────────────────────────
 
 @pytest.mark.parametrize("nom,type_attendu", [

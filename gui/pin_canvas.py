@@ -14,9 +14,14 @@ import tkinter as tk
 
 import customtkinter as ctk
 
-from gui.schematic_symbols import (AUTO_COLOR, TYPE_LIBRE, aimanter_bord,
-                                   geometrie_libre, modele_brochage,
-                                   primitives)
+from gui.schematic_symbols import (
+    AUTO_COLOR,
+    TYPE_LIBRE,
+    aimanter_bord,
+    geometrie_libre,
+    modele_brochage,
+    primitives,
+)
 from gui.theme import CARD2, OVERLAY, TEXT, TEXT_MUTED
 
 GRILLE = 20

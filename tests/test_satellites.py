@@ -6,14 +6,16 @@
 """
 test_satellites.py — Tests du rattachement des composants satellites.
 """
-import pytest
-from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
+from circuit_analyzer.parser import Component
 from circuit_analyzer.satellites import (
-    SEUIL_SUR, SEUIL_POSSIBLE,
-    _est_rail, _noeuds_internes, _rails_alim,
+    SEUIL_POSSIBLE,
+    SEUIL_SUR,
+    _est_rail,
     _evaluer,
+    _noeuds_internes,
+    _rails_alim,
 )
 
 
@@ -645,7 +647,7 @@ def test_rapport_encodable_cp1252():
 # Export XML
 # =============================================================================
 
-from circuit_analyzer.xml import generer_xml, _grouper_par_circuit
+from circuit_analyzer.xml import _grouper_par_circuit, generer_xml
 
 
 def test_xml_satellite_sur_dans_le_bloc_du_circuit():

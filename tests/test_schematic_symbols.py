@@ -5,9 +5,14 @@ type trace, rotation coherente, DIP catalogue, purete d'import.
 import subprocess
 import sys
 
-from gui.schematic_symbols import (aimanter_bord, def_puce,
-                                    est_boite_generique, geometrie_libre,
-                                    primitives, rotate_pin)
+from gui.schematic_symbols import (
+    aimanter_bord,
+    def_puce,
+    est_boite_generique,
+    geometrie_libre,
+    primitives,
+    rotate_pin,
+)
 
 # Géométries minimales suffisantes pour tracer (pins réels de COMP_DEFS).
 DEFS = {
@@ -190,6 +195,7 @@ def test_modele_connecteur_tout_a_gauche():
 
 def test_modele_dip_impair_refuse():
     import pytest
+
     from gui.schematic_symbols import modele_brochage
     with pytest.raises(ValueError):
         modele_brochage("DIP", 7)

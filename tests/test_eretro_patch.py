@@ -109,7 +109,7 @@ def test_aucun_gpid_ecrit_ne_peut_egaler_un_gid_cote_csharp(tmp_path):
     (2026-07-31) nos GpId ne sont plus negatifs — ils designent un `<GRPS>` que
     nous ecrivons vraiment — mais ils restent hors de son domaine, au-dessus de
     _BASE_ANALYSE, pour que les deux jeux de groupes coexistent."""
-    from circuit_analyzer.eretro_patch import ecrire_groupes, _BASE_ANALYSE
+    from circuit_analyzer.eretro_patch import _BASE_ANALYSE, ecrire_groupes
     comps, res = _analyser(_fichier_synthetique(tmp_path))
     racine = ET.fromstring(ecrire_groupes(comps.source, comps, res))
     ecrits = [int(e.findtext("GpId") or 0)
@@ -167,7 +167,7 @@ def test_un_fil_intra_groupe_prend_le_groupe(tmp_path):
 
 def test_un_fil_entre_deux_groupes_reste_a_zero(tmp_path):
     """Un fil dont les deux bouts n'ont pas le meme groupe n'est jamais groupe."""
-    from circuit_analyzer.eretro_patch import ecrire_groupes, _gid_analyse
+    from circuit_analyzer.eretro_patch import _gid_analyse, ecrire_groupes
     chemin = _fichier_synthetique(tmp_path)
     comps, res = _analyser(chemin)
     src = comps.source
@@ -507,8 +507,8 @@ def test_ecrire_groupes_agrege_les_votes_d_un_compose_avant_d_ecrire(monkeypatch
     ecriture peut produire 2, jamais 5 ni un ordre dependant du dictionnaire.
     """
     from circuit_analyzer import eretro_patch
-    from circuit_analyzer.eretro_patch import ecrire_groupes
     from circuit_analyzer.eretro import SourceXML
+    from circuit_analyzer.eretro_patch import ecrire_groupes
 
     racine = ET.Element("BoardSCH")
     ccomp = ET.SubElement(ET.SubElement(racine, "CCmpntL"), "CComp")

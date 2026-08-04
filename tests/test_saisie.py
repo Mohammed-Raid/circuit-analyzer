@@ -7,7 +7,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from circuit_analyzer.saisie import RAILS, LigneSaisie, ModeleSaisie
+from circuit_analyzer.saisie import RAILS, ModeleSaisie
 from circuit_analyzer.xml import generer_xml, lire_xml
 
 

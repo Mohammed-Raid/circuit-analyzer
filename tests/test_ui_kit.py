@@ -1,6 +1,7 @@
 """@file test_ui_kit.py
 @brief Tests TDD pour gui/ui_kit.py (widget factories)."""
 import os
+
 import pytest
 
 os.environ.setdefault("DISPLAY", "")  # no-op Windows

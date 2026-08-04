@@ -5,8 +5,8 @@
 Toute la logique de détection est dans circuit_analyzer/detecteur.py.
 """
 
-from circuit_analyzer.patterns.base import Pattern
 from circuit_analyzer import detecteur
+from circuit_analyzer.patterns.base import Pattern
 
 
 class TransistorSwitch(Pattern):

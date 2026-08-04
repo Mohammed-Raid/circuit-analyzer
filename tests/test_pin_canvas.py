@@ -6,7 +6,7 @@ import pytest
 
 ctk = pytest.importorskip("customtkinter")
 
-from gui.pin_canvas import PinCanvas          # noqa: E402
+from gui.pin_canvas import PinCanvas
 
 
 @pytest.fixture

@@ -11,17 +11,18 @@ Ouvre une fenêtre modale 860×540 avec :
 import json
 import logging
 import tkinter as tk
+
 import customtkinter as ctk
 
 from custom_circuits.loader import (
-    CONDITION_LABELS,
     CONDITION_DESCRIPTIONS,
+    CONDITION_LABELS,
     condition_display,
     load_custom_circuits,
     save_custom_circuits,
     suggest_conditions,
 )
-from gui.theme import CARD, CARD2, BORDER, TEXT, MUTED, BLUE, BLUE_D
+from gui.theme import BLUE, BLUE_D, BORDER, CARD, CARD2, MUTED, TEXT
 
 _log = logging.getLogger(__name__)
 

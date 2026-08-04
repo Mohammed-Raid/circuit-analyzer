@@ -11,21 +11,21 @@ pour ne pas casser le reste du code.
 """
 
 from __future__ import annotations
-from copy import deepcopy
-from dataclasses import dataclass
-from html import escape as _esc
-from typing import Dict, List, Tuple
+
 import logging
 import re
 import xml.etree.ElementTree as ET
+from copy import deepcopy
+from dataclasses import dataclass
+from html import escape as _esc
 
-from circuit_analyzer import eretro
-from circuit_analyzer import eretro_symboles
+from circuit_analyzer import eretro, eretro_symboles
 from circuit_analyzer.composant import Composant as Component
 from circuit_analyzer.patterns.base import (
-    is_gnd, is_power, is_ground_net, is_power_net, is_protective_earth_net
+    is_gnd,
+    is_power,
+    is_protective_earth_net,
 )
-
 
 # =============================================================================
 # FORMES VISUELLES DES COMPOSANTS (coordonnées relatives au centre)
@@ -35,7 +35,7 @@ from circuit_analyzer.patterns.base import (
 
 _log = logging.getLogger(__name__)
 
-_FORME: Dict[str, dict] = {
+_FORME: dict[str, dict] = {
     "Résistance": {
         "pins": {"1": (80, 0, 1), "2": (-80, 0, 0)},
         "polygon": """
@@ -452,8 +452,8 @@ class _Generateur:
 
     def __init__(self):
         """@brief Initialise un générateur vide (aucun composant ni fil)."""
-        self._comps: List[_Comp] = []
-        self._wires: List[_Wire] = []
+        self._comps: list[_Comp] = []
+        self._wires: list[_Wire] = []
         self._wire_id = 0
 
     def ajouter(self, nom, valeur="", x=0, y=0, angle=0, forme="", group_id=0, ref="") -> int:
@@ -495,7 +495,7 @@ class _Generateur:
         parties = ['<?xml version="1.0" encoding="utf-8"?>',
                    '<BoardSCH xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
                    'xmlns:xsd="http://www.w3.org/2001/XMLSchema">', '  <CmpntL>']
-        noeuds_pins: Dict[Tuple[int,int], List[str]] = {}
+        noeuds_pins: dict[tuple[int,int], list[str]] = {}
         for w in self._wires:
             noeuds_pins.setdefault((w.c1, w.p1), []).append(f"{w.c1}_{w.p1}_0_{w.wid}")
             noeuds_pins.setdefault((w.c2, w.p2), []).append(f"{w.c2}_{w.p2}_1_{w.wid}")
@@ -805,7 +805,7 @@ def _clusteriser_par_nets(comps) -> list:
     return list(clusters.values())
 
 
-def _positionner_blocs(blocs) -> Dict[str, Tuple[int, int]]:
+def _positionner_blocs(blocs) -> dict[str, tuple[int, int]]:
     """@brief Calcule la position (x, y) de chaque composant selon son bloc.
 
     @param blocs Liste de _Bloc à disposer en grille.
@@ -821,7 +821,7 @@ def _positionner_blocs(blocs) -> Dict[str, Tuple[int, int]]:
     return pos
 
 
-def _positionner_composants_bloc(bloc: _Bloc, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+def _positionner_composants_bloc(bloc: _Bloc, x: int, y: int) -> dict[str, tuple[int, int]]:
     """@brief Place les composants a l'interieur d'un bloc visuel.
 
     @param bloc Bloc de circuit detecte.
@@ -842,7 +842,7 @@ def _positionner_composants_bloc(bloc: _Bloc, x: int, y: int) -> Dict[str, Tuple
     return _positionner_grille_compacte(bloc.comps, x, y)
 
 
-def _positionner_commande_relais(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+def _positionner_commande_relais(comps, x: int, y: int) -> dict[str, tuple[int, int]]:
     """@brief Gabarit compact pour relais + transistor/MOSFET + diode de roue libre."""
     pos = {}
     relais = [c for c in comps if c.type == "K"]
@@ -862,7 +862,7 @@ def _positionner_commande_relais(comps, x: int, y: int) -> Dict[str, Tuple[int, 
     return pos
 
 
-def _positionner_pont_diviseur(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+def _positionner_pont_diviseur(comps, x: int, y: int) -> dict[str, tuple[int, int]]:
     """@brief Gabarit vertical pour un pont diviseur et ses annexes eventuelles."""
     pos = {}
     resistances = [c for c in comps if c.type == "R"]
@@ -874,7 +874,7 @@ def _positionner_pont_diviseur(comps, x: int, y: int) -> Dict[str, Tuple[int, in
     return pos
 
 
-def _positionner_aop(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+def _positionner_aop(comps, x: int, y: int) -> dict[str, tuple[int, int]]:
     """@brief Gabarit AOP : opamp centré, résistances à gauche/droite, condensateurs en bas."""
     pos = {}
     aops = [c for c in comps if c.type in {"U", "AOP"}]
@@ -891,7 +891,7 @@ def _positionner_aop(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
     return pos
 
 
-def _positionner_rc(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+def _positionner_rc(comps, x: int, y: int) -> dict[str, tuple[int, int]]:
     """@brief Gabarit RC : résistance à gauche, condensateur à droite.
     Si pas de résistance (cap seul), le condensateur est placé à x sans offset."""
     pos = {}
@@ -912,7 +912,7 @@ def _positionner_rc(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
     return pos
 
 
-def _positionner_grille_compacte(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+def _positionner_grille_compacte(comps, x: int, y: int) -> dict[str, tuple[int, int]]:
     """@brief Placement par defaut en petite grille 2 colonnes."""
     return {
         comp.ref: (x + (j % 2) * _PAS_X_BLOC, y + (j // 2) * _PAS_Y_BLOC)
@@ -920,7 +920,7 @@ def _positionner_grille_compacte(comps, x: int, y: int) -> Dict[str, Tuple[int, 
     }
 
 
-def _ids_groupes_par_ref(blocs) -> Dict[str, int]:
+def _ids_groupes_par_ref(blocs) -> dict[str, int]:
     """@brief Associe chaque référence composant à son identifiant de groupe BoardSCH.
 
     @param blocs Blocs de mise en page issus de _grouper_par_circuit().
@@ -1073,7 +1073,7 @@ def _grouper_broches_alim(gen, broches) -> dict:
     return groupes
 
 
-def _positionner_symbole_alim(gen, broches, sym: str, group_id: int) -> Tuple[int, int]:
+def _positionner_symbole_alim(gen, broches, sym: str, group_id: int) -> tuple[int, int]:
     """@brief Place un symbole VCC/GND pres des composants qu'il alimente.
 
     @param gen Generateur contenant les composants deja places.
@@ -1225,7 +1225,7 @@ _NOMS_ALIMENTATION = {
 }
 
 # Broches critiques par type (manquante → warning)
-_BROCHES_CRITIQUES: Dict[str, list] = {
+_BROCHES_CRITIQUES: dict[str, list] = {
     'U': ['IN+', 'IN-', 'OUT'],
     'Q': ['B', 'C', 'E'],
     'M': ['G', 'D', 'S'],
@@ -1252,7 +1252,7 @@ class ListeComposantsXML(list):
         self.groupes_puces: dict[str, str] = {}
         self.source = None
 
-_NET_ALIMENTATION: Dict[str, str] = {
+_NET_ALIMENTATION: dict[str, str] = {
     'GND': 'GND', 'AGND': 'GND', 'PGND': 'GND', 'DGND': 'GND',
     'VCC': 'VCC', 'Vcc': 'VCC', '+5V': 'VCC', '+3.3V': 'VCC', '+12V': 'VCC',
     'VDD': 'VDD', 'Vdd': 'VDD', 'VSS': 'VSS', 'Vss': 'VSS',
@@ -1383,7 +1383,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     # les vrais fichiers portent des <id> dupliqués (id=0 partout) qui
     # écraseraient les entrées d'un dict indexé par id.
     avertissements: list = []
-    elements: Dict[int, dict] = {}
+    elements: dict[int, dict] = {}
     for idx, item in enumerate(racine.findall('.//CmpntL/DataItem')):
         nom    = (item.findtext('Name') or '').strip()
         valeur = (item.findtext('value') or '').strip()
@@ -1410,7 +1410,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     avertissements.extend(avert_cc)
 
     # Étape 2 : Union-Find pour regrouper les broches reliées par des fils
-    parent: Dict[tuple, tuple] = {}
+    parent: dict[tuple, tuple] = {}
 
     def trouver(x):
         """@brief Trouve la racine Union-Find d'une broche avec compression de chemin.
@@ -1449,7 +1449,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     # EXACTEMENT 4 chiffres des fils lineL/Line sont décodées en dernier
     # recours via _analyser_ref_packee (voir resoudre_extremite plus bas) ;
     # les refs 5+ chiffres restent ambiguës et rejetées.
-    ref_vers_broche: Dict[str, tuple] = {}
+    ref_vers_broche: dict[str, tuple] = {}
     for cid, comp in elements.items():
         for pidx, b in enumerate(comp['pins']):
             for r in b['refs']:
@@ -1489,9 +1489,9 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     # l'INDICE du fil dans lineL (C# : `lLine[nl.AttachedLine].Name = nl.Net`),
     # PAS son <ID> — les vrais fichiers portent des <ID> tous à 0. On mémorise
     # donc, par indice de fil, une broche à laquelle il aboutit.
-    ligne_vers_broche: Dict[str, tuple] = {}
+    ligne_vers_broche: dict[str, tuple] = {}
     lignes_xml = racine.findall('.//lineL/Line')
-    lignes_cids: Dict[int, tuple] = {}
+    lignes_cids: dict[int, tuple] = {}
     for idx_fil, fil in enumerate(lignes_xml):
         cf = (fil.findtext('CFirst') or '').strip()
         cl = (fil.findtext('CLast') or '').strip()
@@ -1527,8 +1527,8 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     # encore à sa netlist ; on fait le câblage ici. Une étiquette désigne un
     # fil par son AttachedLine (ID de Line) ; on unit les broches des fils qui
     # portent le même nom, et ce nom baptise le net.
-    label_par_broche: Dict[tuple, str] = {}
-    premiere_broche_du_label: Dict[str, tuple] = {}
+    label_par_broche: dict[tuple, str] = {}
+    premiere_broche_du_label: dict[str, tuple] = {}
     for et in racine.findall('.//NetLabels/NetLabel'):
         nom_label = (et.findtext('Net') or '').strip()
         aid = (et.findtext('AttachedLine') or '').strip()
@@ -1544,14 +1544,14 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             premiere_broche_du_label[nom_label] = broche
 
     # Étape 3 : regrouper les broches par nœud électrique
-    groupes_nets: Dict[tuple, list] = {}
+    groupes_nets: dict[tuple, list] = {}
     for cid, comp in elements.items():
         for pidx in range(len(comp['pins'])):
             cle = trouver((cid, pidx))
             groupes_nets.setdefault(cle, []).append((cid, pidx))
 
     # Étape 4 : nommer les nœuds
-    racine_vers_net: Dict[tuple, str] = {}
+    racine_vers_net: dict[tuple, str] = {}
     compteur = 0
 
     def nom_net(cle):
@@ -1592,7 +1592,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         net = f'NET{compteur}'
         racine_vers_net[cle] = net; return net
 
-    broche_vers_net: Dict[tuple, str] = {}
+    broche_vers_net: dict[tuple, str] = {}
     for cle, membres in groupes_nets.items():
         net = nom_net(cle)
         for k in membres:
@@ -1601,10 +1601,10 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     # Étape 5 : construire les objets Composant
     composants = ListeComposantsXML()
     composants.warnings.extend(avertissements)
-    compteurs_type: Dict[str, int] = {}
-    refs_puces: Dict[int, str] = {}     # num composé → ref boîtier ('U7')
-    compteurs_internes: Dict[int, int] = {}
-    cid_vers_ref: Dict[int, str] = {}   # id composant (elements) → ref émise
+    compteurs_type: dict[str, int] = {}
+    refs_puces: dict[int, str] = {}     # num composé → ref boîtier ('U7')
+    compteurs_internes: dict[int, int] = {}
+    cid_vers_ref: dict[int, str] = {}   # id composant (elements) → ref émise
 
     def generer_ref(type_prefix, elem):
         """@brief Réf du composant courant, partagée par les deux branches

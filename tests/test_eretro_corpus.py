@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from circuit_analyzer.xml import lire_xml
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
+from circuit_analyzer.xml import lire_xml
 
 # Le dossier de la solution C# a ete renomme (SolutionERetroDesignX20260813
 # -> ERetroDesign) ET sa profondeur a change. On LOCALISE le corpus par un

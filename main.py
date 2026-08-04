@@ -3,14 +3,16 @@
 @brief Point d'entrée en ligne de commande : analyse une netlist/XML et écrit un rapport.
 """
 import argparse
-import sys
 import io
+import sys
 from pathlib import Path
-from circuit_analyzer.composant import lire_netlist as parse_file, construire_graphe as build_graph
-from circuit_analyzer.xml import lire_xml as parse_xml
+
+from circuit_analyzer.composant import construire_graphe as build_graph
+from circuit_analyzer.composant import lire_netlist as parse_file
 from circuit_analyzer.detecteur import analyser as match_patterns
-from circuit_analyzer.rapport import generate
 from circuit_analyzer.drc import verifier_drc
+from circuit_analyzer.rapport import generate
+from circuit_analyzer.xml import lire_xml as parse_xml
 
 # Ensure UTF-8 output on Windows
 if sys.platform == 'win32':

@@ -17,9 +17,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from circuit_analyzer.parser import Component
-from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.detecteur import analyser
+from circuit_analyzer.graph_builder import build_graph
+from circuit_analyzer.parser import Component
 
 
 def bloc(i: int) -> list:

@@ -10,10 +10,14 @@ Tests for the 4 refactoring points:
   3. Duplicate reference detection with exceptions
   4. Hierarchical resolution + component locking (mutex)
 """
-import os, tempfile, pytest
-from circuit_analyzer.parser import parse_file, Component
+import os
+import tempfile
+
+import pytest
+
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
+from circuit_analyzer.parser import Component, parse_file
 
 
 def _write_tmp(content):
