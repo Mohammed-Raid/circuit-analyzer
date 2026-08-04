@@ -11,8 +11,10 @@ dans _DRAWERS. Les fonctions _draw_* reçoivent toutes (d, result, ci) :
 import logging
 import math
 import tkinter as tk
+from tkinter import messagebox
 
 import customtkinter as ctk
+from custom_circuits.loader import load_custom_circuits, save_custom_circuits
 import matplotlib
 
 matplotlib.use("TkAgg")
@@ -443,6 +445,16 @@ def _suivre_curseur_z(canvas, fig):
     return canvas.mpl_connect("motion_notify_event", _on_motion)
 
 
+def _supprimer_circuit_personnalise(nom: str) -> None:
+    """@brief Retire un pattern personnalise de custom_circuits.json par nom.
+
+    @param nom Nom exact du pattern (result["circuit_type"]).
+    @return None
+    """
+    circuits = [c for c in load_custom_circuits() if c.get("name") != nom]
+    save_custom_circuits(circuits)
+
+
 def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
     """@brief Ouvre une fenêtre affichant le schéma d'un circuit détecté.
 
@@ -454,6 +466,7 @@ def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
     """
     name    = result["circuit_type"]
     drawer  = _DRAWERS.get(name)
+    est_perso = any(c.get("name") == name for c in load_custom_circuits())
 
     popup = ctk.CTkToplevel(parent)
     popup.title(f"Schéma — {name}")
@@ -523,6 +536,19 @@ def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
                   fg_color=theme.BLUE_PRESS, hover_color=theme.BLUE_HOVER,
                   command=lambda: _export(fig, name, popup)).pack(
                       side="left", padx=12, pady=7)
+    if est_perso:
+        def _supprimer():
+            if messagebox.askyesno(
+                    "Confirmer",
+                    f"Supprimer le circuit personnalisé « {name} » ?\n"
+                    "Les prochaines analyses ne le reconnaîtront plus."):
+                _supprimer_circuit_personnalise(name)
+                popup.destroy()
+        ctk.CTkButton(bar, text="🗑  Supprimer",
+                      width=140, height=30, corner_radius=6,
+                      font=ctk.CTkFont("Segoe UI", 11),
+                      fg_color=theme.ERROR, hover_color=theme.ERROR_HOVER,
+                      command=_supprimer).pack(side="left", padx=(0, 12), pady=7)
     ctk.CTkButton(bar, text="Fermer",
                   width=90, height=30, corner_radius=6,
                   font=ctk.CTkFont("Segoe UI", 11),

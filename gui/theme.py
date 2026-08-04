@@ -25,6 +25,7 @@ CYAN        = "#22d3ee"
 SUCCESS = "#10b981"
 WARN    = "#f59e0b"
 ERROR   = "#ef4444"
+ERROR_HOVER = "#dc2626"
 INFO    = "#3b82f6"
 
 # Échelles
