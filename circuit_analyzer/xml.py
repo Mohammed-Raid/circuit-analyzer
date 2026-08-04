@@ -409,6 +409,26 @@ def _fusionner_bibliotheque_eretro():
                 nom_forme, ", ".join(manquantes))
 
 
+def formes_orphelines(dossier):
+    """@brief Nos formes maison absentes de sa bibliotheque (LibItem/Lib).
+
+    Expose `_FORME_MAISON`/`_TYP_COMPOSANT` (prives a ce module) via une
+    fonction publique, pour que `gui/tab_components.py` puisse pousser nos
+    symboles orphelins (`eretro_lib.ecrire_formes_dans_dossier`) sans
+    importer directement des noms prefixes `_` depuis un autre fichier.
+
+    @param dossier Dossier `LibItem/Lib` a comparer, ou None/vide.
+    @return tuple (formes: dict nom -> entree _FORME, typs: dict nom -> typ)
+            restreints aux noms absents de sa bibliotheque.
+    """
+    from circuit_analyzer import eretro_symboles
+    ses_formes = eretro_symboles.charger(dossier) if dossier else {}
+    orphelines = {nom: forme for nom, forme in _FORME_MAISON.items()
+                 if nom not in ses_formes}
+    typs = {nom: t for nom, t in _TYP_COMPOSANT.items() if nom in orphelines}
+    return orphelines, typs
+
+
 _fusionner_bibliotheque_eretro()
 
 

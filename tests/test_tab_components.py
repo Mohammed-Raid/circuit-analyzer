@@ -254,3 +254,55 @@ def test_envoyer_ne_renvoie_pas_les_composes_recus(onglet, tmp_path, monkeypatch
     monkeypatch.setattr("gui.tab_components.dossier_partage", lambda: str(cible))
     t._envoyer_biblio()
     assert not (cible / "Pont.xml").exists(), "compose renvoye aplati"
+
+
+def test_pousser_symboles_orphelins_ecrit_les_formes_maison(onglet, tmp_path, monkeypatch):
+    """Bouton « Pousser mes symboles orphelins » : ecrivain distinct de
+    _envoyer_biblio, part de circuit_analyzer.xml._FORME_MAISON (nos formes
+    integrees) plutot que de self._custom (composants personnalises)."""
+    t, _chemin = onglet
+    partage = tmp_path / "LibShared"
+    partage.mkdir()
+    monkeypatch.setattr("gui.tab_components.dossier_partage", lambda: str(partage))
+
+    t._pousser_symboles_orphelins()
+
+    assert (partage / "MOSFET.xml").exists()
+    assert (partage / "Fusible.xml").exists()
+    assert any("orphelin" in msg for msg in t._boites.infos)
+
+
+def test_pousser_symboles_orphelins_n_ecrase_jamais_un_nom_deja_present(
+        onglet, tmp_path, monkeypatch):
+    t, _chemin = onglet
+    partage = tmp_path / "LibShared"
+    partage.mkdir()
+    temoin = partage / "MOSFET.xml"
+    temoin.write_text("<DataItem><Name>MOSFET</Name></DataItem>", encoding="utf-8")
+    monkeypatch.setattr("gui.tab_components.dossier_partage", lambda: str(partage))
+
+    t._pousser_symboles_orphelins()
+
+    with open(temoin, encoding="utf-8") as f:
+        assert f.read() == "<DataItem><Name>MOSFET</Name></DataItem>"
+
+
+def test_pousser_symboles_orphelins_previent_si_rien_a_pousser(
+        onglet, tmp_path, monkeypatch):
+    """Sa bibliotheque a deja TOUS nos noms (simule via un dossier qui
+    contient une copie de chacune de nos formes maison) : rien a ecrire."""
+    t, _chemin = onglet
+    from circuit_analyzer.xml import _FORME_MAISON
+    partage = tmp_path / "LibShared"
+    partage.mkdir()
+    for nom in _FORME_MAISON:
+        nom_fichier = "".join(c for c in nom if c.isalnum()) or "X"
+        (partage / f"{nom_fichier}.xml").write_text(
+            f"<DataItem><Name>{nom}</Name><datapin>"
+            "<DataPin><Pname>1</Pname><Pin><X>0</X><Y>0</Y></Pin></DataPin>"
+            "</datapin></DataItem>", encoding="utf-8")
+    monkeypatch.setattr("gui.tab_components.dossier_partage", lambda: str(partage))
+
+    t._pousser_symboles_orphelins()
+
+    assert any("Aucun symbole orphelin" in msg for msg in t._boites.infos)

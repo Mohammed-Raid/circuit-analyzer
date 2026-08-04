@@ -272,6 +272,30 @@ def test_ecart_de_rangs_entre_nos_broches_et_les_siennes_est_journalise(tmp_path
         importlib.reload(cx)
 
 
+def test_formes_orphelines_sans_dossier_donne_tout_le_maison():
+    """Sans dossier partage, rien a comparer : tout ce qu'on a est "orphelin"."""
+    from circuit_analyzer.xml import formes_orphelines, _FORME_MAISON
+    orph, _typs = formes_orphelines(None)
+    assert set(orph) == set(_FORME_MAISON)
+
+
+def test_formes_orphelines_exclut_les_noms_deja_chez_lui(tmp_path):
+    from circuit_analyzer.xml import formes_orphelines
+    _symbole(tmp_path, "Résistance", {"1": (80, 0), "2": (-80, 0)})
+    orph, _typs = formes_orphelines(str(tmp_path))
+    assert "Résistance" not in orph
+    assert "MOSFET" in orph          # jamais chez lui (formes de test minimales)
+
+
+def test_formes_orphelines_typs_restreint_aux_orphelines(tmp_path):
+    from circuit_analyzer.xml import formes_orphelines
+    _symbole(tmp_path, "AGND", {"1": (0, 0)})
+    orph, typs = formes_orphelines(str(tmp_path))
+    assert "AGND" not in orph
+    assert "AGND" not in typs        # plus orpheline -> plus dans le sous-ensemble typs
+    assert typs.get("VCC") == 86     # orpheline connue, typ present dans _TYP_COMPOSANT
+
+
 def test_pousser_ecrit_un_fichier_par_forme(tmp_path):
     from circuit_analyzer.eretro_lib import ecrire_formes_dans_dossier
     formes = {"MonSymbole": {"pins": {"1": (-80, 0, 0), "2": (80, 0, 1)},

@@ -14,7 +14,9 @@ from circuit_analyzer.composant import (
 from circuit_analyzer.eretro_lib import (
     composant_vers_symbole_xml, composants_depuis_xml,
     definir_dossier_partage, dossier_partage, ecrire_dans_dossier,
+    ecrire_formes_dans_dossier,
 )
+from circuit_analyzer.xml import formes_orphelines
 from gui.pin_canvas import GRILLE, PinCanvas
 from gui.theme import BG, CARD, CARD2, TEXT, TEXT_MUTED, BLUE, ERROR
 from gui import ui_kit
@@ -223,6 +225,9 @@ class TabComponents:
         self._btn_envoyer = ui_kit.SecondaryButton(
             pied, "⇧  Envoyer mes composants", self._envoyer_biblio,
             height=38)
+        self._btn_orphelins = ui_kit.SecondaryButton(
+            pied, "⇧  Pousser mes symboles orphelins", self._pousser_symboles_orphelins,
+            height=38)
         self._btn_save.pack(fill="x")
 
         # La molette défile le formulaire même au-dessus des champs et des
@@ -248,7 +253,7 @@ class TabComponents:
         # avec `lecture_seule`, aucun clic ne mute alors le brochage.
         for b in (self._btn_save, self._btn_dupliquer,
                   self._btn_export, self._btn_import,
-                  self._btn_recevoir, self._btn_envoyer):
+                  self._btn_recevoir, self._btn_envoyer, self._btn_orphelins):
             b.pack_forget()
         (self._btn_dupliquer if lecture else self._btn_save).pack(fill="x")
         # Export : seulement pour un perso DEJA enregistre (on exporte le JSON).
@@ -258,6 +263,7 @@ class TabComponents:
         # Partage de bibliotheque : jamais lie au composant courant.
         self._btn_recevoir.pack(fill="x", pady=(8, 0))
         self._btn_envoyer.pack(fill="x", pady=(4, 0))
+        self._btn_orphelins.pack(fill="x", pady=(4, 0))
 
     def _afficher_nouveau(self):
         """@brief Affiche un formulaire vierge en mode « nouveau »."""
@@ -599,6 +605,36 @@ class TabComponents:
             "rouvert pour les voir.\n"
             "Sinon sa prochaine sauvegarde de bibliotheque efface le dossier "
             "et vos composants avec.")
+
+    def _pousser_symboles_orphelins(self):
+        """@brief Pousse nos formes maison (zigzag, triangle AOP...) absentes
+        de sa bibliotheque, geometrie verbatim (ex. MOSFET, Fusible, Relais).
+
+        Distinct de `_envoyer_biblio` : celle-ci part de nos composants
+        PERSONNALISES (`self._custom`, modele boite+brochage) alors que cette
+        methode part de `circuit_analyzer.xml._FORME_MAISON` (nos formes
+        integrees, dessinees a la main) — voir `eretro_lib.
+        ecrire_formes_dans_dossier` pour pourquoi les deux ne se melangent pas.
+        """
+        dossier = self._choisir_dossier_partage()
+        if not dossier:
+            return
+        orphelines, typs = formes_orphelines(dossier)
+        if not orphelines:
+            messagebox.showinfo(
+                "Bibliotheque partagee",
+                "Aucun symbole orphelin : sa bibliotheque a deja tous nos noms.")
+            return
+        try:
+            ecrits = ecrire_formes_dans_dossier(dossier, orphelines, typs)
+        except OSError as e:
+            messagebox.showerror("Envoi impossible", f"Ecriture impossible :\n{e}")
+            return
+        messagebox.showinfo(
+            "Bibliotheque partagee",
+            f"{len(ecrits)} symbole(s) orphelin(s) ecrit(s) dans :\n{dossier}\n\n"
+            "IMPORTANT : ERetroDesign doit etre FERME pendant l'envoi, puis "
+            "rouvert pour les voir.")
 
     def _importer_eretro(self):
         """@brief Importe un paquet ERetroDesign (.xml) : ajoute ses composants."""
