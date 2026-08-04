@@ -43,13 +43,3 @@ class PeakDetector(Pattern):
     """@brief Pattern « Détecteur de crête » (délègue à detecteur)."""
     name = "Détecteur de crête"
     def match(self, graph): return detecteur.detecter_detecteur_crete(graph)
-
-
-## @brief Liste des patterns à diodes dans leur ordre de détection.
-ALL_PATTERNS = [
-    BridgeRectifier(),
-    FlybackDiode(),
-    ESDProtectionDiode(),
-    HalfWaveRectifier(),
-    PeakDetector(),
-]

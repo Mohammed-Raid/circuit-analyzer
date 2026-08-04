@@ -1468,26 +1468,6 @@ _CATEGORIES: dict[str, str] = {
 }
 
 
-def _valeur(graphe, ref: str) -> str:
-    """@brief Retourne la valeur d'un composant.
-
-    Cherche dans le dict des composants multi-broches puis dans les arêtes.
-
-    @param graphe Graphe NetworkX du circuit.
-    @param ref Référence du composant recherché.
-    @return str Valeur du composant, ou '' si absente/introuvable.
-    """
-    if not ref:
-        return ''
-    comp = graphe.graph.get('components', {}).get(ref)
-    if comp:
-        return comp.value or ''
-    for u, v, data in graphe.edges(data=True):
-        if data.get('ref') == ref:
-            return data.get('value', '')
-    return ''
-
-
 def _enrichir(match: dict, graphe) -> dict:
     """
     @brief Enrichit un match de détection avec confiance, raisons et avertissements.

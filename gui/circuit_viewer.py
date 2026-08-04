@@ -249,12 +249,6 @@ def _bind_scrollable_mpl_events(widget, on_mousewheel, on_pan_start, on_pan_drag
     widget.bind("<B1-Motion>", on_pan_drag, add="+")
 
 
-def _is_rail_net(net: str) -> bool:
-    return bool(net) and (
-        is_ground_net(net) or is_power_net(net) or is_protective_earth_net(net)
-    )
-
-
 def _info_for_ref(ref: str, graph, comp_info: dict) -> dict:
     info = dict(comp_info.get(ref, {}) or {})
     comp = getattr(graph, "graph", {}).get("components", {}).get(ref)
@@ -4260,12 +4254,6 @@ def _refs_couplage(cc):
     """@brief Refs brutes d'un match Impédance Z de couplage."""
     refs = cc.get("refs") or cc.get("components") or []
     return [r for r in refs if isinstance(r, str) and not r.startswith("Z")]
-
-
-def _couplage_simple_cap(cc, ci):
-    """@brief Vrai si le couplage est un condensateur unique."""
-    refs = _refs_couplage(cc)
-    return len(refs) == 1 and ci.get(refs[0], {}).get("type") == "C"
 
 
 def _bloc_couplage(cc):

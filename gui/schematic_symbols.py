@@ -339,9 +339,6 @@ def aimanter_bord(dx, dy, w, h, pas):
             return (cote, int(round(long_ / pas) * pas))
 
 
-MODELES = ("DIP", "Connecteur")
-
-
 def modele_brochage(modele, n=0):
     """@brief Brochage tout fait d'un boitier courant (spec 2026-07-23).
 

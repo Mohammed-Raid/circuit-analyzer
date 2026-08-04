@@ -31,8 +31,6 @@ def verifier_drc(resultats, graphe) -> list[dict]:
     violations = []
     composants = graphe.graph.get('components', {})
 
-    # Pré-calcul : types présents dans tout le schéma
-    types_schema = {comp.type for comp in composants.values()}
     a_fusible = any(comp.type == 'F' for comp in composants.values())
     a_vcc     = any(is_power(n) for n in graphe.nodes())
 

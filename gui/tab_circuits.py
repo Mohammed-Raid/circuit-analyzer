@@ -156,7 +156,6 @@ class TabCircuits:
         pied = ctk.CTkFrame(right, fg_color="transparent")
         pied.grid(row=3, column=0, sticky="ew", padx=14, pady=(0, 14))
         pied.grid_columnconfigure(0, weight=1)
-        self._pied = pied
         self._btn_save = ui_kit.PrimaryButton(
             pied, "Sauvegarder ce circuit", self._sauvegarder,
             icon_name="save", height=42)

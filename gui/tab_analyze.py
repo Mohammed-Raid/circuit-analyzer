@@ -113,7 +113,6 @@ class TabAnalyze:
         self._file_path = tk.StringVar()
         self._report_text    = ""
         self._results        = []
-        self._all_refs       = []
         self._unclassified   = []
         self._comp_info      = {}
         self._comps          = []
@@ -322,7 +321,6 @@ class TabAnalyze:
 
             self._report_text    = report
             self._results        = results
-            self._all_refs       = all_refs
             self._comps          = comps
             self._graph          = graph
             self._drc_violations = drc

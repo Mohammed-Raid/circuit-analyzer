@@ -1157,7 +1157,6 @@ _Generateur.to_xml  = _Generateur.vers_xml
 
 # Exposer BoardSCHGenerator pour les tests qui l'utilisent directement
 BoardSCHGenerator = _Generateur
-BoardSCHGenerator._TYPE_TO_SHAPE = _TYPE_VERS_FORME
 
 
 # =============================================================================
