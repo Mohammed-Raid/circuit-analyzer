@@ -7,6 +7,7 @@ import pytest
 
 ctk = pytest.importorskip("customtkinter")
 
+import gui.schematic_editor as schematic_editor
 from gui.schematic_editor import SchematicEditor, _auto_def
 
 
@@ -67,6 +68,20 @@ def test_composant_avec_forme_garde_ses_libelles_de_broches(editeur):
     textes = [i for i in items if editeur._canvas.type(i) == "text"
              and editeur._canvas.itemcget(i, "text").strip() == "1"]
     assert textes    # le libelle "1" est bien dessine malgre la vraie forme
+
+
+def test_compute_defs_fait_suivre_les_primitives_de_la_bibliotheque(monkeypatch):
+    """@brief _compute_defs() est le pont bibliotheque -> defs de l'editeur ;
+    rien dans la suite ne l'exerce ailleurs, donc une cle mal orthographiee
+    (`val.get("primitives")`) degraderait silencieusement en boite generique
+    sans faire echouer un seul test."""
+    fake_lib = {"XX": {"name": "Test", "pins": ["1"],
+                       "brochage": {"1": ["L", 0]},
+                       "primitives": [("line", [(0, 0), (10, 0)], 2)]}}
+    monkeypatch.setattr(schematic_editor, "charger_bibliotheque",
+                        lambda: fake_lib)
+    defs = schematic_editor._compute_defs()
+    assert defs["XX"]["primitives"] == [("line", [(0, 0), (10, 0)], 2)]
 
 
 def test_composant_sans_forme_garde_la_boite_generique_actuelle(editeur):
