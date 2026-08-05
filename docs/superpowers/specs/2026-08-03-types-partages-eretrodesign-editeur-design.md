@@ -1,5 +1,12 @@
 # Types partagés ERetroDesign dans l'éditeur — conception
 
+> **OBSOLÈTE — remplacé par
+> `docs/superpowers/specs/2026-08-05-import-fidele-formes-eretrodesign-design.md`.**
+> Jamais implémenté. L'idée (parser `datasegment`/`dataarc`/`datapolygon` en
+> primitives réelles) est reprise et généralisée à tout composant importé de
+> la bibliothèque, plutôt qu'aux 4 noms figés ci-dessous. Conservé pour
+> l'historique de conception, ne pas implémenter tel quel.
+
 **Date :** 2026-08-03
 **Branche :** `rewrite-simple`
 **Suite de :** `docs/superpowers/specs/2026-07-31-bibliotheque-partagee-design.md` (Plan 1,
