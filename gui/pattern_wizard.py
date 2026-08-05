@@ -18,6 +18,7 @@ import schemdraw.elements as elm
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+from circuit_analyzer.detecteur import NOMS_CIRCUITS
 from custom_circuits.loader import (
     CONDITION_DESCRIPTIONS,
     CONDITION_LABELS,
@@ -606,8 +607,15 @@ class PatternWizard(ctk.CTkToplevel):
             if not name:
                 self._show_error("Le nom ne peut pas être vide.")
                 return False
-            # Vérifier doublon
-            existing = [c.get("name", "") for c in load_custom_circuits()]
+            # Vérifier doublon : circuits intégrés (NOMS_CIRCUITS) + personnalisés.
+            # Sans le volet intégrés, un pattern pourrait reprendre le nom d'un
+            # circuit natif ; la popup schéma (circuit_viewer._supprimer) décide
+            # alors "personnalisé" PAR NOM et proposerait un bouton Supprimer sur
+            # le circuit intégré, qui supprimerait en fait l'entrée personnalisée
+            # homonyme.
+            existing = set(NOMS_CIRCUITS) | {
+                c.get("name", "") for c in load_custom_circuits()
+            }
             if name in existing:
                 self._show_error(f"Un pattern nommé « {name} » existe déjà.")
                 return False

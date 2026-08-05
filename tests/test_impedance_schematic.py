@@ -211,3 +211,16 @@ def test_dessiner_bloc_reseau_entier_en_une_boite_z():
 def test_dessiner_bloc_un_seul_composant_pas_de_boite():
     fig = sch.dessiner_bloc(("feuille", "R1"), "A", "B", _comps_rlc("R1"))
     assert fig._z_hitboxes == []              # rien a deplier sur un composant seul
+
+
+def test_style_symbole_diode_rend_elm_diode():
+    """Fix 1 (D -> Diode) : style_symbole() doit retourner elm.Diode pour un
+    composant de type "D", pas le RBox/ResistorIEC generique utilise pour les
+    types vraiment inconnus. C'est cette fonction que le wizard (et
+    circuit_viewer._z_reseau) appelle pour choisir le symbole schemdraw ; un
+    test qui ne verifie que la presence du texte de reference passerait meme
+    si "D" tombait dans le fallback generique."""
+    import schemdraw.elements as elm
+    cls, _coul, ref, _valeur = sch.style_symbole("D", "1N4007", "D1")
+    assert cls is elm.Diode
+    assert ref == "D1"

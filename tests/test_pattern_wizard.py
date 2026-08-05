@@ -100,18 +100,39 @@ def test_doublon_de_nom_refuse_a_l_etape_2(ctk_root, monkeypatch, tmp_path):
     assert w._validate_current() is False
 
 
-def test_apercu_rend_diode_comme_diode_pas_resistor(ctk_root):
-    """Fix 1: Les composants non-R/L/C (D, Q, U, K...) ne doivent pas
-    s'afficher comme des resistances. Une diode doit afficher le symbole
-    correct (elm.Diode) ou au minimum un element distinct (pas elm.ResistorIEC)."""
+def test_doublon_de_nom_avec_un_circuit_integre_refuse_a_l_etape_2(
+        ctk_root, monkeypatch, tmp_path):
+    """Fix 5-1 : la validation doit aussi rejeter un nom qui collide avec un
+    circuit INTEGRE (NOMS_CIRCUITS), pas seulement avec les personnalises.
+    Sinon circuit_viewer decide "personnalise" par NOM : un pattern nomme
+    comme un circuit integre ferait apparaitre un bouton Supprimer sur ce
+    circuit integre, qui supprimerait en realite l'entree personnalisee
+    homonyme."""
+    chemin = tmp_path / "custom_circuits.json"
+    from custom_circuits import loader
+    monkeypatch.setattr(loader, "chemin_custom_circuits", lambda: chemin)
+    loader.save_custom_circuits([])
+
+    refs_info = {"R1": {"type": "R", "value": "10k",
+                        "pins": {"1": "N1", "2": "N2"}}}
+    w = _wizard(ctk_root, refs_info)
+    w._go_to(2)
+    w._name_var.set("Suiveur de tension (AOP)")
+    assert w._validate_current() is False
+
+
+def test_apercu_rend_diode_sans_lever(ctk_root):
+    """Fumee : l'apercu ne doit pas lever pour un composant D et affiche bien
+    sa reference. Le VRAI test de non-regression (le symbole rendu est
+    elm.Diode, pas une resistance) vit dans test_impedance_schematic.py
+    (test_style_symbole_diode_rend_elm_diode) : style_symbole() est la
+    fonction partagee que le wizard appelle pour choisir la classe schemdraw,
+    donc c'est la qu'on verifie la classe reellement retournee."""
     refs_info = {
         "D1": {"type": "D", "value": "1N4007", "pins": {"1": "N1", "2": "GND"}},
     }
     w = _wizard(ctk_root, refs_info)
     fig = w._dessiner_apercu()
-    # Verifier que le symbole a ete rendu (une diode existe)
-    # Le test n'inspecte pas directement elm.Diode (implementation detail)
-    # mais verifie que la ref "D1" est presente dans le rendu
     textes = {t.get_text() for ax in fig.axes for t in ax.texts}
     assert "D1" in textes, "La diode doit avoir sa reference affichee"
 
