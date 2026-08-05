@@ -15,6 +15,7 @@ from gui.schematic_symbols import (
     primitives,
     primitives_depuis_dataitem,
     rotate_pin,
+    TYPE_LIBRE,
 )
 
 # Géométries minimales suffisantes pour tracer (pins réels de COMP_DEFS).
@@ -317,3 +318,28 @@ def test_vrais_symboles_produisent_la_famille_de_primitive_attendue(nom, famille
         xml = f.read()
     prims = primitives_depuis_dataitem(xml, 1.0)
     assert any(p[0] == famille for p in prims)
+
+
+def test_primitives_utilise_les_primitives_de_la_def_si_presentes():
+    defn = {"w": 80, "h": 60, "pins": {"1": (-40, 0)}, "cotes": {"1": "L"},
+            "primitives": [("polygon", [(0, -10), (10, 10), (-10, 10)], False)]}
+    prims = primitives("PERSO", defn, 0)
+    assert ("polygon", [(0, -10), (10, 10), (-10, 10)], False) in prims
+    # Piege identifie en auto-revision du spec : le libelle de broche standard
+    # doit etre ajoute par-dessus la vraie forme, sinon il disparait.
+    assert any(p[0] == "text" and p[2] == "1" for p in prims)
+
+
+def test_primitives_repli_boite_libre_si_pas_de_primitives():
+    defn = {"w": 80, "h": 60, "pins": {"1": (-40, 0)}, "cotes": {"1": "L"}}
+    prims = primitives(TYPE_LIBRE, defn, 0)
+    # Non-regression explicite : la boite generique reste un rectangle 4 sommets.
+    assert prims[0] == ("polygon", [(-40, -30), (40, -30), (40, 30), (-40, 30)], False)
+
+
+def test_primitives_avec_primitives_subissent_la_rotation():
+    defn = {"w": 80, "h": 60, "pins": {}, "cotes": {},
+            "primitives": [("line", [(0, 0), (10, 5)], 2)]}
+    prims = primitives("PERSO", defn, 90)
+    ligne = next(p for p in prims if p[0] == "line")
+    assert ligne[1] == [rotate_pin(0, 0, 90), rotate_pin(10, 5, 90)]

@@ -230,10 +230,13 @@ def est_boite_generique(comp_type: str) -> bool:
 def primitives(comp_type, defn, rotation, value=""):
     """@brief Primitives monde du symbole, rotation appliquee.
 
-    Types traces : table _TRACEURS. Tout autre type (perso, puce catalogue)
-    -> boite generique a encoche avec stubs et libelles de broches.
+    Types traces : table _TRACEURS. Un type avec une forme importee
+    (defn["primitives"], spec 2026-08-05) court-circuite le dispatch. Tout
+    autre type (perso, puce catalogue) -> boite generique a encoche.
     """
-    if comp_type == TYPE_LIBRE:
+    if defn.get("primitives"):
+        prims = list(defn["primitives"]) + _libelles_broches(defn)
+    elif comp_type == TYPE_LIBRE:
         prims = _tr_boite_libre(defn)
     elif comp_type == "D":
         prims = _tr_d(defn, value)
@@ -441,6 +444,28 @@ def modele_brochage(modele, n=0):
     raise ValueError(f"modele inconnu : {modele!r}")
 
 
+def _libelles_broches(defn):
+    """@brief Un libelle texte par broche, positionne selon son cote (defn["cotes"]).
+
+    Factorise depuis `_tr_boite_libre` : reutilise par tout traceur qui a
+    besoin des labels de broches standard sans les redessiner lui-meme (forme
+    reelle importee d'ERetroDesign, spec 2026-08-05).
+    """
+    prims = []
+    for pn, (px, py) in defn["pins"].items():
+        cote = (defn.get("cotes") or {}).get(pn, "L")
+        fonction = (defn.get("fonctions") or {}).get(pn, "")
+        libelle = f"{pn} {fonction}".strip()
+        if cote in ("L", "R"):
+            ancre = "w" if cote == "L" else "e"
+            tx, ty = px + (6 if cote == "L" else -6), py
+        else:
+            ancre = "center"
+            tx, ty = px, py + (10 if cote == "T" else -10)
+        prims.append(("text", (tx, ty), libelle, 7, ancre))
+    return prims
+
+
 def _tr_boite_libre(defn):
     """@brief Boite au brochage libre : broches sur les 4 bords (spec 2026-07-23).
 
@@ -451,17 +476,5 @@ def _tr_boite_libre(defn):
     """
     w2, h2 = defn["w"] // 2, defn["h"] // 2
     prims = [("polygon", [(-w2, -h2), (w2, -h2), (w2, h2), (-w2, h2)], False)]
-    for pn, (px, py) in defn["pins"].items():
-        cote = (defn.get("cotes") or {}).get(pn, "L")
-        fonction = (defn.get("fonctions") or {}).get(pn, "")
-        libelle = f"{pn} {fonction}".strip()
-        if cote in ("L", "R"):
-            # Ancre cote BORD : le libelle croit VERS l'interieur, jamais sur
-            # la pastille de broche (meme regle que `_tr_boite`).
-            ancre = "w" if cote == "L" else "e"
-            tx, ty = px + (6 if cote == "L" else -6), py
-        else:
-            ancre = "center"
-            tx, ty = px, py + (10 if cote == "T" else -10)
-        prims.append(("text", (tx, ty), libelle, 7, ancre))
+    prims.extend(_libelles_broches(defn))
     return prims
