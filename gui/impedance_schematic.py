@@ -174,7 +174,9 @@ _Z_EDGE = SCHEMA_COLORS["Z_EDGE"]  # alignée tokens = theme.BLUE_HOVER (#2563eb
 # Couleur des symboles par type (idem palette _COMP_COLORS de l'app).
 _COMP_COLORS = {k: SCHEMA_COLORS["COMP"][k] for k in ("R", "C", "L")}
 
-# Symbole schemdraw par type de composant ; défaut = boîte générique RBox.
+# Symbole schemdraw par type de composant ; défaut = boîte générique ResistorIEC
+# (elm.RBox est un ALIAS de la même classe en schemdraw 0.22 — pas un symbole
+# distinct : ne pas le réintroduire ici en pensant obtenir un rendu différent).
 _SYMB = {
     "R": elm.Resistor,
     "C": elm.Capacitor,
@@ -195,11 +197,13 @@ def style_symbole(typ, value, ref):
     non formatable, l'appelant n'affiche alors que la ref). Fontsize/loc
     restent au choix de chaque appelant (échelles différentes).
 
-    Pour les types non R/L/C/D (transistors, ICs, etc.), utilise un RBox générique
-    plutôt qu'une résistance — clairement distinct visuellement.
+    Pour les types non R/L/C/D (transistors, ICs, etc.) sans symbole dédié,
+    utilise ResistorIEC comme boîte générique (aucun symbole visuellement
+    distinct disponible côté schemdraw pour un dipôle générique inconnu ;
+    ce n'est PAS un rendu « diode-like » ni « transistor-like »).
     """
     from circuit_analyzer import impedance
-    cls = _SYMB.get(typ, elm.RBox)
+    cls = _SYMB.get(typ, elm.ResistorIEC)
     coul = _COMP_COLORS.get(typ, _WIRE)
     vfmt = impedance.formater_valeur(value, typ)
     return cls, coul, ref, vfmt
