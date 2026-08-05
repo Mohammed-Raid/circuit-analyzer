@@ -2,6 +2,8 @@
 @brief Primitives vectorielles des symboles (spec 2026-07-15 §3) : chaque
 type trace, rotation coherente, DIP catalogue, purete d'import.
 """
+import os
+import pytest
 import subprocess
 import sys
 
@@ -11,6 +13,7 @@ from gui.schematic_symbols import (
     est_boite_generique,
     geometrie_libre,
     primitives,
+    primitives_depuis_dataitem,
     rotate_pin,
 )
 
@@ -229,3 +232,88 @@ def test_largeur_tient_compte_du_role():
     avec = geometrie_libre({"A": ("L", 0), "B": ("R", 0)},
                            roles={"A": "Alim", "B": "Sortie"})
     assert avec["w"] > sans["w"]
+
+
+def test_primitives_depuis_dataitem_segment_devient_une_ligne():
+    xml = ('<DataItem><datasegment><DataSegment>'
+           '<Spoint><X>10</X><Y>20</Y></Spoint>'
+           '<Epoint><X>30</X><Y>20</Y></Epoint>'
+           '</DataSegment></datasegment></DataItem>')
+    assert primitives_depuis_dataitem(xml, 1.0) == [
+        ("line", [(10.0, 20.0), (30.0, 20.0)], 2)]
+
+
+def test_primitives_depuis_dataitem_applique_l_echelle():
+    xml = ('<DataItem><datasegment><DataSegment>'
+           '<Spoint><X>10</X><Y>20</Y></Spoint>'
+           '<Epoint><X>30</X><Y>20</Y></Epoint>'
+           '</DataSegment></datasegment></DataItem>')
+    assert primitives_depuis_dataitem(xml, 0.5) == [
+        ("line", [(5.0, 10.0), (15.0, 10.0)], 2)]
+
+
+def test_primitives_depuis_dataitem_arc_devient_un_arc():
+    # Fragment reel (Self.xml de la bibliotheque ERetroDesign).
+    xml = ('<DataItem><dataarc><DataArc>'
+           '<pCenter><X>0</X><Y>0</Y></pCenter>'
+           '<stAngle>-180</stAngle><swAngle>180</swAngle>'
+           '<Spoint><X>-16</X><Y>0</Y></Spoint>'
+           '<Epoint><X>16</X><Y>0</Y></Epoint>'
+           '</DataArc></dataarc></DataItem>')
+    assert primitives_depuis_dataitem(xml, 1.0) == [
+        ("arc", (-16.0, -16.0, 16.0, 16.0), -180.0, 180.0)]
+
+
+def test_primitives_depuis_dataitem_arc_de_rayon_nul_ignore():
+    xml = ('<DataItem><dataarc><DataArc>'
+           '<pCenter><X>5</X><Y>5</Y></pCenter>'
+           '<stAngle>0</stAngle><swAngle>90</swAngle>'
+           '<Spoint><X>5</X><Y>5</Y></Spoint>'
+           '<Epoint><X>5</X><Y>5</Y></Epoint>'
+           '</DataArc></dataarc></DataItem>')
+    assert primitives_depuis_dataitem(xml, 1.0) == []
+
+
+def test_primitives_depuis_dataitem_polygone_groupe_en_une_forme_fermee():
+    # Fragment reel (AOP.xml) : 3 <DataPolygon>, un point chacun -> 1 triangle.
+    xml = ('<DataItem><datapolygon>'
+           '<DataPolygon><point><X>52</X><Y>0</Y></point></DataPolygon>'
+           '<DataPolygon><point><X>-52</X><Y>-48</Y></point></DataPolygon>'
+           '<DataPolygon><point><X>-52</X><Y>48</Y></point></DataPolygon>'
+           '</datapolygon></DataItem>')
+    assert primitives_depuis_dataitem(xml, 1.0) == [
+        ("polygon", [(52.0, 0.0), (-52.0, -48.0), (-52.0, 48.0)], False)]
+
+
+def test_primitives_depuis_dataitem_polygone_incomplet_ignore():
+    xml = ('<DataItem><datapolygon>'
+           '<DataPolygon><point><X>0</X><Y>0</Y></point></DataPolygon>'
+           '<DataPolygon><point><X>10</X><Y>0</Y></point></DataPolygon>'
+           '</datapolygon></DataItem>')
+    assert primitives_depuis_dataitem(xml, 1.0) == []
+
+
+def test_primitives_depuis_dataitem_sans_forme_retourne_vide():
+    xml = '<DataItem><datapin><DataPin><Pname>1</Pname></DataPin></datapin></DataItem>'
+    assert primitives_depuis_dataitem(xml, 1.0) == []
+
+
+def test_primitives_depuis_dataitem_xml_invalide_ne_leve_pas():
+    assert primitives_depuis_dataitem("pas du xml", 1.0) == []
+
+
+_DOSSIER_REEL = os.path.join("ERetroDesign", "ERetroDesign", "bin", "Debug",
+                             "LibItem", "Lib")
+
+
+@pytest.mark.skipif(not os.path.isdir(_DOSSIER_REEL), reason="ERetroDesign absent")
+@pytest.mark.parametrize("nom,famille", [
+    ("AOP.xml", "polygon"),
+    ("Self.xml", "arc"),
+    ("Diode.xml", "polygon"),
+])
+def test_vrais_symboles_produisent_la_famille_de_primitive_attendue(nom, famille):
+    with open(os.path.join(_DOSSIER_REEL, nom), encoding="utf-8") as f:
+        xml = f.read()
+    prims = primitives_depuis_dataitem(xml, 1.0)
+    assert any(p[0] == famille for p in prims)

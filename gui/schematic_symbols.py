@@ -10,6 +10,9 @@ Primitive :
   ("text", (x,y), texte, taille, ancre)
 """
 
+import math
+import xml.etree.ElementTree as ET
+
 from gui.theme import SCHEMA_COLORS
 
 # Couleur des composants sans symbole dedie (boite generique, brochage libre).
@@ -265,6 +268,70 @@ def def_puce(value, broches):
         "pins": pins, "default_value": value,
         "fonctions": dict(broches),
     }
+
+
+def primitives_depuis_dataitem(xml_texte: str, echelle: float) -> list:
+    """@brief Contour reel d'un <DataItem> ERetroDesign en primitives d'edition.
+
+    Parse datasegment/DataSegment (Spoint/Epoint -> "line"), dataarc/DataArc
+    (pCenter/stAngle/swAngle, rayon = distance pCenter->Spoint -> "arc"),
+    datapolygon/DataPolygon (points groupes -> un seul "polygon" ferme).
+    Mise a l'echelle *echelle* — l'appelant DOIT passer la meme constante
+    ECHELLE que celle utilisee pour les broches (eretro_lib.py), jamais une
+    valeur cablee en dur ici, sous peine de desaligner pattes et contour.
+    Ne leve JAMAIS : XML invalide ou geometrie degeneree -> ignores, jamais
+    une exception qui ferait echouer tout l'import du composant.
+
+    @param xml_texte Fragment <DataItem>...</DataItem> (texte).
+    @param echelle Facteur d'echelle unites BoardSCH -> unites editeur (=
+           eretro_lib.ECHELLE, actuellement 1 : pas de mise a l'echelle).
+    @return list[tuple] Primitives ("line"|"arc"|"polygon", ...). Vide si le
+            composant n'a ni polygone, ni segment, ni arc exploitable.
+    """
+    try:
+        r = ET.fromstring(xml_texte)
+    except ET.ParseError:
+        return []
+    prims = []
+    for s in r.findall("./datasegment/DataSegment"):
+        try:
+            sp, ep = s.find("Spoint"), s.find("Epoint")
+            x1 = float(sp.findtext("X") or 0) * echelle
+            y1 = float(sp.findtext("Y") or 0) * echelle
+            x2 = float(ep.findtext("X") or 0) * echelle
+            y2 = float(ep.findtext("Y") or 0) * echelle
+            prims.append(("line", [(x1, y1), (x2, y2)], 2))
+        except (AttributeError, ValueError, TypeError):
+            continue
+    for a in r.findall("./dataarc/DataArc"):
+        try:
+            c = a.find("pCenter")
+            cx = float(c.findtext("X") or 0) * echelle
+            cy = float(c.findtext("Y") or 0) * echelle
+            sp = a.find("Spoint")
+            sx = float(sp.findtext("X") or 0) * echelle
+            sy = float(sp.findtext("Y") or 0) * echelle
+            rayon = math.hypot(sx - cx, sy - cy)
+            if rayon <= 0:
+                continue
+            debut = float(a.findtext("stAngle") or 0)
+            etendue = float(a.findtext("swAngle") or 0)
+            prims.append(("arc",
+                         (cx - rayon, cy - rayon, cx + rayon, cy + rayon),
+                         debut, etendue))
+        except (AttributeError, ValueError, TypeError):
+            continue
+    points = []
+    for p in r.findall("./datapolygon/DataPolygon"):
+        try:
+            pt = p.find("point")
+            points.append((float(pt.findtext("X") or 0) * echelle,
+                           float(pt.findtext("Y") or 0) * echelle))
+        except (AttributeError, ValueError, TypeError):
+            continue
+    if len(points) >= 3:
+        prims.append(("polygon", points, False))
+    return prims
 
 
 # ── Brochage libre par instance (spec 2026-07-23) ────────────────────────────
