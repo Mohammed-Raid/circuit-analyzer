@@ -29,7 +29,9 @@ class TabDraw:
         @param on_analyze Callback(path) appelé avec le chemin du fichier netlist
                           temporaire après clic sur « Analyser ».
         @param on_pattern_created Callback() appelé après création d'un pattern
-                          (pour rafraîchir l'onglet Circuits).
+                          depuis le wizard. Non câblé par app_window depuis le
+                          retrait de l'onglet Circuits (aucun consommateur
+                          actuel) ; conservé pour un futur abonné.
         """
         self.frame               = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
         self._on_analyze         = on_analyze

@@ -106,7 +106,10 @@ class TabAnalyze:
 
         @param parent Widget parent (zone de contenu).
         @param on_pattern_created Callback() après création d'un pattern
-                                  (rafraîchit l'onglet Circuits).
+                                  depuis le wizard. Non câblé par app_window
+                                  depuis le retrait de l'onglet Circuits
+                                  (aucun consommateur actuel) ; conservé pour
+                                  un futur abonné.
         """
         self.frame = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
         self._on_pattern_created_cb = on_pattern_created

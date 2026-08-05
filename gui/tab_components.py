@@ -64,7 +64,8 @@ class TabComponents:
         """@brief Construit l'onglet, charge la bibliothèque et affiche le mode « nouveau ».
 
         @param parent Widget parent (zone de contenu).
-        @param on_save Callback appelé après sauvegarde/suppression (rafraîchit l'onglet Circuits).
+        @param on_save Callback appelé après sauvegarde/suppression (rafraîchit
+                       la palette de composants de l'onglet Schéma).
         """
         self.frame = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
         self._on_save = on_save
@@ -694,8 +695,9 @@ class TabComponents:
             self._ecrire()
             self._load()
             self._afficher_nouveau()
-            # Comme à la sauvegarde : prévenir l'onglet Circuits que la
-            # bibliothèque a changé, sinon le composant supprimé reste proposé.
+            # Comme à la sauvegarde : prévenir l'onglet Schéma (palette de
+            # composants) que la bibliothèque a changé, sinon le composant
+            # supprimé reste proposé.
             if self._on_save:
                 self._on_save()
 
