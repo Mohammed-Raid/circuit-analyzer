@@ -23,7 +23,7 @@ import os
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
-from gui.schematic_symbols import aimanter_bord, geometrie_libre
+from gui.schematic_symbols import aimanter_bord, geometrie_libre, primitives_depuis_dataitem
 
 # Unites ERetroDesign par pixel de l'editeur ; geometrie CENTREE sur (0,0).
 # ECHELLE=1 : les vrais symboles de Lib.xml sont centres avec des coords ~±48..80
@@ -339,8 +339,11 @@ def _entree_depuis_dataitem(r):
     nom_symbole = (r.findtext("Name") or "").strip()
     if not prefix:
         prefix = (nom_symbole[:3].upper() or "X")
+    xml_texte = ET.tostring(r, encoding="unicode")
     entree = {"name": nom_symbole, "pins": pins, "brochage": brochage,
-              "boite": {"w": w, "h": h}}
+              "boite": {"w": w, "h": h},
+              "primitives": primitives_depuis_dataitem(xml_texte, ECHELLE),
+              "xml_source": xml_texte}
     # Un COMPOSE (<CComp>, dossier CCLib) se lit comme une boite a broches,
     # mais il ne doit JAMAIS repartir en <DataItem> : son original vit dans
     # CCLib et porte des entrailles (DItemL/CCLine) que nous ne modelisons pas.

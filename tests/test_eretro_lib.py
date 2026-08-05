@@ -5,6 +5,7 @@ On ne peut pas valider le RENDU dans l'app C# du collegue depuis ici ; on
 verrouille en revanche l'aller-retour par notre propre lecteur : un composant
 exporte puis relu redonne le meme brochage et la meme boite.
 """
+import json
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -339,3 +340,40 @@ def test_dossier_ramasse_simples_ET_composes(tmp_path):
     assert {e["name"] for _p, e in composants_depuis_xml(str(libitem))} == {"Resi", "Pont"}
     # on designe Lib -> le frere CCLib est ramasse quand meme
     assert {e["name"] for _p, e in composants_depuis_xml(str(libitem / "Lib"))} == {"Resi", "Pont"}
+
+
+def test_entree_depuis_dataitem_capture_primitives_et_xml_source():
+    xml = ('<DataItem><Name>Test</Name>'
+           '<datasegment><DataSegment>'
+           '<Spoint><X>10</X><Y>0</Y></Spoint>'
+           '<Epoint><X>30</X><Y>0</Y></Epoint>'
+           '</DataSegment></datasegment>'
+           '<datapin><DataPin><Pname>1</Pname>'
+           '<Pin><X>40</X><Y>0</Y></Pin></DataPin></datapin></DataItem>')
+    _prefix, entree = symbole_vers_composant(xml)
+    assert entree["primitives"] == [("line", [(10.0, 0.0), (30.0, 0.0)], 2)]
+    assert "<Name>Test</Name>" in entree["xml_source"]
+
+
+def test_entree_depuis_dataitem_connecteur_sans_forme_a_primitives_vide():
+    xml = ('<DataItem><Name>Connecteur</Name>'
+           '<datapin><DataPin><Pname>1</Pname>'
+           '<Pin><X>0</X><Y>0</Y></Pin></DataPin></datapin></DataItem>')
+    _prefix, entree = symbole_vers_composant(xml)
+    assert entree["primitives"] == []
+    assert entree["xml_source"]      # toujours present, meme sans forme
+
+
+def test_entree_depuis_dataitem_survit_a_un_aller_retour_json():
+    xml = ('<DataItem><Name>Test</Name>'
+           '<datasegment><DataSegment>'
+           '<Spoint><X>10</X><Y>0</Y></Spoint>'
+           '<Epoint><X>30</X><Y>0</Y></Epoint>'
+           '</DataSegment></datasegment>'
+           '<datapin><DataPin><Pname>1</Pname>'
+           '<Pin><X>40</X><Y>0</Y></Pin></DataPin></datapin></DataItem>')
+    _prefix, entree = symbole_vers_composant(xml)
+    relu = json.loads(json.dumps(entree))
+    # JSON n'a pas de tuple : les listes imbriquees restent utilisables telles
+    # quelles par primitives()/_rot_prims (aucun code ne teste isinstance(tuple)).
+    assert relu["primitives"] == [["line", [[10.0, 0.0], [30.0, 0.0]], 2]]
