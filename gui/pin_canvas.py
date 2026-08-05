@@ -55,6 +55,7 @@ class PinCanvas(ctk.CTkFrame):
         self._pastilles: list = []
         self._roles: dict = {}          # {nom: role} — clef `fonctions`
         self._w_mini = self._h_mini = None
+        self._forme_primitives: list = []   # fond visuel de reference (spec 2026-08-05)
         self._cv = tk.Canvas(self, height=hauteur, highlightthickness=0,
                              bg=_FOND)
         self._cv.pack(fill="both", expand=True, padx=8, pady=8)
@@ -87,20 +88,32 @@ class PinCanvas(ctk.CTkFrame):
     # ── API publique ────────────────────────────────────────────────────────
 
     def charger(self, brochage: list, lecture_seule: bool = False,
-                roles: dict = None, w_mini=None, h_mini=None):
+                roles: dict = None, w_mini=None, h_mini=None,
+                forme_primitives: list = None):
         """@brief Remplace le brochage affiché (liste ordonnée de tuples).
 
         @param roles        {nom: rôle} — affiché « nom RÔLE » dans le symbole.
         @param w_mini,h_mini Taille PLANCHER voulue (None = auto-ajustement).
+        @param forme_primitives Forme réelle à dessiner en fond (référence,
+               JAMAIS liée au placement des broches), ou None (spec 2026-08-05).
         """
         self._brochage = [tuple(b) for b in brochage]
         self._roles = dict(roles or {})
         self._w_mini, self._h_mini = w_mini, h_mini
+        self._forme_primitives = list(forme_primitives or [])
         self._lecture_seule = lecture_seule
         self._selection = None
         self._dessiner()
         self._construire_bandeau()
         self._sync_champ()
+
+    def definir_forme(self, forme_primitives: list = None):
+        """@brief Change UNIQUEMENT le fond visuel (forme de référence), sans
+        toucher au brochage — pour le sélecteur de forme de l'onglet
+        Composants (spec 2026-08-05).
+        """
+        self._forme_primitives = list(forme_primitives or [])
+        self._dessiner()
 
     def brochage(self) -> list:
         """@brief Brochage courant, dans l'ordre (= ordre de la netlist)."""
@@ -120,20 +133,36 @@ class PinCanvas(ctk.CTkFrame):
     def _centre(self) -> tuple:
         return (self._cv.winfo_width() // 2, self._cv.winfo_height() // 2)
 
-    def _echelle(self) -> float:
-        """@brief Facteur d'affichage pour que la boîte TIENNE dans le cadre.
+    def _etendue_forme(self) -> tuple:
+        """@brief (largeur, hauteur) totale du fond visuel, centré sur (0,0)."""
+        mx = my = 0
+        for p in self._forme_primitives:
+            if p[0] in ("line", "polygon"):
+                for x, y in p[1]:
+                    mx, my = max(mx, abs(x)), max(my, abs(y))
+            elif p[0] == "arc":
+                x0, y0, x1, y1 = p[1]
+                mx = max(mx, abs(x0), abs(x1))
+                my = max(my, abs(y0), abs(y1))
+        return mx * 2, my * 2
 
-        Une taille imposée (ou un DIP-16) déborde du canevas : sans réduction
-        on ne voyait que le milieu des deux bords latéraux, ni haut ni bas du
-        rectangle (défaut trouvé en boucle visuelle). On ne grossit jamais —
-        le facteur est plafonné à 1.
+    def _echelle(self) -> float:
+        """@brief Facteur d'affichage pour que la boîte ET le fond TIENNENT
+        dans le cadre.
+
+        Une taille imposée (ou un DIP-16, ou une forme réelle importée) déborde
+        du canevas : sans réduction on ne voyait que le milieu des bords
+        latéraux, ni haut ni bas (défaut trouvé en boucle visuelle). On ne
+        grossit jamais — le facteur est plafonné à 1.
         """
         lw, lh = self._cv.winfo_width(), self._cv.winfo_height()
         if lw <= 1 or lh <= 1:
             return 1.0
         d = self._defn()
+        fw, fh = self._etendue_forme()
+        w, h = max(d["w"], fw), max(d["h"], fh)
         marge = 44          # place pour les pastilles et les libellés
-        return min(1.0, (lw - marge) / d["w"], (lh - marge) / d["h"])
+        return min(1.0, (lw - marge) / w, (lh - marge) / h)
 
     def _nom_libre(self) -> str:
         """@brief Plus petit entier >= 1 non utilisé (une suppression se recycle)."""
@@ -418,6 +447,21 @@ class PinCanvas(ctk.CTkFrame):
             return                      # widget pas encore dimensionné
         d = self._defn()
         k = self._echelle()
+        for p in self._forme_primitives:
+            if p[0] == "line":
+                pts = [c for x, y in p[1] for c in (cx + x * k, cy + y * k)]
+                self._cv.create_line(*pts, fill=TEXT_MUTED,
+                                     width=max(1, int(p[2] * k)))
+            elif p[0] == "polygon":
+                pts = [c for x, y in p[1] for c in (cx + x * k, cy + y * k)]
+                self._cv.create_polygon(*pts, fill="", outline=TEXT_MUTED,
+                                        width=1)
+            elif p[0] == "arc":
+                x0, y0, x1, y1 = p[1]
+                self._cv.create_arc(cx + x0 * k, cy + y0 * k,
+                                    cx + x1 * k, cy + y1 * k,
+                                    start=p[2], extent=p[3], style="arc",
+                                    outline=TEXT_MUTED, width=1)
         for p in primitives(TYPE_LIBRE, d, 0):
             if p[0] == "polygon":
                 pts = [c for x, y in p[1] for c in (cx + x * k, cy + y * k)]

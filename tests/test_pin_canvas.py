@@ -15,10 +15,13 @@ def canevas():
         root = ctk.CTk()
     except Exception:
         pytest.skip("pas de display Tk")
+    root.geometry("400x300")
     root.withdraw()
     pc = PinCanvas(root)
-    pc.pack()
-    root.update_idletasks()
+    pc.pack(fill="both", expand=True)
+    pc.winfo_toplevel().update_idletasks()
+    pc._cv.configure(width=320, height=190)
+    pc.winfo_toplevel().update_idletasks()
     yield pc
     root.destroy()
 
@@ -253,3 +256,50 @@ def test_clic_est_converti_selon_l_echelle(canevas):
     ev = types.SimpleNamespace(x=cx + 50 * k, y=cy)
     bx, _by = canevas._boite(ev)
     assert abs(bx - 50) < 1e-6
+
+
+# ── Task 6 : fond visuel optionnel (spec 2026-08-05) ───────────────────────────
+
+def test_charger_avec_forme_dessine_un_fond(canevas):
+    canevas.charger([("1", "L", 0)],
+                    forme_primitives=[("polygon", [(0, -10), (10, 10), (-10, 10)], False)])
+    items = canevas._cv.find_all()
+    polygones = [i for i in items if canevas._cv.type(i) == "polygon"]
+    # 1 polygone de fond (forme) + 1 polygone de boite editable = 2
+    assert len(polygones) == 2
+
+
+def test_sans_forme_pas_de_fond(canevas):
+    canevas.charger([("1", "L", 0)])
+    items = canevas._cv.find_all()
+    polygones = [i for i in items if canevas._cv.type(i) == "polygon"]
+    assert len(polygones) == 1          # seulement la boite editable
+
+
+def test_definir_forme_ne_touche_pas_au_brochage(canevas):
+    canevas.charger([("1", "L", 0)])
+    canevas.definir_forme([("polygon", [(0, -10), (10, 10), (-10, 10)], False)])
+    assert canevas.brochage() == [("1", "L", 0)]
+    items = canevas._cv.find_all()
+    polygones = [i for i in items if canevas._cv.type(i) == "polygon"]
+    assert len(polygones) == 2
+
+
+def test_boite_reste_cliquable_par_dessus_le_fond(canevas):
+    canevas.charger(
+        [], forme_primitives=[("polygon", [(0, -200), (200, 200), (-200, 200)], False)])
+    # Une forme bien plus grande que la boite par defaut ne doit pas empecher
+    # de cliquer sur le bord GAUCHE de la boite editable (toujours reference).
+    assert canevas._ajouter(-40, 0) == "1"
+    _nom, cote, _dec = canevas.brochage()[0]
+    assert cote == "L"
+
+
+def test_echelle_tient_compte_de_la_forme_plus_grande_que_la_boite(canevas):
+    canevas._cv.configure(width=400, height=400)
+    canevas._cv.update_idletasks()
+    canevas.charger([("1", "L", 0)])
+    sans_forme = canevas._echelle()
+    canevas.definir_forme([("polygon", [(0, -300), (300, 300), (-300, 300)], False)])
+    avec_forme = canevas._echelle()
+    assert avec_forme < sans_forme
