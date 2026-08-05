@@ -6,6 +6,7 @@ verrouille en revanche l'aller-retour par notre propre lecteur : un composant
 exporte puis relu redonne le meme brochage et la meme boite.
 """
 import json
+import math
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -404,3 +405,57 @@ def test_entree_depuis_dataitem_primitives_et_brochage_partagent_l_origine():
     # Le meme X=1040 dans le segment doit produire la meme abscisse
     # recentree que le decalage de la broche : preuve d'une origine commune.
     assert entree["primitives"][0][1][1][0] == 40.0
+
+
+def _dist_point_segment(px, py, ax, ay, bx, by):
+    dx, dy = bx - ax, by - ay
+    if dx == 0 and dy == 0:
+        return math.hypot(px - ax, py - ay)
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
+    return math.hypot(px - ax - t * dx, py - ay - t * dy)
+
+
+def test_broche_reste_pres_du_corps_polygone_meme_si_la_patte_est_loin():
+    """Defaut reel trouve en boucle visuelle sur VCC+.xml/Vss.xml du boss :
+    une patte (<DataSegment>) minuscule loin du corps (<DataPolygon>) faisait
+    calculer un centre/une boite sur la SEULE patte -> broche loin du corps
+    une fois le vrai contour dessine. `coords` doit couvrir le polygone aussi.
+
+    Reprend la forme exacte de VCC+.xml : patte (0,34)-(0,48), broche "+" a
+    (0,48), corps polygone couvrant Y de -48 a 34, loin de la patte.
+    """
+    xml = ('<DataItem><Name>VCCTest</Name>'
+           '<datapolygon>'
+           '<DataPolygon><point><X>-69</X><Y>-48</Y></point></DataPolygon>'
+           '<DataPolygon><point><X>69</X><Y>-48</Y></point></DataPolygon>'
+           '<DataPolygon><point><X>69</X><Y>34</Y></point></DataPolygon>'
+           '<DataPolygon><point><X>-69</X><Y>34</Y></point></DataPolygon>'
+           '</datapolygon>'
+           '<datasegment><DataSegment>'
+           '<Spoint><X>0</X><Y>34</Y></Spoint>'
+           '<Epoint><X>0</X><Y>48</Y></Epoint>'
+           '</DataSegment></datasegment>'
+           '<datapin><DataPin><Pname>+</Pname>'
+           '<Pin><X>0</X><Y>48</Y></Pin></DataPin></datapin></DataItem>')
+    _prefix, entree = symbole_vers_composant(xml)
+    from gui.schematic_editor import _auto_def
+    d = _auto_def(entree["name"], entree["pins"], entree["brochage"],
+                  entree.get("default_value", ""), entree.get("fonctions"),
+                  entree.get("boite"), entree.get("primitives"))
+    px, py = d["pins"]["+"]
+    pire = 1e9
+    for p in d["primitives"]:
+        if p[0] == "line":
+            (ax, ay), (bx, by) = p[1]
+            pire = min(pire, _dist_point_segment(px, py, ax, ay, bx, by))
+        elif p[0] == "polygon":
+            pts = p[1]
+            n = len(pts)
+            for i in range(n):
+                ax, ay = pts[i]
+                bx, by = pts[(i + 1) % n]
+                pire = min(pire, _dist_point_segment(px, py, ax, ay, bx, by))
+    # Avant le correctif : ~43 (broche calculee sur la seule patte, loin du
+    # polygone). Apres : la broche doit toucher le contour reel (tolerance
+    # d'aimantation a la grille, GRILLE=20, jamais un flottement franc).
+    assert pire <= 20, f"broche a {pire}px du contour reel (attendu <= 20)"

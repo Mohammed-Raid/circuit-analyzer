@@ -107,13 +107,21 @@ def _auto_def(name: str, pins: list, brochage: dict = None,
     @param brochage {nom: (côté, décalage)} ou None.
     @param forme_primitives Contour réel importé d'ERetroDesign (spec
            2026-08-05, `entree["primitives"]`) ou None/vide — copié tel quel
-           dans le def si présent, le brochage/boîte restent inchangés.
+           dans le def si présent. Sa présence bascule aussi `boite` en taille
+           EXACTE (`geometrie_libre(w_exact=…)`) plutôt qu'en simple plancher :
+           le remplissage genereux pense pour une boite etiquetee a la main
+           faisait flotter une broche loin d'un contour reel deja dessine
+           (defaut trouve en boucle visuelle sur Vss.xml/VCC+.xml du boss).
     @return dict Entrée compatible COMP_DEFS (label, color, w, h, pins, default_value).
     """
     if brochage:
         b = boite or {}
-        d = geometrie_libre({n: tuple(v) for n, v in brochage.items()},
-                            b.get("w"), b.get("h"), fonctions or {})
+        pinout = {n: tuple(v) for n, v in brochage.items()}
+        if forme_primitives:
+            d = geometrie_libre(pinout, roles=fonctions or {},
+                                w_exact=b.get("w"), h_exact=b.get("h"))
+        else:
+            d = geometrie_libre(pinout, b.get("w"), b.get("h"), fonctions or {})
         d["label"] = name
         d["default_value"] = default_value or ""
         if forme_primitives:

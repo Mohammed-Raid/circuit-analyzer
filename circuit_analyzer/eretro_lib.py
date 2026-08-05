@@ -19,6 +19,7 @@ deux sens passent par le MEME modele boite+broches, d'ou un aller-retour exact.
   curseur. Seul CtrIem est accroche a la grille (Snap, GridStep=10) ; nos broches
   tombent sur des multiples de 10 -> cablage propre.
 """
+import math
 import os
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
@@ -303,13 +304,33 @@ def _racine(source):
 
 
 def _entree_depuis_dataitem(r):
-    """@brief Convertit un element <DataItem> en (prefix, entree bibliotheque)."""
+    """@brief Convertit un element <DataItem> en (prefix, entree bibliotheque).
+
+    `coords` doit couvrir TOUTE la geometrie visible (segments -- pattes --,
+    ET polygones/arcs -- le corps du symbole), pas seulement les segments :
+    un symbole dont le corps est un polygone loin de sa patte (ex. Vss, VCC+)
+    aurait sinon un centre et une boite calcules sur la seule patte, minuscule
+    et hors-corps -- broche qui flotte, loin de la forme reelle une fois celle-ci
+    dessinee (spec 2026-08-05, defaut trouve en boucle visuelle apres livraison).
+    """
     coords = []
     for s in r.findall("./datasegment/DataSegment"):
         for tag in ("Spoint", "Epoint"):
             e = s.find(tag)
             if e is not None:
                 coords.append((float(e.findtext("X") or 0), float(e.findtext("Y") or 0)))
+    for pg in r.findall("./datapolygon/DataPolygon"):
+        pt = pg.find("point")
+        if pt is not None:
+            coords.append((float(pt.findtext("X") or 0), float(pt.findtext("Y") or 0)))
+    for a in r.findall("./dataarc/DataArc"):
+        c, sp = a.find("pCenter"), a.find("Spoint")
+        if c is not None and sp is not None:
+            acx, acy = float(c.findtext("X") or 0), float(c.findtext("Y") or 0)
+            rayon = math.hypot(float(sp.findtext("X") or 0) - acx,
+                               float(sp.findtext("Y") or 0) - acy)
+            coords.append((acx - rayon, acy - rayon))
+            coords.append((acx + rayon, acy + rayon))
     pins_xy = []
     for dp in r.findall("./datapin/DataPin"):
         p = dp.find("Pin")

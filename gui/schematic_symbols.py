@@ -353,7 +353,8 @@ BOITE_MARGE = 20
 CHAR_W = 7          # largeur approx. d'un caractere du libelle de broche
 
 
-def geometrie_libre(pinout, w_mini=None, h_mini=None, roles=None):
+def geometrie_libre(pinout, w_mini=None, h_mini=None, roles=None,
+                    w_exact=None, h_exact=None):
     """@brief Def d'une boite au brochage libre (spec 2026-07-23).
 
     @param pinout  {nom: (cote 'L'/'R'/'T'/'B', decalage signe sur ce bord)}.
@@ -363,30 +364,41 @@ def geometrie_libre(pinout, w_mini=None, h_mini=None, roles=None):
            composant dont les broches debordent du cadre.
     @param roles   {nom: role} — le libelle devient « nom ROLE », comme le fait
            deja `_tr_boite` pour les puces du catalogue.
-    @return def compatible COMP_DEFS, taille AUTO-AJUSTEE.
+    @param w_exact,h_exact Taille EXACTE (pas un plancher) : court-circuite le
+           calcul heuristique de marge/libelle ci-dessous. Reserve aux formes
+           importees (primitives reelles, spec 2026-08-05) dont la vraie
+           taille est deja connue -- le remplissage genereux pense pour une
+           boite etiquetee A LA MAIN n'a pas de sens pour un contour reel deja
+           dessine : broche qui flotte loin de la forme (defaut trouve en
+           boucle visuelle sur Vss.xml/VCC+.xml du boss apres livraison).
+    @return def compatible COMP_DEFS, taille AUTO-AJUSTEE (ou EXACTE).
     """
     roles = roles or {}
 
     def _lab(n):
         return f"{n} {roles.get(n, '')}".strip()
 
-    lat = [abs(d) for c, d in pinout.values() if c in ("L", "R")]
-    ver = [abs(d) for c, d in pinout.values() if c in ("T", "B")]
-    # La boite doit aussi loger les LIBELLES, dessines a l'interieur : sans ca
-    # les noms des bords opposes se telescopent ("IN1 VCCOUT1", defaut trouve
-    # en boucle visuelle le 2026-07-23). Le ROLE en fait partie.
-    lg = max((len(_lab(n)) for n, (c, _d) in pinout.items() if c == "L"), default=0)
-    ld = max((len(_lab(n)) for n, (c, _d) in pinout.items() if c == "R"), default=0)
-    h = max(BOITE_MIN_H, 2 * max(lat, default=0) + BOITE_MARGE)
-    w = max(BOITE_MIN_W, 2 * max(ver, default=0) + BOITE_MARGE,
-            (lg + ld) * CHAR_W + 3 * BOITE_MARGE)
-    if ver:
-        # Les libelles du haut/bas mordent vers l'interieur : on leur reserve
-        # une bande, sinon ils croisent ceux des bords lateraux.
-        h += 2 * BOITE_MARGE
-    # PLANCHER applique APRES l'auto-ajustement : jamais sous le besoin reel.
-    w = max(w, int(w_mini or 0))
-    h = max(h, int(h_mini or 0))
+    if w_exact is not None and h_exact is not None:
+        w = max(BOITE_MIN_W, int(w_exact))
+        h = max(BOITE_MIN_H, int(h_exact))
+    else:
+        lat = [abs(d) for c, d in pinout.values() if c in ("L", "R")]
+        ver = [abs(d) for c, d in pinout.values() if c in ("T", "B")]
+        # La boite doit aussi loger les LIBELLES, dessines a l'interieur : sans
+        # ca les noms des bords opposes se telescopent ("IN1 VCCOUT1", defaut
+        # trouve en boucle visuelle le 2026-07-23). Le ROLE en fait partie.
+        lg = max((len(_lab(n)) for n, (c, _d) in pinout.items() if c == "L"), default=0)
+        ld = max((len(_lab(n)) for n, (c, _d) in pinout.items() if c == "R"), default=0)
+        h = max(BOITE_MIN_H, 2 * max(lat, default=0) + BOITE_MARGE)
+        w = max(BOITE_MIN_W, 2 * max(ver, default=0) + BOITE_MARGE,
+                (lg + ld) * CHAR_W + 3 * BOITE_MARGE)
+        if ver:
+            # Les libelles du haut/bas mordent vers l'interieur : on leur
+            # reserve une bande, sinon ils croisent ceux des bords lateraux.
+            h += 2 * BOITE_MARGE
+        # PLANCHER applique APRES l'auto-ajustement : jamais sous le besoin reel.
+        w = max(w, int(w_mini or 0))
+        h = max(h, int(h_mini or 0))
     w2, h2 = w // 2, h // 2
     pins, cotes = {}, {}
     for nom, (cote, dec) in pinout.items():
