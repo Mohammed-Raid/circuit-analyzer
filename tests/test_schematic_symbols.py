@@ -245,12 +245,25 @@ def test_primitives_depuis_dataitem_segment_devient_une_ligne():
 
 
 def test_primitives_depuis_dataitem_applique_l_echelle():
+    # Meme convention que le reste du codebase : division par echelle
+    # (eretro_lib.py fait (px - cx) / ECHELLE), donc echelle=0.5 DOUBLE.
     xml = ('<DataItem><datasegment><DataSegment>'
            '<Spoint><X>10</X><Y>20</Y></Spoint>'
            '<Epoint><X>30</X><Y>20</Y></Epoint>'
            '</DataSegment></datasegment></DataItem>')
     assert primitives_depuis_dataitem(xml, 0.5) == [
-        ("line", [(5.0, 10.0), (15.0, 10.0)], 2)]
+        ("line", [(20.0, 40.0), (60.0, 40.0)], 2)]
+
+
+def test_primitives_depuis_dataitem_recentre_sur_cx_cy():
+    # Meme formule que les broches ((px - cx) / echelle) : un decalage
+    # d'origine doit se retrouver soustrait, pas ignore.
+    xml = ('<DataItem><datasegment><DataSegment>'
+           '<Spoint><X>110</X><Y>220</Y></Spoint>'
+           '<Epoint><X>130</X><Y>220</Y></Epoint>'
+           '</DataSegment></datasegment></DataItem>')
+    assert primitives_depuis_dataitem(xml, 1.0, cx=100, cy=200) == [
+        ("line", [(10.0, 20.0), (30.0, 20.0)], 2)]
 
 
 def test_primitives_depuis_dataitem_arc_devient_un_arc():

@@ -342,7 +342,7 @@ def _entree_depuis_dataitem(r):
     xml_texte = ET.tostring(r, encoding="unicode")
     entree = {"name": nom_symbole, "pins": pins, "brochage": brochage,
               "boite": {"w": w, "h": h},
-              "primitives": primitives_depuis_dataitem(xml_texte, ECHELLE),
+              "primitives": primitives_depuis_dataitem(xml_texte, ECHELLE, cx, cy),
               "xml_source": xml_texte}
     # Un COMPOSE (<CComp>, dossier CCLib) se lit comme une boite a broches,
     # mais il ne doit JAMAIS repartir en <DataItem> : son original vit dans

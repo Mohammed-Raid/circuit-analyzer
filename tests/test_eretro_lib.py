@@ -343,6 +343,8 @@ def test_dossier_ramasse_simples_ET_composes(tmp_path):
 
 
 def test_entree_depuis_dataitem_capture_primitives_et_xml_source():
+    # cx,cy sont calcules depuis les points du datasegment (Spoint/Epoint) :
+    # ici xs=[10,30] -> cx=20, cy=0. Le segment est donc recentre autour de 0.
     xml = ('<DataItem><Name>Test</Name>'
            '<datasegment><DataSegment>'
            '<Spoint><X>10</X><Y>0</Y></Spoint>'
@@ -351,7 +353,7 @@ def test_entree_depuis_dataitem_capture_primitives_et_xml_source():
            '<datapin><DataPin><Pname>1</Pname>'
            '<Pin><X>40</X><Y>0</Y></Pin></DataPin></datapin></DataItem>')
     _prefix, entree = symbole_vers_composant(xml)
-    assert entree["primitives"] == [("line", [(10.0, 0.0), (30.0, 0.0)], 2)]
+    assert entree["primitives"] == [("line", [(-10.0, 0.0), (10.0, 0.0)], 2)]
     assert "<Name>Test</Name>" in entree["xml_source"]
 
 
@@ -376,4 +378,29 @@ def test_entree_depuis_dataitem_survit_a_un_aller_retour_json():
     relu = json.loads(json.dumps(entree))
     # JSON n'a pas de tuple : les listes imbriquees restent utilisables telles
     # quelles par primitives()/_rot_prims (aucun code ne teste isinstance(tuple)).
-    assert relu["primitives"] == [["line", [[10.0, 0.0], [30.0, 0.0]], 2]]
+    assert relu["primitives"] == [["line", [[-10.0, 0.0], [10.0, 0.0]], 2]]
+
+
+def test_entree_depuis_dataitem_primitives_et_brochage_partagent_l_origine():
+    # Composant decale loin de l'origine XML : bbox du segment xs=[960,1040]
+    # -> cx=1000 ; ys=[200,400] -> cy=300. La broche est au coin (1040,200)
+    # de cette bbox (dx=+40=w/2, dy=-100=-h/2 pile) : egalite T/R tranchee
+    # en faveur du bord horizontal T (aimanter_bord, arbitrage documente),
+    # decalage = dx = 40. Le second point du segment est au meme X=1040 :
+    # sa coordonnee recentree doit valoir le MEME 40.0, preuve que
+    # primitives_depuis_dataitem() et le calcul des broches partagent la
+    # meme origine (cx, cy).
+    xml = ('<DataItem><Name>Decale</Name>'
+           '<datasegment><DataSegment>'
+           '<Spoint><X>960</X><Y>200</Y></Spoint>'
+           '<Epoint><X>1040</X><Y>400</Y></Epoint>'
+           '</DataSegment></datasegment>'
+           '<datapin><DataPin><Pname>1</Pname>'
+           '<Pin><X>1040</X><Y>200</Y></Pin></DataPin></datapin></DataItem>')
+    _prefix, entree = symbole_vers_composant(xml)
+    cote, decalage = entree["brochage"]["1"]
+    assert cote == "T"
+    assert decalage == 40
+    # Le meme X=1040 dans le segment doit produire la meme abscisse
+    # recentree que le decalage de la broche : preuve d'une origine commune.
+    assert entree["primitives"][0][1][1][0] == 40.0

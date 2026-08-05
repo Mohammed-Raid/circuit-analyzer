@@ -273,21 +273,27 @@ def def_puce(value, broches):
     }
 
 
-def primitives_depuis_dataitem(xml_texte: str, echelle: float) -> list:
+def primitives_depuis_dataitem(xml_texte: str, echelle: float,
+                                cx: float = 0.0, cy: float = 0.0) -> list:
     """@brief Contour reel d'un <DataItem> ERetroDesign en primitives d'edition.
 
     Parse datasegment/DataSegment (Spoint/Epoint -> "line"), dataarc/DataArc
     (pCenter/stAngle/swAngle, rayon = distance pCenter->Spoint -> "arc"),
     datapolygon/DataPolygon (points groupes -> un seul "polygon" ferme).
-    Mise a l'echelle *echelle* — l'appelant DOIT passer la meme constante
-    ECHELLE que celle utilisee pour les broches (eretro_lib.py), jamais une
-    valeur cablee en dur ici, sous peine de desaligner pattes et contour.
+    Chaque coordonnee est recentree sur (cx, cy) PUIS divisee par *echelle* —
+    exactement la meme formule que le calcul des broches dans eretro_lib.py
+    (`(px - cx) / ECHELLE`), pour que forme et broches partagent la meme
+    origine. L'appelant DOIT passer le meme (cx, cy, echelle) que celui utilise
+    pour les broches, jamais des valeurs cablees en dur ici, sous peine de
+    desaligner pattes et contour.
     Ne leve JAMAIS : XML invalide ou geometrie degeneree -> ignores, jamais
     une exception qui ferait echouer tout l'import du composant.
 
     @param xml_texte Fragment <DataItem>...</DataItem> (texte).
     @param echelle Facteur d'echelle unites BoardSCH -> unites editeur (=
            eretro_lib.ECHELLE, actuellement 1 : pas de mise a l'echelle).
+    @param cx, cy Origine (centroide) a soustraire avant division, en unites
+           XML — memes valeurs que le cx, cy utilises pour les broches.
     @return list[tuple] Primitives ("line"|"arc"|"polygon", ...). Vide si le
             composant n'a ni polygone, ni segment, ni arc exploitable.
     """
@@ -299,28 +305,28 @@ def primitives_depuis_dataitem(xml_texte: str, echelle: float) -> list:
     for s in r.findall("./datasegment/DataSegment"):
         try:
             sp, ep = s.find("Spoint"), s.find("Epoint")
-            x1 = float(sp.findtext("X") or 0) * echelle
-            y1 = float(sp.findtext("Y") or 0) * echelle
-            x2 = float(ep.findtext("X") or 0) * echelle
-            y2 = float(ep.findtext("Y") or 0) * echelle
+            x1 = (float(sp.findtext("X") or 0) - cx) / echelle
+            y1 = (float(sp.findtext("Y") or 0) - cy) / echelle
+            x2 = (float(ep.findtext("X") or 0) - cx) / echelle
+            y2 = (float(ep.findtext("Y") or 0) - cy) / echelle
             prims.append(("line", [(x1, y1), (x2, y2)], 2))
         except (AttributeError, ValueError, TypeError):
             continue
     for a in r.findall("./dataarc/DataArc"):
         try:
             c = a.find("pCenter")
-            cx = float(c.findtext("X") or 0) * echelle
-            cy = float(c.findtext("Y") or 0) * echelle
+            acx = (float(c.findtext("X") or 0) - cx) / echelle
+            acy = (float(c.findtext("Y") or 0) - cy) / echelle
             sp = a.find("Spoint")
-            sx = float(sp.findtext("X") or 0) * echelle
-            sy = float(sp.findtext("Y") or 0) * echelle
-            rayon = math.hypot(sx - cx, sy - cy)
+            sx = (float(sp.findtext("X") or 0) - cx) / echelle
+            sy = (float(sp.findtext("Y") or 0) - cy) / echelle
+            rayon = math.hypot(sx - acx, sy - acy)
             if rayon <= 0:
                 continue
             debut = float(a.findtext("stAngle") or 0)
             etendue = float(a.findtext("swAngle") or 0)
             prims.append(("arc",
-                         (cx - rayon, cy - rayon, cx + rayon, cy + rayon),
+                         (acx - rayon, acy - rayon, acx + rayon, acy + rayon),
                          debut, etendue))
         except (AttributeError, ValueError, TypeError):
             continue
@@ -328,8 +334,8 @@ def primitives_depuis_dataitem(xml_texte: str, echelle: float) -> list:
     for p in r.findall("./datapolygon/DataPolygon"):
         try:
             pt = p.find("point")
-            points.append((float(pt.findtext("X") or 0) * echelle,
-                           float(pt.findtext("Y") or 0) * echelle))
+            points.append(((float(pt.findtext("X") or 0) - cx) / echelle,
+                           (float(pt.findtext("Y") or 0) - cy) / echelle))
         except (AttributeError, ValueError, TypeError):
             continue
     if len(points) >= 3:
