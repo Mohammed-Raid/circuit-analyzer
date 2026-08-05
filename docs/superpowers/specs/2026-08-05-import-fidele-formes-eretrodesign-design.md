@@ -38,8 +38,16 @@ forme — confirmé en ouvrant `AOP.xml` (triangle via `<datapolygon>`, pattes
 `<DataArc>`), `Diode.xml` (triangle + barre). Format `DataArc` :
 `<pCenter><X/><Y/></pCenter><stAngle>deg</stAngle><swAngle>deg</swAngle>
 <Spoint/><Epoint/>` — rayon déductible de la distance `pCenter`→`Spoint`.
-Échelle confirmée à ×0,5 (broches à ±80 chez lui / ±40 chez nous sur la
-résistance partagée, `gui/schematic_editor.py` `COMP_DEFS["R"]`).
+Échelle : **corrigé pendant la conception du plan** — `eretro_lib.py` n'a
+PLUS de mise à l'échelle depuis sa réécriture pour le partage de bibliothèque
+(`ECHELLE = 1`, commentaire en tête de fichier : ses coordonnées ~±48..80
+tombent directement dans la plage de nos boîtes ~80×60, aucune division). Le
+spec du 2026-08-03 (remplacé) affirmait ×0,5 — c'était vrai avant cette
+réécriture, plus maintenant. `_entree_depuis_dataitem` divise déjà chaque
+coordonnée de broche par `ECHELLE` (no-op tant qu'elle vaut 1) : la nouvelle
+fonction de forme DOIT utiliser cette même constante, pas une valeur câblée
+en dur, sous peine de désaligner pattes et contour si `ECHELLE` change un
+jour.
 
 ## Décision de périmètre
 
@@ -63,18 +71,21 @@ résistance partagée, `gui/schematic_editor.py` `COMP_DEFS["R"]`).
 **Nouvelle fonction pure — `gui/schematic_symbols.py::primitives_depuis_dataitem`**
 
 ```python
-def primitives_depuis_dataitem(xml_texte: str, echelle: float = 0.5) -> list:
+def primitives_depuis_dataitem(xml_texte: str, echelle: float) -> list:
     """@brief Contour reel d'un <DataItem> ERetroDesign en primitives d'edition.
 
     Parse datasegment/DataSegment (Spoint/Epoint -> "line"), dataarc/DataArc
     (pCenter/stAngle/swAngle, rayon = distance pCenter->Spoint -> "arc"),
     datapolygon/DataPolygon (points groupes -> un seul "polygon" ferme).
-    Mise a l'echelle *echelle* (0,5 confirme empiriquement). Sortie : meme
-    format que `primitives()` sait deja dispatcher. Pure, sans Tk, testable
-    sur un fragment XML synthetique.
+    Mise a l'echelle *echelle* — l'appelant DOIT passer la meme constante
+    ECHELLE que celle utilisee pour les broches (eretro_lib.py), jamais une
+    valeur cablee en dur ici, sous peine de desaligner pattes et contour.
+    Sortie : meme format que `primitives()` sait deja dispatcher. Pure, sans
+    Tk, testable sur un fragment XML synthetique.
 
     @param xml_texte Fragment <DataItem>...</DataItem> (texte).
-    @param echelle Facteur d'echelle unites BoardSCH -> unites editeur.
+    @param echelle Facteur d'echelle unites BoardSCH -> unites editeur (=
+           eretro_lib.ECHELLE, actuellement 1 : pas de mise a l'echelle).
     @return list[tuple] Primitives ("line"|"arc"|"polygon", ...). Vide si le
             composant n'a ni polygone, ni segment, ni arc (ex. connecteur nu).
     """
@@ -83,7 +94,7 @@ def primitives_depuis_dataitem(xml_texte: str, echelle: float = 0.5) -> list:
 **`circuit_analyzer/eretro_lib.py::_entree_depuis_dataitem`** — après le
 calcul actuel de `pins`/`brochage`/`boite` (**inchangé**), ajoute deux clés :
 
-- `entree["primitives"]` = `primitives_depuis_dataitem(ET.tostring(r, encoding="unicode"))`
+- `entree["primitives"]` = `primitives_depuis_dataitem(ET.tostring(r, encoding="unicode"), ECHELLE)`
   — liste vide si rien d'exploitable (ex. connecteur nu, seulement des broches).
 - `entree["xml_source"]` = le fragment `<DataItem>` d'origine tel quel (texte)
   — **non consommé par cette Spec**, réservé pour la Spec 2 (export fidèle :
@@ -158,7 +169,7 @@ def primitives(comp_type, defn, rotation, value=""):
 
 | Objet | Ce qui est vérifié |
 |---|---|
-| `primitives_depuis_dataitem` (unitaire, pur) | Fragments synthétiques : un `DataSegment` connu → `"line"` attendue, un `DataArc` connu → `"arc"` attendu (bbox/angles corrects), un `DataPolygon` (plusieurs points) → un seul `"polygon"` fermé ; mise à l'échelle ×0,5 vérifiée sur des coordonnées connues |
+| `primitives_depuis_dataitem` (unitaire, pur) | Fragments synthétiques : un `DataSegment` connu → `"line"` attendue, un `DataArc` connu → `"arc"` attendu (bbox/angles corrects), un `DataPolygon` (plusieurs points) → un seul `"polygon"` fermé ; mise à l'échelle vérifiée avec un `echelle` ≠ 1 passé explicitement (ex. 0,5) sur des coordonnées connues, pour prouver que le paramètre est réellement appliqué et pas ignoré |
 | Vrais fichiers (`skipif` dossier ERetroDesign absent) | AOP.xml, Diode.xml, Self.xml : parsing sans exception, au moins une primitive de la famille attendue par composant |
 | `_entree_depuis_dataitem` | `primitives` et `xml_source` bien peuplés pour un composant avec forme ; `primitives` vide (pas d'erreur) pour un connecteur nu |
 | Éditeur (Tk) | Un composant importé avec primitives se dessine SANS le rendu boîte générique (au moins un item canvas hors les 4 côtés du cadre) ; un composant sans primitives garde le rendu boîte actuel — non-régression explicite testée |
