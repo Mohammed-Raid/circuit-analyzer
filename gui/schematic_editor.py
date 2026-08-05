@@ -94,7 +94,7 @@ COMP_DEFS: dict = {
 
 def _auto_def(name: str, pins: list, brochage: dict = None,
               default_value: str = "", fonctions: dict = None,
-              boite: dict = None) -> dict:
+              boite: dict = None, forme_primitives: list = None) -> dict:
     """@brief Génère une géométrie générique pour un type personnalisé.
 
     Si le type porte un `brochage` POSITIONNÉ (défini au canevas de l'onglet
@@ -105,6 +105,9 @@ def _auto_def(name: str, pins: list, brochage: dict = None,
     @param name Nom lisible du type (affiché comme libellé).
     @param pins Liste ordonnée des noms de broches.
     @param brochage {nom: (côté, décalage)} ou None.
+    @param forme_primitives Contour réel importé d'ERetroDesign (spec
+           2026-08-05, `entree["primitives"]`) ou None/vide — copié tel quel
+           dans le def si présent, le brochage/boîte restent inchangés.
     @return dict Entrée compatible COMP_DEFS (label, color, w, h, pins, default_value).
     """
     if brochage:
@@ -113,6 +116,8 @@ def _auto_def(name: str, pins: list, brochage: dict = None,
                             b.get("w"), b.get("h"), fonctions or {})
         d["label"] = name
         d["default_value"] = default_value or ""
+        if forme_primitives:
+            d["primitives"] = forme_primitives
         return d
     pins = [str(p) for p in pins]
     n = len(pins)
@@ -158,7 +163,8 @@ def _compute_defs() -> dict:
         defs[key] = _auto_def(val.get("name", key), broches,
                               val.get("brochage"),
                               val.get("default_value", ""),
-                              val.get("fonctions"), val.get("boite"))
+                              val.get("fonctions"), val.get("boite"),
+                              val.get("primitives"))
     return defs
 
 _PIN_R = 5     # rayon visuel pin
