@@ -379,8 +379,14 @@ def geometrie_libre(pinout, w_mini=None, h_mini=None, roles=None,
         return f"{n} {roles.get(n, '')}".strip()
 
     if w_exact is not None and h_exact is not None:
-        w = max(BOITE_MIN_W, int(w_exact))
-        h = max(BOITE_MIN_H, int(h_exact))
+        # EXACTE veut dire EXACTE : pas de BOITE_MIN_W/H ici, sinon une forme
+        # reelle plus petite que le plancher UI (ex. VCC+/Vss, h=20) se fait
+        # regonfler et la broche recalculee au-dela du contour reel (meme
+        # symptome que le bug corrige en bf341d4, cette fois pour w_exact/
+        # h_exact eux-memes). Le plancher `1` evite juste un rectangle
+        # degenere si une forme importee a une dimension nulle.
+        w = max(1, int(w_exact))
+        h = max(1, int(h_exact))
     else:
         lat = [abs(d) for c, d in pinout.values() if c in ("L", "R")]
         ver = [abs(d) for c, d in pinout.values() if c in ("T", "B")]
