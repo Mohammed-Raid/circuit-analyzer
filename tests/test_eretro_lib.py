@@ -459,3 +459,87 @@ def test_broche_reste_pres_du_corps_polygone_meme_si_la_patte_est_loin():
     # polygone). Apres : la broche doit toucher le contour reel (tolerance
     # d'aimantation a la grille, GRILLE=20, jamais un flottement franc).
     assert pire <= 20, f"broche a {pire}px du contour reel (attendu <= 20)"
+
+
+def test_primitives_vers_xml_ligne_produit_un_segment():
+    from circuit_analyzer.eretro_lib import _primitives_vers_xml
+
+    def abs_pt(dx, dy):
+        return int(round(dx)), int(round(dy))
+
+    segments, polygone, arcs = _primitives_vers_xml(
+        [("line", [(10.0, 20.0), (30.0, 20.0)], 2)], abs_pt)
+    assert polygone == "" and arcs == ""
+    r = ET.fromstring(f"<x>{segments}</x>")
+    seg = r.find("DataSegment")
+    assert (seg.find("Spoint").findtext("X"), seg.find("Spoint").findtext("Y")) == ("10", "20")
+    assert (seg.find("Epoint").findtext("X"), seg.find("Epoint").findtext("Y")) == ("30", "20")
+
+
+def test_primitives_vers_xml_polygone_produit_un_point_par_sommet():
+    from circuit_analyzer.eretro_lib import _primitives_vers_xml
+
+    def abs_pt(dx, dy):
+        return int(round(dx)), int(round(dy))
+
+    segments, polygone, arcs = _primitives_vers_xml(
+        [("polygon", [(52.0, 0.0), (-52.0, -48.0), (-52.0, 48.0)], False)], abs_pt)
+    assert segments == "" and arcs == ""
+    r = ET.fromstring(f"<x>{polygone}</x>")
+    pts = [(p.find("point").findtext("X"), p.find("point").findtext("Y"))
+           for p in r.findall("DataPolygon")]
+    assert pts == [("52", "0"), ("-52", "-48"), ("-52", "48")]
+
+
+def test_primitives_vers_xml_arc_aller_retour_via_primitives_depuis_dataitem():
+    # Fragment reel (Self.xml) : centre (0,0), rayon 16, demi-cercle.
+    from circuit_analyzer.eretro_lib import _primitives_vers_xml
+    from gui.schematic_symbols import primitives_depuis_dataitem
+
+    def abs_pt(dx, dy):
+        return int(round(dx)), int(round(dy))
+
+    original = [("arc", (-16.0, -16.0, 16.0, 16.0), -180.0, 180.0)]
+    segments, polygone, arcs = _primitives_vers_xml(original, abs_pt)
+    assert segments == "" and polygone == ""
+    xml = f"<DataItem><datasegment/><datapolygon/><dataarc>{arcs}</dataarc></DataItem>"
+    relu = primitives_depuis_dataitem(xml, 1.0)
+    assert relu == original
+
+
+def test_export_avec_primitives_ecrit_un_vrai_contour_pas_une_boite():
+    entree = {"name": "Test", "pins": ["1", "2"],
+              "brochage": {"1": ["L", 0], "2": ["R", 0]},
+              "boite": {"w": 80, "h": 60},
+              "primitives": [("polygon", [(0, -10), (10, 10), (-10, 10)], False)]}
+    xml = composant_vers_symbole_xml("IC", entree)
+    r = ET.fromstring(xml)
+    assert len(r.findall("./datapolygon/DataPolygon")) == 3   # 3 sommets, pas 0
+    assert len(r.findall("./datasegment/DataSegment")) == 0   # plus de boite generique
+
+
+def test_export_sans_primitives_garde_la_boite_generique():
+    entree = {"name": "Test", "pins": ["1", "2"],
+              "brochage": {"1": ["L", 0], "2": ["R", 0]},
+              "boite": {"w": 80, "h": 60}}
+    xml = composant_vers_symbole_xml("IC", entree)
+    r = ET.fromstring(xml)
+    assert len(r.findall("./datapolygon/DataPolygon")) == 0
+    assert len(r.findall("./datasegment/DataSegment")) == 4   # boite inchangee
+
+
+def test_export_avec_forme_decentree_positionne_la_broche_pres_du_contour():
+    """Meme piege que Vss.xml/VCC+.xml (chantier precedent, commit bf341d4) :
+    sans le bypass w_exact/h_exact ici aussi, l'export retomberait sur le
+    bug de broche flottante deja corrige cote editeur."""
+    entree = {"name": "VCCTest", "pins": ["+"],
+              "brochage": {"+": ["B", 0]},
+              "boite": {"w": 160, "h": 20},
+              "primitives": [("line", [(0.0, -7.0), (0.0, 7.0)], 2),
+                            ("polygon", [(-80.0, -14.5), (80.0, -14.5),
+                                        (80.0, 7.0), (-80.0, 7.0)], False)]}
+    xml = composant_vers_symbole_xml("IC", entree)
+    r = ET.fromstring(xml)
+    pin = r.find("./datapin/DataPin/Pin")
+    py = float(pin.findtext("Y"))
+    assert abs(py) <= 20   # proche du corps (h=20), pas a 50 (bug corrige)

@@ -55,32 +55,79 @@ def _pinout(entree):
     return {nom: (cote, dec) for nom, (cote, dec) in br.items()}
 
 
+def _seg_xml(xa, ya, xb, yb):
+    """@brief Fragment <DataSegment> — partagé par la boîte générique et
+    `_primitives_vers_xml` (même format, une seule source)."""
+    return (f"<DataSegment><Spoint><X>{xa}</X><Y>{ya}</Y></Spoint>"
+            f"<Epoint><X>{xb}</X><Y>{yb}</Y></Epoint>"
+            f"<SPtGap><X>0</X><Y>0</Y></SPtGap>"
+            f"<EPtGap><X>0</X><Y>0</Y></EPtGap>"
+            f"<ESelected>false</ESelected><SSelected>false</SSelected></DataSegment>")
+
+
+def _primitives_vers_xml(prims, abs_pt):
+    """@brief Inverse de `primitives_depuis_dataitem` : primitives -> fragments XML.
+
+    @param prims Primitives ("line"|"arc"|"polygon", ...), mêmes coordonnées
+           que `geo["pins"]` (repère centré, AVANT `abs_pt`).
+    @param abs_pt Même transformation que celle déjà utilisée pour les
+           broches et la boîte -- même repère, aucune conversion
+           supplémentaire (spec 2026-08-05).
+    @return tuple (segments_xml, polygone_xml, arcs_xml) -- chaînes
+            concaténées, prêtes à insérer dans
+            <datasegment>/<datapolygon>/<dataarc>.
+    """
+    segments, polygone, arcs = [], [], []
+    for p in prims:
+        if p[0] == "line":
+            (x1, y1), (x2, y2) = p[1]
+            xa, ya = abs_pt(x1, y1)
+            xb, yb = abs_pt(x2, y2)
+            segments.append(_seg_xml(xa, ya, xb, yb))
+        elif p[0] == "polygon":
+            for x, y in p[1]:
+                px, py = abs_pt(x, y)
+                polygone.append(
+                    f"<DataPolygon><point><X>{px}</X><Y>{py}</Y></point>"
+                    "<Selected>false</Selected>"
+                    "<PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>")
+        elif p[0] == "arc":
+            x0, y0, x1, y1 = p[1]
+            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+            rayon = abs(x1 - x0) / 2
+            debut, etendue = p[2], p[3]
+            sx = cx + rayon * math.cos(math.radians(debut))
+            sy = cy + rayon * math.sin(math.radians(debut))
+            ex = cx + rayon * math.cos(math.radians(debut + etendue))
+            ey = cy + rayon * math.sin(math.radians(debut + etendue))
+            acx, acy = abs_pt(cx, cy)
+            asx, asy = abs_pt(sx, sy)
+            aex, aey = abs_pt(ex, ey)
+            arcs.append(
+                f"<DataArc><pCenter><X>{acx}</X><Y>{acy}</Y></pCenter>"
+                f"<stAngle>{debut}</stAngle><swAngle>{etendue}</swAngle>"
+                f"<Spoint><X>{asx}</X><Y>{asy}</Y></Spoint>"
+                f"<Epoint><X>{aex}</X><Y>{aey}</Y></Epoint></DataArc>")
+    return "".join(segments), "".join(polygone), "".join(arcs)
+
+
 def _dataitem_fragment(prefix, entree):
     """@brief Fragment <DataItem> (geometrie centree) — sans declaration XML."""
     pinout = _pinout(entree)
     boite = entree.get("boite") or {}
-    geo = geometrie_libre(pinout, boite.get("w"), boite.get("h"))
+    prims = entree.get("primitives")
+    if prims:
+        # Bypass w_exact/h_exact : meme correctif que _auto_def (commit
+        # bf341d4) -- sans lui, une forme importee decentree (Vss, VCC+...)
+        # exporterait une broche flottante, comme avant ce correctif.
+        geo = geometrie_libre(pinout, w_exact=boite.get("w"), h_exact=boite.get("h"))
+    else:
+        geo = geometrie_libre(pinout, boite.get("w"), boite.get("h"))
     w, h = geo["w"], geo["h"]
 
     def abs_pt(dx, dy):
         # Centre a l'origine : Pin = decalage / CtrIem (=0 dans un symbole Lib).
         return int(round(dx * ECHELLE)), int(round(dy * ECHELLE))
-
-    x0, y0 = abs_pt(-w / 2, -h / 2)
-    x1, y1 = abs_pt(w / 2, h / 2)
-
-    def seg(xa, ya, xb, yb):
-        return (f"<DataSegment><Spoint><X>{xa}</X><Y>{ya}</Y></Spoint>"
-                f"<Epoint><X>{xb}</X><Y>{yb}</Y></Epoint>"
-                f"<SPtGap><X>0</X><Y>0</Y></SPtGap>"
-                f"<EPtGap><X>0</X><Y>0</Y></EPtGap>"
-                f"<ESelected>false</ESelected><SSelected>false</SSelected></DataSegment>")
-
-    # Boite = 4 aretes du rectangle.
-    segments = "".join([
-        seg(x0, y0, x1, y0), seg(x1, y0, x1, y1),
-        seg(x1, y1, x0, y1), seg(x0, y1, x0, y0),
-    ])
 
     broches = []
     for nom, (dx, dy) in geo["pins"].items():
@@ -93,13 +140,27 @@ def _dataitem_fragment(prefix, entree):
             f"<Selected>false</Selected>"
             f"<ShowNbTxt>true</ShowNbTxt><ShowNmTxt>false</ShowNmTxt></DataPin>")
 
+    if prims:
+        segments, polygone, arcs = _primitives_vers_xml(prims, abs_pt)
+    else:
+        x0, y0 = abs_pt(-w / 2, -h / 2)
+        x1, y1 = abs_pt(w / 2, h / 2)
+        # Boite = 4 aretes du rectangle.
+        segments = "".join([
+            _seg_xml(x0, y0, x1, y0), _seg_xml(x1, y0, x1, y1),
+            _seg_xml(x1, y1, x0, y1), _seg_xml(x0, y1, x0, y0),
+        ])
+        polygone, arcs = "", ""
+
     nom_symbole = entree.get("name") or prefix
     valeur = entree.get("default_value", "") or ""
     return (
         f"<DataItem>"
         f"<Name>{escape(nom_symbole)}</Name><Group>{escape(prefix)}</Group>"
         f"<reference /><value>{escape(valeur)}</value>"
-        f"<datapolygon /><datasegment>{segments}</datasegment><dataarc />"
+        f"<datapolygon>{polygone}</datapolygon>"
+        f"<datasegment>{segments}</datasegment>"
+        f"<dataarc>{arcs}</dataarc>"
         f"<datapin>{''.join(broches)}</datapin>"
         # CtrIem nul : recalcule a chaque rendu de palette (pictureBox2_Paint).
         # TL/BR, EUX, NE SONT PAS NULS : c'est la boite CLIQUABLE de la vignette
