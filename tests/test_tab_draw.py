@@ -36,6 +36,20 @@ def test_aucun_montage_reconnu_grpl_vide():
     assert racine.find("GrpL") is not None
 
 
+def test_aucun_montage_reconnu_diode_non_classifiee_grpl_vide():
+    """Non-regression : une diode isolee (non classifiee) ne doit RIEN grouper.
+
+    Comme une resistance seule, une diode entre deux noeuds simples
+    (pas sur un rail, pas dans un motif reconnu) est emise par
+    detecter_diodes_non_classifiees comme catch-all. Le contrat
+    non-regression exige que <GrpL> reste vide.
+    """
+    xml = _xml_groupe_par_circuit([Composant("D1", "D", {"1": "IN", "2": "OUT"}, "")])
+    racine = ET.fromstring(xml)
+    assert racine.findall("./GrpL/GRPS") == []
+    assert racine.find("GrpL") is not None
+
+
 def test_fonction_est_bien_exportee_du_module():
     import gui.tab_draw as td
     assert callable(td._xml_groupe_par_circuit)

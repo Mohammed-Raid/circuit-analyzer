@@ -27,15 +27,18 @@ def _xml_groupe_par_circuit(composants) -> str:
     <GrpL> que l'onglet Analyse (tab_analyze.py::_texte_export_analyse) —
     jusqu'ici toujours vide faute de `results` passe a generer_xml.
 
-    Filtre les impedances isolees (monocomposant) pour preservcer le
-    comportement non-regression : une resistance seule ne groupe pas.
+    Filtre les detecteurs catch-all (impedances Z isolees et diodes non
+    classifiees) qui sont des filets de securite du detecteur, pas des
+    circuits reconnus : generer_xml en fusion toujours en <GRPS> meme
+    monocomposant, ce qui briserait le contrat non-regression (vide si
+    aucun montage reconnu).
     """
     graphe    = construire_graphe(composants)
     resultats = detecter_montages(graphe)
-    # Exclure les impedances monocomposant (Z isolees, passives sans structure)
+    # Exclure les detecteurs catch-all (filets de securite, pas des montages)
+    _CATCH_ALL = {"Impédance Z", "Diode non classifiée"}
     resultats_filtres = [r for r in resultats
-                         if not (r.get("functional_category") == "impedance"
-                                 and len(r.get("components", [])) == 1)]
+                         if r.get("circuit_type") not in _CATCH_ALL]
     return generer_xml(composants, results=resultats_filtres)
 
 
