@@ -85,6 +85,7 @@ class TabComponents:
         self._formes_disponibles: dict = {}         # {libelle: primitives}
         self._xml_source_valide = False
         self._xml_source_courant = ""
+        self._compose_courant = False               # spec revue finale 2026-08-06
         self._build()
         self._load()
         self._afficher_nouveau()
@@ -293,6 +294,7 @@ class TabComponents:
         self._remplir_formulaire('', '', [])
         self._xml_source_valide = False
         self._xml_source_courant = ""
+        self._compose_courant = False
         self._definir_mode('nouveau', "➕  Nouveau type de composant")
         self._prendre_snapshot()
 
@@ -312,6 +314,7 @@ class TabComponents:
                                  primitives=v.get("primitives"))
         self._xml_source_valide = bool(v.get("xml_source"))
         self._xml_source_courant = v.get("xml_source", "")
+        self._compose_courant = bool(v.get("compose"))
         self._definir_mode('edition', f"✏  Modification de ★ {key}")
         self._prendre_snapshot()
 
@@ -531,6 +534,7 @@ class TabComponents:
                                  primitives=self._forme_primitives)
         self._xml_source_valide = False
         self._xml_source_courant = ""
+        self._compose_courant = False
         self._definir_mode('nouveau',
                            "➕  Nouveau type (copie) — choisir un préfixe")
         self._prendre_snapshot()
@@ -764,6 +768,8 @@ class TabComponents:
             entree["primitives"] = self._forme_primitives
             if self._xml_source_valide:
                 entree["xml_source"] = self._xml_source_courant
+        if self._compose_courant:
+            entree["compose"] = True
         defaut = self._default_var.get().strip()
         if defaut:
             entree["default_value"] = defaut

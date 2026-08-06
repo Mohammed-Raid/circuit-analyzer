@@ -191,6 +191,47 @@ def test_nouveau_composant_avec_forme_choisie_a_primitives_mais_pas_xml_source(o
     assert "xml_source" not in data["NEUF"]
 
 
+def test_resauver_un_compose_preserve_le_marqueur_compose(onglet):
+    """Un compose (`<CComp>` de la CCLib du collegue) doit rester exclu de
+    `ecrire_dans_dossier` apres re-sauvegarde -- perdre `compose` le ferait
+    ecrire comme un `<DataItem>` normal, aplati mais convaincant (revue
+    finale 2026-08-06)."""
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "PONT": {"name": "Pont", "pins": ["1", "2"],
+                 "brochage": {"1": ["L", 0], "2": ["R", 0]},
+                 "primitives": [["polygon", [[0, -10], [10, 10], [-10, 10]], False]],
+                 "compose": True},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_perso("PONT")
+    assert t._compose_courant is True
+    t._sauvegarder()
+    data = json.loads(chemin.read_text(encoding="utf-8"))
+    assert data["PONT"]["compose"] is True
+
+
+def test_nouveau_composant_n_a_jamais_le_marqueur_compose(onglet):
+    """Non-regression : un type flambant neuf (ou une duplication) n'est
+    jamais un `<CComp>` original -- `compose` ne doit pas fuir dedans."""
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "PONT": {"name": "Pont", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                 "compose": True},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_perso("PONT")
+    assert t._compose_courant is True
+    t._afficher_nouveau()
+    assert t._compose_courant is False
+    t._prefix_var.set("NEUF")
+    t._name_var.set("Neuf")
+    t._brochage = [("A", "L", 0)]
+    t._sauvegarder()
+    data = json.loads(chemin.read_text(encoding="utf-8"))
+    assert "compose" not in data["NEUF"]
+
+
 def test_duplication_clone_le_brochage(onglet):
     t, _ = onglet
     t._brochage = [("VCC", "T", 0)]

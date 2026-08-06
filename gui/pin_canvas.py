@@ -18,6 +18,7 @@ from gui.schematic_symbols import (
     AUTO_COLOR,
     TYPE_LIBRE,
     aimanter_bord,
+    etendue_primitives,
     geometrie_libre,
     modele_brochage,
     primitives,
@@ -126,25 +127,31 @@ class PinCanvas(ctk.CTkFrame):
         return {n: r for n, r in self._roles.items() if r}
 
     def _defn(self) -> dict:
-        """@brief Def de boîte auto-ajustée, via la fonction pure partagée."""
-        return geometrie_libre({n: (c, d) for n, c, d in self._brochage},
-                               self._w_mini, self._h_mini, self.roles())
+        """@brief Def de boîte auto-ajustée, via la fonction pure partagée.
+
+        Une forme réelle (`_forme_primitives`) bascule en taille EXACTE, comme
+        l'éditeur (`_auto_def`) et l'export (`_dataitem_fragment`) : sinon le
+        canevas retombe sur l'heuristique de remplissage et place la broche
+        loin du contour réel qu'il vient pourtant de dessiner (revue finale
+        2026-08-06).
+        """
+        pinout = {n: (c, d) for n, c, d in self._brochage}
+        if self._forme_primitives:
+            w, h = self._w_mini, self._h_mini
+            if w is None or h is None:
+                bw, bh = self._etendue_forme()
+                w = w if w is not None else bw
+                h = h if h is not None else bh
+            return geometrie_libre(pinout, roles=self.roles(),
+                                   w_exact=w, h_exact=h)
+        return geometrie_libre(pinout, self._w_mini, self._h_mini, self.roles())
 
     def _centre(self) -> tuple:
         return (self._cv.winfo_width() // 2, self._cv.winfo_height() // 2)
 
     def _etendue_forme(self) -> tuple:
         """@brief (largeur, hauteur) totale du fond visuel, centré sur (0,0)."""
-        mx = my = 0
-        for p in self._forme_primitives:
-            if p[0] in ("line", "polygon"):
-                for x, y in p[1]:
-                    mx, my = max(mx, abs(x)), max(my, abs(y))
-            elif p[0] == "arc":
-                x0, y0, x1, y1 = p[1]
-                mx = max(mx, abs(x0), abs(x1))
-                my = max(my, abs(y0), abs(y1))
-        return mx * 2, my * 2
+        return etendue_primitives(self._forme_primitives)
 
     def _echelle(self) -> float:
         """@brief Facteur d'affichage pour que la boîte ET le fond TIENNENT

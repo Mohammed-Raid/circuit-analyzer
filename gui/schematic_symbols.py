@@ -416,6 +416,28 @@ def geometrie_libre(pinout, w_mini=None, h_mini=None, roles=None,
             "default_value": ""}
 
 
+def etendue_primitives(prims) -> tuple:
+    """@brief (largeur, hauteur) totale de primitives, centrees sur (0,0).
+
+    Sert de repli quand une forme reelle est choisie sans `boite` explicite
+    (ex. nouveau composant + forme piochee au selecteur, "Ajuster
+    automatiquement" coche) -- sans lui, `geometrie_libre` retombe sur
+    l'heuristique de remplissage et fait a nouveau flotter la broche loin
+    du contour reel (meme defaut que bf341d4, cette fois cote hand-picked
+    plutot qu'import).
+    """
+    mx = my = 0
+    for p in prims:
+        if p[0] in ("line", "polygon"):
+            for x, y in p[1]:
+                mx, my = max(mx, abs(x)), max(my, abs(y))
+        elif p[0] == "arc":
+            x0, y0, x1, y1 = p[1]
+            mx = max(mx, abs(x0), abs(x1))
+            my = max(my, abs(y0), abs(y1))
+    return mx * 2, my * 2
+
+
 def aimanter_bord(dx, dy, w, h, pas):
     """@brief (dx,dy) relatif au centre -> (cote, decalage aligne sur `pas`).
 

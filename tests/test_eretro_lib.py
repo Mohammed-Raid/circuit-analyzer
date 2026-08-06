@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from circuit_analyzer.eretro_lib import (
+    _primitives_vers_xml,
     composant_vers_symbole_xml,
     composants_depuis_xml,
     ecrire_dans_dossier,
@@ -543,3 +544,37 @@ def test_export_avec_forme_decentree_positionne_la_broche_pres_du_contour():
     pin = r.find("./datapin/DataPin/Pin")
     py = float(pin.findtext("Y"))
     assert abs(py) <= 20   # proche du corps (h=20), pas a 50 (bug corrige)
+
+
+def test_export_avec_forme_sans_boite_du_tout_positionne_la_broche_pres_du_contour():
+    """Scenario mesure par la revue finale (2026-08-06) : nouveau composant +
+    forme piochee au selecteur + "Ajuster automatiquement" coche -> `entree`
+    n'a AUCUNE cle `boite` (ni meme vide). Sans repli sur `etendue_primitives`,
+    `w_exact`/`h_exact` restent None -> `geometrie_libre` retombe sur
+    l'heuristique de remplissage -> broche a ~50 au lieu de rester pres du
+    contour reel (h=14)."""
+    entree = {"name": "VssTest", "pins": ["G"],
+              "brochage": {"G": ["B", 0]},
+              "primitives": [("line", [(0.0, -5.0), (0.0, 5.0)], 2),
+                            ("polygon", [(-40.0, -7.0), (40.0, -7.0),
+                                        (40.0, 7.0), (-40.0, 7.0)], False)]}
+    assert "boite" not in entree
+    xml = composant_vers_symbole_xml("IC", entree)
+    r = ET.fromstring(xml)
+    pin = r.find("./datapin/DataPin/Pin")
+    py = float(pin.findtext("Y"))
+    assert abs(py) <= 20   # proche du contour (h=14), pas a 50 (heuristique)
+
+
+def test_primitives_vers_xml_ignore_une_primitive_malformee():
+    """Le spec promet que les primitives malformees sont ignorees, jamais
+    une exception qui ferait echouer tout l'export (meme discipline que
+    `primitives_depuis_dataitem`, cote import)."""
+    def abs_pt(x, y):
+        return int(round(x)), int(round(y))
+
+    prims = [("line", [(0, 0), (1, 1)], 2), ("line", [(0, 0)], 2)]
+    segments, polygone, arcs = _primitives_vers_xml(prims, abs_pt)
+    assert "<DataSegment>" in segments
+    assert segments.count("<DataSegment>") == 1
+    assert polygone == "" and arcs == ""

@@ -303,3 +303,19 @@ def test_echelle_tient_compte_de_la_forme_plus_grande_que_la_boite(canevas):
     canevas.definir_forme([("polygon", [(0, -300), (300, 300), (-300, 300)], False)])
     avec_forme = canevas._echelle()
     assert avec_forme < sans_forme
+
+
+def test_defn_avec_forme_utilise_la_taille_exacte_pas_l_heuristique(canevas):
+    """Meme regle que l'editeur/export (spec 2026-08-05, revue finale
+    2026-08-06) : une forme reelle bascule `_defn()` en taille EXACTE
+    (w_mini/h_mini). Sans ca, un Vss importe (boite 160x20) se voit
+    regonfle par l'heuristique de remplissage (h=100) alors que le
+    contour dessine s'arrete a h=20 -- la broche flotte loin du fond visuel."""
+    canevas.charger(
+        [("G", "B", 0)],
+        forme_primitives=[("polygon", [(-80, -10), (80, -10),
+                                       (80, 10), (-80, 10)], False)],
+        w_mini=160, h_mini=20)
+    d = canevas._defn()
+    assert d["h"] == 20
+    assert d["w"] == 160

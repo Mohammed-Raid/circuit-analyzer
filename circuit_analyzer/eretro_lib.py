@@ -24,7 +24,12 @@ import os
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
-from gui.schematic_symbols import aimanter_bord, geometrie_libre, primitives_depuis_dataitem
+from gui.schematic_symbols import (
+    aimanter_bord,
+    etendue_primitives,
+    geometrie_libre,
+    primitives_depuis_dataitem,
+)
 
 # Unites ERetroDesign par pixel de l'editeur ; geometrie CENTREE sur (0,0).
 # ECHELLE=1 : les vrais symboles de Lib.xml sont centres avec des coords ~±48..80
@@ -79,35 +84,38 @@ def _primitives_vers_xml(prims, abs_pt):
     """
     segments, polygone, arcs = [], [], []
     for p in prims:
-        if p[0] == "line":
-            (x1, y1), (x2, y2) = p[1]
-            xa, ya = abs_pt(x1, y1)
-            xb, yb = abs_pt(x2, y2)
-            segments.append(_seg_xml(xa, ya, xb, yb))
-        elif p[0] == "polygon":
-            for x, y in p[1]:
-                px, py = abs_pt(x, y)
-                polygone.append(
-                    f"<DataPolygon><point><X>{px}</X><Y>{py}</Y></point>"
-                    "<Selected>false</Selected>"
-                    "<PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>")
-        elif p[0] == "arc":
-            x0, y0, x1, y1 = p[1]
-            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-            rayon = abs(x1 - x0) / 2
-            debut, etendue = p[2], p[3]
-            sx = cx + rayon * math.cos(math.radians(debut))
-            sy = cy + rayon * math.sin(math.radians(debut))
-            ex = cx + rayon * math.cos(math.radians(debut + etendue))
-            ey = cy + rayon * math.sin(math.radians(debut + etendue))
-            acx, acy = abs_pt(cx, cy)
-            asx, asy = abs_pt(sx, sy)
-            aex, aey = abs_pt(ex, ey)
-            arcs.append(
-                f"<DataArc><pCenter><X>{acx}</X><Y>{acy}</Y></pCenter>"
-                f"<stAngle>{debut}</stAngle><swAngle>{etendue}</swAngle>"
-                f"<Spoint><X>{asx}</X><Y>{asy}</Y></Spoint>"
-                f"<Epoint><X>{aex}</X><Y>{aey}</Y></Epoint></DataArc>")
+        try:
+            if p[0] == "line":
+                (x1, y1), (x2, y2) = p[1]
+                xa, ya = abs_pt(x1, y1)
+                xb, yb = abs_pt(x2, y2)
+                segments.append(_seg_xml(xa, ya, xb, yb))
+            elif p[0] == "polygon":
+                for x, y in p[1]:
+                    px, py = abs_pt(x, y)
+                    polygone.append(
+                        f"<DataPolygon><point><X>{px}</X><Y>{py}</Y></point>"
+                        "<Selected>false</Selected>"
+                        "<PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>")
+            elif p[0] == "arc":
+                x0, y0, x1, y1 = p[1]
+                cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+                rayon = abs(x1 - x0) / 2
+                debut, etendue = p[2], p[3]
+                sx = cx + rayon * math.cos(math.radians(debut))
+                sy = cy + rayon * math.sin(math.radians(debut))
+                ex = cx + rayon * math.cos(math.radians(debut + etendue))
+                ey = cy + rayon * math.sin(math.radians(debut + etendue))
+                acx, acy = abs_pt(cx, cy)
+                asx, asy = abs_pt(sx, sy)
+                aex, aey = abs_pt(ex, ey)
+                arcs.append(
+                    f"<DataArc><pCenter><X>{acx}</X><Y>{acy}</Y></pCenter>"
+                    f"<stAngle>{debut}</stAngle><swAngle>{etendue}</swAngle>"
+                    f"<Spoint><X>{asx}</X><Y>{asy}</Y></Spoint>"
+                    f"<Epoint><X>{aex}</X><Y>{aey}</Y></Epoint></DataArc>")
+        except (ValueError, TypeError, IndexError, KeyError):
+            continue  # primitive malformee : ignoree, jamais d'echec d'export (spec 2026-08-05)
     return "".join(segments), "".join(polygone), "".join(arcs)
 
 
@@ -120,7 +128,17 @@ def _dataitem_fragment(prefix, entree):
         # Bypass w_exact/h_exact : meme correctif que _auto_def (commit
         # bf341d4) -- sans lui, une forme importee decentree (Vss, VCC+...)
         # exporterait une broche flottante, comme avant ce correctif.
-        geo = geometrie_libre(pinout, w_exact=boite.get("w"), h_exact=boite.get("h"))
+        # Si `boite` ne fournit pas w/h (ex. nouveau composant + forme
+        # piochee au selecteur, "Ajuster automatiquement" coche : `boite`
+        # est absente), on retombe sur l'etendue reelle des primitives --
+        # sinon `geometrie_libre` retombe silencieusement sur l'heuristique
+        # de remplissage et la broche flotte a nouveau (revue finale 2026-08-06).
+        w_exact, h_exact = boite.get("w"), boite.get("h")
+        if w_exact is None or h_exact is None:
+            bw, bh = etendue_primitives(prims)
+            w_exact = w_exact if w_exact is not None else bw
+            h_exact = h_exact if h_exact is not None else bh
+        geo = geometrie_libre(pinout, w_exact=w_exact, h_exact=h_exact)
     else:
         geo = geometrie_libre(pinout, boite.get("w"), boite.get("h"))
     w, h = geo["w"], geo["h"]
