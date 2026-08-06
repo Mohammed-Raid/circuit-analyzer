@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 from circuit_analyzer.composant import construire_graphe, lire_netlist
+from circuit_analyzer.detecteur import TYPES_CATCH_ALL
 from circuit_analyzer.detecteur import analyser as detecter_montages
 from circuit_analyzer.xml import generer_xml, lire_xml
 from gui import ui_kit
@@ -27,18 +28,17 @@ def _xml_groupe_par_circuit(composants) -> str:
     <GrpL> que l'onglet Analyse (tab_analyze.py::_texte_export_analyse) —
     jusqu'ici toujours vide faute de `results` passe a generer_xml.
 
-    Filtre les detecteurs catch-all (impedances Z isolees et diodes non
-    classifiees) qui sont des filets de securite du detecteur, pas des
-    circuits reconnus : generer_xml en fusion toujours en <GRPS> meme
+    Filtre les detecteurs catch-all (impedances Z et diodes non classifiees
+    residuelles — filets de securite, jamais des montages reconnus) : sans
+    ce filtre, generer_xml les fusionnerait quand meme en <GRPS>, meme
     monocomposant, ce qui briserait le contrat non-regression (vide si
     aucun montage reconnu).
     """
     graphe    = construire_graphe(composants)
     resultats = detecter_montages(graphe)
     # Exclure les detecteurs catch-all (filets de securite, pas des montages)
-    _CATCH_ALL = {"Impédance Z", "Diode non classifiée"}
     resultats_filtres = [r for r in resultats
-                         if r.get("circuit_type") not in _CATCH_ALL]
+                         if r.get("circuit_type") not in TYPES_CATCH_ALL]
     return generer_xml(composants, results=resultats_filtres)
 
 
@@ -262,6 +262,18 @@ class TabDraw:
         N'affiche PAS l'avertissement de broches non câblées (spécifique à
         l'analyse, géré par l'appelant).
 
+        Écrit volontairement du XML NON groupé (`generer_xml` brut, GpId=0
+        partout) — contrairement à `_export_circuit_xml`. Ce fichier est un
+        relais interne : "Analyser ce circuit" et "Enregistrer comme pattern"
+        le relisent (`lire_xml`), et `lire_xml` fixe `.source` sur les
+        composants. Si ce XML portait de vrais `<GpId>` (via
+        `_xml_groupe_par_circuit`), un export ultérieur depuis l'onglet
+        Analyser prendrait la branche fidèle (`ecrire_groupes`), et
+        `eretro_patch._est_a_lui` (0 < GpId < 1000) confondrait ces groupes
+        avec des groupes faits à la main dans ERetroDesign — l'onglet
+        Analyser sauterait alors ces composants et ses propres groupes ne
+        seraient jamais écrits.
+
         @param prefix Préfixe du fichier temporaire.
         @return str | None Chemin du fichier écrit, ou None si le circuit est vide.
         """
@@ -282,7 +294,7 @@ class TabDraw:
             suffix=".xml", mode="w", encoding="utf-8",
             delete=False, prefix=prefix,
         )
-        tmp.write(_xml_groupe_par_circuit(composants))
+        tmp.write(generer_xml(composants))
         tmp.close()
         return tmp.name
 

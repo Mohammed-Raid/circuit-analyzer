@@ -1648,6 +1648,12 @@ _DETECTEURS_SIMPLES = [
     detecter_diodes_non_classifiees,
 ]
 
+# Labels emis par les detecteurs "filet de securite" de _DETECTEURS_SIMPLES —
+# des singletons systematiques, jamais un montage reconnu. Exporte pour que
+# les appelants (ex. l'export groupe du schema dessine, gui/tab_draw.py)
+# puissent les exclure du groupage sans dupliquer la liste.
+TYPES_CATCH_ALL = {"Impédance Z", "Diode non classifiée"}
+
 # Noms de tous les circuits intégrés, dans l'ordre d'affichage de l'interface
 NOMS_CIRCUITS = [
     "Amplificateur différentiel (AOP)", "Amplificateur sommateur (AOP)",
