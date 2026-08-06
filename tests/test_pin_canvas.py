@@ -15,13 +15,10 @@ def canevas():
         root = ctk.CTk()
     except Exception:
         pytest.skip("pas de display Tk")
-    root.geometry("400x300")
     root.withdraw()
     pc = PinCanvas(root)
-    pc.pack(fill="both", expand=True)
-    pc.winfo_toplevel().update_idletasks()
-    pc._cv.configure(width=320, height=190)
-    pc.winfo_toplevel().update_idletasks()
+    pc.pack()
+    root.update_idletasks()
     yield pc
     root.destroy()
 
@@ -263,6 +260,7 @@ def test_clic_est_converti_selon_l_echelle(canevas):
 def test_charger_avec_forme_dessine_un_fond(canevas):
     canevas.charger([("1", "L", 0)],
                     forme_primitives=[("polygon", [(0, -10), (10, 10), (-10, 10)], False)])
+    _dimensionner(canevas)
     items = canevas._cv.find_all()
     polygones = [i for i in items if canevas._cv.type(i) == "polygon"]
     # 1 polygone de fond (forme) + 1 polygone de boite editable = 2
@@ -271,6 +269,7 @@ def test_charger_avec_forme_dessine_un_fond(canevas):
 
 def test_sans_forme_pas_de_fond(canevas):
     canevas.charger([("1", "L", 0)])
+    _dimensionner(canevas)
     items = canevas._cv.find_all()
     polygones = [i for i in items if canevas._cv.type(i) == "polygon"]
     assert len(polygones) == 1          # seulement la boite editable
@@ -279,6 +278,7 @@ def test_sans_forme_pas_de_fond(canevas):
 def test_definir_forme_ne_touche_pas_au_brochage(canevas):
     canevas.charger([("1", "L", 0)])
     canevas.definir_forme([("polygon", [(0, -10), (10, 10), (-10, 10)], False)])
+    _dimensionner(canevas)
     assert canevas.brochage() == [("1", "L", 0)]
     items = canevas._cv.find_all()
     polygones = [i for i in items if canevas._cv.type(i) == "polygon"]
