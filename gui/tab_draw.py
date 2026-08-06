@@ -11,11 +11,32 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 from circuit_analyzer.composant import construire_graphe, lire_netlist
+from circuit_analyzer.detecteur import analyser as detecter_montages
 from circuit_analyzer.xml import generer_xml, lire_xml
 from gui import ui_kit
 from gui.schematic_editor import SchematicEditor
 from gui.schematic_io import build_from_components
 from gui.theme import BG, CARD, CARD2, TEXT, TEXT_MUTED
+
+
+def _xml_groupe_par_circuit(composants) -> str:
+    """@brief XML BoardSCH avec groupage automatique par circuit reconnu.
+
+    Fait tourner le meme detecteur que l'onglet Analyser sur les composants
+    du schema dessine a la main, pour que l'export profite du meme groupage
+    <GrpL> que l'onglet Analyse (tab_analyze.py::_texte_export_analyse) —
+    jusqu'ici toujours vide faute de `results` passe a generer_xml.
+
+    Filtre les impedances isolees (monocomposant) pour preservcer le
+    comportement non-regression : une resistance seule ne groupe pas.
+    """
+    graphe    = construire_graphe(composants)
+    resultats = detecter_montages(graphe)
+    # Exclure les impedances monocomposant (Z isolees, passives sans structure)
+    resultats_filtres = [r for r in resultats
+                         if not (r.get("functional_category") == "impedance"
+                                 and len(r.get("components", [])) == 1)]
+    return generer_xml(composants, results=resultats_filtres)
 
 
 class TabDraw:
@@ -161,7 +182,7 @@ class TabDraw:
             # Chantier B, differe (voir docs/superpowers/specs/
             # 2026-07-29-retour-fidele-eretrodesign-design.md).
             with open(path, "w", encoding="utf-8") as f:
-                f.write(generer_xml(composants))
+                f.write(_xml_groupe_par_circuit(composants))
         except OSError as exc:
             messagebox.showerror("Erreur",
                                  f"Impossible d'écrire le fichier :\n{exc}",
@@ -258,7 +279,7 @@ class TabDraw:
             suffix=".xml", mode="w", encoding="utf-8",
             delete=False, prefix=prefix,
         )
-        tmp.write(generer_xml(composants))
+        tmp.write(_xml_groupe_par_circuit(composants))
         tmp.close()
         return tmp.name
 
