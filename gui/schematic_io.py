@@ -6,6 +6,7 @@
 import math
 
 from circuit_analyzer.patterns.base import is_gnd, is_power
+from gui.schematic_symbols import geometrie_libre
 
 FORMAT  = "circ"
 VERSION = 1
@@ -142,15 +143,22 @@ def build_from_components(composants, defs) -> dict:
         next_id += 1
         counters[comp.type] = max(counters.get(comp.type, 0),
                                   _ref_number(comp.ref, comp.type))
-        components.append({"id": cid, "ref": comp.ref, "type": comp.type,
-                           "value": comp.value, "cx": cx, "cy": cy,
-                           "rotation": 0})
+        entry = {"id": cid, "ref": comp.ref, "type": comp.type,
+                "value": comp.value, "cx": cx, "cy": cy, "rotation": 0}
+        if getattr(comp, "pinout", None):
+            entry["pinout"] = {n: list(v) for n, v in comp.pinout.items()}
+        if getattr(comp, "primitives", None):
+            entry["forme_primitives"] = comp.primitives
+        components.append(entry)
         placed.append((cid, comp, cx, cy))
 
     # Indexe nœud → [(id, broche, cx, cy, type)] pour les broches dessinables.
     net_pins: dict = {}
     for cid, comp, cx, cy in placed:
-        avail = defs[comp.type]["pins"]
+        if getattr(comp, "pinout", None):
+            avail = geometrie_libre(comp.pinout)["pins"]
+        else:
+            avail = defs[comp.type]["pins"]
         for pin, net in comp.pins.items():
             if pin not in avail:
                 report["dropped_pins"] += 1
@@ -162,7 +170,11 @@ def build_from_components(composants, defs) -> dict:
         if is_gnd(net) or is_power(net):
             sym_type = "GND" if is_gnd(net) else "VCC"
             for cid, pin, cx, cy, ctype in plist:
-                pdx, pdy = defs[ctype]["pins"][pin]
+                src = next(c for c in placed if c[0] == cid)[1]
+                if getattr(src, "pinout", None):
+                    pdx, pdy = geometrie_libre(src.pinout)["pins"][pin]
+                else:
+                    pdx, pdy = defs[ctype]["pins"][pin]
                 px, py = cx + pdx, cy + pdy
                 sy = py + _RAIL_DY if sym_type == "GND" else py - _RAIL_DY
                 sid = next_id

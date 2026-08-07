@@ -22,6 +22,8 @@ class _Comp:
     type: str
     pins: dict
     value: str = ""
+    primitives: list | None = None
+    pinout: dict | None = None
 
 
 # ── build_from_components ─────────────────────────────────────────────────────
@@ -55,6 +57,32 @@ def test_import_broche_inconnue_est_comptee():
     ]
     doc = build_from_components(composants, COMP_DEFS)
     assert doc["_report"]["dropped_pins"] == 2          # V+ et V-
+
+
+def test_build_garde_le_brochage_reel_dune_puce_catch_all():
+    """Meme scenario que test_import_broche_inconnue_est_comptee, mais avec
+    un brochage reel : les broches ne doivent plus etre droppees."""
+    comp = _Comp("U1", "U",
+                 {"Vin+": "N1", "Vin-": "N2", "GND1": "GND"}, "",
+                 primitives=[("polygon", [(-36, -48), (-36, 48), (36, 48), (36, -48)], False)],
+                 pinout={"Vin+": ("L", -42), "Vin-": ("L", -6), "GND1": ("L", 42)})
+    doc = build_from_components([comp], COMP_DEFS)
+    c = doc["components"][0]
+    assert c["type"] == "U"
+    assert c["forme_primitives"] == comp.primitives
+    assert c["pinout"] == {"Vin+": ["L", -42], "Vin-": ["L", -6], "GND1": ["L", 42]}
+    assert doc["_report"]["dropped_pins"] == 0
+
+
+def test_build_sans_brochage_reel_comportement_inchange():
+    """Non-regression explicite : test_import_broche_inconnue_est_comptee
+    doit encore dropper V+/V- quand AUCUN brochage reel n'est fourni."""
+    comp = _Comp("U1", "U",
+                 {"IN+": "A", "IN-": "B", "OUT": "O", "V+": "VCC", "V-": "GND"})
+    doc = build_from_components([comp], COMP_DEFS)
+    assert doc["_report"]["dropped_pins"] == 2
+    assert "forme_primitives" not in doc["components"][0]
+    assert "pinout" not in doc["components"][0]
 
 
 def test_import_type_inconnu_est_ignore():
