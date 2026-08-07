@@ -468,3 +468,23 @@ def test_import_resistance_plan_nomme_sans_forme_reelle():
     r = next(c for c in comps if c.type == 'R')
     assert r.primitives is None
     assert r.pinout is None
+
+
+def test_import_catch_all_pins_et_pinout_meme_clefs_avec_pnumber_pname_differents():
+    # Regression : pins et pinout doivent partager exactement les memes clefs,
+    # meme quand Pnumber et Pname different (le cas reel que cette feature preserve).
+    # Utiliser Pnumber=chiffre, Pname=lettre pour le rendre evident.
+    xml = _boardsch(
+        [_item('mysterieux', pins=[
+            _pin(pnumber='1', pname='A', x=-20, y=-10),
+            _pin(pnumber='2', pname='B', x=-20, y=10),
+            _pin(pnumber='3', pname='C', x=20, y=-10),
+            _pin(pnumber='4', pname='D', x=20, y=10),
+        ], polygon_xml=_polygon([(-20, -20), (-20, 20), (20, 20), (20, -20)]))],
+        [],
+    )
+    comps = _lire(xml)
+    x = next(c for c in comps if c.type == 'X')
+    # pins et pinout doivent avoir exactement les memes clefs (union de Pname/Pnumber)
+    assert set(x.pins) == set(x.pinout), \
+        f"pins keys {set(x.pins)} != pinout keys {set(x.pinout)}"

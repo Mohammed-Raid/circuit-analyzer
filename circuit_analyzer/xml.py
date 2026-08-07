@@ -1681,11 +1681,18 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             # Composant inconnu : on le garde sous type 'X' pour ne pas perdre ses connexions
             ref = generer_ref('X', elem)
             cid_vers_ref[cid] = ref
-            broches = {}
-            for pidx, info_b in enumerate(elem['pins']):
-                net = broche_vers_net.get((cid, pidx), 'NC')
-                broches[str(pidx + 1)] = net
             forme_reelle, brochage_reel = _forme_et_brochage_reels()
+            broches = {}
+            # Si on a un brochage reel, utiliser SES noms de broches pour les deux dicts
+            # (pins et pinout), sinon utiliser la derivation positionnelle par defaut.
+            if brochage_reel:
+                for pidx, pin_name in enumerate(brochage_reel.keys()):
+                    net = broche_vers_net.get((cid, pidx), 'NC')
+                    broches[pin_name] = net
+            else:
+                for pidx, info_b in enumerate(elem['pins']):
+                    net = broche_vers_net.get((cid, pidx), 'NC')
+                    broches[str(pidx + 1)] = net
             composants.append(Component(ref=ref, type='X', pins=broches, value=elem['value'],
                                         primitives=forme_reelle, pinout=brochage_reel))
             composants.warnings.append(
@@ -1745,6 +1752,18 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
 
         forme_reelle, brochage_reel = ((None, None) if not boite_ic
                                        else _forme_et_brochage_reels())
+        # Si on a un brochage reel pour une boite_ic, reconstruire broches avec les
+        # memes noms que pinout pour garantir set(pins) == set(pinout).
+        if boite_ic and brochage_reel:
+            broches_corrigees = {}
+            for pidx, pin_name in enumerate(brochage_reel.keys()):
+                net = broche_vers_net.get((cid, pidx), 'NC')
+                broches_corrigees[pin_name] = net
+            # Conserver les broches AOP standard ajoutees ci-dessus pour les formes nommees
+            if type_prefix == 'U' and plan:
+                for std in ('IN+', 'IN-', 'OUT', 'V+', 'V-'):
+                    broches_corrigees.setdefault(std, 'NC')
+            broches = broches_corrigees
         composants.append(Component(ref=ref, type=type_prefix, pins=broches,
                                     value=valeur, par_forme=par_forme,
                                     boite_ic=boite_ic,
