@@ -20,7 +20,7 @@ ENTETE = ('<?xml version="1.0" encoding="utf-8"?>\n'
           'xmlns:xsd="http://www.w3.org/2001/XMLSchema">')
 
 
-def _pin(refs=(), pnumber='', pname=''):
+def _pin(refs=(), pnumber='', pname='', x=0, y=0):
     """@brief Fragment <DataPin> ERetroDesign (Pname/Pnumber optionnels, comme les vrais fichiers)."""
     node_l = ''.join(f'<string>{r}</string>' for r in refs)
     morceaux = ['    <DataPin>']
@@ -29,16 +29,25 @@ def _pin(refs=(), pnumber='', pname=''):
     if pnumber:
         morceaux.append(f'      <Pnumber>{pnumber}</Pnumber>')
     morceaux.append(f'      <NodeL>{node_l}</NodeL>')
-    morceaux.append('      <Pin><X>0</X><Y>0</Y></Pin>')
+    morceaux.append(f'      <Pin><X>{x}</X><Y>{y}</Y></Pin>')
     morceaux.append('    </DataPin>')
     return '\n'.join(morceaux)
 
 
-def _item(name, value='', pins=(), comp_id=0, typ=None, segments=(), nb_arcs=0):
+def _polygon(points):
+    """@brief Fragment <datapolygon> ERetroDesign — un point par élément."""
+    pts = ''.join(
+        f'<DataPolygon><point><X>{x}</X><Y>{y}</Y></point></DataPolygon>'
+        for x, y in points)
+    return f'<datapolygon>{pts}</datapolygon>'
+
+
+def _item(name, value='', pins=(), comp_id=0, typ=None, segments=(), nb_arcs=0, polygon_xml=''):
     """@brief Fragment <DataItem> ERetroDesign. pins = liste de fragments _pin().
 
     @param segments Liste de (sx, sy, ex, ey) → <datasegment><DataSegment>...
     @param nb_arcs Nombre d'arcs vides à émettre dans <dataarc> (pour classer_par_forme).
+    @param polygon_xml XML pour remplacer le <datapolygon> vide par défaut.
     """
     typ_xml = f'<typ>{typ}</typ>' if typ is not None else ''
     segs_xml = ''.join(
@@ -48,6 +57,7 @@ def _item(name, value='', pins=(), comp_id=0, typ=None, segments=(), nb_arcs=0):
     arcs_xml = '<DataArc />' * nb_arcs
     return (f'  <DataItem>\n'
             f'    <Name>{name}</Name><value>{value}</value>\n'
+            f'    {polygon_xml or "<datapolygon></datapolygon>"}\n'
             f'    <datasegment>{segs_xml}</datasegment>\n'
             f'    <dataarc>{arcs_xml}</dataarc>\n'
             f'    <datapin>\n' + '\n'.join(pins) + '\n    </datapin>\n'
@@ -407,3 +417,54 @@ def test_forme_reconnue_pose_le_marqueur_par_forme():
     comps = _lire(_boardsch([inconnu], []))
     zig = next(c for c in comps if c.type == 'R')
     assert zig.par_forme is True
+
+
+# ── Task 1 : primitives/pinout capture aux deux cas catch-all ───────────────
+
+def test_import_puce_catch_all_garde_contour_et_broches_reelles():
+    # 4 broches reelles sur les cotes gauche/droite d'un rectangle 72x96 —
+    # meme forme que le vrai composant A788J (pg carte.xml).
+    xml = _boardsch(
+        [_item('A788J', pins=[
+            _pin(pname='Vin+', x=-36, y=-42), _pin(pname='Vin-', x=-36, y=-6),
+            _pin(pname='GND1', x=-36, y=42),
+            _pin(pname='Vout', x=36, y=6), _pin(pname='GND2', x=36, y=42),
+            _pin(pname='GND2b', x=36, y=-42),
+        ], polygon_xml=_polygon([(-36, -48), (-36, 48), (36, 48), (36, -48)]))],
+        [],
+    )
+    comps = _lire(xml)
+    u = next(c for c in comps if c.type == 'U')
+    assert set(u.pins) == {'Vin+', 'Vin-', 'GND1', 'Vout', 'GND2', 'GND2b'}
+    assert u.primitives is not None and len(u.primitives) >= 1
+    assert u.pinout is not None
+    assert set(u.pinout) == set(u.pins)
+    cote, dec = u.pinout['Vin+']
+    assert cote == 'L'
+
+
+def test_import_inconnu_garde_aussi_le_contour():
+    xml = _boardsch(
+        [_item('transfo', pins=[_pin(x=-20, y=-10), _pin(x=-20, y=10),
+                                _pin(x=20, y=-10), _pin(x=20, y=10)],
+               polygon_xml=_polygon([(-20, -20), (-20, 20), (20, 20), (20, -20)]))],
+        [],
+    )
+    comps = _lire(xml)
+    x = next(c for c in comps if c.type == 'X')
+    assert x.primitives is not None
+    assert x.pinout is not None and len(x.pinout) == 4
+
+
+def test_import_resistance_plan_nomme_sans_forme_reelle():
+    # Non-regression : un type a PLAN NOMME (R) reste hors perimetre --
+    # primitives/pinout absents, comportement generique inchange.
+    xml = _boardsch(
+        [_item('resistance trad', value='1k',
+               pins=[_pin(refs=['A']), _pin()])],
+        [],
+    )
+    comps = _lire(xml)
+    r = next(c for c in comps if c.type == 'R')
+    assert r.primitives is None
+    assert r.pinout is None

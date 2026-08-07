@@ -19,7 +19,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from html import escape as _esc
 
-from circuit_analyzer import eretro, eretro_symboles
+from circuit_analyzer import eretro, eretro_lib, eretro_symboles
 from circuit_analyzer.composant import Composant as Component
 from circuit_analyzer.patterns.base import (
     is_gnd,
@@ -1665,6 +1665,18 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
                 and nom.strip() and len(elem['pins']) >= 6):
             correspondance, boite_ic = ('U', {}), True
 
+        def _forme_et_brochage_reels():
+            """Capture le contour/brochage reel via le meme parseur que la
+            bibliotheque (`eretro_lib._entree_depuis_dataitem`), ou (None, None)
+            si le symbole n'a ni geometrie ni broche exploitable."""
+            try:
+                _prefix, _entree = eretro_lib._entree_depuis_dataitem(elem['xml'])
+            except ValueError:
+                return None, None
+            if not _entree.get('primitives'):
+                return None, None
+            return _entree['primitives'], {n: tuple(cd) for n, cd in _entree['brochage'].items()}
+
         if correspondance is None:
             # Composant inconnu : on le garde sous type 'X' pour ne pas perdre ses connexions
             ref = generer_ref('X', elem)
@@ -1673,7 +1685,9 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             for pidx, info_b in enumerate(elem['pins']):
                 net = broche_vers_net.get((cid, pidx), 'NC')
                 broches[str(pidx + 1)] = net
-            composants.append(Component(ref=ref, type='X', pins=broches, value=elem['value']))
+            forme_reelle, brochage_reel = _forme_et_brochage_reels()
+            composants.append(Component(ref=ref, type='X', pins=broches, value=elem['value'],
+                                        primitives=forme_reelle, pinout=brochage_reel))
             composants.warnings.append(
                 f"Composant inconnu '{nom}' (id={cid}) → gardé comme {ref} (type X)"
             )
@@ -1729,9 +1743,12 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             if v:
                 valeur = v
 
+        forme_reelle, brochage_reel = ((None, None) if not boite_ic
+                                       else _forme_et_brochage_reels())
         composants.append(Component(ref=ref, type=type_prefix, pins=broches,
                                     value=valeur, par_forme=par_forme,
-                                    boite_ic=boite_ic))
+                                    boite_ic=boite_ic,
+                                    primitives=forme_reelle, pinout=brochage_reel))
         if par_forme:
             composants.warnings.append(
                 f"Composant '{nom}' (id={cid}) typé par sa forme (dessin) "

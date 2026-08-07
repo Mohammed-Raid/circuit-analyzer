@@ -122,6 +122,13 @@ class Composant:
     value: str = ''
     par_forme: bool = False
     boite_ic: bool = False
+    # Contour reel (lignes/arcs/polygones) capture a l'import, uniquement
+    # pour les types catch-all sans symbole dedie (U a plan vide, X) --
+    # spec 2026-08-07. None = comportement generique inchange.
+    primitives: list | None = None
+    # Brochage reel {nom: (cote, decalage)}, meme format que CompInst.pinout
+    # (spec 2026-07-23) -- toujours renseigne EN MEME TEMPS que primitives.
+    pinout: dict | None = None
 
     @property
     def net1(self) -> str:
