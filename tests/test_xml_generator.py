@@ -587,3 +587,23 @@ def test_le_plan_de_forme_partage_n_est_jamais_mute():
     generer_xml([Composant(ref="D1", type="D", value="x",
                            pins={"-": "NA", "+": "NB"})])
     assert _TYPE_VERS_FORME["D"][1] == avant, "plan de forme MUTE"
+
+
+def test_generateur_ecrit_le_contour_reel_dune_instance():
+    from circuit_analyzer.xml import _Generateur
+    gen = _Generateur()
+    cid = gen.ajouter('U', 'NE555', x=100, y=100,
+                      primitives=[('polygon', [(-36, -48), (-36, 48), (36, 48), (36, -48)], False)],
+                      pinout={'Vin+': ('L', -42), 'GND1': ('L', 42)})
+    xml = gen.vers_xml()
+    assert '<DataPolygon>' in xml
+    assert '<X>-36</X><Y>-48</Y>' in xml or '-36' in xml  # contour reel present
+    assert 'Vin+' in xml and 'GND1' in xml
+
+
+def test_generateur_sans_contour_reel_comportement_inchange():
+    from circuit_analyzer.xml import _Generateur
+    gen = _Generateur()
+    gen.ajouter('Résistance', '1k', x=100, y=100)
+    xml = gen.vers_xml()
+    assert '<Name>Résistance</Name>' in xml

@@ -26,6 +26,7 @@ from circuit_analyzer.patterns.base import (
     is_power,
     is_protective_earth_net,
 )
+from gui.schematic_symbols import geometrie_libre
 
 # =============================================================================
 # FORMES VISUELLES DES COMPOSANTS (coordonnées relatives au centre)
@@ -440,6 +441,8 @@ _fusionner_bibliotheque_eretro()
 class _Comp:
     """@brief Composant placé sur le schéma (id, nom de forme, valeur, position, forme)."""
     cid: int; name: str; value: str; x: int; y: int; angle: int = 0; shape: str = ""; group_id: int = 0; ref: str = ""
+    primitives: list | None = None
+    pinout: dict | None = None
 
 @dataclass
 class _Wire:
@@ -456,7 +459,8 @@ class _Generateur:
         self._wires: list[_Wire] = []
         self._wire_id = 0
 
-    def ajouter(self, nom, valeur="", x=0, y=0, angle=0, forme="", group_id=0, ref="") -> int:
+    def ajouter(self, nom, valeur="", x=0, y=0, angle=0, forme="", group_id=0, ref="",
+               primitives=None, pinout=None) -> int:
         """@brief Ajoute un composant au schéma.
 
         @param nom Nom de la forme BoardSCH (ex. 'Résistance', 'AOP').
@@ -467,10 +471,13 @@ class _Generateur:
         @param forme Forme explicite (sinon déduite du nom).
         @param group_id Identifiant de groupe BoardSCH (0 = aucun groupe).
         @param ref Référence du composant (ex. 'R1', 'C1').
+        @param primitives Contour réel de l'instance (primitives), prioritaire sur `_FORME` si fourni.
+        @param pinout Brochage réel de l'instance ({nom: (côté, décalage)}), prioritaire sur `_FORME` si fourni.
         @return int Identifiant (cid) du composant ajouté.
         """
         cid = len(self._comps)
-        self._comps.append(_Comp(cid, nom, valeur, x, y, angle, forme, group_id, ref=ref))
+        self._comps.append(_Comp(cid, nom, valeur, x, y, angle, forme, group_id,
+                                 ref=ref, primitives=primitives, pinout=pinout))
         return cid
 
     def relier(self, cid1, broche1, cid2, broche2):
@@ -564,6 +571,13 @@ class _Generateur:
         @return int Index de broche dans la forme.
         @throws ValueError Si la broche n'existe pas sur la forme du composant.
         """
+        comp = self._comps[cid]
+        if comp.pinout:
+            pins = sorted(comp.pinout)  # ordre stable, arbitraire mais deterministe
+            if nom_broche in pins:
+                return pins.index(nom_broche)
+            raise ValueError(f"Broche '{nom_broche}' introuvable sur composant {cid} ({comp.name}). "
+                             f"Disponibles : {pins}")
         forme_nom = _ALIAS.get(self._comps[cid].name, self._comps[cid].name)
         forme = _FORME.get(forme_nom, {})
         broches = forme.get("pins", {})
@@ -579,15 +593,15 @@ class _Generateur:
         @param noeuds_pins Dict {(cid, pidx) -> [refs de nœud]} construit depuis les fils.
         @return str Fragment XML <DataItem> du composant.
         """
-        cle_forme = comp.shape or comp.name
-        nom_forme = _ALIAS.get(cle_forme, cle_forme)
-        forme = _FORME.get(nom_forme, {"pins": {}, "polygon": "", "segment": ""})
-        broches_info = forme.get("pins", {})
-        parties_broches = []
-        for nom_b, (lx, ly, pidx) in sorted(broches_info.items(), key=lambda kv: kv[1][2]):
-            refs_noeud = noeuds_pins.get((comp.cid, pidx), [])
-            node_l = ''.join(f'<string>{r}</string>' for r in refs_noeud)
-            parties_broches.append(f"""      <DataPin>
+        if comp.pinout:
+            geo = geometrie_libre(comp.pinout)
+            pins_ordonnees = sorted(comp.pinout)
+            parties_broches = []
+            for pidx, nom_b in enumerate(pins_ordonnees):
+                lx, ly = geo["pins"][nom_b]
+                refs_noeud = noeuds_pins.get((comp.cid, pidx), [])
+                node_l = ''.join(f'<string>{r}</string>' for r in refs_noeud)
+                parties_broches.append(f"""      <DataPin>
         <Pname>{nom_b}</Pname><Pnumber>{nom_b}</Pnumber>
         <NodeL>{node_l}</NodeL>
         <Pin><X>{lx}</X><Y>{ly}</Y></Pin>
@@ -595,12 +609,39 @@ class _Generateur:
         <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP><typ>{ord(nom_b[0]) if nom_b else 0}</typ>
       </DataPin>""")
-        tous_refs = []
-        for pidx in range(len(broches_info)):
-            tous_refs.extend(noeuds_pins.get((comp.cid, pidx), []))
-        pin_cl = ''.join(f'<string>{r}</string>' for r in tous_refs)
-        poly = forme.get("polygon", ""); seg = forme.get("segment", ""); arc = forme.get("arc", "")
-        typ_val = _TYP_COMPOSANT.get(nom_forme, ord(nom_forme[0]) if nom_forme and nom_forme[0].isascii() else 82)
+            tous_refs = []
+            for pidx in range(len(pins_ordonnees)):
+                tous_refs.extend(noeuds_pins.get((comp.cid, pidx), []))
+            pin_cl = ''.join(f'<string>{r}</string>' for r in tous_refs)
+            if comp.primitives:
+                seg, poly, arc = eretro_lib._primitives_vers_xml(
+                    comp.primitives, lambda dx, dy: (int(round(dx)), int(round(dy))))
+            else:
+                seg, poly, arc = "", "", ""
+            typ_val = ord(comp.name[0]) if comp.name and comp.name[0].isascii() else 85
+        else:
+            cle_forme = comp.shape or comp.name
+            nom_forme = _ALIAS.get(cle_forme, cle_forme)
+            forme = _FORME.get(nom_forme, {"pins": {}, "polygon": "", "segment": ""})
+            broches_info = forme.get("pins", {})
+            parties_broches = []
+            for nom_b, (lx, ly, pidx) in sorted(broches_info.items(), key=lambda kv: kv[1][2]):
+                refs_noeud = noeuds_pins.get((comp.cid, pidx), [])
+                node_l = ''.join(f'<string>{r}</string>' for r in refs_noeud)
+                parties_broches.append(f"""      <DataPin>
+        <Pname>{nom_b}</Pname><Pnumber>{nom_b}</Pnumber>
+        <NodeL>{node_l}</NodeL>
+        <Pin><X>{lx}</X><Y>{ly}</Y></Pin>
+        <PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>
+        <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
+        <VltgP>0</VltgP><typ>{ord(nom_b[0]) if nom_b else 0}</typ>
+      </DataPin>""")
+            tous_refs = []
+            for pidx in range(len(broches_info)):
+                tous_refs.extend(noeuds_pins.get((comp.cid, pidx), []))
+            pin_cl = ''.join(f'<string>{r}</string>' for r in tous_refs)
+            poly = forme.get("polygon", ""); seg = forme.get("segment", ""); arc = forme.get("arc", "")
+            typ_val = _TYP_COMPOSANT.get(nom_forme, ord(nom_forme[0]) if nom_forme and nom_forme[0].isascii() else 82)
         return f"""    <DataItem>
       <Name>{_esc(comp.name)}</Name><Group /><reference>{_esc(comp.ref)}</reference><value>{_esc(comp.value)}</value>
       <datapolygon>{poly}</datapolygon><datasegment>{seg}</datasegment><dataarc>{arc}</dataarc>
