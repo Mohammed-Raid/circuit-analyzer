@@ -685,3 +685,56 @@ def test_generer_xml_transporte_le_contour_dun_composant_analyse():
     xml = generer_xml([comp])
     assert '<DataPolygon>' in xml
     assert 'Vin+' in xml
+
+
+def test_generer_xml_pinout_reel_cable_le_bon_noeud_au_reimport():
+    """Regression Task 7 (boucle visuelle) : le bouclage de cablage de
+    generer_xml() calculait l'index de broche via le catalogue
+    (`_idx_broche_forme`), qui ignore totalement `comp.pinout` -- alors que
+    `_xml_composant` dessine les <DataPin> par NOM reel (ordre
+    `sorted(comp.pinout)`, Task 4). Les deux desaccordaient : le `NodeL`
+    d'un fil pouvait atterrir sur la mauvaise broche (ou aucune), corrompant
+    la connectivite exportee pour tout composant a brochage reel. Round-trip
+    complet generer_xml -> lire_xml : la connectivite broche<->net
+    reimportee doit correspondre exactement a `comp.pins` d'origine, y
+    compris pour le rail GND (bouclage broches d'alimentation)."""
+    import os
+    import tempfile
+
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml, lire_xml
+
+    u1 = Composant(ref='U1', type='U', value='',
+                   pins={'Vin+': 'N1', 'Vin-': 'GND', 'GND1': 'GND', 'OUT': 'N2'},
+                   primitives=[('polygon', [(-36, -48), (-36, 48), (36, 48), (36, -48)], False)],
+                   pinout={'Vin+': ('L', -42), 'Vin-': ('L', -14),
+                           'GND1': ('L', 14), 'OUT': ('R', 0)})
+    r1 = Composant(ref='R1', type='R', value='10k', pins={'1': 'N1', '2': 'N3'})
+
+    xml_texte = generer_xml([u1, r1])
+
+    with tempfile.NamedTemporaryFile('w', suffix='.xml', delete=False, encoding='utf-8') as f:
+        f.write(xml_texte)
+        chemin = f.name
+    try:
+        relus = lire_xml(chemin)
+    finally:
+        os.unlink(chemin)
+
+    relu_u1 = next(c for c in relus if c.ref == 'U1')
+    relu_r1 = next(c for c in relus if c.ref == 'R1')
+
+    # Memes noms de broches (plan de reimport passthrough, Puce catalogue).
+    assert set(relu_u1.pins) == set(u1.pins), \
+        f"noms de broches perdus/renommes au reimport : {relu_u1.pins}"
+
+    # Vin+ (U1) et 1 (R1) partageaient le net N1 -> meme net apres reimport
+    # (peu importe le libelle synthetique NETn attribue).
+    assert relu_u1.pins['Vin+'] == relu_r1.pins['1'], \
+        "Vin+/R1.1 ne partagent plus le meme noeud apres le round-trip"
+    # OUT n'etait relie a rien d'autre : net distinct de Vin+.
+    assert relu_u1.pins['OUT'] != relu_u1.pins['Vin+']
+    # Vin-/GND1 partageaient le rail GND -> les deux doivent rester GND
+    # (exerce la branche d'alimentation du bouclage de cablage).
+    assert relu_u1.pins['Vin-'] == 'GND'
+    assert relu_u1.pins['GND1'] == 'GND'
