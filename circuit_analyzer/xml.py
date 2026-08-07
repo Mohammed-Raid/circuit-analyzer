@@ -26,7 +26,7 @@ from circuit_analyzer.patterns.base import (
     is_power,
     is_protective_earth_net,
 )
-from gui.schematic_symbols import geometrie_libre
+from gui.schematic_symbols import etendue_primitives, geometrie_libre
 
 # =============================================================================
 # FORMES VISUELLES DES COMPOSANTS (coordonnées relatives au centre)
@@ -594,7 +594,16 @@ class _Generateur:
         @return str Fragment XML <DataItem> du composant.
         """
         if comp.pinout:
-            geo = geometrie_libre(comp.pinout)
+            if comp.primitives:
+                # Boite EXACTE sur le vrai contour : sans w_exact/h_exact,
+                # geometrie_libre retombe sur son heuristique de remplissage
+                # et une broche peut se retrouver hors du polygone reel
+                # (meme defaut que bf341d4 / spec 2026-08-05, cf. docstring
+                # de geometrie_libre).
+                w_exact, h_exact = etendue_primitives(comp.primitives)
+                geo = geometrie_libre(comp.pinout, w_exact=w_exact, h_exact=h_exact)
+            else:
+                geo = geometrie_libre(comp.pinout)
             pins_ordonnees = sorted(comp.pinout)
             parties_broches = []
             for pidx, nom_b in enumerate(pins_ordonnees):

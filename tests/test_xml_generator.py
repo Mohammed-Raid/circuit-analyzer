@@ -597,7 +597,7 @@ def test_generateur_ecrit_le_contour_reel_dune_instance():
                       pinout={'Vin+': ('L', -42), 'GND1': ('L', 42)})
     xml = gen.vers_xml()
     assert '<DataPolygon>' in xml
-    assert '<X>-36</X><Y>-48</Y>' in xml or '-36' in xml  # contour reel present
+    assert '<X>-36</X><Y>-48</Y>' in xml  # contour reel present
     assert 'Vin+' in xml and 'GND1' in xml
 
 
@@ -607,3 +607,66 @@ def test_generateur_sans_contour_reel_comportement_inchange():
     gen.ajouter('Résistance', '1k', x=100, y=100)
     xml = gen.vers_xml()
     assert '<Name>Résistance</Name>' in xml
+
+
+def test_generateur_positionne_les_broches_dans_le_contour_reel():
+    """Regression : sans w_exact/h_exact, `geometrie_libre` retombe sur son
+    heuristique de remplissage et une broche peut se retrouver HORS du
+    polygone reel (ecart constate en revue : Vin+ exporte a x=-44 alors que
+    le contour reel s'arrete a x=-36). `_xml_composant` doit calculer la
+    boite EXACTE via `etendue_primitives` avant d'appeler `geometrie_libre`."""
+    import xml.etree.ElementTree as ET
+
+    from circuit_analyzer.xml import _Generateur
+
+    primitives = [('polygon', [(-36, -48), (-36, 48), (36, 48), (36, -48)], False)]
+    gen = _Generateur()
+    gen.ajouter('U', 'NE555', x=100, y=100, primitives=primitives,
+               pinout={'Vin+': ('L', -42), 'GND1': ('L', 42)})
+    root = ET.fromstring(gen.vers_xml())
+
+    xs = [x for _, points, *_ in primitives for x, _y in points]
+    ys = [y for _, points, *_ in primitives for _x, y in points]
+    xmin, xmax = min(xs), max(xs)
+    ymin, ymax = min(ys), max(ys)
+
+    broches = root.findall('.//DataItem/datapin/DataPin/Pin')
+    assert broches, "aucune broche exportee"
+    for pin in broches:
+        px, py = int(pin.findtext('X')), int(pin.findtext('Y'))
+        assert xmin <= px <= xmax, f"broche hors du contour reel en X : {px} (attendu dans [{xmin};{xmax}])"
+        assert ymin <= py <= ymax, f"broche hors du contour reel en Y : {py} (attendu dans [{ymin};{ymax}])"
+
+
+def test_idx_broche_pinout_reel_route_le_bon_nom_de_broche():
+    """`_idx_broche`, quand `comp.pinout` est fourni, doit indexer les
+    broches du PINOUT REEL (pas de `_FORME`) -- sinon `.relier()` peut cabler
+    un fil sur le mauvais `<DataPin>` sans qu'aucun test ne le remarque.
+    Verifie que le NodeL du fil atterrit sur le <Pname> demande, et sur lui
+    seul (les broches non reliees ne doivent porter aucune reference)."""
+    import xml.etree.ElementTree as ET
+
+    from circuit_analyzer.xml import _Generateur
+
+    gen = _Generateur()
+    c1 = gen.ajouter('U1', 'NE555', x=100, y=100,
+                     primitives=[('polygon', [(-36, -48), (-36, 48), (36, 48), (36, -48)], False)],
+                     pinout={'Vin+': ('L', -42), 'GND1': ('L', 42)})
+    c2 = gen.ajouter('U2', 'NE555', x=300, y=100,
+                     primitives=[('polygon', [(-36, -48), (-36, 48), (36, 48), (36, -48)], False)],
+                     pinout={'A': ('L', -42), 'B': ('L', 42)})
+    gen.relier(c1, 'GND1', c2, 'B')
+    root = ET.fromstring(gen.vers_xml())
+    items = root.findall('.//DataItem')
+
+    def refs_de(item_idx, pname):
+        item = items[item_idx]
+        for dp in item.findall('./datapin/DataPin'):
+            if dp.findtext('Pname') == pname:
+                return {s.text for s in dp.findall('NodeL/string')}
+        raise AssertionError(f"broche '{pname}' introuvable dans le DataItem {item_idx}")
+
+    assert refs_de(0, 'GND1'), "GND1 (relie) n'a recu aucune reference de noeud"
+    assert refs_de(1, 'B'), "B (relie) n'a recu aucune reference de noeud"
+    assert not refs_de(0, 'Vin+'), "Vin+ (non relie) ne devrait porter aucune reference"
+    assert not refs_de(1, 'A'), "A (non relie) ne devrait porter aucune reference"
