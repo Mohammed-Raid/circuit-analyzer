@@ -379,8 +379,14 @@ def geometrie_libre(pinout, w_mini=None, h_mini=None, roles=None,
         return f"{n} {roles.get(n, '')}".strip()
 
     if w_exact is not None and h_exact is not None:
-        w = max(BOITE_MIN_W, int(w_exact))
-        h = max(BOITE_MIN_H, int(h_exact))
+        # EXACTE veut dire EXACTE : pas de BOITE_MIN_W/H ici, sinon une forme
+        # reelle plus petite que le plancher UI (ex. VCC+/Vss, h=20) se fait
+        # regonfler et la broche recalculee au-dela du contour reel (meme
+        # symptome que le bug corrige en bf341d4, cette fois pour w_exact/
+        # h_exact eux-memes). Le plancher `1` evite juste un rectangle
+        # degenere si une forme importee a une dimension nulle.
+        w = max(1, int(w_exact))
+        h = max(1, int(h_exact))
     else:
         lat = [abs(d) for c, d in pinout.values() if c in ("L", "R")]
         ver = [abs(d) for c, d in pinout.values() if c in ("T", "B")]
@@ -408,6 +414,28 @@ def geometrie_libre(pinout, w_mini=None, h_mini=None, roles=None,
     return {"label": "", "color": AUTO_COLOR, "w": w, "h": h,
             "pins": pins, "cotes": cotes, "fonctions": dict(roles),
             "default_value": ""}
+
+
+def etendue_primitives(prims) -> tuple:
+    """@brief (largeur, hauteur) totale de primitives, centrees sur (0,0).
+
+    Sert de repli quand une forme reelle est choisie sans `boite` explicite
+    (ex. nouveau composant + forme piochee au selecteur, "Ajuster
+    automatiquement" coche) -- sans lui, `geometrie_libre` retombe sur
+    l'heuristique de remplissage et fait a nouveau flotter la broche loin
+    du contour reel (meme defaut que bf341d4, cette fois cote hand-picked
+    plutot qu'import).
+    """
+    mx = my = 0
+    for p in prims:
+        if p[0] in ("line", "polygon"):
+            for x, y in p[1]:
+                mx, my = max(mx, abs(x)), max(my, abs(y))
+        elif p[0] == "arc":
+            x0, y0, x1, y1 = p[1]
+            mx = max(mx, abs(x0), abs(x1))
+            my = max(my, abs(y0), abs(y1))
+    return mx * 2, my * 2
 
 
 def aimanter_bord(dx, dy, w, h, pas):

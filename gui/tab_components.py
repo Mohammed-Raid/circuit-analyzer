@@ -81,6 +81,11 @@ class TabComponents:
                          "Bornier 4": ("Connecteur", 4),
                          "Connecteur N": ("Connecteur", 0)}
         self._etat_initial: tuple = ('', '', ())   # snapshot anti-perte
+        self._forme_primitives: list = []          # fond actif (spec 2026-08-05)
+        self._formes_disponibles: dict = {}         # {libelle: primitives}
+        self._xml_source_valide = False
+        self._xml_source_courant = ""
+        self._compose_courant = False               # spec revue finale 2026-08-06
         self._build()
         self._load()
         self._afficher_nouveau()
@@ -181,6 +186,16 @@ class TabComponents:
             width=90, height=30)
         self._btn_modele.pack(side="left")
 
+        frow = ctk.CTkFrame(form, fg_color="transparent")
+        frow.pack(fill="x", pady=(2, 2))
+        ctk.CTkLabel(frow, text="Forme :", font=ui_kit.font("caption"),
+                     text_color=TEXT_MUTED).pack(side="left", padx=(0, 6))
+        self._forme_var = tk.StringVar(value="Aucune")
+        self._forme_menu = ctk.CTkOptionMenu(
+            frow, values=["Aucune"], variable=self._forme_var,
+            width=200, height=30, command=self._sur_forme)
+        self._forme_menu.pack(side="left")
+
         self._canvas_broches = PinCanvas(form, on_change=self._sur_brochage)
         self._canvas_broches.pack(fill="x", pady=(4, 6))
 
@@ -277,6 +292,9 @@ class TabComponents:
         """@brief Affiche un formulaire vierge en mode « nouveau »."""
         self._current_key = None
         self._remplir_formulaire('', '', [])
+        self._xml_source_valide = False
+        self._xml_source_courant = ""
+        self._compose_courant = False
         self._definir_mode('nouveau', "➕  Nouveau type de composant")
         self._prendre_snapshot()
 
@@ -292,7 +310,11 @@ class TabComponents:
                                  v.get("brochage"),
                                  default_value=v.get("default_value", ""),
                                  fonctions=v.get("fonctions"),
-                                 boite=v.get("boite"))
+                                 boite=v.get("boite"),
+                                 primitives=v.get("primitives"))
+        self._xml_source_valide = bool(v.get("xml_source"))
+        self._xml_source_courant = v.get("xml_source", "")
+        self._compose_courant = bool(v.get("compose"))
         self._definir_mode('edition', f"✏  Modification de ★ {key}")
         self._prendre_snapshot()
 
@@ -349,10 +371,18 @@ class TabComponents:
         """@brief Le canevas a muté : sa liste ordonnée devient l'état du form."""
         self._brochage = list(brochage)
 
+    def _sur_forme(self, choix: str):
+        """@brief Le sélecteur de forme a changé : met à jour l'aperçu SANS
+        toucher au brochage, et invalide `xml_source` (spec 2026-08-05 —
+        une forme piochée à la main n'est plus « l'import original »)."""
+        self._xml_source_valide = False
+        self._forme_primitives = list(self._formes_disponibles.get(choix) or [])
+        self._canvas_broches.definir_forme(self._forme_primitives)
+
     def _remplir_formulaire(self, prefixe: str, nom: str, broches: list,
                             brochage: dict = None, lecture_seule: bool = False,
                             default_value: str = "", fonctions: dict = None,
-                            boite: dict = None):
+                            boite: dict = None, primitives: list = None):
         """@brief Remplit les champs du formulaire (préfixe, nom, brochage).
 
         @param prefixe Préfixe du type.
@@ -360,6 +390,8 @@ class TabComponents:
         @param broches Liste ORDONNÉE des noms de broches (ordre netlist).
         @param brochage {nom: [côté, décalage]} du fichier, ou None.
         @param lecture_seule Vrai pour un type intégré (canevas non éditable).
+        @param primitives Forme réelle du composant affiché (import), ou
+               None — dessinée en fond dans le canevas (spec 2026-08-05).
         @return None
         """
         # Réactiver avant d'écrire : un Entry disabled ignore les set()
@@ -380,9 +412,12 @@ class TabComponents:
         self._w_var.set(str(b.get("w", "")) if b else "")
         self._h_var.set(str(b.get("h", "")) if b else "")
         self._sur_auto_taille()
+        self._forme_primitives = list(primitives or [])
+        self._forme_var.set("Aucune")
         self._canvas_broches.charger(self._brochage, lecture_seule,
                                      roles=fonctions,
-                                     w_mini=b.get("w"), h_mini=b.get("h"))
+                                     w_mini=b.get("w"), h_mini=b.get("h"),
+                                     forme_primitives=self._forme_primitives)
 
     # ── Anti-perte de saisie ─────────────────────────────────────────────────
 
@@ -444,6 +479,13 @@ class TabComponents:
             personnalises=[f"{k}  —  {v.get('name', '')}"
                            for k, v in self._custom.items()],
         )
+        # Sélecteur de forme : uniquement les composants avec une forme réelle
+        # importée (spec 2026-08-05) — jamais de forme prédéfinie maison.
+        self._formes_disponibles = {
+            (f"{k} — {v['name']}" if v.get("name") else k): v["primitives"]
+            for k, v in self._custom.items() if v.get("primitives")
+        }
+        self._forme_menu.configure(values=["Aucune"] + sorted(self._formes_disponibles))
 
     def _ecrire(self):
         """@brief Écrit les types personnalisés dans le fichier de bibliothèque (JSON UTF-8)."""
@@ -488,7 +530,11 @@ class TabComponents:
         self._remplir_formulaire('', f"{nom} (copie)", broches, positions,
                                  default_value=self._default_var.get(),
                                  fonctions=self._canvas_broches.roles(),
-                                 boite=b or None)
+                                 boite=b or None,
+                                 primitives=self._forme_primitives)
+        self._xml_source_valide = False
+        self._xml_source_courant = ""
+        self._compose_courant = False
         self._definir_mode('nouveau',
                            "➕  Nouveau type (copie) — choisir un préfixe")
         self._prendre_snapshot()
@@ -718,6 +764,12 @@ class TabComponents:
             return
         entree = {"name": name, "pins": pins,
                   "brochage": {n: [c, d] for n, c, d in self._brochage}}
+        if self._forme_primitives:
+            entree["primitives"] = self._forme_primitives
+            if self._xml_source_valide:
+                entree["xml_source"] = self._xml_source_courant
+        if self._compose_courant:
+            entree["compose"] = True
         defaut = self._default_var.get().strip()
         if defaut:
             entree["default_value"] = defaut

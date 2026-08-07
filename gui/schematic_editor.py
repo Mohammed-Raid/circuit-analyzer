@@ -22,6 +22,7 @@ from gui.schematic_symbols import (
     aimanter_bord,
     def_puce,
     est_boite_generique,
+    etendue_primitives,
     geometrie_libre,
     primitives,
 )
@@ -118,8 +119,13 @@ def _auto_def(name: str, pins: list, brochage: dict = None,
         b = boite or {}
         pinout = {n: tuple(v) for n, v in brochage.items()}
         if forme_primitives:
+            w_exact, h_exact = b.get("w"), b.get("h")
+            if w_exact is None or h_exact is None:
+                bw, bh = etendue_primitives(forme_primitives)
+                w_exact = w_exact if w_exact is not None else bw
+                h_exact = h_exact if h_exact is not None else bh
             d = geometrie_libre(pinout, roles=fonctions or {},
-                                w_exact=b.get("w"), h_exact=b.get("h"))
+                                w_exact=w_exact, h_exact=h_exact)
         else:
             d = geometrie_libre(pinout, b.get("w"), b.get("h"), fonctions or {})
         d["label"] = name

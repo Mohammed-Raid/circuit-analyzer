@@ -221,6 +221,16 @@ def test_taille_mini_ne_descend_jamais_sous_le_besoin_reel():
     assert force["h"] == auto["h"] and force["w"] == auto["w"]
 
 
+def test_taille_exacte_ignore_le_plancher_ui():
+    """EXACTE, pas un plancher : une forme reelle plus petite que
+    BOITE_MIN_W/H (ex. VCC+/Vss, h=20) ne doit pas se faire regonfler,
+    sinon la broche recalculee flotte au-dela du contour reel importe
+    (meme symptome que le bug corrige en bf341d4, cette fois pour
+    w_exact/h_exact eux-memes plutot que pour le fallback heuristique)."""
+    d = geometrie_libre({"+": ("B", 0)}, w_exact=160, h_exact=20)
+    assert (d["w"], d["h"]) == (160, 20)
+
+
 def test_role_apparait_dans_le_libelle():
     from gui.schematic_symbols import _tr_boite_libre
     d = geometrie_libre({"VCC": ("L", 0)}, roles={"VCC": "Alim"})

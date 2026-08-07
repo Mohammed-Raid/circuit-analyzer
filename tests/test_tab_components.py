@@ -99,6 +99,139 @@ def test_deplacer_une_broche_rend_le_formulaire_sale(onglet):
     assert t._etat_courant() != t._etat_initial
 
 
+def test_selecteur_de_forme_liste_les_composants_importes(onglet):
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "AOP2": {"name": "AOP2", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                 "primitives": [["polygon", [[0, -10], [10, 10], [-10, 10]], False]]},
+        "SANS": {"name": "SansForme", "pins": ["1"], "brochage": {"1": ["L", 0]}},
+    }), encoding="utf-8")
+    t._load()
+    assert any("AOP2" in cle for cle in t._formes_disponibles)
+    assert not any("SANS" in cle for cle in t._formes_disponibles)
+
+
+def test_choisir_une_forme_met_a_jour_l_apercu_sans_toucher_aux_broches(onglet):
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "AOP2": {"name": "AOP2", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                 "primitives": [["polygon", [[0, -10], [10, 10], [-10, 10]], False]]},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_nouveau()
+    t._brochage = [("X", "L", 0)]
+    cle = next(c for c in t._formes_disponibles if "AOP2" in c)
+    t._sur_forme(cle)
+    assert t._forme_primitives == [["polygon", [[0, -10], [10, 10], [-10, 10]], False]]
+    assert t._brochage == [("X", "L", 0)]     # broches inchangees
+
+
+def test_afficher_perso_montre_la_forme_de_l_import(onglet):
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "AOP2": {"name": "AOP2", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                 "primitives": [["polygon", [[0, -10], [10, 10], [-10, 10]], False]],
+                 "xml_source": "<DataItem>...</DataItem>"},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_perso("AOP2")
+    assert t._forme_primitives == [["polygon", [[0, -10], [10, 10], [-10, 10]], False]]
+    assert t._xml_source_valide is True
+
+
+def test_resauver_sans_toucher_la_forme_preserve_primitives_et_xml_source(onglet):
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "AOP2": {"name": "AOP2", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                 "primitives": [["polygon", [[0, -10], [10, 10], [-10, 10]], False]],
+                 "xml_source": "<DataItem>ORIGINAL</DataItem>"},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_perso("AOP2")
+    t._sauvegarder()
+    data = json.loads(chemin.read_text(encoding="utf-8"))
+    assert data["AOP2"]["primitives"] == [["polygon", [[0, -10], [10, 10], [-10, 10]], False]]
+    assert data["AOP2"]["xml_source"] == "<DataItem>ORIGINAL</DataItem>"
+
+
+def test_changer_de_forme_invalide_le_xml_source_a_la_sauvegarde(onglet):
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "AOP2": {"name": "AOP2", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                 "primitives": [["polygon", [[0, -10], [10, 10], [-10, 10]], False]],
+                 "xml_source": "<DataItem>ORIGINAL</DataItem>"},
+        "SELF2": {"name": "Self2", "pins": ["2"], "brochage": {"2": ["R", 0]},
+                  "primitives": [["line", [[0, -7], [0, 7]], 2]]},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_perso("AOP2")
+    cle = next(c for c in t._formes_disponibles if "SELF2" in c)
+    t._sur_forme(cle)
+    t._sauvegarder()
+    data = json.loads(chemin.read_text(encoding="utf-8"))
+    assert "xml_source" not in data["AOP2"]
+    assert data["AOP2"]["primitives"] == [["line", [[0, -7], [0, 7]], 2]]
+
+
+def test_nouveau_composant_avec_forme_choisie_a_primitives_mais_pas_xml_source(onglet):
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "AOP2": {"name": "AOP2", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                 "primitives": [["polygon", [[0, -10], [10, 10], [-10, 10]], False]]},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_nouveau()
+    t._prefix_var.set("NEUF")
+    t._brochage = [("A", "L", 0), ("B", "R", 0)]
+    cle = next(c for c in t._formes_disponibles if "AOP2" in c)
+    t._sur_forme(cle)
+    t._sauvegarder()
+    data = json.loads(chemin.read_text(encoding="utf-8"))
+    assert data["NEUF"]["primitives"] == [["polygon", [[0, -10], [10, 10], [-10, 10]], False]]
+    assert "xml_source" not in data["NEUF"]
+
+
+def test_resauver_un_compose_preserve_le_marqueur_compose(onglet):
+    """Un compose (`<CComp>` de la CCLib du collegue) doit rester exclu de
+    `ecrire_dans_dossier` apres re-sauvegarde -- perdre `compose` le ferait
+    ecrire comme un `<DataItem>` normal, aplati mais convaincant (revue
+    finale 2026-08-06)."""
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "PONT": {"name": "Pont", "pins": ["1", "2"],
+                 "brochage": {"1": ["L", 0], "2": ["R", 0]},
+                 "primitives": [["polygon", [[0, -10], [10, 10], [-10, 10]], False]],
+                 "compose": True},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_perso("PONT")
+    assert t._compose_courant is True
+    t._sauvegarder()
+    data = json.loads(chemin.read_text(encoding="utf-8"))
+    assert data["PONT"]["compose"] is True
+
+
+def test_nouveau_composant_n_a_jamais_le_marqueur_compose(onglet):
+    """Non-regression : un type flambant neuf (ou une duplication) n'est
+    jamais un `<CComp>` original -- `compose` ne doit pas fuir dedans."""
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "PONT": {"name": "Pont", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                 "compose": True},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_perso("PONT")
+    assert t._compose_courant is True
+    t._afficher_nouveau()
+    assert t._compose_courant is False
+    t._prefix_var.set("NEUF")
+    t._name_var.set("Neuf")
+    t._brochage = [("A", "L", 0)]
+    t._sauvegarder()
+    data = json.loads(chemin.read_text(encoding="utf-8"))
+    assert "compose" not in data["NEUF"]
+
+
 def test_duplication_clone_le_brochage(onglet):
     t, _ = onglet
     t._brochage = [("VCC", "T", 0)]
