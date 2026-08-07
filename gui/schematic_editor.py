@@ -1868,7 +1868,9 @@ class SchematicEditor(tk.Frame):
             t, v = type_reel(comp.comp_type)
             broches = {pn: net_of(f"{comp.id}:{pn}") for pn in pins}
             composants.append(Composant(ref=comp.ref, type=t, pins=broches,
-                                        value=v or comp.value))
+                                        value=v or comp.value,
+                                        primitives=comp.forme_primitives,
+                                        pinout=comp.pinout))
         return composants
 
     # ── Utilitaires ──────────────────────────────────────────────────────────

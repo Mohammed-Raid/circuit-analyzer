@@ -254,3 +254,15 @@ def test_auto_def_sans_brochage_reste_moitie_gauche_moitie_droite():
     d = _auto_def("X", ["1", "2", "3", "4"])
     assert d["pins"]["1"][0] < 0 and d["pins"]["2"][0] < 0
     assert d["pins"]["3"][0] > 0 and d["pins"]["4"][0] > 0
+
+
+def test_exporter_composants_transporte_le_contour_reel(editeur):
+    """Verifie que exporter_composants() transporte forme_primitives et pinout
+    de la CompInst vers le Composant exporte (Task 3 -> Task 5)."""
+    c = _place(editeur, 'X', 200, 200)
+    c.pinout = {'1': ('L', 0)}
+    c.forme_primitives = [('polygon', [(-5, -5), (-5, 5), (5, 5), (5, -5)], False)]
+    editeur._invalider_geom()
+    comp = next(x for x in editeur.exporter_composants() if x.ref == c.ref)
+    assert comp.primitives == c.forme_primitives
+    assert comp.pinout == {'1': ('L', 0)}

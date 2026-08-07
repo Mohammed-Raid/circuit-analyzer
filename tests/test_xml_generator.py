@@ -670,3 +670,18 @@ def test_idx_broche_pinout_reel_route_le_bon_nom_de_broche():
     assert refs_de(1, 'B'), "B (relie) n'a recu aucune reference de noeud"
     assert not refs_de(0, 'Vin+'), "Vin+ (non relie) ne devrait porter aucune reference"
     assert not refs_de(1, 'A'), "A (non relie) ne devrait porter aucune reference"
+
+
+def test_generer_xml_transporte_le_contour_dun_composant_analyse():
+    """Verifie que generer_xml() accepte et ecrit les primitives/pinout reels
+    fournis via Composant.primitives/pinout (Task 1) dans le XML (Task 4)."""
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml
+
+    comp = Composant(ref='U1', type='U', pins={'Vin+': 'N1', 'GND1': 'GND'},
+                     value='',
+                     primitives=[('polygon', [(-36, -48), (-36, 48), (36, 48), (36, -48)], False)],
+                     pinout={'Vin+': ('L', -42), 'GND1': ('L', 42)})
+    xml = generer_xml([comp])
+    assert '<DataPolygon>' in xml
+    assert 'Vin+' in xml

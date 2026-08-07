@@ -1068,7 +1068,9 @@ def generer_xml(composants, resultats=None, results=None) -> str:
             x = 250 + (i % PER_RANGEE) * _LARG_COMP
             y = 250 + (i // PER_RANGEE) * _HAUT_RANGEE
         cid = gen.ajouter(nom_forme, comp.value, x=x, y=y, ref=comp.ref,
-                          group_id=ids_groupes.get(comp.ref, 0))
+                          group_id=ids_groupes.get(comp.ref, 0),
+                          primitives=getattr(comp, "primitives", None),
+                          pinout=getattr(comp, "pinout", None))
         ref_vers_cid[comp.ref] = cid
         ref_vers_map[comp.ref] = plan_broches
 
