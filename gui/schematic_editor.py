@@ -209,6 +209,10 @@ class CompInst:
     # None = la géométrie du TYPE fait foi (comportement historique) ; un dict
     # (même vide) prend le pas dessus — cf. `_geom` (spec 2026-07-23).
     pinout:    dict | None = None
+    # Contour reel (import catch-all, choix bibliotheque, ou dessine a la
+    # main) : liste de primitives ou None. Purement ADDITIF au rendu -- ne
+    # remplace jamais `pinout` (spec 2026-08-07).
+    forme_primitives: list | None = None
 
 
 @dataclass
@@ -742,14 +746,17 @@ class SchematicEditor(tk.Frame):
         broche, undo/redo, chargement, suppression) : un cache périmé donne des
         fils qui pointent à côté, symptôme pénible à diagnostiquer.
         """
-        if comp.pinout is None:
+        if comp.pinout is None and not comp.forme_primitives:
             return self._defs[comp.comp_type]
         d = self._geom_cache.get(comp.id)
         if d is None:
-            d = geometrie_libre(comp.pinout)
+            pinout = comp.pinout or {}
+            d = geometrie_libre(pinout)
             base = self._defs.get(comp.comp_type)
             if base:
                 d["color"] = base["color"]
+            if comp.forme_primitives:
+                d["primitives"] = comp.forme_primitives
             self._geom_cache[comp.id] = d
         return d
 
@@ -1299,7 +1306,8 @@ class SchematicEditor(tk.Frame):
     # ── Copier / coller / dupliquer ───────────────────────────────────────────
 
     def _add_comp(self, comp_type: str, value: str, rotation: int,
-                  wx: int, wy: int, pinout: dict | None = None
+                  wx: int, wy: int, pinout: dict | None = None,
+                  forme_primitives: list | None = None
                   ) -> Optional['CompInst']:
         """@brief Crée, dessine et sélectionne un nouveau composant.
 
@@ -1321,7 +1329,8 @@ class SchematicEditor(tk.Frame):
         # deepcopy du brochage : « par instance » interdit que deux copies
         # partagent le même dict (éditer l'une modifierait l'autre).
         comp = CompInst(self._next_id, ref, comp_type, value, wx, wy, rotation,
-                        pinout=copy.deepcopy(pinout))
+                        pinout=copy.deepcopy(pinout),
+                        forme_primitives=copy.deepcopy(forme_primitives))
         self._next_id += 1
         self._comps[comp.id] = comp
         self._draw_comp(comp)
@@ -1335,7 +1344,8 @@ class SchematicEditor(tk.Frame):
         if not comp:
             return
         self._clipboard = {"type": comp.comp_type, "value": comp.value,
-                           "rotation": comp.rotation, "pinout": comp.pinout}
+                           "rotation": comp.rotation, "pinout": comp.pinout,
+                           "forme_primitives": comp.forme_primitives}
         self._set_status(f"Copié\n{comp.ref}")
 
     def _paste(self, _=None):
@@ -1346,7 +1356,8 @@ class SchematicEditor(tk.Frame):
         self._push_undo()
         comp = self._add_comp(self._clipboard["type"], self._clipboard["value"],
                               self._clipboard["rotation"], wx, wy,
-                              self._clipboard.get("pinout"))
+                              self._clipboard.get("pinout"),
+                              self._clipboard.get("forme_primitives"))
         if comp is None:
             # Type devenu inconnu : annule l'instantané inutile.
             self._undo_stack.pop()
@@ -1359,10 +1370,12 @@ class SchematicEditor(tk.Frame):
         if not src:
             return
         self._clipboard = {"type": src.comp_type, "value": src.value,
-                           "rotation": src.rotation, "pinout": src.pinout}
+                           "rotation": src.rotation, "pinout": src.pinout,
+                           "forme_primitives": src.forme_primitives}
         self._push_undo()
         comp = self._add_comp(src.comp_type, src.value, src.rotation,
-                              src.cx + GRID * 2, src.cy + GRID * 2, src.pinout)
+                              src.cx + GRID * 2, src.cy + GRID * 2, src.pinout,
+                              src.forme_primitives)
         if comp is None:
             self._undo_stack.pop()
             return
@@ -1697,7 +1710,8 @@ class SchematicEditor(tk.Frame):
             ci = CompInst(int(c["id"]), c["ref"], t, c.get("value", ""),
                           int(c["cx"]), int(c["cy"]), int(c.get("rotation", 0)),
                           pinout=({n: tuple(v) for n, v in po.items()}
-                                  if po is not None else None))
+                                  if po is not None else None),
+                          forme_primitives=c.get("forme_primitives"))
             new_comps[ci.id] = ci
             max_id = max(max_id, ci.id)
 

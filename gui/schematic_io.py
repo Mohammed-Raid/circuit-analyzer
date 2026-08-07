@@ -42,7 +42,10 @@ def editor_to_dict(comps, wires, counters, next_id) -> dict:
              # géométrie de son type (version .circ inchangée, spec 2026-07-23).
              # `getattr` : des doubles de test légers n'ont pas ce champ.
              **({"pinout": {n: list(v) for n, v in pinout.items()}}
-                if (pinout := getattr(c, "pinout", None)) is not None else {})}
+                if (pinout := getattr(c, "pinout", None)) is not None else {}),
+             # Contour reel : même style additif (spec 2026-08-07).
+             **({"forme_primitives": fp}
+                if (fp := getattr(c, "forme_primitives", None)) else {})}
             for c in comps.values()
         ],
         "wires": [

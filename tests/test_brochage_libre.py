@@ -300,3 +300,34 @@ def test_boite_vierge_sans_broche_reste_rendue_en_boite_libre(editeur):
     items = editeur._canvas.find_withtag(f"comp_{c.id}")
     assert not any(editeur._canvas.type(i) == "arc" for i in items), \
         "encoche DIP de _tr_boite : mauvais traceur"
+
+
+# ── Task 3 (2026-08-07) : forme reelle survit au rendu et au round-trip .circ ─
+
+def test_geom_combine_pinout_et_forme_reelle(editeur):
+    c = _place(editeur, 'X', 200, 200)
+    c.pinout = {'A': ('L', 0), 'B': ('R', 0)}
+    c.forme_primitives = [('polygon', [(-10, -10), (-10, 10), (10, 10), (10, -10)], False)]
+    editeur._invalider_geom()
+    d = editeur._geom(c)
+    assert set(d['pins']) == {'A', 'B'}
+    assert d.get('primitives') == c.forme_primitives
+
+
+def test_round_trip_circ_conserve_la_forme_reelle(editeur):
+    c = _place(editeur, 'X', 200, 200)
+    c.pinout = {'1': ('L', 0)}
+    c.forme_primitives = [('polygon', [(-5, -5), (-5, 5), (5, 5), (5, -5)], False)]
+    editeur._invalider_geom()
+    editeur.load_dict(editeur.to_dict())
+    r = next(x for x in editeur._comps.values() if x.comp_type == 'X')
+    assert r.forme_primitives == [('polygon', [(-5, -5), (-5, 5), (5, 5), (5, -5)], False)]
+
+
+def test_circ_sans_forme_reelle_se_relit(editeur):
+    _place(editeur, 'R', 200, 200)
+    d = editeur.to_dict()
+    for comp in d['components']:
+        comp.pop('forme_primitives', None)
+    editeur.load_dict(d)
+    assert all(c.forme_primitives is None for c in editeur._comps.values())
