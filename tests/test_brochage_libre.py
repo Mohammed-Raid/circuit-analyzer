@@ -375,3 +375,46 @@ def test_circ_sans_forme_reelle_se_relit(editeur):
         comp.pop('forme_primitives', None)
     editeur.load_dict(d)
     assert all(c.forme_primitives is None for c in editeur._comps.values())
+
+
+# ── Task 6 : dessin de contour a la main (mode "shapedraw") ─────────────────
+
+def test_dessiner_une_forme_produit_un_polygone(editeur):
+    c = _place(editeur, 'X', 200, 200)
+    editeur._entrer_dessin_forme(c.id)
+    editeur._ajouter_point_forme(c, 200 - 20, 200 - 20)
+    editeur._ajouter_point_forme(c, 200 - 20, 200 + 20)
+    editeur._ajouter_point_forme(c, 200 + 20, 200 + 20)
+    assert editeur._fermer_forme(c) is True
+    assert c.forme_primitives == [('polygon', [(-20, -20), (-20, 20), (20, 20)], False)]
+    assert editeur._state == 'idle'
+
+
+def test_fermer_avec_moins_de_3_points_est_refuse(editeur):
+    c = _place(editeur, 'X', 200, 200)
+    editeur._entrer_dessin_forme(c.id)
+    editeur._ajouter_point_forme(c, 200 - 20, 200 - 20)
+    assert editeur._fermer_forme(c) is False
+    assert c.forme_primitives is None
+    assert editeur._state == 'shapedraw'  # reste en mode dessin
+
+
+def test_dessin_de_forme_est_annulable(editeur):
+    c = _place(editeur, 'X', 200, 200)
+    c.forme_primitives = [('polygon', [(0, 0), (0, 1), (1, 1)], False)]
+    editeur._entrer_dessin_forme(c.id)
+    editeur._ajouter_point_forme(c, 200 - 10, 200 - 10)
+    editeur._ajouter_point_forme(c, 200 - 10, 200 + 10)
+    editeur._ajouter_point_forme(c, 200 + 10, 200 + 10)
+    editeur._fermer_forme(c)
+    editeur._undo()
+    assert editeur._comps[c.id].forme_primitives == [('polygon', [(0, 0), (0, 1), (1, 1)], False)]
+
+
+def test_echap_en_dessin_annule_la_forme_en_cours(editeur):
+    c = _place(editeur, 'X', 200, 200)
+    editeur._entrer_dessin_forme(c.id)
+    editeur._ajouter_point_forme(c, 200 - 10, 200 - 10)
+    editeur._on_escape()
+    assert editeur._state == 'idle'
+    assert c.forme_primitives is None

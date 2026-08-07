@@ -310,6 +310,10 @@ class SchematicEditor(tk.Frame):
         # Édition de broches : composant ciblé et broche sélectionnée.
         self._pinedit_id: int | None = None
         self._pin_selectionnee: str | None = None
+        # Dessin de contour (spec 2026-08-07) : composant cible et points
+        # accumules (coordonnees MONDE relatives au centre du composant).
+        self._shapedraw_id: int | None = None
+        self._shapedraw_points: list = []
 
         self._build()
 
@@ -928,6 +932,65 @@ class SchematicEditor(tk.Frame):
         self._redraw_all()
         self._dessiner_cadre_pinedit()
 
+    # ── Dessin de contour (mode "shapedraw", spec 2026-08-07) ─────────────────
+
+    def _entrer_dessin_forme(self, comp_id: int):
+        """@brief Passe en dessin de contour sur CE composant, clic par clic."""
+        if comp_id not in self._comps:
+            return
+        self._cancel_wiring()
+        self._deselect()
+        self._state           = "shapedraw"
+        self._shapedraw_id     = comp_id
+        self._shapedraw_points = []
+        self._canvas.configure(cursor="crosshair")
+        self._set_status("Clic = point du contour\n"
+                         "Revenir au 1er point = fermer\nÉchap = annuler")
+
+    def _quitter_dessin_forme(self):
+        """@brief Sort du mode de dessin de contour, sans rien valider."""
+        self._canvas.delete("shapedraw")
+        self._state           = "idle"
+        self._shapedraw_id     = None
+        self._shapedraw_points = []
+        self._canvas.configure(cursor="")
+        self._set_status("Prêt")
+
+    def _ajouter_point_forme(self, comp, wx, wy):
+        """@brief Ajoute un point aimanté à la grille au contour en cours."""
+        swx, swy = self._snap(wx, wy)
+        self._shapedraw_points.append((swx - comp.cx, swy - comp.cy))
+        self._dessiner_previsu_forme(comp)
+
+    def _dessiner_previsu_forme(self, comp):
+        """@brief Trace les segments déjà posés du contour en cours d'édition."""
+        self._canvas.delete("shapedraw")
+        pts = self._shapedraw_points
+        if len(pts) < 2:
+            return
+        coords = []
+        for dx, dy in pts:
+            sx, sy = self._w2s(comp.cx + dx, comp.cy + dy)
+            coords.extend([sx, sy])
+        self._canvas.create_line(*coords, fill=BLUE, dash=(4, 3), width=2,
+                                 tags="shapedraw")
+
+    def _fermer_forme(self, comp) -> bool:
+        """@brief Referme le contour en cours (>= 3 points) et l'enregistre.
+
+        @return False si moins de 3 points -- reste en mode dessin, aucune
+                mutation (permet à l'appelant de continuer à cliquer).
+        """
+        if len(self._shapedraw_points) < 3:
+            self._set_status("Il faut au moins\n3 points")
+            return False
+        self._push_undo()
+        comp.forme_primitives = [("polygon", list(self._shapedraw_points), False)]
+        self._invalider_geom(comp.id)
+        self._draw_comp(comp)
+        self._quitter_dessin_forme()
+        return True
+
     # ── Rendu ────────────────────────────────────────────────────────────────
 
     def _draw_comp(self, comp: CompInst):
@@ -1157,6 +1220,20 @@ class SchematicEditor(tk.Frame):
                 self._pin_selectionnee = self._ajouter_broche(comp, wx, wy)
             return
 
+        if self._state == "shapedraw":
+            comp = self._comps.get(self._shapedraw_id)
+            if comp is None:
+                self._quitter_dessin_forme()
+                return
+            # Clic proche du 1er point deja pose = fermer le contour.
+            if self._shapedraw_points:
+                x0, y0 = self._shapedraw_points[0]
+                if math.hypot((wx - comp.cx) - x0, (wy - comp.cy) - y0) <= GRID / 2:
+                    self._fermer_forme(comp)
+                    return
+            self._ajouter_point_forme(comp, wx, wy)
+            return
+
         if self._state == "wiring":
             pin = self._find_pin_at(wx, wy)
             if pin and pin != self._wire_src:
@@ -1299,6 +1376,8 @@ class SchematicEditor(tk.Frame):
         m.add_command(label="↻  Rotation",   command=lambda: self._rotate_comp(comp_id))
         m.add_command(label="⊹  Éditer broches",
                       command=lambda: self._entrer_pinedit(comp_id))
+        m.add_command(label="✎  Dessiner le contour",
+                      command=lambda: self._entrer_dessin_forme(comp_id))
         m.add_separator()
         m.add_command(label="🗑  Supprimer", command=lambda: self._delete_comp(comp_id))
         m.post(event.x_root, event.y_root)
@@ -1314,6 +1393,9 @@ class SchematicEditor(tk.Frame):
         self._delete_selected()
 
     def _on_escape(self, _=None):
+        if self._state == "shapedraw":
+            self._quitter_dessin_forme()
+            return
         if self._state == "pinedit":
             self._quitter_pinedit()
             return
