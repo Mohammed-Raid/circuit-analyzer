@@ -1668,14 +1668,25 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         def _forme_et_brochage_reels():
             """Capture le contour/brochage reel via le meme parseur que la
             bibliotheque (`eretro_lib._entree_depuis_dataitem`), ou (None, None)
-            si le symbole n'a ni geometrie ni broche exploitable."""
+            si le symbole n'a ni geometrie ni broche exploitable.
+
+            Fail-closed si deux broches physiques se resolvent au meme nom (collision) :
+            brochage_reel (dict) les collapse, ce qui desaligne les indices physiques
+            et corrompt les nets. Retourne (None, None) pour laisser la construction
+            positionnelle par defaut prendre le relais."""
             try:
                 _prefix, _entree = eretro_lib._entree_depuis_dataitem(elem['xml'])
             except ValueError:
                 return None, None
             if not _entree.get('primitives'):
                 return None, None
-            return _entree['primitives'], {n: tuple(cd) for n, cd in _entree['brochage'].items()}
+            brochage_reel = {n: tuple(cd) for n, cd in _entree['brochage'].items()}
+            # Detecter les collisions de noms de broches (deux broches physiques
+            # avec le meme nom). brochage_reel étant un dict, les collisions
+            # réduisent sa taille sous len(elem['pins']).
+            if len(brochage_reel) != len(elem['pins']):
+                return None, None
+            return _entree['primitives'], brochage_reel
 
         if correspondance is None:
             # Composant inconnu : on le garde sous type 'X' pour ne pas perdre ses connexions

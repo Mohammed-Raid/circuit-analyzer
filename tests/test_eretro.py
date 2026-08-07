@@ -488,3 +488,35 @@ def test_import_catch_all_pins_et_pinout_meme_clefs_avec_pnumber_pname_different
     # pins et pinout doivent avoir exactement les memes clefs (union de Pname/Pnumber)
     assert set(x.pins) == set(x.pinout), \
         f"pins keys {set(x.pins)} != pinout keys {set(x.pinout)}"
+
+
+def test_import_catch_all_collision_noms_broches_fail_closed():
+    # Regression : quand deux broches physiques se resolvent au meme nom
+    # (ex: deux 'GND'), brochage_reel (dict) les collapse. Sans detection,
+    # les indices pidx se desalignent et les nets sont corrompus/perdus.
+    # Fix: fail-closed — capturer primitives/pinout comme None, laisser la
+    # construction positionnelle par defaut prendre le relais.
+    xml = _boardsch(
+        [_item('boite_collision', pins=[
+            _pin(pname='GND', refs=['A'], x=-20, y=-10),   # deux broches => meme nom
+            _pin(pname='GND', refs=['B'], x=-20, y=10),
+            _pin(pname='VCC', refs=['C'], x=20, y=0),
+        ], polygon_xml=_polygon([(-20, -20), (-20, 20), (20, 20), (20, -20)]))],
+        [_fil('A', 'B')],  # A et B connectes entre eux => differents nets
+    )
+    comps = _lire(xml)
+    x = next(c for c in comps if c.type == 'X')
+    # Fail-closed: pas de capture de forme reelle
+    assert x.primitives is None, "Should fail-closed when pin names collide"
+    assert x.pinout is None, "Should fail-closed when pin names collide"
+    # Verification que les nets ne sont pas corrompus malgre l'absence de forme reelle :
+    # les deux premieres broches doivent avoir des nets differents (elles sont wired).
+    pins_list = list(x.pins.values())
+    assert len(pins_list) == 3, f"Should have 3 pins, got {len(pins_list)}"
+    # Verifier que les deux premieres broches ont effectivement des nets
+    # (sont connectees, pas orphelines)
+    assert pins_list[0] != 'NC', "First pin should be wired"
+    assert pins_list[1] != 'NC', "Second pin should be wired"
+    assert pins_list[0] == pins_list[1], "First two pins (both GND) should share a net"
+    assert pins_list[2] != 'NC', "Third pin should be wired"
+    assert pins_list[2] != pins_list[0], "Third pin (VCC) should have a different net than first two"
