@@ -2,6 +2,8 @@
 @brief Brochage libre par instance (spec 2026-07-23) : resolveur de geometrie,
 rendu en boite, mode d'edition de broches, persistance. Tk -> skip sans display.
 """
+import json
+
 import pytest
 
 ctk = pytest.importorskip("customtkinter")
@@ -322,6 +324,48 @@ def test_round_trip_circ_conserve_la_forme_reelle(editeur):
     editeur.load_dict(editeur.to_dict())
     r = next(x for x in editeur._comps.values() if x.comp_type == 'X')
     assert r.forme_primitives == [('polygon', [(-5, -5), (-5, 5), (5, 5), (5, -5)], False)]
+
+
+def test_round_trip_json_reel_conserve_les_tuples_de_la_forme(editeur):
+    """Reviewer 2026-08-07 : `load_dict(to_dict())` en memoire ne passe PAS
+    par JSON -- to_dict() renvoie encore l'objet liste d'origine, donc l'==
+    du test precedent passe par coincidence d'identite, pas par une vraie
+    persistance verifiee. Ici on force un aller-retour `json.dumps`/
+    `json.loads` (ce que fait reellement un fichier .circ sur disque, cf.
+    gui/tab_draw.py) pour verifier que `load_dict` reconstruit bien les
+    tuples que JSON a aplatis en listes, a chaque niveau (primitive ET
+    points/bbox imbriques), exactement comme `pinout` le fait deja."""
+    c = _place(editeur, 'X', 200, 200)
+    c.pinout = {'1': ('L', 0)}
+    original = [
+        ('line', [(-10, 0), (10, 0)], 2),
+        ('polygon', [(-5, -5), (-5, 5), (5, 5), (5, -5)], True),
+        ('arc', (-8, -8, 8, 8), 0, 180),
+        ('text', (0, 12), 'X', 10, 'n'),
+    ]
+    c.forme_primitives = original
+    editeur._invalider_geom()
+
+    document = json.loads(json.dumps(editeur.to_dict()))
+    editeur.load_dict(document)
+
+    r = next(x for x in editeur._comps.values() if x.comp_type == 'X')
+    assert r.forme_primitives == original
+    # Egalite structurelle ET typage exact -- une liste `[-10, 0]` == un
+    # tuple `(-10, 0)` en Python, donc `==` seul ne detecterait pas une
+    # normalisation manquante : on verifie explicitement le type a chaque
+    # niveau imbrique.
+    for prim in r.forme_primitives:
+        assert isinstance(prim, tuple)
+        kind = prim[0]
+        if kind in ('line', 'polygon'):
+            assert isinstance(prim[1], list)
+            for pt in prim[1]:
+                assert isinstance(pt, tuple)
+        elif kind == 'arc':
+            assert isinstance(prim[1], tuple)
+        elif kind == 'text':
+            assert isinstance(prim[1], tuple)
 
 
 def test_circ_sans_forme_reelle_se_relit(editeur):

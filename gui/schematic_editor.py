@@ -196,6 +196,38 @@ def _dist_to_segment(px, py, ax, ay, bx, by) -> float:
     return math.hypot(px - ax - t*dx, py - ay - t*dy)
 
 
+def _normaliser_primitives(prims):
+    """@brief Reconstruit les tuples d'une liste de primitives depuis un
+    `.circ` relu (spec 2026-08-07).
+
+    JSON n'a pas de type tuple : un aller-retour `json.dump`/`json.load`
+    aplatit chaque tuple d'une primitive (et les points imbriqués des
+    primitives "line"/"polygon"/"text") en listes. `pinout` a toujours eu
+    cette reconstruction dans `load_dict` -- `forme_primitives` doit suivre
+    le même contrat, sinon les consommateurs (duck-typés, indexation
+    positionnelle) reçoivent une forme légèrement différente après un vrai
+    save+reload que juste après la pose.
+
+    Formes attendues (cf. doc de module `schematic_symbols.py`) :
+      ("line", [(x,y),...], epaisseur)
+      ("polygon", [(x,y),...], rempli: bool)
+      ("arc", (x0,y0,x1,y1), start_deg, extent_deg)
+      ("text", (x,y), texte, taille, ancre)
+    """
+    out = []
+    for p in prims:
+        kind = p[0]
+        if kind in ("line", "polygon"):
+            out.append((kind, [tuple(pt) for pt in p[1]], p[2]))
+        elif kind == "arc":
+            out.append((kind, tuple(p[1]), p[2], p[3]))
+        elif kind == "text":
+            out.append((kind, tuple(p[1]), p[2], p[3], p[4]))
+        else:
+            out.append(tuple(p))
+    return out
+
+
 @dataclass
 class CompInst:
     id:        int
@@ -1707,11 +1739,13 @@ class SchematicEditor(tk.Frame):
             if t not in self._defs:
                 continue                      # type inconnu : ignoré
             po = c.get("pinout")
+            fp = c.get("forme_primitives")
             ci = CompInst(int(c["id"]), c["ref"], t, c.get("value", ""),
                           int(c["cx"]), int(c["cy"]), int(c.get("rotation", 0)),
                           pinout=({n: tuple(v) for n, v in po.items()}
                                   if po is not None else None),
-                          forme_primitives=c.get("forme_primitives"))
+                          forme_primitives=(_normaliser_primitives(fp)
+                                             if fp is not None else None))
             new_comps[ci.id] = ci
             max_id = max(max_id, ci.id)
 
