@@ -16,7 +16,7 @@ import logging
 import re
 import xml.etree.ElementTree as ET
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from html import escape as _esc
 
 from circuit_analyzer import eretro, eretro_symboles
@@ -652,9 +652,16 @@ _PAS_Y_BLOC  = 190
 
 @dataclass
 class _Bloc:
-    """@brief Bloc de mise en page : un libellé de circuit et ses composants."""
+    """@brief Bloc de mise en page : un libellé de circuit et ses composants.
+
+    `roles` associe un nom de rôle (ex. 'aop', 'Zin', 'Zf') à la liste des
+    refs qui le jouent — vide si le montage n'a pas de décomposition par
+    rôle connue (Divers, ou montage pas encore migré vers un positionneur
+    canonique).
+    """
     label: str
     comps: list
+    roles: dict = field(default_factory=dict)
 
 
 def _refs_du_bloc(r) -> list:
@@ -666,6 +673,29 @@ def _refs_du_bloc(r) -> list:
     refs = list(r["components"])
     refs += [s['ref'] for s in r.get('satellites', []) if s.get('status') == 'sure']
     return refs
+
+
+def _roles_du_bloc(r) -> dict:
+    """@brief Rôles des composants d'un match, depuis 'impedances'.
+
+    @param r Match d'un circuit détecté (sortie de detecteur.py).
+    @return dict {nom_role: [refs]} ; {} si le match n'a pas de champ
+            'impedances' (Divers, ou montage pas encore migré).
+
+    Le ou les refs de r['components'] qui n'apparaissent dans AUCUN rôle de
+    'impedances' sont regroupés sous le rôle 'aop' (l'ancre du montage —
+    vrai pour tous les montages AOP actuels, qui n'ont qu'un seul composant
+    hors impédances).
+    """
+    impedances = r.get('impedances')
+    if not impedances:
+        return {}
+    roles = {nom: list(bloc.get('refs', [])) for nom, bloc in impedances.items()}
+    refs_connus = {ref for refs in roles.values() for ref in refs}
+    ancre = [ref for ref in r['components'] if ref not in refs_connus]
+    if ancre:
+        roles['aop'] = ancre
+    return roles
 
 
 def _ordre_des_circuits(resultats) -> list:
@@ -708,7 +738,8 @@ def _grouper_par_circuit(composants, resultats):
         r = resultats[i]
         label = r["circuit_type"]
         b = _Bloc(label, [comp_par_ref[ref] for ref in _refs_du_bloc(r)
-                          if ref in comp_par_ref and type_du_ref.get(ref) == label])
+                          if ref in comp_par_ref and type_du_ref.get(ref) == label],
+                  roles=_roles_du_bloc(r))
         if b.comps:
             blocs.append(b)
     divers = [c for ref, c in comp_par_ref.items() if ref not in type_du_ref]
