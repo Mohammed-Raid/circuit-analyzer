@@ -26,7 +26,7 @@ from circuit_analyzer.patterns.base import (
     is_power,
     is_protective_earth_net,
 )
-from gui.schematic_symbols import etendue_primitives, geometrie_libre
+from gui.schematic_symbols import geometrie_reelle
 
 # =============================================================================
 # FORMES VISUELLES DES COMPOSANTS (coordonnées relatives au centre)
@@ -593,17 +593,17 @@ class _Generateur:
         @param noeuds_pins Dict {(cid, pidx) -> [refs de nœud]} construit depuis les fils.
         @return str Fragment XML <DataItem> du composant.
         """
+        # `pinout` (brochage) et `primitives` (contour) sont deux informations
+        # INDEPENDANTES -- un composant peut avoir l'un, l'autre, les deux ou
+        # ni l'un ni l'autre (revue finale round 1, Critical 1+2 : traites
+        # comme un seul signal avant ce fix, le contour dessine a la main sur
+        # un composant SANS brochage libre d'instance disparaissait a
+        # l'export). Les BROCHES restent tranchees par `comp.pinout` (nommage
+        # reel via `geometrie_libre` si defini, sinon plan du catalogue) ; le
+        # CONTOUR est tranche independamment par `comp.primitives` juste en
+        # dessous, qu'il y ait ou non un `pinout`.
         if comp.pinout:
-            if comp.primitives:
-                # Boite EXACTE sur le vrai contour : sans w_exact/h_exact,
-                # geometrie_libre retombe sur son heuristique de remplissage
-                # et une broche peut se retrouver hors du polygone reel
-                # (meme defaut que bf341d4 / spec 2026-08-05, cf. docstring
-                # de geometrie_libre).
-                w_exact, h_exact = etendue_primitives(comp.primitives)
-                geo = geometrie_libre(comp.pinout, w_exact=w_exact, h_exact=h_exact)
-            else:
-                geo = geometrie_libre(comp.pinout)
+            geo = geometrie_reelle(comp.pinout, comp.primitives)
             pins_ordonnees = sorted(comp.pinout)
             parties_broches = []
             for pidx, nom_b in enumerate(pins_ordonnees):
@@ -622,12 +622,8 @@ class _Generateur:
             for pidx in range(len(pins_ordonnees)):
                 tous_refs.extend(noeuds_pins.get((comp.cid, pidx), []))
             pin_cl = ''.join(f'<string>{r}</string>' for r in tous_refs)
-            if comp.primitives:
-                seg, poly, arc = eretro_lib._primitives_vers_xml(
-                    comp.primitives, lambda dx, dy: (int(round(dx)), int(round(dy))))
-            else:
-                seg, poly, arc = "", "", ""
             typ_val = ord(comp.name[0]) if comp.name and comp.name[0].isascii() else 85
+            forme = None
         else:
             cle_forme = comp.shape or comp.name
             nom_forme = _ALIAS.get(cle_forme, cle_forme)
@@ -649,8 +645,19 @@ class _Generateur:
             for pidx in range(len(broches_info)):
                 tous_refs.extend(noeuds_pins.get((comp.cid, pidx), []))
             pin_cl = ''.join(f'<string>{r}</string>' for r in tous_refs)
-            poly = forme.get("polygon", ""); seg = forme.get("segment", ""); arc = forme.get("arc", "")
             typ_val = _TYP_COMPOSANT.get(nom_forme, ord(nom_forme[0]) if nom_forme and nom_forme[0].isascii() else 82)
+
+        # Contour reel (Task 6 dessin a la main, ou import fidele) prioritaire
+        # DES QU'IL EST PRESENT, meme sans `pinout` (Critical 2) : sinon un
+        # contour dessine a la main sur un composant type disparait a
+        # l'export et le XML reprend la forme catalogue generique.
+        if comp.primitives:
+            seg, poly, arc = eretro_lib._primitives_vers_xml(
+                comp.primitives, lambda dx, dy: (int(round(dx)), int(round(dy))))
+        elif forme is not None:
+            poly = forme.get("polygon", ""); seg = forme.get("segment", ""); arc = forme.get("arc", "")
+        else:
+            seg, poly, arc = "", "", ""
         return f"""    <DataItem>
       <Name>{_esc(comp.name)}</Name><Group /><reference>{_esc(comp.ref)}</reference><value>{_esc(comp.value)}</value>
       <datapolygon>{poly}</datapolygon><datasegment>{seg}</datasegment><dataarc>{arc}</dataarc>
@@ -1794,11 +1801,30 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         # `not par_forme` exclut le cas ('U', {}) obtenu par classification
         # de FORME (porte logique 3 broches, classer_par_forme) — deja
         # ecarte par le garde >=6 broches ci-dessous, mais explicite ici.
+        # Garde revu (revue finale round 1, Important 5+6) : le garde d'origine
+        # (`value` + seuil >=6 broches, commit 6f635aa) etait a la fois trop
+        # LARGE (un composant catalogue authentique dont la `value` d'origine
+        # ne matche aucun alias catalogue -- ex. un transfo/connecteur -- se
+        # faisait promouvoir boite_ic a tort, etat ensuite STICKY) et trop
+        # ETROIT (bloquait la reclassification de tout catch-all a MOINS de 6
+        # broches, notamment un connecteur J a contour reel). `value` et le
+        # compte de broches ne distinguent pas de facon fiable "ce PuceN vient
+        # d'un vrai comp.pinout" de "ce PuceN vient du fallback catalogue
+        # generique" -- mais le NOM des broches, si. `_xml_composant` ecrit
+        # les <Pname> du catalogue (branche `else`) TOUJOURS depuis
+        # `_FORME[nom_forme]["pins"]`, dont les cles sont litteralement les
+        # chaines "1".."n" pour toute forme PuceN, alors que la branche
+        # `pinout` ecrit les VRAIS noms de broches (`sorted(comp.pinout)`),
+        # numeriques seulement par coincidence rare. Compromis assume : un
+        # connecteur reel dont TOUTES les broches ont des noms purement
+        # numeriques ("1", "2"...) ne sera pas reclassifie apres un
+        # aller-retour -- faux negatif fail-closed accepte (perte silencieuse
+        # de fidelite visuelle sur un cas marginal, pas de corruption de
+        # donnees). Le seuil >=6 reste inchange pour le garde de PREMIER
+        # import ci-dessus (ligne ~1775) -- il n'est retire QUE de ce garde-ci.
         if correspondance == ('U', {}) and not boite_ic and not par_forme:
-            valeur_brute = (elem.get('value') or '').strip()
-            if (valeur_brute and _NOM_VERS_TYPE.get(valeur_brute) is None
-                    and eretro.mapper_nom(valeur_brute) is None
-                    and elem.get('puce') is None and len(elem['pins']) >= 6):
+            if (elem.get('puce') is None
+                    and not all(p['pname'].strip().isdigit() for p in elem['pins'])):
                 boite_ic = True
 
         def _forme_et_brochage_reels():

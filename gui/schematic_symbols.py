@@ -438,6 +438,28 @@ def etendue_primitives(prims) -> tuple:
     return mx * 2, my * 2
 
 
+def geometrie_reelle(pinout, primitives=None, **kwargs):
+    """@brief `geometrie_libre` qui derive w_exact/h_exact d'un contour reel.
+
+    Centralise la combinaison `etendue_primitives(primitives)` +
+    `geometrie_libre(..., w_exact=, h_exact=)` reprise A L'IDENTIQUE sur
+    plusieurs sites independants (export XML `_xml_composant`, rendu editeur
+    `_geom`, import `.circ` `build_from_components`) -- revue finale de
+    branche round 1, Important 3+4. Sans elle, une broche recalculee
+    "flotte" hors du contour reel des qu'un site oublie w_exact/h_exact
+    (meme defaut que bf341d4/48ddf30, propage ailleurs).
+
+    @param pinout {nom: (cote, decalage)} — brochage libre de l'instance.
+    @param primitives Contour reel de l'instance, ou None/vide (heuristique
+           habituelle de `geometrie_libre`).
+    @param kwargs Transmis tels quels a `geometrie_libre` (ex. `roles`).
+    """
+    w_exact = h_exact = None
+    if primitives:
+        w_exact, h_exact = etendue_primitives(primitives)
+    return geometrie_libre(pinout, w_exact=w_exact, h_exact=h_exact, **kwargs)
+
+
 def aimanter_bord(dx, dy, w, h, pas):
     """@brief (dx,dy) relatif au centre -> (cote, decalage aligne sur `pas`).
 

@@ -85,6 +85,27 @@ def test_build_sans_brochage_reel_comportement_inchange():
     assert "pinout" not in doc["components"][0]
 
 
+def test_build_positionne_le_symbole_gnd_dans_le_contour_reel_pas_lheuristique():
+    """Important 4 (revue finale round 1) : `build_from_components` appelait
+    `geometrie_libre(comp.pinout)` SANS w_exact/h_exact pour placer le
+    symbole GND relie a une broche a brochage reel -- meme defaut
+    qu'Important 3 (`_geom` de l'editeur), deja corrige dans `_xml_composant`
+    (fix 48ddf30) mais pas ici. Contour reel tres etroit (w=200) vs
+    heuristique de remplissage (~88 pour une seule broche "GND1") : les deux
+    positions x resultantes sont assez eloignees pour survivre a la grille
+    d'alignement (20) et distinguer sans ambiguite les deux comportements."""
+    primitives = [("polygon", [(-100, -48), (-100, 48), (100, 48), (100, -48)], False)]
+    comp = _Comp("U1", "U", {"GND1": "GND"}, "",
+                 primitives=primitives, pinout={"GND1": ("L", 0)})
+    doc = build_from_components([comp], COMP_DEFS)
+
+    u1 = next(c for c in doc["components"] if c["type"] == "U")
+    gnd = next(c for c in doc["components"] if c["type"] == "GND")
+    # Broche 'L' du contour EXACT (w_exact=200 -> w2=100) : x = u1.cx - 100.
+    assert gnd["cx"] == u1["cx"] - 100, \
+        f"symbole GND positionne hors du contour reel (heuristique utilisee ?) : {gnd['cx']} vs {u1['cx'] - 100}"
+
+
 def test_import_type_inconnu_est_ignore():
     """Un composant d'un type absent de l'éditeur est ignoré et signalé."""
     composants = [_Comp("Z1", "Z", {"1": "A", "2": "B"})]

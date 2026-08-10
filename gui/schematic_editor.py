@@ -24,6 +24,7 @@ from gui.schematic_symbols import (
     est_boite_generique,
     etendue_primitives,
     geometrie_libre,
+    geometrie_reelle,
     primitives,
 )
 from gui.schematic_symbols import rotate_pin as _rotate_pin
@@ -786,11 +787,23 @@ class SchematicEditor(tk.Frame):
             return self._defs[comp.comp_type]
         d = self._geom_cache.get(comp.id)
         if d is None:
-            pinout = comp.pinout or {}
-            d = geometrie_libre(pinout)
-            base = self._defs.get(comp.comp_type)
-            if base:
-                d["color"] = base["color"]
+            if comp.pinout is None:
+                # Contour dessine (Task 6) sur un composant SANS brochage libre
+                # d'instance (ex. resistance typee) : `pinout` et `primitives`
+                # sont deux informations INDEPENDANTES (revue finale round 1,
+                # Critical 1) -- passer `{}` a `geometrie_libre` ici ferait
+                # disparaitre les broches du TYPE. Les broches restent celles
+                # du type (COPIE, jamais l'objet partage de `self._defs`) ;
+                # seul le contour visuel change.
+                base = self._defs[comp.comp_type]
+                d = dict(base)
+                d["pins"] = dict(base.get("pins", {}))
+                d["cotes"] = dict(base.get("cotes", {}))
+            else:
+                d = geometrie_reelle(comp.pinout, comp.forme_primitives)
+                base = self._defs.get(comp.comp_type)
+                if base:
+                    d["color"] = base["color"]
             if comp.forme_primitives:
                 d["primitives"] = comp.forme_primitives
             self._geom_cache[comp.id] = d
@@ -938,6 +951,8 @@ class SchematicEditor(tk.Frame):
         """@brief Passe en dessin de contour sur CE composant, clic par clic."""
         if comp_id not in self._comps:
             return
+        if self._state == "pinedit":
+            self._quitter_pinedit()
         self._cancel_wiring()
         self._deselect()
         self._state           = "shapedraw"

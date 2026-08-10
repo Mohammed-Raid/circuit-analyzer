@@ -6,7 +6,7 @@
 import math
 
 from circuit_analyzer.patterns.base import is_gnd, is_power
-from gui.schematic_symbols import geometrie_libre
+from gui.schematic_symbols import geometrie_reelle
 
 FORMAT  = "circ"
 VERSION = 1
@@ -159,7 +159,11 @@ def build_from_components(composants, defs) -> dict:
     net_pins: dict = {}
     for cid, comp, cx, cy in placed:
         if getattr(comp, "pinout", None):
-            avail = geometrie_libre(comp.pinout)["pins"]
+            # w_exact/h_exact du contour reel s'il existe (revue finale round
+            # 1, Important 4) : sinon `geometrie_libre` retombe sur son
+            # heuristique de remplissage et une broche calculee peut se
+            # retrouver hors du contour reel deja dessine.
+            avail = geometrie_reelle(comp.pinout, getattr(comp, "primitives", None))["pins"]
         else:
             avail = defs[comp.type]["pins"]
         for pin, net in comp.pins.items():
@@ -175,7 +179,8 @@ def build_from_components(composants, defs) -> dict:
             for cid, pin, cx, cy, ctype in plist:
                 src = next(c for c in placed if c[0] == cid)[1]
                 if getattr(src, "pinout", None):
-                    pdx, pdy = geometrie_libre(src.pinout)["pins"][pin]
+                    pdx, pdy = geometrie_reelle(
+                        src.pinout, getattr(src, "primitives", None))["pins"][pin]
                 else:
                     pdx, pdy = defs[ctype]["pins"][pin]
                 px, py = cx + pdx, cy + pdy

@@ -418,3 +418,80 @@ def test_echap_en_dessin_annule_la_forme_en_cours(editeur):
     editeur._on_escape()
     assert editeur._state == 'idle'
     assert c.forme_primitives is None
+
+
+# ── Revue finale round 1 : Critical 1 — pinout/primitives sont deux
+# informations INDEPENDANTES, dessiner un contour ne doit jamais effacer
+# les broches du TYPE quand il n'y a pas de brochage libre d'instance ──────
+
+def test_contour_dessine_sur_resistance_conserve_ses_broches(editeur):
+    """`_geom` traitait `comp.pinout` et `comp.forme_primitives` comme un
+    seul signal : dessiner un contour sur une resistance (qui n'a PAS de
+    `pinout` d'instance, seulement `forme_primitives`) faisait tomber dans
+    `geometrie_libre(comp.pinout or {})` == `geometrie_libre({})` -> les 2
+    broches de la resistance disparaissaient de `_geom(comp)["pins"]`."""
+    c = _place(editeur, 'R', 200, 200)
+    editeur._entrer_dessin_forme(c.id)
+    editeur._ajouter_point_forme(c, 200 - 30, 200 - 15)
+    editeur._ajouter_point_forme(c, 200 - 30, 200 + 15)
+    editeur._ajouter_point_forme(c, 200 + 30, 200 + 15)
+    assert editeur._fermer_forme(c) is True
+
+    geo = editeur._geom(c)
+    assert set(geo["pins"]) == {"1", "2"}, \
+        f"broches du type perdues apres dessin de contour : {geo['pins']}"
+    assert geo["pins"] == editeur._defs["R"]["pins"], \
+        "les positions de broche doivent rester celles du TYPE (contour visuel seul change)"
+    assert geo.get("primitives") == c.forme_primitives
+
+
+def test_redraw_apres_contour_dessine_sur_resistance_cablee_ne_leve_pas(editeur):
+    """Meme scenario que ci-dessus, mais avec un fil DEJA relie a la broche
+    AVANT le dessin du contour : reproduit le crash DIFFERE (KeyError sur le
+    nom de broche disparu) constate en revue au prochain `_redraw_all()`
+    (`_fermer_forme` n'appelle que `_draw_comp`, pas un redraw complet)."""
+    r1 = _place(editeur, 'R', 200, 200)
+    r2 = _place(editeur, 'R', 320, 200)
+    editeur._add_wire(r1.id, "2", r2.id, "1")
+
+    editeur._entrer_dessin_forme(r1.id)
+    editeur._ajouter_point_forme(r1, 200 - 30, 200 - 15)
+    editeur._ajouter_point_forme(r1, 200 - 30, 200 + 15)
+    editeur._ajouter_point_forme(r1, 200 + 30, 200 + 15)
+    assert editeur._fermer_forme(r1) is True
+
+    editeur._redraw_all()  # avant fix : KeyError sur la broche "2" disparue
+
+
+def test_entrer_dessin_forme_quitte_le_mode_pinedit(editeur):
+    """Minor 9 (revue finale round 1) : entrer en mode dessin de contour
+    depuis le mode edition de broches laissait l'overlay pinedit affiche."""
+    c = _place(editeur, 'R', 200, 200)
+    editeur._entrer_pinedit(c.id)
+    assert editeur._state == "pinedit"
+    editeur._entrer_dessin_forme(c.id)
+    assert editeur._state == "shapedraw"
+    assert editeur._pinedit_id is None
+    assert not editeur._canvas.find_withtag("pinedit")
+
+
+# ── Revue finale round 1 : Important 3 — `_geom` doit passer w_exact/h_exact
+# a `geometrie_libre` des que le contour reel est connu, comme `_xml_composant`
+# le fait deja (fix 48ddf30) ────────────────────────────────────────────────
+
+def test_geom_avec_pinout_et_contour_reel_place_les_broches_dans_le_contour(editeur):
+    """Sans w_exact/h_exact, `geometrie_libre` retombe sur son heuristique de
+    remplissage et une broche calculee peut se retrouver HORS du contour
+    reel (exemple A788J du plan : contour reel 72x96, mais l'heuristique
+    donne une boite plus grande)."""
+    c = _place(editeur, "X", 200, 200)
+    c.pinout = {"Vin+": ("L", -42), "GND1": ("L", 42)}
+    c.forme_primitives = [("polygon", [(-36, -48), (-36, 48), (36, 48), (36, -48)], False)]
+    editeur._invalider_geom()
+
+    geo = editeur._geom(c)
+    assert (geo["w"], geo["h"]) == (72, 96), \
+        f"la boite doit prendre la taille EXACTE du contour reel, pas l'heuristique : {geo['w']}x{geo['h']}"
+    for nom, (dx, dy) in geo["pins"].items():
+        assert -36 <= dx <= 36 and -48 <= dy <= 48, \
+            f"broche '{nom}' hors du contour reel : ({dx}, {dy})"

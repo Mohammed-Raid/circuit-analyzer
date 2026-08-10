@@ -816,3 +816,94 @@ def test_generer_xml_puce_generique_catalogue_ne_devient_pas_boite_ic():
         f"composant catalogue generique promu boite_ic a tort : {relu_t1}"
     assert relu_t1.primitives is None
     assert relu_t1.pinout is None
+
+
+def test_xml_composant_ecrit_le_contour_dessine_sans_pinout_dinstance():
+    """Critical 2 (revue finale round 1) : `_xml_composant` mettait toute
+    l'emission du contour reel (`comp.primitives`) A L'INTERIEUR de
+    `if comp.pinout:`. Un composant TYPE (ex. resistance) avec un contour
+    dessine a la main (Task 6, `_entrer_dessin_forme`) mais SANS brochage
+    libre d'instance (`comp.pinout is None`, le cas le plus courant du mode
+    dessin) voyait son contour disparaitre totalement a l'export -- le XML
+    reprenait la forme catalogue generique ("Résistance", coins a X=45/-45/
+    80/-80) au lieu du contour reellement dessine."""
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml
+
+    contour = [('polygon', [(-20, -15), (-20, 15), (20, 15), (20, -15)], False)]
+    r1 = Composant(ref='R1', type='R', pins={'1': 'N1', '2': 'N2'}, value='10k',
+                   primitives=contour)  # pinout reste None : brochage catalogue
+    xml_texte = generer_xml([r1])
+    assert '<X>-20</X><Y>-15</Y>' in xml_texte, \
+        "contour dessine absent de l'export (Critical 2)"
+    assert '<X>45</X><Y>-22</Y>' not in xml_texte, \
+        "contour catalogue generique encore ecrit malgre le contour dessine"
+
+
+def test_generer_xml_puce_generique_valeur_non_vide_ne_devient_pas_boite_ic():
+    """Important 5 (revue finale round 1) : le garde d'origine (`value` +
+    seuil >=6, commit 6f635aa) promouvait a tort en boite_ic un composant
+    catalogue AUTHENTIQUE (jamais eu de comp.pinout/comp.primitives) des que
+    sa `value` d'origine ne matchait aucun alias catalogue -- cas courant
+    d'un transfo/connecteur (ex. '230V-12V'). Le nouveau garde (noms de
+    broches, pas `value`) ne doit PLUS promouvoir ce cas : les <Pname>
+    ecrits par la branche catalogue de `_xml_composant` sont TOUJOURS les
+    chaines numeriques "1".."n" de `_FORME[nom_forme]["pins"]`."""
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml, lire_xml
+
+    t1 = Composant(ref='T1', type='T', value='230V-12V',
+                   pins={str(i): f'N{i}' for i in range(1, 7)})
+
+    xml_texte = generer_xml([t1])
+    with tempfile.NamedTemporaryFile('w', suffix='.xml', delete=False,
+                                      encoding='utf-8') as f:
+        f.write(xml_texte)
+        chemin = f.name
+    try:
+        relus = lire_xml(chemin)
+    finally:
+        os.unlink(chemin)
+
+    relu_t1 = relus[0]
+    assert relu_t1.boite_ic is False, \
+        f"composant catalogue generique (value non catalogue) promu boite_ic a tort : {relu_t1}"
+    assert relu_t1.primitives is None
+    assert relu_t1.pinout is None
+
+
+def test_generer_xml_connecteur_j_moins_de_6_broches_survit_a_l_aller_retour():
+    """Important 6 (revue finale round 1) : le seuil `>=6` (herite du garde
+    de PREMIER import, pense pour distinguer IC vs. passif) bloquait a tort
+    la reclassification de tout catch-all a MOINS de 6 broches -- notamment
+    un connecteur J reel a contour dessine (explicitement dans le perimetre
+    du plan). Avec le nouveau garde (noms de broches non-numeriques, pas de
+    seuil de compte), ce connecteur 4 broches doit desormais survivre a un
+    aller-retour export/import (contour + brochage reels preserves)."""
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml, lire_xml
+
+    primitives = [('polygon', [(-20.0, -30.0), (-20.0, 30.0),
+                               (20.0, 30.0), (20.0, -30.0)], False)]
+    pinout = {'A': ('L', -15), 'B': ('L', 15), 'C': ('R', -15), 'D': ('R', 15)}
+    j1 = Composant(ref='J1', type='J', value='CONN4', boite_ic=True,
+                   pins={n: f'N{i}' for i, n in enumerate(pinout)},
+                   primitives=primitives, pinout=pinout)
+
+    xml_texte = generer_xml([j1])
+    with tempfile.NamedTemporaryFile('w', suffix='.xml', delete=False,
+                                      encoding='utf-8') as f:
+        f.write(xml_texte)
+        chemin = f.name
+    try:
+        relus = lire_xml(chemin)
+    finally:
+        os.unlink(chemin)
+
+    relu_j1 = relus[0]
+    assert relu_j1.primitives is not None, \
+        "contour reel perdu des le premier aller-retour (< 6 broches)"
+    assert relu_j1.pinout is not None, \
+        "brochage reel perdu des le premier aller-retour (< 6 broches)"
+    assert set(relu_j1.pinout) == set(pinout), "noms de broches modifies au reimport"
+    assert relu_j1.boite_ic, "boite_ic doit rester vrai apres reimport"
