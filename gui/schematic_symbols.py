@@ -438,7 +438,7 @@ def etendue_primitives(prims) -> tuple:
     return mx * 2, my * 2
 
 
-def geometrie_reelle(pinout, primitives=None, **kwargs):
+def geometrie_reelle(pinout, primitives=None, w_exact=None, h_exact=None, **kwargs):
     """@brief `geometrie_libre` qui derive w_exact/h_exact d'un contour reel.
 
     Centralise la combinaison `etendue_primitives(primitives)` +
@@ -452,11 +452,24 @@ def geometrie_reelle(pinout, primitives=None, **kwargs):
     @param pinout {nom: (cote, decalage)} — brochage libre de l'instance.
     @param primitives Contour reel de l'instance, ou None/vide (heuristique
            habituelle de `geometrie_libre`).
-    @param kwargs Transmis tels quels a `geometrie_libre` (ex. `roles`).
+    @param w_exact Largeur EXACTE a imposer, si l'appelant l'a deja calculee
+           autrement qu'a partir de `primitives` (ex. boite catalogue) --
+           prime alors sur le calcul automatique depuis `primitives`. None
+           (defaut) laisse `primitives` decider.
+    @param h_exact Idem pour la hauteur.
+    @param kwargs Reste transmis tel quel a `geometrie_libre` (ex. `roles`).
+           Note (revue finale round 2, Minor A) : `w_exact`/`h_exact` sont
+           desormais des parametres nommes explicites -- avant ce fix, un
+           appelant qui les passait via `**kwargs` declenchait
+           `TypeError: got multiple values for keyword argument 'w_exact'`,
+           puisque la fonction les passait deja par mot-cle en interne.
+           Piege latent : personne ne les passait encore, mais restait un
+           piege pour le prochain appelant.
     """
-    w_exact = h_exact = None
-    if primitives:
-        w_exact, h_exact = etendue_primitives(primitives)
+    if (w_exact is None or h_exact is None) and primitives:
+        bw, bh = etendue_primitives(primitives)
+        w_exact = w_exact if w_exact is not None else bw
+        h_exact = h_exact if h_exact is not None else bh
     return geometrie_libre(pinout, w_exact=w_exact, h_exact=h_exact, **kwargs)
 
 

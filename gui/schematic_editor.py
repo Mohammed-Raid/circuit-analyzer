@@ -798,7 +798,15 @@ class SchematicEditor(tk.Frame):
                 base = self._defs[comp.comp_type]
                 d = dict(base)
                 d["pins"] = dict(base.get("pins", {}))
-                d["cotes"] = dict(base.get("cotes", {}))
+                # Injection conditionnelle (revue finale round 2, Minor B) :
+                # les COMP_DEFS natifs n'ont jamais de "cotes" -- en creer un
+                # systematiquement bascule silencieusement le rendu en
+                # t_rendu = TYPE_LIBRE des qu'un contour est dessine sur un
+                # composant type (cf. plus loin, "cotes" in defn). Inoffensif
+                # aujourd'hui seulement parce que `primitives()` court-circuite
+                # avant sur `defn["primitives"]` -- fragile, corrige.
+                if "cotes" in base:
+                    d["cotes"] = dict(base["cotes"])
             else:
                 d = geometrie_reelle(comp.pinout, comp.forme_primitives)
                 base = self._defs.get(comp.comp_type)

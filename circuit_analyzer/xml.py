@@ -26,7 +26,7 @@ from circuit_analyzer.patterns.base import (
     is_power,
     is_protective_earth_net,
 )
-from gui.schematic_symbols import geometrie_reelle
+from gui.schematic_symbols import aimanter_bord, geometrie_reelle
 
 # =============================================================================
 # FORMES VISUELLES DES COMPOSANTS (coordonnées relatives au centre)
@@ -35,6 +35,13 @@ from gui.schematic_symbols import geometrie_reelle
 # Source : reverse-engineered depuis "exemples/carte pour tester.xml" du logiciel ERetroDesign.
 
 _log = logging.getLogger(__name__)
+
+# Pas de grille pour l'aimantation des broches catalogue sur leur boite
+# (revue finale round 2, Critical 2 sous-point manque) -- meme valeur que
+# `GRID`/`GRILLE` ailleurs dans le projet (gui/schematic_editor.py,
+# gui/pin_canvas.py, circuit_analyzer/eretro_lib.py), dupliquee localement
+# ici comme sur ces autres sites (pas de source commune existante).
+_GRILLE = 20
 
 _FORME: dict[str, dict] = {
     "Résistance": {
@@ -253,6 +260,35 @@ def _forme_puce(n):
             [(-72, -48, p[1]) for nom, p in pins.items() if p[0] < 0]
             + [(48, 72, p[1]) for nom, p in pins.items() if p[0] > 0]))
     return {"pins": pins, "polygon": poly, "segment": seg}
+
+
+def _etendue_forme_catalogue(forme: dict) -> tuple:
+    """@brief (largeur, hauteur) de la boîte CATALOGUE d'une entrée `_FORME`.
+
+    Équivalent de `gui.schematic_symbols.etendue_primitives`, mais sur la
+    géométrie catalogue déjà sérialisée en XML (`polygon`/`segment`/`arc`
+    d'une entrée `_FORME`) plutôt que sur des primitives structurées --
+    ces formes n'existent qu'en XML pré-rendu ici, jamais en tuples
+    `("line"/"polygon"/"arc", ...)`. Sert à « aimanter » les broches
+    catalogue sur les bords de LEUR PROPRE boîte avant de les reprojeter
+    dans un contour dessiné à la main, d'une échelle différente (revue
+    finale round 2, Critical 2 sous-point manqué : les `<DataPin>` de la
+    branche catalogue restaient en coordonnées catalogue -- ex. ±80 pour
+    une Résistance -- alors que le contour dessiné est en coordonnées
+    éditeur -- ex. ±40 --, deux fois plus petites).
+
+    Plancher à 1 sur chaque dimension (jamais 0) : certaines formes ont
+    tous leurs points alignés sur un axe (ex. "Self", segments/arc à
+    Y=0 partout) -- une boîte de hauteur nulle fait dégénérer l'arbitrage
+    de bord de `aimanter_bord` (égalité T/B/L/R à distance 0), qui aimante
+    alors la broche sur le mauvais bord (T au lieu de L/R, cf. l'ordre
+    d'arbitrage documenté dans `aimanter_bord`).
+    """
+    texte = forme.get("polygon", "") + forme.get("segment", "") + forme.get("arc", "")
+    coords = re.findall(r'<X>(-?\d+)</X>\s*<Y>(-?\d+)</Y>', texte)
+    mx = max((abs(int(x)) for x, _ in coords), default=0)
+    my = max((abs(int(y)) for _, y in coords), default=0)
+    return max(1, mx * 2), max(1, my * 2)
 
 
 # Tailles de boîtier DIP couvertes par le catalogue v1 (4/8/14/16 broches).
@@ -629,8 +665,31 @@ class _Generateur:
             nom_forme = _ALIAS.get(cle_forme, cle_forme)
             forme = _FORME.get(nom_forme, {"pins": {}, "polygon": "", "segment": ""})
             broches_info = forme.get("pins", {})
+            if comp.primitives:
+                # Contour dessine a la main (ou importe) SANS brochage libre
+                # d'instance (comp.pinout is None) : les broches restent
+                # nommees par le catalogue, mais leurs coordonnees catalogue
+                # (ex. Resistance +-80) sont dans une echelle totalement
+                # differente du contour dessine cote editeur (ex. +-40) --
+                # revue finale round 2, Critical 2 sous-point manque. On
+                # "aimante" chaque broche catalogue sur le bord de SA PROPRE
+                # boite catalogue (meme mecanisme que `_amorcer_pinout` cote
+                # editeur, gui/schematic_editor.py:866-875), puis on
+                # reprojette ce pinout {cote, decalage} DANS le contour
+                # reellement dessine via `geometrie_reelle` -- comme la
+                # branche `if comp.pinout:` juste au-dessus le fait deja pour
+                # un brochage libre d'instance.
+                box_w, box_h = _etendue_forme_catalogue(forme)
+                pinout_synthetise = {
+                    nom_b: aimanter_bord(lx, ly, box_w, box_h, _GRILLE)
+                    for nom_b, (lx, ly, _pidx) in broches_info.items()
+                }
+                positions = geometrie_reelle(pinout_synthetise, comp.primitives)["pins"]
+            else:
+                positions = {nom_b: (lx, ly) for nom_b, (lx, ly, _pidx) in broches_info.items()}
             parties_broches = []
-            for nom_b, (lx, ly, pidx) in sorted(broches_info.items(), key=lambda kv: kv[1][2]):
+            for nom_b, (_lx0, _ly0, pidx) in sorted(broches_info.items(), key=lambda kv: kv[1][2]):
+                lx, ly = positions[nom_b]
                 refs_noeud = noeuds_pins.get((comp.cid, pidx), [])
                 node_l = ''.join(f'<string>{r}</string>' for r in refs_noeud)
                 parties_broches.append(f"""      <DataPin>

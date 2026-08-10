@@ -791,10 +791,11 @@ def test_generer_xml_puce_generique_catalogue_ne_devient_pas_boite_ic():
     authentique passe par le fallback DIP generique de generer_xml (spec
     catalogue absente, ligne ~1047-1060 -- ex. un transformateur/connecteur a
     broches numerotees, SANS comp.pinout/comp.primitives). Sa <value> est
-    vide (aucun nom de piece connu). Le nouveau signal de reclassification
-    (base sur elem['value']) ne doit PAS promouvoir ce composant en
-    boite_ic -- seuls les vrais catch-all a brochage reel et value non vide/
-    non resolvable le doivent."""
+    vide (aucun nom de piece connu). Le signal de reclassification (base sur
+    le NOM des broches -- purement numeriques "1".."n" pour un catch-all
+    catalogue authentique, pas sur elem['value']) ne doit PAS promouvoir ce
+    composant en boite_ic -- seuls les vrais catch-all a brochage reel
+    (noms de broches non numeriques) le doivent."""
     from circuit_analyzer.composant import Composant
     from circuit_analyzer.xml import generer_xml, lire_xml
 
@@ -838,6 +839,33 @@ def test_xml_composant_ecrit_le_contour_dessine_sans_pinout_dinstance():
         "contour dessine absent de l'export (Critical 2)"
     assert '<X>45</X><Y>-22</Y>' not in xml_texte, \
         "contour catalogue generique encore ecrit malgre le contour dessine"
+
+
+def test_xml_composant_sans_pinout_reprojette_les_broches_catalogue_dans_le_contour_dessine():
+    """Critical 2 (revue finale round 2, sous-point manque au round 1) :
+    `_xml_composant` fait desormais primer `comp.primitives` sur le
+    catalogue pour le CONTOUR meme sans `comp.pinout` -- mais les
+    `<DataPin>` de cette meme branche `else` continuaient d'utiliser
+    `_FORME[nom_forme]["pins"]` (coordonnees CATALOGUE, ex. Resistance
+    +-80) SANS AUCUN rapport d'echelle avec `comp.primitives` (coordonnees
+    EDITEUR, ex. +-20 dans ce test). Une broche catalogue finissait donc
+    hors du polygone reellement dessine, systematiquement (tout composant
+    catalogue a des coordonnees ~2x celles de l'editeur)."""
+    import re
+
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml
+
+    contour = [('polygon', [(-20, -15), (-20, 15), (20, 15), (20, -15)], False)]
+    r1 = Composant(ref='R1', type='R', pins={'1': 'N1', '2': 'N2'}, value='10k',
+                   primitives=contour)  # pinout reste None : brochage catalogue
+    xml_texte = generer_xml([r1])
+    broches = re.findall(r'<Pin><X>(-?\d+)</X><Y>(-?\d+)</Y></Pin>', xml_texte)
+    assert broches, "aucune broche trouvee dans le XML genere"
+    for sx, sy in broches:
+        x, y = int(sx), int(sy)
+        assert -20 <= x <= 20 and -15 <= y <= 15, \
+            f"broche catalogue hors du contour reellement dessine : ({x}, {y})"
 
 
 def test_generer_xml_puce_generique_valeur_non_vide_ne_devient_pas_boite_ic():
