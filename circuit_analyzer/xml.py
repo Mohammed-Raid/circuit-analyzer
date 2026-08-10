@@ -881,14 +881,23 @@ def _positionner_amplificateur_inverseur(comps, roles: dict[str, list[str]], x: 
     return pos
 
 
-def _positionner_composants_bloc(bloc: _Bloc, x: int, y: int) -> dict[str, tuple[int, int]]:
+_POSITIONNEURS_PAR_MOTIF = {
+    "Amplificateur inverseur (AOP)": _positionner_amplificateur_inverseur,
+}
+
+
+def _positionner_composants_bloc(bloc: _Bloc, x: int, y: int) -> dict:
     """@brief Place les composants a l'interieur d'un bloc visuel.
 
     @param bloc Bloc de circuit detecte.
     @param x Origine horizontale du bloc.
     @param y Origine verticale du bloc.
-    @return dict {ref -> (x, y)} Positions absolues.
+    @return dict {ref -> (x, y)} ou {ref -> (x, y, angle)} pour les
+            montages avec un gabarit canonique. Positions absolues.
     """
+    positionneur = _POSITIONNEURS_PAR_MOTIF.get(bloc.label)
+    if positionneur is not None and bloc.roles:
+        return positionneur(bloc.comps, bloc.roles, x, y)
     if "commande de relais" in bloc.label.lower():
         return _positionner_commande_relais(bloc.comps, x, y)
     if "pont diviseur" in bloc.label.lower():
@@ -1072,12 +1081,16 @@ def generer_xml(composants, resultats=None, results=None) -> str:
                                  comp.ref, nom_broche, nom_forme)
                     break
                 plan_broches[nom_broche] = libres.pop(0)
+        angle = 0
         if positions and comp.ref in positions:
-            x, y = positions[comp.ref]
+            pos_comp = positions[comp.ref]
+            x, y = pos_comp[0], pos_comp[1]
+            if len(pos_comp) > 2:
+                angle = pos_comp[2]
         else:
             x = 250 + (i % PER_RANGEE) * _LARG_COMP
             y = 250 + (i // PER_RANGEE) * _HAUT_RANGEE
-        cid = gen.ajouter(nom_forme, comp.value, x=x, y=y, ref=comp.ref,
+        cid = gen.ajouter(nom_forme, comp.value, x=x, y=y, angle=angle, ref=comp.ref,
                           group_id=ids_groupes.get(comp.ref, 0))
         ref_vers_cid[comp.ref] = cid
         ref_vers_map[comp.ref] = plan_broches
