@@ -738,3 +738,81 @@ def test_generer_xml_pinout_reel_cable_le_bon_noeud_au_reimport():
     # (exerce la branche d'alimentation du bouclage de cablage).
     assert relu_u1.pins['Vin-'] == 'GND'
     assert relu_u1.pins['GND1'] == 'GND'
+
+
+def test_generer_xml_pinout_reel_survit_a_deux_cycles_export_import():
+    """Regression Task 7 finding #2 (boucle visuelle) : un composant catch-all
+    a brochage reel (comp.pinout) voit son <Name> neutralise en "PuceN" a
+    l'export (volontaire, cf. commentaire generer_xml ~ligne 1017, pour eviter
+    toute collision avec un plan catalogue nomme au reimport). Mais ce
+    "PuceN" resout lui-meme en ('U', {}) via _NOM_VERS_TYPE des le reimport
+    -> la branche catch-all (qui seule declenche _forme_et_brochage_reels())
+    etait sautee, et `primitives`/`pinout` disparaissaient des le premier
+    aller-retour. Ce test enchaine DEUX cycles complets generer_xml ->
+    lire_xml et verifie que la forme reelle et le brochage nomme survivent
+    identiques aux deux etapes (pas seulement un aller simple)."""
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml, lire_xml
+
+    primitives = [('polygon', [(-36.0, -48.0), (-36.0, 48.0), (36.0, 48.0), (36.0, -48.0)], False)]
+    pinout = {'Vin+': ('L', -40), 'GND1': ('L', -13), 'OUT': ('R', -13),
+              'V+': ('R', 13), 'V-': ('R', 40), 'NC': ('L', 40)}
+    u1 = Composant(ref='U1', type='U', value='A788J', boite_ic=True,
+                   pins={n: f'N{i}' for i, n in enumerate(pinout)},
+                   primitives=primitives, pinout=pinout)
+
+    def _cycle(comp):
+        xml_texte = generer_xml([comp])
+        with tempfile.NamedTemporaryFile('w', suffix='.xml', delete=False,
+                                          encoding='utf-8') as f:
+            f.write(xml_texte)
+            chemin = f.name
+        try:
+            relus = lire_xml(chemin)
+        finally:
+            os.unlink(chemin)
+        return next(c for c in relus if c.type == 'U')
+
+    u2 = _cycle(u1)
+    assert u2.primitives is not None, "forme perdue des le premier aller-retour"
+    assert u2.pinout is not None, "brochage reel perdu des le premier aller-retour"
+    assert u2.boite_ic, "boite_ic doit rester vrai apres reimport"
+    assert set(u2.pinout) == set(pinout), "noms de broches modifies au reimport"
+
+    u3 = _cycle(u2)
+    assert u3.primitives is not None, "forme perdue au second aller-retour"
+    assert u3.pinout is not None, "brochage reel perdu au second aller-retour"
+    assert u3.boite_ic, "boite_ic doit rester vrai apres le second reimport"
+    assert set(u3.pinout) == set(pinout), "noms de broches modifies au second cycle"
+
+
+def test_generer_xml_puce_generique_catalogue_ne_devient_pas_boite_ic():
+    """Non-regression du correctif finding #2 : un composant catalogue
+    authentique passe par le fallback DIP generique de generer_xml (spec
+    catalogue absente, ligne ~1047-1060 -- ex. un transformateur/connecteur a
+    broches numerotees, SANS comp.pinout/comp.primitives). Sa <value> est
+    vide (aucun nom de piece connu). Le nouveau signal de reclassification
+    (base sur elem['value']) ne doit PAS promouvoir ce composant en
+    boite_ic -- seuls les vrais catch-all a brochage reel et value non vide/
+    non resolvable le doivent."""
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml, lire_xml
+
+    t1 = Composant(ref='T1', type='T', value='',
+                   pins={str(i): f'N{i}' for i in range(1, 7)})
+
+    xml_texte = generer_xml([t1])
+    with tempfile.NamedTemporaryFile('w', suffix='.xml', delete=False,
+                                      encoding='utf-8') as f:
+        f.write(xml_texte)
+        chemin = f.name
+    try:
+        relus = lire_xml(chemin)
+    finally:
+        os.unlink(chemin)
+
+    relu_t1 = relus[0]
+    assert relu_t1.boite_ic is False, \
+        f"composant catalogue generique promu boite_ic a tort : {relu_t1}"
+    assert relu_t1.primitives is None
+    assert relu_t1.pinout is None

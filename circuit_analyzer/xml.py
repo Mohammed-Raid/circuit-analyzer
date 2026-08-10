@@ -1776,6 +1776,31 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
                 and nom.strip() and len(elem['pins']) >= 6):
             correspondance, boite_ic = ('U', {}), True
 
+        # Reclassification catch-all sur un XML RE-EXPORTE par nous-memes
+        # (finding #2, boucle visuelle 2026-08-07) : a l'export, un composant
+        # catch-all a brochage reel (comp.pinout) recoit un <Name> neutralise
+        # en "PuceN" (jamais son nom d'origine — evite toute collision avec
+        # un plan catalogue nomme, cf. commentaire generer_xml ~ligne 1017).
+        # Ce "PuceN" resout ici en ('U', {}) via _NOM_VERS_TYPE AVANT d'
+        # atteindre ce point -> `correspondance is not None` des la ligne
+        # ci-dessus, le catch-all est saute, boite_ic reste False, et
+        # _forme_et_brochage_reels() n'est jamais tentee alors que le DataItem
+        # contient bel et bien le vrai polygone et les vraies broches
+        # nommees. Signal fiable pour distinguer ce cas du "PuceN" catalogue
+        # generique authentique (fallback ligne ~1047, transistor/connecteur
+        # a broches numerotees) : `elem['value']`, jamais ecrase par le
+        # renommage "PuceN" a l'export (`gen.ajouter(nom_forme, comp.value,
+        # ...)`) et qui porte encore le nom reel d'origine (ex. "A788J").
+        # `not par_forme` exclut le cas ('U', {}) obtenu par classification
+        # de FORME (porte logique 3 broches, classer_par_forme) — deja
+        # ecarte par le garde >=6 broches ci-dessous, mais explicite ici.
+        if correspondance == ('U', {}) and not boite_ic and not par_forme:
+            valeur_brute = (elem.get('value') or '').strip()
+            if (valeur_brute and _NOM_VERS_TYPE.get(valeur_brute) is None
+                    and eretro.mapper_nom(valeur_brute) is None
+                    and elem.get('puce') is None and len(elem['pins']) >= 6):
+                boite_ic = True
+
         def _forme_et_brochage_reels():
             """Capture le contour/brochage reel via le meme parseur que la
             bibliotheque (`eretro_lib._entree_depuis_dataitem`), ou (None, None)
