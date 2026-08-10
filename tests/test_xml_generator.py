@@ -868,6 +868,32 @@ def test_xml_composant_sans_pinout_reprojette_les_broches_catalogue_dans_le_cont
             f"broche catalogue hors du contour reellement dessine : ({x}, {y})"
 
 
+def test_xml_composant_sans_pinout_reprojette_le_decalage_longitudinal_aussi():
+    """Revue finale round 2 bis (re-revue de 951effb) : la reprojection du
+    round 2 ne corrigeait que l'axe PERPENDICULAIRE (+-w2/+-h2 recalcules
+    depuis le contour reel) -- le decalage LONGITUDINAL renvoye par
+    `aimanter_bord` (calcule dans l'echelle CATALOGUE) etait reinjecte tel
+    quel dans le contour reel. Invisible sur la Resistance du test
+    precedent (ses deux broches catalogue ont un decalage nul), mais
+    systematique des qu'une broche catalogue a un decalage non nul -- ex.
+    Transistor 2N2B, broches C/E a Y=+-48 catalogue."""
+    import re
+
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml
+
+    contour = [('polygon', [(-20, -15), (-20, 15), (20, 15), (20, -15)], False)]
+    q1 = Composant(ref='Q1', type='Q', pins={'B': 'N1', 'C': 'N2', 'E': 'N3'},
+                   value='2N2222', primitives=contour)  # pinout reste None
+    xml_texte = generer_xml([q1])
+    broches = re.findall(r'<Pin><X>(-?\d+)</X><Y>(-?\d+)</Y></Pin>', xml_texte)
+    assert len(broches) == 3, "les 3 broches du transistor doivent etre exportees"
+    for sx, sy in broches:
+        x, y = int(sx), int(sy)
+        assert -20 <= x <= 20 and -15 <= y <= 15, \
+            f"broche catalogue hors du contour reellement dessine : ({x}, {y})"
+
+
 def test_generer_xml_puce_generique_valeur_non_vide_ne_devient_pas_boite_ic():
     """Important 5 (revue finale round 1) : le garde d'origine (`value` +
     seuil >=6, commit 6f635aa) promouvait a tort en boite_ic un composant

@@ -495,3 +495,27 @@ def test_geom_avec_pinout_et_contour_reel_place_les_broches_dans_le_contour(edit
     for nom, (dx, dy) in geo["pins"].items():
         assert -36 <= dx <= 36 and -48 <= dy <= 48, \
             f"broche '{nom}' hors du contour reel : ({dx}, {dy})"
+
+
+def test_contour_dessine_sur_transistor_ne_double_pas_les_libelles_de_broches(editeur):
+    """Revue finale round 2 bis (re-revue de 951effb) : `_geom` (Minor B,
+    round 2) copie desormais les broches du TYPE sans injecter `"cotes"` --
+    mais `primitives()` (gui/schematic_symbols.py) court-circuite DEJA vers
+    `_libelles_broches` des que `defn["primitives"]` existe, quel que soit
+    `t_rendu`. `boite = est_boite_generique(t_rendu)` l'ignorait pour un
+    type CATALOGUE (Q, M, U...) qui n'est pas dans `_TRACEURS` -- chaque
+    libelle de broche ressortait donc DEUX FOIS a l'ecran (celui de
+    `_libelles_broches`, dessine dans les primitives, PLUS le libelle
+    generique de secours de `_draw_comp`)."""
+    c = _place(editeur, 'Q', 200, 200)
+    c.forme_primitives = [('polygon', [(-20, -15), (-20, 15), (20, 15), (20, -15)], False)]
+    editeur._invalider_geom()
+    editeur._redraw_all()
+
+    textes = [editeur._canvas.itemcget(i, "text")
+              for i in editeur._canvas.find_withtag(f"comp_{c.id}")
+              if editeur._canvas.type(i) == "text"]
+    for pn in editeur._geom(c)["pins"]:
+        occurrences = sum(1 for t in textes if t.startswith(pn))
+        assert occurrences <= 1, \
+            f"libelle de broche '{pn}' duplique dans le rendu : {textes}"

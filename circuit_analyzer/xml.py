@@ -26,7 +26,7 @@ from circuit_analyzer.patterns.base import (
     is_power,
     is_protective_earth_net,
 )
-from gui.schematic_symbols import aimanter_bord, geometrie_reelle
+from gui.schematic_symbols import aimanter_bord, etendue_primitives, geometrie_reelle
 
 # =============================================================================
 # FORMES VISUELLES DES COMPOSANTS (coordonnées relatives au centre)
@@ -679,9 +679,32 @@ class _Generateur:
                 # reellement dessine via `geometrie_reelle` -- comme la
                 # branche `if comp.pinout:` juste au-dessus le fait deja pour
                 # un brochage libre d'instance.
+                # `aimanter_bord` choisit le bord dans l'echelle CATALOGUE et
+                # renvoie un decalage LONGITUDINAL (le long du bord) dans
+                # cette meme echelle -- seule la coordonnee PERPENDICULAIRE
+                # (+-w2/+-h2) est reprojetee par `geometrie_reelle` (elle
+                # recalcule w2/h2 depuis le contour reel). Sans remise a
+                # l'echelle du decalage longitudinal, une broche catalogue
+                # a decalage non nul (ex. Transistor.C a Y=-50) ressort
+                # encore hors du contour dessine -- revue finale round 2
+                # bis, Critical 2 second sous-point manque (le premier
+                # sous-point, cf. plus haut, n'a corrige que l'axe
+                # perpendiculaire).
                 box_w, box_h = _etendue_forme_catalogue(forme)
+                reel_w, reel_h = etendue_primitives(comp.primitives)
+
+                def _reprojeter_decalage(cote, dec):
+                    if cote in ("L", "R"):
+                        echelle, lim = reel_h / box_h, reel_h // 2
+                    else:
+                        echelle, lim = reel_w / box_w, reel_w // 2
+                    lim = max(0, lim - _GRILLE // 2)
+                    d2 = int(round(dec * echelle / _GRILLE)) * _GRILLE
+                    return cote, max(-lim, min(lim, d2))
+
                 pinout_synthetise = {
-                    nom_b: aimanter_bord(lx, ly, box_w, box_h, _GRILLE)
+                    nom_b: _reprojeter_decalage(
+                        *aimanter_bord(lx, ly, box_w, box_h, _GRILLE))
                     for nom_b, (lx, ly, _pidx) in broches_info.items()
                 }
                 positions = geometrie_reelle(pinout_synthetise, comp.primitives)["pins"]

@@ -1101,7 +1101,14 @@ class SchematicEditor(tk.Frame):
         # Boîte générique (types perso, puces catalogue) : _tr_boite dessine
         # déjà un libellé par broche dans ses primitives — un second libellé
         # générique ici les superposerait (spec §5, défaut visuel Task 5).
-        boite = est_boite_generique(t_rendu)
+        # `defn["primitives"]` (contour dessiné, spec 2026-08-05) court-
+        # circuite `primitives()` vers `_libelles_broches` quel que soit
+        # `t_rendu` (gui/schematic_symbols.py::primitives) — y compris pour
+        # un type CATALOGUE (Q, M, U…) que `est_boite_generique` ne
+        # reconnaît pas comme "boîte" : sans ce second test, un composant
+        # typé au contour dessiné à la main affichait chaque libellé de
+        # broche EN DOUBLE (revue finale round 2 bis, régression trouvée).
+        boite = est_boite_generique(t_rendu) or bool(defn.get("primitives"))
         for pn, (pdx, pdy) in defn["pins"].items():
             rdx, rdy = _rotate_pin(pdx, pdy, rot)
             spx = scx + rdx * z
