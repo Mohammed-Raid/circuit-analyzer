@@ -12,6 +12,7 @@ import pytest
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
 from circuit_analyzer.parser import Component
+from circuit_analyzer.xml import _positionner_amplificateur_inverseur, _PAS_X_BLOC, _PAS_Y_BLOC
 from circuit_analyzer.xml_generator import BoardSCHGenerator, components_to_xml
 from circuit_analyzer.xml_parser import parse_xml
 
@@ -623,3 +624,48 @@ def test_le_plan_de_forme_partage_n_est_jamais_mute():
     generer_xml([Composant(ref="D1", type="D", value="x",
                            pins={"-": "NA", "+": "NB"})])
     assert _TYPE_VERS_FORME["D"][1] == avant, "plan de forme MUTE"
+
+
+# ── Positioner canonical inverting amplifier ──────────────────────────────────
+
+def test_positionner_amplificateur_inverseur_places_roles_canoniquement():
+    """@brief Zin a gauche, AOP au centre, Zf au-dessus avec angle 90 (arc de contre-reaction)."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    roles = {"aop": ["U1"], "Zin": ["R1"], "Zf": ["R2"]}
+    pos = _positionner_amplificateur_inverseur(comps, roles, 100, 200)
+    x_aop, y_aop = 100 + 2 * _PAS_X_BLOC, 200 + _PAS_Y_BLOC
+    assert pos["U1"] == (x_aop, y_aop, 0)
+    assert pos["R1"] == (100, y_aop, 0)
+    assert pos["R2"] == (x_aop, 200, 90)
+
+
+def test_positionner_amplificateur_inverseur_garde_les_satellites():
+    """@brief Un composant du bloc absent des roles (satellite) est place, pas perdu."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+        Component("C3", "C", {"1": "NET_IN", "2": "GND"}),
+    ]
+    roles = {"aop": ["U1"], "Zin": ["R1"], "Zf": ["R2"]}
+    pos = _positionner_amplificateur_inverseur(comps, roles, 0, 0)
+    assert "C3" in pos
+    assert len(pos["C3"]) == 2
+
+
+def test_positionner_amplificateur_inverseur_zin_composite_en_chaine():
+    """@brief Un Zin composite (2 refs) se place en chaine horizontale, pas superpose."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_MID"}),
+        Component("C1", "C", {"1": "NET_MID", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    roles = {"aop": ["U1"], "Zin": ["R1", "C1"], "Zf": ["R2"]}
+    pos = _positionner_amplificateur_inverseur(comps, roles, 0, 0)
+    assert pos["R1"][0] != pos["C1"][0]
+    assert pos["R1"][1] == pos["C1"][1]
