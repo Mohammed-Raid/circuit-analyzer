@@ -852,6 +852,35 @@ def _positionner_blocs(blocs) -> dict[str, tuple[int, int]]:
     return pos
 
 
+def _positionner_amplificateur_inverseur(comps, roles, x: int, y: int) -> dict:
+    """@brief Gabarit canonique de l'ampli inverseur.
+
+    Zin en chaîne horizontale à gauche de l'AOP (alignée sur son entrée),
+    AOP au centre, Zf en chaîne horizontale AU-DESSUS de l'AOP avec un
+    angle de 90° — c'est ce qui distingue visuellement le chemin de
+    contre-réaction (OUT -> IN-) de la chaîne Zin (angle 0, horizontale).
+    Tout composant du bloc absent de `roles` (satellite) est placé par la
+    grille compacte existante, sous la disposition canonique — jamais perdu.
+
+    @param comps Composants du bloc (Composant/Component).
+    @param roles {'aop': [...], 'Zin': [...], 'Zf': [...]}.
+    @param x, y Origine du bloc.
+    @return dict {ref: (x, y, angle)} pour les rôles connus,
+            {ref: (x, y)} pour les satellites.
+    """
+    pos = {}
+    x_aop, y_aop = x + 2 * _PAS_X_BLOC, y + _PAS_Y_BLOC
+    for ref in roles.get('aop', []):
+        pos[ref] = (x_aop, y_aop, 0)
+    for j, ref in enumerate(roles.get('Zin', [])):
+        pos[ref] = (x + j * _PAS_X_BLOC, y_aop, 0)
+    for j, ref in enumerate(roles.get('Zf', [])):
+        pos[ref] = (x_aop + j * _PAS_X_BLOC, y, 90)
+    restants = [c for c in comps if c.ref not in pos]
+    pos.update(_positionner_grille_compacte(restants, x, y + 2 * _PAS_Y_BLOC))
+    return pos
+
+
 def _positionner_composants_bloc(bloc: _Bloc, x: int, y: int) -> dict[str, tuple[int, int]]:
     """@brief Place les composants a l'interieur d'un bloc visuel.
 
