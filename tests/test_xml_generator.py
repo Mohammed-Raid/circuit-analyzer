@@ -691,6 +691,25 @@ def test_positionner_amplificateur_inverseur_zin_composite_en_chaine():
     assert pos["R1"][1] == pos["C1"][1]
 
 
+def test_positionner_amplificateur_inverseur_ignore_role_hors_bloc():
+    """@brief Un ref present dans `roles` mais absent de `comps` (bloc etranger,
+    ex. detecteur/registre corrompu ou pattern personnalise futur reutilisant le
+    meme circuit_type) ne doit JAMAIS recevoir de position ici : sinon
+    `_positionner_blocs` ecraserait la position d'un composant d'un AUTRE bloc
+    via son `pos.update(...)` partage."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    # "R99" appartient a un AUTRE bloc mais figure (a tort) dans ces roles.
+    roles = {"aop": ["U1"], "Zin": ["R1"], "Zf": ["R2", "R99"]}
+    pos = _positionner_amplificateur_inverseur(comps, roles, 0, 0)
+    assert "R99" not in pos, "ref hors du bloc place quand meme : risque de vol de position inter-blocs"
+    # les refs legitimes du bloc restent placees normalement
+    assert "U1" in pos and "R1" in pos and "R2" in pos
+
+
 # ── Dispatch du positionneur canonique + angle dans le XML ──────────────────────
 
 import xml.etree.ElementTree as ET

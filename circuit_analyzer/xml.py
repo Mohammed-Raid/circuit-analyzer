@@ -836,7 +836,7 @@ def _clusteriser_par_nets(comps) -> list:
     return list(clusters.values())
 
 
-def _positionner_blocs(blocs) -> dict[str, tuple[int, int]]:
+def _positionner_blocs(blocs) -> dict:
     """@brief Calcule la position (x, y) de chaque composant selon son bloc.
 
     @param blocs Liste de _Bloc à disposer en grille.
@@ -869,13 +869,17 @@ def _positionner_amplificateur_inverseur(comps, roles, x: int, y: int) -> dict:
             {ref: (x, y)} pour les satellites.
     """
     pos = {}
+    refs_du_bloc = {c.ref for c in comps}
     x_aop, y_aop = x + 2 * _PAS_X_BLOC, y + _PAS_Y_BLOC
     for ref in roles.get('aop', []):
-        pos[ref] = (x_aop, y_aop, 0)
+        if ref in refs_du_bloc:
+            pos[ref] = (x_aop, y_aop, 0)
     for j, ref in enumerate(roles.get('Zin', [])):
-        pos[ref] = (x + j * _PAS_X_BLOC, y_aop, 0)
+        if ref in refs_du_bloc:
+            pos[ref] = (x + j * _PAS_X_BLOC, y_aop, 0)
     for j, ref in enumerate(roles.get('Zf', [])):
-        pos[ref] = (x_aop + j * _PAS_X_BLOC, y, 90)
+        if ref in refs_du_bloc:
+            pos[ref] = (x_aop + j * _PAS_X_BLOC, y, 90)
     restants = [c for c in comps if c.ref not in pos]
     pos.update(_positionner_grille_compacte(restants, x, y + 2 * _PAS_Y_BLOC))
     return pos
