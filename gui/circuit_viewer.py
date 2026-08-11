@@ -2988,9 +2988,23 @@ def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
     _enregistrer_position(d, row.get("ref"), (device_x, y))
     gauche, droite = device_x - _W_BLOC / 2.0, device_x + _W_BLOC / 2.0
 
+    # Colonnes (bord gauche) et moignons (bord droit) sont eventes
+    # INDEPENDAMMENT, tous deux centres sur la MEME ordonnee `y` avec le MEME
+    # pas `_ESP_MOIGNON` -- des que les deux comptes n'ont pas la meme
+    # parite, un indice de colonne et un indice de moignon tombent
+    # SYSTEMATIQUEMENT sur la meme ordonnee (pas une coincidence rare).
+    # Invisible avec les anciens noms de broches courts ("1".."16"), mais un
+    # nom reel plus long (VDD1, GND2#2...) fait alors chevaucher visuellement
+    # les deux etiquettes -- `ajuster_labels` ne peut pas separer deux
+    # textes qui DEMARRENT exactement au meme endroit (trouve sur A788J,
+    # pg carte.xml, 7 cols/9 stubs). Decaler les moignons d'un DEMI-pas
+    # (seulement quand les deux bords sont utilises) les entrelace au lieu de
+    # les faire coincider, sans jamais depasser la hauteur de boite deja
+    # reservee (cf. `_demi_hauteur_bloc`, MIROIR de ce calcul, non modifie).
+    y_stubs = y + _ESP_MOIGNON / 2.0 if (cols_pins and stubs) else y
     _brancher_colonnes(d, cols_pins, x_by_net, _eventail(len(cols_pins), y),
                        gauche, gauche + 0.3)
-    _brancher_moignons(d, stubs, _eventail(len(stubs), y), droite, droite - 0.3)
+    _brancher_moignons(d, stubs, _eventail(len(stubs), y_stubs), droite, droite - 0.3)
 
 
 def _brancher_colonnes(d, cols_pins, x_by_net, ys, x_bord, x_nom):

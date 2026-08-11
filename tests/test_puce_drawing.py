@@ -429,6 +429,41 @@ def test_broches_de_colonne_ne_se_superposent_pas():
     assert len(set(ys)) == len(cols), f"fils superposes : {ys}"
 
 
+def test_colonnes_et_moignons_ne_partagent_jamais_la_meme_ordonnee():
+    """Chevauchement trouve sur A788J (pg carte.xml, 16 broches reelles
+    reparties 7 cols_pins / 9 stubs, cf. test_cartes_reelles_ilots_sans_
+    chevauchement_de_labels) : `_eventail` est appele INDEPENDAMMENT pour
+    cols_pins (etiquettes bord GAUCHE) et stubs (etiquettes bord DROIT),
+    tous deux centres sur la MEME ordonnee `row['y']` avec le MEME pas
+    `_ESP_MOIGNON` -- des que les deux listes n'ont pas la meme parite,
+    un indice de cols et un indice de stubs tombent regulierement sur
+    EXACTEMENT la meme ordonnee. Invisible avec les anciens noms de
+    broches courts ("1".."16"), mais les vrais noms (VDD1, GND2#2...) sont
+    assez longs pour que ces paires PARTANT DE LA MEME POSITION se
+    chevauchent visuellement -- `ajuster_labels` ne peut pas separer deux
+    textes qui demarrent exactement au meme endroit."""
+    cols = [(f"C{i}", f"NET{i}") for i in range(7)]
+    stubs = [(f"S{i}", f"NETS{i}") for i in range(9)]
+    row = {"type": "U", "value": "TEST", "boite_ic": True, "ref": "U1",
+           "symbol": "opamp", "y": 0.0,
+           "pins": cols + stubs, "stubs": stubs}
+    x_by_net = {net: float(i) for i, (_p, net) in enumerate(cols)}
+    elements, _d = _dessiner_bloc(row, cols_pins=cols, x_by_net=x_by_net)
+
+    def texte(e):
+        labs = getattr(e, "_userlabels", None) or []
+        return labs[0].label if labs else None
+
+    labels = [e for e in elements if type(e).__name__ == "Label"]
+    ys_cols = {round(e.get_bbox(transform=True).ymin, 3)
+              for e in labels if (texte(e) or "").startswith("C")}
+    ys_stubs = {round(e.get_bbox(transform=True).ymin, 3)
+               for e in labels if (texte(e) or "").startswith("S")}
+    partagees = ys_cols & ys_stubs
+    assert not partagees, (
+        f"etiquette(s) de colonne et de moignon a la MEME ordonnee : {partagees}")
+
+
 def test_reserve_verticale_est_le_miroir_de_la_boite_dessinee():
     """La place reservee au plan doit valoir la HAUTEUR REELLE de la boite.
 
