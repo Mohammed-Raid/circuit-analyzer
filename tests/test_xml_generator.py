@@ -671,3 +671,61 @@ def test_positionner_amplificateur_inverseur_zin_composite_en_chaine():
     pos = _positionner_amplificateur_inverseur(comps, roles, 0, 0)
     assert pos["R1"][0] != pos["C1"][0]
     assert pos["R1"][1] == pos["C1"][1]
+
+
+# ── Dispatch du positionneur canonique + angle dans le XML ──────────────────────
+
+import xml.etree.ElementTree as ET
+
+from circuit_analyzer.xml import _Bloc, _positionner_composants_bloc
+
+
+def test_positionner_composants_bloc_utilise_le_canonique_si_roles():
+    """@brief Bloc reconnu + roles peuples -> positionneur canonique (pas le gabarit famille)."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    roles = {"aop": ["U1"], "Zin": ["R1"], "Zf": ["R2"]}
+    bloc = _Bloc("Amplificateur inverseur (AOP)", comps, roles=roles)
+    attendu = _positionner_amplificateur_inverseur(comps, roles, 50, 60)
+    assert _positionner_composants_bloc(bloc, 50, 60) == attendu
+
+
+def test_positionner_composants_bloc_repli_si_pas_de_roles():
+    """@brief Meme circuit_type SANS roles (montage pas migre) garde l'ancien gabarit famille."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    bloc = _Bloc("Amplificateur inverseur (AOP)", comps)  # roles={} par defaut
+    resultat = _positionner_composants_bloc(bloc, 50, 60)
+    # L'ancien gabarit famille place l'AOP a (x + _PAS_X_BLOC, y) — pas x+2*_PAS_X_BLOC.
+    assert resultat["U1"][:2] == (50 + _PAS_X_BLOC, 60)
+
+
+def _item(xml_str, ref):
+    """@brief Helper de test : le <DataItem> dont <reference> vaut `ref`."""
+    root = ET.fromstring(xml_str)
+    for item in root.iter("DataItem"):
+        if item.findtext("reference") == ref:
+            return item
+    return None
+
+
+def test_generer_xml_ecrit_angle_canonique_pour_zf():
+    """@brief La resistance de contre-reaction (Zf) recoit l'angle canonique 90 dans le XML."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    resultats = match_patterns(build_graph(comps))
+    xml = components_to_xml(comps, resultats)
+    item_zf, item_zin = _item(xml, "R2"), _item(xml, "R1")
+    assert item_zf is not None and item_zin is not None
+    assert item_zf.findtext("angle") == "90"
+    assert item_zin.findtext("angle") == "0"
