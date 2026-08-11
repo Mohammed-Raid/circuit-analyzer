@@ -161,6 +161,24 @@ def test_roundtrip_combined_multi_pattern():
     assert orig == roundtrip
 
 
+def test_disposition_canonique_preserve_la_connectivite():
+    """@brief Contrainte dure : la regeneration avec disposition canonique
+    ne change AUCUNE connexion — verifie en re-detectant sur le resultat.
+    """
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    resultats = match_patterns(build_graph(comps))
+    orig = sorted(r["circuit_type"] for r in resultats)
+    xml = components_to_xml(comps, resultats)
+    back = _xml_to_components(xml)
+    roundtrip = sorted(r["circuit_type"] for r in match_patterns(build_graph(back)))
+    assert orig == roundtrip
+
+
 def test_power_net_creates_symbol():
     """@brief Verifie power net creates symbol.
 
