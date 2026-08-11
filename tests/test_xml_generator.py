@@ -242,6 +242,42 @@ def test_industrial_netlist_roundtrip_no_loss():
 from circuit_analyzer.xml_generator import _Block, _layout_groups, _place_blocks
 
 
+def test_layout_groups_extracts_roles_from_impedances():
+    """@brief Un match avec 'impedances' peuple bloc.roles (aop/Zin/Zf)."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    results = [{
+        "circuit_type": "Amplificateur inverseur (AOP)",
+        "components": ["U1", "R2", "R1"],
+        "nodes": [],
+        "impedances": {
+            "Zin": {"refs": ["R1"], "composition": "R1", "nodes": ("NET_INV", "NET_IN")},
+            "Zf":  {"refs": ["R2"], "composition": "R2", "nodes": ("NET_INV", "NET_OUT")},
+        },
+    }]
+    blocks = _layout_groups(comps, results)
+    assert len(blocks) == 1
+    assert blocks[0].roles == {"Zin": ["R1"], "Zf": ["R2"], "aop": ["U1"]}
+
+
+def test_layout_groups_roles_empty_without_impedances():
+    """@brief Sans 'impedances' (montage pas migre, ou Divers), roles reste vide."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    results = [{"circuit_type": "Amplificateur inverseur (AOP)",
+                "components": ["U1", "R1", "R2"], "nodes": []}]
+    blocks = _layout_groups(comps, results)
+    assert blocks[0].roles == {}
+
+
 def test_layout_groups_one_block_per_pattern():
     """@brief Verifie layout groups one block per pattern.
 
