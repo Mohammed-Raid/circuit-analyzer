@@ -21,9 +21,18 @@ _BAS = {"GND", "VSS", "V-"}
 
 def _cote(fonction):
     f = fonction.upper()
-    if f in _HAUT:
+    # Rail nu ("VDD") OU rail numerote/duplique d'un boitier reel a
+    # plusieurs broches d'alimentation ("VDD1", "GND2", "VDD2#2" — le
+    # suffixe "#N" vient de la desambiguisation des broches homonymes,
+    # cf. `eretro_lib._entree_depuis_dataitem`) : sans ce repli, un boitier
+    # comme A788J (pg carte.xml) n'a AUCUNE broche qui matche _HAUT/_BAS en
+    # egalite stricte, et jusqu'a 15 broches s'entassent sur le seul bord
+    # "left" -> chevauchements d'etiquettes inevitables.
+    base = re.sub(r"#\d+$", "", f)
+    base = re.sub(r"\d+$", "", base)
+    if base in _HAUT:
         return "top"
-    if f in _BAS:
+    if base in _BAS:
         return "bottom"
     if "OUT" in f or re.fullmatch(r"\d?N?[YQ]\d?", f) or f.startswith("Y"):
         return "right"

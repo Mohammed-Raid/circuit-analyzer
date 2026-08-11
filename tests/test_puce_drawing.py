@@ -141,6 +141,33 @@ def test_broche_cablee_filtre_les_singletons_net_hash():
     assert _broche_cablee("NC", partages) is False
 
 
+def test_cote_range_les_rails_alimentation_numerotes_hors_de_gauche():
+    """Un vrai boitier (ex. A788J, pg carte.xml) nomme ses rails "VDD1",
+    "GND2", "VDD2#2" (suffixe numerique et/ou desambiguisation "#N", cf.
+    `eretro_lib._entree_depuis_dataitem`) plutot que le "VCC"/"GND" nu que
+    `_cote` reconnaissait seul. Avant ce fix, TOUTES ces broches tombaient
+    en side="left" (aucune ne matchait _HAUT/_BAS en egalite stricte),
+    entassant jusqu'a 15 broches sur un seul bord -> chevauchements
+    d'etiquettes inevitables (test_cartes_reelles_ilots_sans_chevauchement_
+    de_labels, pg carte.xml ilot 0)."""
+    from gui.puce_schematic import _cote
+    assert _cote("VDD1") == "top"
+    assert _cote("VDD2") == "top"
+    assert _cote("VDD2#2") == "top"
+    assert _cote("VCC1") == "top"
+    assert _cote("GND1") == "bottom"
+    assert _cote("GND2") == "bottom"
+    assert _cote("GND2#2") == "bottom"
+    assert _cote("VSS3") == "bottom"
+    # Non-regression : les rails nus restent inchanges.
+    assert _cote("VCC") == "top"
+    assert _cote("GND") == "bottom"
+    # Non-regression : un nom qui n'est PAS un rail (meme avec un chiffre)
+    # reste hors HAUT/BAS.
+    assert _cote("Vin+") == "left"
+    assert _cote("Vout") == "right"
+
+
 def test_74hc00_ne_dessine_que_les_broches_cablees():
     # 74HC00 : une seule porte câblée (1A/1B/1Y) + alimentations, les 9
     # autres broches logiques sont "en l'air" (nets NET# singleton du
