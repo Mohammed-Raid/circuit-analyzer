@@ -902,7 +902,13 @@ def test_generer_xml_pinout_reel_cable_le_bon_noeud_au_reimport():
     finally:
         os.unlink(chemin)
 
-    relu_u1 = next(c for c in relus if c.ref == 'U1')
+    # ref regeneree par compteur de type a la lecture (comportement du lecteur,
+    # inchange par ce test) : <Name> porte desormais "U" (comp.type, ne
+    # collisionne avec aucune entree catalogue, cf. generer_xml) plutot que
+    # l'ancien "PuceN" -- correspondance is None des la 1ere passe -> type 'X'
+    # (bucket "inconnu mais forme/brochage reels preserves"), donc "X1" et
+    # non plus "U1". Seule la FIDELITE (broches/connectivite) nous interesse ici.
+    relu_u1 = next(c for c in relus if c.type == 'X')
     relu_r1 = next(c for c in relus if c.ref == 'R1')
 
     # Memes noms de broches (plan de reimport passthrough, Puce catalogue).
@@ -1141,4 +1147,51 @@ def test_generer_xml_connecteur_j_moins_de_6_broches_survit_a_l_aller_retour():
     assert relu_j1.pinout is not None, \
         "brochage reel perdu des le premier aller-retour (< 6 broches)"
     assert set(relu_j1.pinout) == set(pinout), "noms de broches modifies au reimport"
-    assert relu_j1.boite_ic, "boite_ic doit rester vrai apres reimport"
+    # <Name> porte desormais "J" (comp.type) plutot que l'ancien "PuceN" --
+    # correspondance is None des la 1ere passe (aucune heuristique sur les
+    # noms de broches necessaire, y compris pour un connecteur A/B/C/D non-
+    # numerique) -> type 'X', pas de boite_ic (bucket "inconnu mais forme/
+    # brochage reels preserves", coherent avec le traitement d'un composant
+    # vraiment etranger). Seule la fidelite de forme/brochage nous interesse.
+    assert relu_j1.type == 'X'
+
+
+def test_generer_xml_pinout_reel_a_noms_numeriques_survit_au_reimport():
+    """Regression trouvee en testant un vrai type custom de bibliotheque
+    (AMP « Ampoule », component_library.json) : un composant a brochage reel
+    (comp.pinout) dont TOUTES les broches portent des noms numeriques ('1',
+    '2' -- le cas COURANT d'un type dessine sans renommer ses broches, pas
+    un cas marginal) etait renomme "PuceN" a l'export (neutralisation
+    volontaire, cf. commentaire generer_xml). Au reimport, "PuceN" resout
+    EN PREMIER via _NOM_VERS_TYPE (catalogue) -> le garde de reclassification
+    catch-all (`elem['pins'] tous numeriques -> pas reclassifie`, compromis
+    documente) rate ce cas precisement PARCE QUE ses broches sont numeriques
+    -- fail-closed silencieux, forme et brochage perdus, triangle AOP
+    generique au reimport. Le vrai fix : ne PAS neutraliser en "PuceN" du
+    tout quand un nom stable et non-catalogue existe (`comp.type`) -- le nom
+    d'origine renvoie alors `correspondance is None` des la premiere passe,
+    qui capture INCONDITIONNELLEMENT le contour/brochage reels (aucune
+    heuristique sur les noms de broches necessaire)."""
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml, lire_xml
+
+    amp = Composant(ref='AMP1', type='AMP', value='',
+                    pins={'1': 'N1', '2': 'N2'},
+                    primitives=[('line', [(-80.0, 0.0), (-30.0, 0.0)], 2)],
+                    pinout={'1': ('R', 0), '2': ('L', 0)})
+
+    xml_texte = generer_xml([amp])
+    with tempfile.NamedTemporaryFile('w', suffix='.xml', delete=False,
+                                      encoding='utf-8') as f:
+        f.write(xml_texte)
+        chemin = f.name
+    try:
+        relus = lire_xml(chemin)
+    finally:
+        os.unlink(chemin)
+
+    relu = relus[0]
+    assert relu.primitives is not None, \
+        "forme reelle perdue au reimport (broches numeriques)"
+    assert relu.pinout is not None and set(relu.pinout) == {'1', '2'}, \
+        "brochage reel perdu au reimport (broches numeriques)"

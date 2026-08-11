@@ -1176,13 +1176,24 @@ def generer_xml(composants, resultats=None, results=None) -> str:
             # catalogue (_TYPE_VERS_FORME) n'a donc RIEN a faire ici pour le
             # cablage : passer par lui desynchronise le NodeL du fil et le
             # <DataPin> reellement ecrit (bug trouve en boucle visuelle,
-            # 2026-08-07 -- cf. task7-visual-loop-finding.md). "PuceN" donne
-            # un <Name> qui relit en passthrough pur (plan {} dans
-            # _NOM_VERS_TYPE) : aucun risque de collision avec un nom de
-            # broche reel court ('+', '-', 's'...) comme le ferait "AOP".
+            # 2026-08-07 -- cf. task7-visual-loop-finding.md).
+            #
+            # <Name> : garder `comp.type` ("AMP", "X"...) plutot que le
+            # neutraliser en "PuceN" comme avant -- "PuceN" resout DANS
+            # _NOM_VERS_TYPE (catalogue), ce qui forcait `lire_xml` a
+            # passer par un second garde de reclassification heuristique
+            # (noms de broches non-numeriques) pour retrouver ce composant :
+            # un type reel dont TOUTES les broches ont des noms numeriques
+            # ('1','2'...  cas COURANT, pas marginal, d'un type cree sans
+            # renommer ses broches) ratait ce garde et perdait sa forme en
+            # silence a chaque aller-retour (trouve en testant AMP/ANT/BOU,
+            # component_library.json). `comp.type` ne collisionne avec
+            # AUCUNE entree du catalogue (lettres de type R/C/L/U/X... ou
+            # cles custom) -> `correspondance is None` des la premiere passe,
+            # qui capture le contour/brochage reels SANS heuristique.
             n = next((t for t in _TAILLES_PUCE if t >= max(len(pinout), 1)),
                      _TAILLES_PUCE[-1])
-            nom_forme = f"Puce{n}"
+            nom_forme = comp.type if comp.type not in _NOM_VERS_TYPE else f"Puce{n}"
             # None = marqueur : le bouclage de cablage plus bas doit router
             # ce composant par NOM de broche (gen._idx_broche), pas par le
             # catalogue.
