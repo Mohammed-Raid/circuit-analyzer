@@ -686,16 +686,31 @@ def _roles_du_bloc(r) -> dict:
     'impedances' sont regroupés sous le rôle 'aop' (l'ancre du montage —
     vrai pour tous les montages AOP actuels, qui n'ont qu'un seul composant
     hors impédances).
+
+    Un rôle de 'impedances' n'est pas toujours un dict {'refs': [...], ...} :
+    le Sommateur (detecteur.py, `detecter_amplificateur_sommateur`) range
+    plusieurs blocs d'entrée sous 'Zin' comme une LISTE de tels dicts (un par
+    résistance d'entrée), pas un dict unique — voir `_refs_du_role`.
     """
     impedances = r.get('impedances')
     if not impedances:
         return {}
-    roles = {nom: list(bloc.get('refs', [])) for nom, bloc in impedances.items()}
+    roles = {nom: _refs_du_role(bloc) for nom, bloc in impedances.items()}
     refs_connus = {ref for refs in roles.values() for ref in refs}
     ancre = [ref for ref in r['components'] if ref not in refs_connus]
     if ancre:
         roles['aop'] = ancre
     return roles
+
+
+def _refs_du_role(bloc) -> list:
+    """@brief Refs d'un rôle d'impédance : un dict {'refs': [...], ...} (cas
+    général) OU une liste de tels dicts (ex. 'Zin' du Sommateur, plusieurs
+    entrées — detecteur.py:701/718)."""
+    if isinstance(bloc, dict):
+        return list(bloc.get('refs', []))
+    return [ref for sous in (bloc or []) if isinstance(sous, dict)
+            for ref in sous.get('refs', [])]
 
 
 def _ordre_des_circuits(resultats) -> list:
@@ -856,9 +871,12 @@ def _positionner_amplificateur_inverseur(comps, roles: dict[str, list[str]], x: 
     """@brief Gabarit canonique de l'ampli inverseur.
 
     Zin en chaîne horizontale à gauche de l'AOP (alignée sur son entrée),
-    AOP au centre, Zf en chaîne horizontale AU-DESSUS de l'AOP avec un
-    angle de 90° — c'est ce qui distingue visuellement le chemin de
-    contre-réaction (OUT -> IN-) de la chaîne Zin (angle 0, horizontale).
+    AOP au centre, Zf en chaîne horizontale AU-DESSUS de l'AOP — c'est la
+    POSITION (strictement au-dessus), pas une rotation, qui distingue le
+    chemin de contre-réaction de la chaîne Zin. Angle toujours 0 : la
+    rotation des broches de fil (_xml_fil, xml.py:626-632) n'est pas
+    garantie fiable pour un symbole tourné dans l'éditeur réel — à
+    revisiter si/quand ce chemin est validé.
     Tout composant du bloc absent de `roles` (satellite) est placé par la
     grille compacte existante, sous la disposition canonique — jamais perdu.
 
@@ -875,7 +893,7 @@ def _positionner_amplificateur_inverseur(comps, roles: dict[str, list[str]], x: 
     for j, ref in enumerate(roles.get('Zin', [])):
         pos[ref] = (x + j * _PAS_X_BLOC, y_aop, 0)
     for j, ref in enumerate(roles.get('Zf', [])):
-        pos[ref] = (x_aop + j * _PAS_X_BLOC, y, 90)
+        pos[ref] = (x_aop + j * _PAS_X_BLOC, y, 0)
     restants = [c for c in comps if c.ref not in pos]
     pos.update(_positionner_grille_compacte(restants, x, y + 2 * _PAS_Y_BLOC))
     return pos
@@ -896,7 +914,7 @@ def _positionner_composants_bloc(bloc: _Bloc, x: int, y: int) -> dict:
             montages avec un gabarit canonique. Positions absolues.
     """
     positionneur = _POSITIONNEURS_PAR_MOTIF.get(bloc.label)
-    if positionneur is not None and bloc.roles:
+    if positionneur is not None and any(bloc.roles.values()):
         return positionneur(bloc.comps, bloc.roles, x, y)
     if "commande de relais" in bloc.label.lower():
         return _positionner_commande_relais(bloc.comps, x, y)

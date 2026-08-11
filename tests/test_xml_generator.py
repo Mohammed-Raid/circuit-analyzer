@@ -128,7 +128,9 @@ def test_disposition_canonique_preserve_la_connectivite():
     resultats = match_patterns(build_graph(comps))
     orig = sorted(r["circuit_type"] for r in resultats)
     xml = components_to_xml(comps, resultats)
-    assert "<angle>90</angle>" in xml
+    item_zf, item_aop = _item(xml, "R2"), _item(xml, "U1")
+    assert item_zf is not None and item_aop is not None
+    assert float(item_zf.findtext("CtrIem/Y")) < float(item_aop.findtext("CtrIem/Y"))
     back = _xml_to_components(xml)
     roundtrip = sorted(r["circuit_type"] for r in match_patterns(build_graph(back)))
     assert orig == roundtrip
@@ -401,6 +403,37 @@ def test_layout_groups_roles_empty_without_impedances():
     assert blocks[0].roles == {}
 
 
+def test_grouper_par_circuit_sommateur_zin_liste_ne_plante_pas():
+    """@brief Le Sommateur a Zin en LISTE de blocs (pas un dict) — regression
+    du bug documente en memoire projet (detecteur.py:701/718)."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_IN1", "2": "NET_INV"}),
+        Component("R2", "R", {"1": "NET_IN2", "2": "NET_INV"}),
+        Component("Rf", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    resultats = match_patterns(build_graph(comps))
+    assert any(r["circuit_type"] == "Amplificateur sommateur (AOP)" for r in resultats)
+    xml = components_to_xml(comps, resultats)  # ne doit pas lever AttributeError
+    assert "R1" in xml and "Rf" in xml
+
+
+def test_export_corpus_industriel_ne_plante_jamais():
+    """@brief Balaie circuits_industriels/*.xml : detection + regeneration
+    sans exception. Garde-fou pour les montages non migres par ce plan."""
+    import glob
+
+    from circuit_analyzer.xml import lire_xml
+
+    fichiers = glob.glob(os.path.join("circuits_industriels", "*.xml"))
+    assert fichiers, "corpus circuits_industriels/ introuvable depuis le cwd de pytest"
+    for chemin in fichiers:
+        comps = lire_xml(chemin)
+        resultats = match_patterns(build_graph(comps))
+        components_to_xml(comps, resultats)  # ne doit jamais lever
+
+
 def test_components_to_xml_backward_compatible_without_results():
     """@brief Verifie components to xml backward compatible without results.
 
@@ -654,7 +687,7 @@ def test_le_plan_de_forme_partage_n_est_jamais_mute():
 # ── Positioner canonical inverting amplifier ──────────────────────────────────
 
 def test_positionner_amplificateur_inverseur_places_roles_canoniquement():
-    """@brief Zin a gauche, AOP au centre, Zf au-dessus avec angle 90 (arc de contre-reaction)."""
+    """@brief Zin a gauche, AOP au centre, Zf strictement au-dessus (angle 0)."""
     comps = [
         Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
         Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
@@ -665,7 +698,8 @@ def test_positionner_amplificateur_inverseur_places_roles_canoniquement():
     x_aop, y_aop = 100 + 2 * _PAS_X_BLOC, 200 + _PAS_Y_BLOC
     assert pos["U1"] == (x_aop, y_aop, 0)
     assert pos["R1"] == (100, y_aop, 0)
-    assert pos["R2"] == (x_aop, 200, 90)
+    assert pos["R2"] == (x_aop, 200, 0)
+    assert pos["R2"][1] < pos["U1"][1]  # Zf strictement au-dessus de l'AOP
 
 
 def test_positionner_amplificateur_inverseur_garde_les_satellites():
@@ -734,8 +768,8 @@ def _item(xml_str, ref):
     return None
 
 
-def test_generer_xml_ecrit_angle_canonique_pour_zf():
-    """@brief La resistance de contre-reaction (Zf) recoit l'angle canonique 90 dans le XML."""
+def test_generer_xml_positionne_zf_au_dessus_de_laop():
+    """@brief Signature du gabarit canonique dans le XML : Zf strictement au-dessus de l'AOP."""
     comps = [
         Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
                               "V+": "VCC", "V-": "GND"}),
@@ -744,7 +778,8 @@ def test_generer_xml_ecrit_angle_canonique_pour_zf():
     ]
     resultats = match_patterns(build_graph(comps))
     xml = components_to_xml(comps, resultats)
-    item_zf, item_zin = _item(xml, "R2"), _item(xml, "R1")
-    assert item_zf is not None and item_zin is not None
-    assert item_zf.findtext("angle") == "90"
-    assert item_zin.findtext("angle") == "0"
+    item_zf, item_aop = _item(xml, "R2"), _item(xml, "U1")
+    assert item_zf is not None and item_aop is not None
+    y_zf = float(item_zf.findtext("CtrIem/Y"))
+    y_aop = float(item_aop.findtext("CtrIem/Y"))
+    assert y_zf < y_aop
