@@ -128,6 +128,7 @@ def test_disposition_canonique_preserve_la_connectivite():
     resultats = match_patterns(build_graph(comps))
     orig = sorted(r["circuit_type"] for r in resultats)
     xml = components_to_xml(comps, resultats)
+    assert "<angle>90</angle>" in xml
     back = _xml_to_components(xml)
     roundtrip = sorted(r["circuit_type"] for r in match_patterns(build_graph(back)))
     assert orig == roundtrip
