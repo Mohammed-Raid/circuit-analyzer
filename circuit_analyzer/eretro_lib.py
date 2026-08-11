@@ -428,12 +428,25 @@ def _entree_depuis_dataitem(r):
     h = max(GRILLE, int(round((max(ys) - min(ys)) / ECHELLE / GRILLE)) * GRILLE)
 
     pins, brochage = [], {}
+    vus: dict = {}
     for i, (nom, px, py) in enumerate(pins_xy):
         nom = nom or str(i + 1)
+        # Deux broches PHYSIQUES distinctes peuvent partager le meme nom
+        # affiche (ex. deux masses "GND2" sur un vrai isolateur/driver, cas
+        # reel pg_carte.xml/A788J) -- sans desambiguisation, `brochage`
+        # (dict) les collapse en une seule entree et le compte de broches
+        # deraille silencieusement en aval (garde-fou anti-collision de
+        # `circuit_analyzer.xml._forme_et_brochage_reels`, qui jette alors
+        # TOUTE la forme/le brochage reels captures en fail-closed). La
+        # PREMIERE occurrence garde son nom d'origine (comportement
+        # historique inchange pour tout fichier sans homonyme).
+        n = vus.get(nom, 0) + 1
+        vus[nom] = n
+        nom_uniq = nom if n == 1 else f"{nom}#{n}"
         dx, dy = (px - cx) / ECHELLE, (py - cy) / ECHELLE
         cote, dec = aimanter_bord(dx, dy, w, h, GRILLE)
-        pins.append(nom)
-        brochage[nom] = [cote, dec]
+        pins.append(nom_uniq)
+        brochage[nom_uniq] = [cote, dec]
 
     prefix = (r.findtext("Group") or "").strip().upper()
     nom_symbole = (r.findtext("Name") or "").strip()

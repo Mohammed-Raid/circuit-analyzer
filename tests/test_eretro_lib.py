@@ -408,6 +408,32 @@ def test_entree_depuis_dataitem_primitives_et_brochage_partagent_l_origine():
     assert entree["primitives"][0][1][1][0] == 40.0
 
 
+def test_entree_depuis_dataitem_desambiguise_les_broches_homonymes():
+    """Un vrai boitier (ex. A788J, pg carte.xml) peut avoir DEUX broches
+    physiques distinctes portant le meme nom affiche (deux masses "GND2").
+    Avant ce fix, `brochage` (dict) les collapsait silencieusement en une
+    seule entree -- `len(brochage) != len(pins_xy)` faisait ensuite echouer
+    le garde-fou anti-collision cote `circuit_analyzer.xml` (fail-closed :
+    la forme reelle capturee entiere etait jetee). La bonne reponse est de
+    ne JAMAIS perdre une broche physique : desambiguiser au lieu de
+    collapser."""
+    xml = ('<DataItem><Name>Test</Name>'
+           '<datapin>'
+           '<DataPin><Pname>GND2</Pname><Pin><X>-40</X><Y>-20</Y></Pin></DataPin>'
+           '<DataPin><Pname>VDD2</Pname><Pin><X>40</X><Y>-20</Y></Pin></DataPin>'
+           '<DataPin><Pname>GND2</Pname><Pin><X>-40</X><Y>20</Y></Pin></DataPin>'
+           '<DataPin><Pname>VDD2</Pname><Pin><X>40</X><Y>20</Y></Pin></DataPin>'
+           '</datapin></DataItem>')
+    _prefix, entree = symbole_vers_composant(xml)
+    assert len(entree["pins"]) == 4, "une broche physique a disparu"
+    assert len(entree["brochage"]) == 4, "collision de nom -> broche ecrasee dans le dict"
+    assert len(set(entree["pins"])) == 4, "les noms desambiguises doivent rester uniques"
+    # La PREMIERE occurrence garde le nom d'origine (comportement historique
+    # inchange pour tout fichier sans homonyme).
+    assert entree["pins"][0] == "GND2"
+    assert entree["pins"][1] == "VDD2"
+
+
 def _dist_point_segment(px, py, ax, ay, bx, by):
     dx, dy = bx - ax, by - ay
     if dx == 0 and dy == 0:

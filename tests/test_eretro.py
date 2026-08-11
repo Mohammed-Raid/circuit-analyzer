@@ -490,12 +490,15 @@ def test_import_catch_all_pins_et_pinout_meme_clefs_avec_pnumber_pname_different
         f"pins keys {set(x.pins)} != pinout keys {set(x.pinout)}"
 
 
-def test_import_catch_all_collision_noms_broches_fail_closed():
+def test_import_catch_all_collision_noms_broches_desambiguisee():
     # Regression : quand deux broches physiques se resolvent au meme nom
-    # (ex: deux 'GND'), brochage_reel (dict) les collapse. Sans detection,
-    # les indices pidx se desalignent et les nets sont corrompus/perdus.
-    # Fix: fail-closed — capturer primitives/pinout comme None, laisser la
-    # construction positionnelle par defaut prendre le relais.
+    # affiche (ex: deux 'GND', cas reel A788J de pg carte.xml), l'ancien
+    # comportement (brochage_reel dict collapse -> fail-closed, primitives/
+    # pinout jetes entierement) perdait la forme reelle pour TOUT composant
+    # ayant ne serait-ce qu'une paire de broches homonymes. `eretro_lib.
+    # _entree_depuis_dataitem` desambiguise desormais chaque occurrence
+    # (GND, GND#2...) : plus aucune broche physique n'est perdue, et la
+    # forme/le brochage reels restent captures.
     xml = _boardsch(
         [_item('boite_collision', pins=[
             _pin(pname='GND', refs=['A'], x=-20, y=-10),   # deux broches => meme nom
@@ -506,15 +509,15 @@ def test_import_catch_all_collision_noms_broches_fail_closed():
     )
     comps = _lire(xml)
     x = next(c for c in comps if c.type == 'X')
-    # Fail-closed: pas de capture de forme reelle
-    assert x.primitives is None, "Should fail-closed when pin names collide"
-    assert x.pinout is None, "Should fail-closed when pin names collide"
-    # Verification que les nets ne sont pas corrompus malgre l'absence de forme reelle :
-    # les deux premieres broches doivent avoir des nets differents (elles sont wired).
+    assert x.primitives is not None, "la forme reelle ne doit plus etre jetee"
+    assert x.pinout is not None and len(x.pinout) == 3, \
+        "les 3 broches physiques doivent rester distinctes dans le brochage"
+    assert set(x.pinout) == {'GND', 'GND#2', 'VCC'}
+    # Verification que les nets ne sont pas corrompus : les deux premieres
+    # broches (toutes deux nommees GND a l'origine) doivent avoir des nets
+    # differents (elles sont wired), pas fusionnees en une seule.
     pins_list = list(x.pins.values())
     assert len(pins_list) == 3, f"Should have 3 pins, got {len(pins_list)}"
-    # Verifier que les deux premieres broches ont effectivement des nets
-    # (sont connectees, pas orphelines)
     assert pins_list[0] != 'NC', "First pin should be wired"
     assert pins_list[1] != 'NC', "Second pin should be wired"
     assert pins_list[0] == pins_list[1], "First two pins (both GND) should share a net"
