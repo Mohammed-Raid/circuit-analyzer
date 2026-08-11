@@ -19,13 +19,14 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from html import escape as _esc
 
-from circuit_analyzer import eretro, eretro_symboles
+from circuit_analyzer import eretro, eretro_lib, eretro_symboles
 from circuit_analyzer.composant import Composant as Component
 from circuit_analyzer.patterns.base import (
     is_gnd,
     is_power,
     is_protective_earth_net,
 )
+from gui.schematic_symbols import aimanter_bord, etendue_primitives, geometrie_reelle
 
 # =============================================================================
 # FORMES VISUELLES DES COMPOSANTS (coordonnées relatives au centre)
@@ -34,6 +35,13 @@ from circuit_analyzer.patterns.base import (
 # Source : reverse-engineered depuis "exemples/carte pour tester.xml" du logiciel ERetroDesign.
 
 _log = logging.getLogger(__name__)
+
+# Pas de grille pour l'aimantation des broches catalogue sur leur boite
+# (revue finale round 2, Critical 2 sous-point manque) -- meme valeur que
+# `GRID`/`GRILLE` ailleurs dans le projet (gui/schematic_editor.py,
+# gui/pin_canvas.py, circuit_analyzer/eretro_lib.py), dupliquee localement
+# ici comme sur ces autres sites (pas de source commune existante).
+_GRILLE = 20
 
 _FORME: dict[str, dict] = {
     "Résistance": {
@@ -254,6 +262,35 @@ def _forme_puce(n):
     return {"pins": pins, "polygon": poly, "segment": seg}
 
 
+def _etendue_forme_catalogue(forme: dict) -> tuple:
+    """@brief (largeur, hauteur) de la boîte CATALOGUE d'une entrée `_FORME`.
+
+    Équivalent de `gui.schematic_symbols.etendue_primitives`, mais sur la
+    géométrie catalogue déjà sérialisée en XML (`polygon`/`segment`/`arc`
+    d'une entrée `_FORME`) plutôt que sur des primitives structurées --
+    ces formes n'existent qu'en XML pré-rendu ici, jamais en tuples
+    `("line"/"polygon"/"arc", ...)`. Sert à « aimanter » les broches
+    catalogue sur les bords de LEUR PROPRE boîte avant de les reprojeter
+    dans un contour dessiné à la main, d'une échelle différente (revue
+    finale round 2, Critical 2 sous-point manqué : les `<DataPin>` de la
+    branche catalogue restaient en coordonnées catalogue -- ex. ±80 pour
+    une Résistance -- alors que le contour dessiné est en coordonnées
+    éditeur -- ex. ±40 --, deux fois plus petites).
+
+    Plancher à 1 sur chaque dimension (jamais 0) : certaines formes ont
+    tous leurs points alignés sur un axe (ex. "Self", segments/arc à
+    Y=0 partout) -- une boîte de hauteur nulle fait dégénérer l'arbitrage
+    de bord de `aimanter_bord` (égalité T/B/L/R à distance 0), qui aimante
+    alors la broche sur le mauvais bord (T au lieu de L/R, cf. l'ordre
+    d'arbitrage documenté dans `aimanter_bord`).
+    """
+    texte = forme.get("polygon", "") + forme.get("segment", "") + forme.get("arc", "")
+    coords = re.findall(r'<X>(-?\d+)</X>\s*<Y>(-?\d+)</Y>', texte)
+    mx = max((abs(int(x)) for x, _ in coords), default=0)
+    my = max((abs(int(y)) for _, y in coords), default=0)
+    return max(1, mx * 2), max(1, my * 2)
+
+
 # Tailles de boîtier DIP couvertes par le catalogue v1 (4/8/14/16 broches).
 _TAILLES_PUCE = (4, 8, 14, 16)
 for _n in _TAILLES_PUCE:
@@ -440,6 +477,8 @@ _fusionner_bibliotheque_eretro()
 class _Comp:
     """@brief Composant placé sur le schéma (id, nom de forme, valeur, position, forme)."""
     cid: int; name: str; value: str; x: int; y: int; angle: int = 0; shape: str = ""; group_id: int = 0; ref: str = ""
+    primitives: list | None = None
+    pinout: dict | None = None
 
 @dataclass
 class _Wire:
@@ -456,7 +495,8 @@ class _Generateur:
         self._wires: list[_Wire] = []
         self._wire_id = 0
 
-    def ajouter(self, nom, valeur="", x=0, y=0, angle=0, forme="", group_id=0, ref="") -> int:
+    def ajouter(self, nom, valeur="", x=0, y=0, angle=0, forme="", group_id=0, ref="",
+               primitives=None, pinout=None) -> int:
         """@brief Ajoute un composant au schéma.
 
         @param nom Nom de la forme BoardSCH (ex. 'Résistance', 'AOP').
@@ -467,10 +507,13 @@ class _Generateur:
         @param forme Forme explicite (sinon déduite du nom).
         @param group_id Identifiant de groupe BoardSCH (0 = aucun groupe).
         @param ref Référence du composant (ex. 'R1', 'C1').
+        @param primitives Contour réel de l'instance (primitives), prioritaire sur `_FORME` si fourni.
+        @param pinout Brochage réel de l'instance ({nom: (côté, décalage)}), prioritaire sur `_FORME` si fourni.
         @return int Identifiant (cid) du composant ajouté.
         """
         cid = len(self._comps)
-        self._comps.append(_Comp(cid, nom, valeur, x, y, angle, forme, group_id, ref=ref))
+        self._comps.append(_Comp(cid, nom, valeur, x, y, angle, forme, group_id,
+                                 ref=ref, primitives=primitives, pinout=pinout))
         return cid
 
     def relier(self, cid1, broche1, cid2, broche2):
@@ -564,6 +607,13 @@ class _Generateur:
         @return int Index de broche dans la forme.
         @throws ValueError Si la broche n'existe pas sur la forme du composant.
         """
+        comp = self._comps[cid]
+        if comp.pinout:
+            pins = sorted(comp.pinout)  # ordre stable, arbitraire mais deterministe
+            if nom_broche in pins:
+                return pins.index(nom_broche)
+            raise ValueError(f"Broche '{nom_broche}' introuvable sur composant {cid} ({comp.name}). "
+                             f"Disponibles : {pins}")
         forme_nom = _ALIAS.get(self._comps[cid].name, self._comps[cid].name)
         forme = _FORME.get(forme_nom, {})
         broches = forme.get("pins", {})
@@ -579,15 +629,24 @@ class _Generateur:
         @param noeuds_pins Dict {(cid, pidx) -> [refs de nœud]} construit depuis les fils.
         @return str Fragment XML <DataItem> du composant.
         """
-        cle_forme = comp.shape or comp.name
-        nom_forme = _ALIAS.get(cle_forme, cle_forme)
-        forme = _FORME.get(nom_forme, {"pins": {}, "polygon": "", "segment": ""})
-        broches_info = forme.get("pins", {})
-        parties_broches = []
-        for nom_b, (lx, ly, pidx) in sorted(broches_info.items(), key=lambda kv: kv[1][2]):
-            refs_noeud = noeuds_pins.get((comp.cid, pidx), [])
-            node_l = ''.join(f'<string>{r}</string>' for r in refs_noeud)
-            parties_broches.append(f"""      <DataPin>
+        # `pinout` (brochage) et `primitives` (contour) sont deux informations
+        # INDEPENDANTES -- un composant peut avoir l'un, l'autre, les deux ou
+        # ni l'un ni l'autre (revue finale round 1, Critical 1+2 : traites
+        # comme un seul signal avant ce fix, le contour dessine a la main sur
+        # un composant SANS brochage libre d'instance disparaissait a
+        # l'export). Les BROCHES restent tranchees par `comp.pinout` (nommage
+        # reel via `geometrie_libre` si defini, sinon plan du catalogue) ; le
+        # CONTOUR est tranche independamment par `comp.primitives` juste en
+        # dessous, qu'il y ait ou non un `pinout`.
+        if comp.pinout:
+            geo = geometrie_reelle(comp.pinout, comp.primitives)
+            pins_ordonnees = sorted(comp.pinout)
+            parties_broches = []
+            for pidx, nom_b in enumerate(pins_ordonnees):
+                lx, ly = geo["pins"][nom_b]
+                refs_noeud = noeuds_pins.get((comp.cid, pidx), [])
+                node_l = ''.join(f'<string>{r}</string>' for r in refs_noeud)
+                parties_broches.append(f"""      <DataPin>
         <Pname>{nom_b}</Pname><Pnumber>{nom_b}</Pnumber>
         <NodeL>{node_l}</NodeL>
         <Pin><X>{lx}</X><Y>{ly}</Y></Pin>
@@ -595,12 +654,92 @@ class _Generateur:
         <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
         <VltgP>0</VltgP><typ>{ord(nom_b[0]) if nom_b else 0}</typ>
       </DataPin>""")
-        tous_refs = []
-        for pidx in range(len(broches_info)):
-            tous_refs.extend(noeuds_pins.get((comp.cid, pidx), []))
-        pin_cl = ''.join(f'<string>{r}</string>' for r in tous_refs)
-        poly = forme.get("polygon", ""); seg = forme.get("segment", ""); arc = forme.get("arc", "")
-        typ_val = _TYP_COMPOSANT.get(nom_forme, ord(nom_forme[0]) if nom_forme and nom_forme[0].isascii() else 82)
+            tous_refs = []
+            for pidx in range(len(pins_ordonnees)):
+                tous_refs.extend(noeuds_pins.get((comp.cid, pidx), []))
+            pin_cl = ''.join(f'<string>{r}</string>' for r in tous_refs)
+            typ_val = ord(comp.name[0]) if comp.name and comp.name[0].isascii() else 85
+            forme = None
+        else:
+            cle_forme = comp.shape or comp.name
+            nom_forme = _ALIAS.get(cle_forme, cle_forme)
+            forme = _FORME.get(nom_forme, {"pins": {}, "polygon": "", "segment": ""})
+            broches_info = forme.get("pins", {})
+            if comp.primitives:
+                # Contour dessine a la main (ou importe) SANS brochage libre
+                # d'instance (comp.pinout is None) : les broches restent
+                # nommees par le catalogue, mais leurs coordonnees catalogue
+                # (ex. Resistance +-80) sont dans une echelle totalement
+                # differente du contour dessine cote editeur (ex. +-40) --
+                # revue finale round 2, Critical 2 sous-point manque. On
+                # "aimante" chaque broche catalogue sur le bord de SA PROPRE
+                # boite catalogue (meme mecanisme que `_amorcer_pinout` cote
+                # editeur, gui/schematic_editor.py:866-875), puis on
+                # reprojette ce pinout {cote, decalage} DANS le contour
+                # reellement dessine via `geometrie_reelle` -- comme la
+                # branche `if comp.pinout:` juste au-dessus le fait deja pour
+                # un brochage libre d'instance.
+                # `aimanter_bord` choisit le bord dans l'echelle CATALOGUE et
+                # renvoie un decalage LONGITUDINAL (le long du bord) dans
+                # cette meme echelle -- seule la coordonnee PERPENDICULAIRE
+                # (+-w2/+-h2) est reprojetee par `geometrie_reelle` (elle
+                # recalcule w2/h2 depuis le contour reel). Sans remise a
+                # l'echelle du decalage longitudinal, une broche catalogue
+                # a decalage non nul (ex. Transistor.C a Y=-50) ressort
+                # encore hors du contour dessine -- revue finale round 2
+                # bis, Critical 2 second sous-point manque (le premier
+                # sous-point, cf. plus haut, n'a corrige que l'axe
+                # perpendiculaire).
+                box_w, box_h = _etendue_forme_catalogue(forme)
+                reel_w, reel_h = etendue_primitives(comp.primitives)
+
+                def _reprojeter_decalage(cote, dec):
+                    if cote in ("L", "R"):
+                        echelle, lim = reel_h / box_h, reel_h // 2
+                    else:
+                        echelle, lim = reel_w / box_w, reel_w // 2
+                    lim = max(0, lim - _GRILLE // 2)
+                    d2 = int(round(dec * echelle / _GRILLE)) * _GRILLE
+                    return cote, max(-lim, min(lim, d2))
+
+                pinout_synthetise = {
+                    nom_b: _reprojeter_decalage(
+                        *aimanter_bord(lx, ly, box_w, box_h, _GRILLE))
+                    for nom_b, (lx, ly, _pidx) in broches_info.items()
+                }
+                positions = geometrie_reelle(pinout_synthetise, comp.primitives)["pins"]
+            else:
+                positions = {nom_b: (lx, ly) for nom_b, (lx, ly, _pidx) in broches_info.items()}
+            parties_broches = []
+            for nom_b, (_lx0, _ly0, pidx) in sorted(broches_info.items(), key=lambda kv: kv[1][2]):
+                lx, ly = positions[nom_b]
+                refs_noeud = noeuds_pins.get((comp.cid, pidx), [])
+                node_l = ''.join(f'<string>{r}</string>' for r in refs_noeud)
+                parties_broches.append(f"""      <DataPin>
+        <Pname>{nom_b}</Pname><Pnumber>{nom_b}</Pnumber>
+        <NodeL>{node_l}</NodeL>
+        <Pin><X>{lx}</X><Y>{ly}</Y></Pin>
+        <PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>
+        <Selected>false</Selected><ShowNbTxt>false</ShowNbTxt><ShowNmTxt>false</ShowNmTxt>
+        <VltgP>0</VltgP><typ>{ord(nom_b[0]) if nom_b else 0}</typ>
+      </DataPin>""")
+            tous_refs = []
+            for pidx in range(len(broches_info)):
+                tous_refs.extend(noeuds_pins.get((comp.cid, pidx), []))
+            pin_cl = ''.join(f'<string>{r}</string>' for r in tous_refs)
+            typ_val = _TYP_COMPOSANT.get(nom_forme, ord(nom_forme[0]) if nom_forme and nom_forme[0].isascii() else 82)
+
+        # Contour reel (Task 6 dessin a la main, ou import fidele) prioritaire
+        # DES QU'IL EST PRESENT, meme sans `pinout` (Critical 2) : sinon un
+        # contour dessine a la main sur un composant type disparait a
+        # l'export et le XML reprend la forme catalogue generique.
+        if comp.primitives:
+            seg, poly, arc = eretro_lib._primitives_vers_xml(
+                comp.primitives, lambda dx, dy: (int(round(dx)), int(round(dy))))
+        elif forme is not None:
+            poly = forme.get("polygon", ""); seg = forme.get("segment", ""); arc = forme.get("arc", "")
+        else:
+            seg, poly, arc = "", "", ""
         return f"""    <DataItem>
       <Name>{_esc(comp.name)}</Name><Group /><reference>{_esc(comp.ref)}</reference><value>{_esc(comp.value)}</value>
       <datapolygon>{poly}</datapolygon><datasegment>{seg}</datasegment><dataarc>{arc}</dataarc>
@@ -1029,62 +1168,82 @@ def generer_xml(composants, resultats=None, results=None) -> str:
     ref_vers_cid = {}
     ref_vers_map = {}
     for i, comp in enumerate(composants):
-        spec = _TYPE_VERS_FORME.get(comp.type)
-        # Puce du catalogue (broches TOUTES numérotées, ex. NE555/74HC00) :
-        # la forme statique "AOP" 3 broches nommées perdrait chaque net
-        # (plan sans clé numérique -> broches silencieusement non émises).
-        # -> forme DIP générique PuceN, plan identité. Un U à broches
-        # nommées (IN+/IN-/OUT) garde la forme AOP historique.
-        if (spec is None or comp.type == "U") and comp.pins \
-                and all(k.isdigit() for k in comp.pins):
-            n = next((t for t in _TAILLES_PUCE
-                      if t >= max(int(k) for k in comp.pins)), None)
-            # PLAFOND : au-delà de 16 broches (max _TAILLES_PUCE), n=None ->
-            # retombée forme AOP = broches numérotées perdues (comportement
-            # pré-Puce). Couvre tout le catalogue v1 (max 16) ; pour un DIP
-            # 20/28/40, ajouter la taille à _TAILLES_PUCE suffit. Les boîtiers
-            # 3 broches (7805/LM317) arrondissent à Puce4 (4e broche en l'air,
-            # cosmétique — net singleton, aucune collision).
-            if n is not None:
-                spec = (f"Puce{n}", {k: k for k in comp.pins})
-        if spec is None and comp.pins:
-            # Dernier recours : boîte DIP générique, broches placées dans
-            # l'ORDRE. Sans cela `spec is None` supprimait le composant EN
-            # SILENCE — les 22 connecteurs (type J) des vraies cartes
-            # disparaissaient à l'export, avec toutes leurs liaisons.
-            noms = list(comp.pins)
-            n = next((t for t in _TAILLES_PUCE if t >= len(noms)), _TAILLES_PUCE[-1])
-            spec = (f"Puce{n}",
-                    {nom: str(i + 1) for i, nom in enumerate(noms[:n])})
-            if len(noms) > n:
-                _log.warning(
-                    "%s : %d broches > %d (plus grand boîtier disponible) — "
-                    "les broches au-delà ne sont pas exportées",
-                    comp.ref, len(noms), n)
-        if spec is None:
-            continue
-        nom_forme, plan_broches = spec
-        # Une broche dont le NOM n'est pas au plan (D1 en '-'/'+', U2.1 en
-        # 'C'/'E' sur les vraies cartes) était ignorée plus bas -> liaisons
-        # perdues EN SILENCE. On lui attribue un emplacement LIBRE de la forme.
-        # COPIE obligatoire : les plans de _TYPE_VERS_FORME sont partagés au
-        # niveau module, les compléter en place empoisonnerait les exports
-        # suivants.
-        inconnues = [p for p in comp.pins if p not in plan_broches]
-        if inconnues:
-            plan_broches = dict(plan_broches)
-            # Emplacements réellement pris par CE composant — pas tous les
-            # alias du plan : la forme Diode mappe {A,K,1,2} sur DEUX broches
-            # physiques seulement, donc « tout est occupé » serait faux.
-            occupees = {plan_broches[p] for p in comp.pins if p in plan_broches}
-            libres = [p for p in _FORME.get(nom_forme, {}).get("pins", {})
-                      if p not in occupees]
-            for nom_broche in inconnues:
-                if not libres:
-                    _log.warning("%s : broche %r sans emplacement libre sur %s",
-                                 comp.ref, nom_broche, nom_forme)
-                    break
-                plan_broches[nom_broche] = libres.pop(0)
+        pinout = getattr(comp, "pinout", None)
+        if pinout:
+            # Contour + brochage REELS (Task 1/4) : `_xml_composant` dessine
+            # chaque <DataPin> par NOM reel, indexe par `sorted(comp.pinout)`
+            # (voir `_Generateur._idx_broche`, branche pinout). Le plan
+            # catalogue (_TYPE_VERS_FORME) n'a donc RIEN a faire ici pour le
+            # cablage : passer par lui desynchronise le NodeL du fil et le
+            # <DataPin> reellement ecrit (bug trouve en boucle visuelle,
+            # 2026-08-07 -- cf. task7-visual-loop-finding.md). "PuceN" donne
+            # un <Name> qui relit en passthrough pur (plan {} dans
+            # _NOM_VERS_TYPE) : aucun risque de collision avec un nom de
+            # broche reel court ('+', '-', 's'...) comme le ferait "AOP".
+            n = next((t for t in _TAILLES_PUCE if t >= max(len(pinout), 1)),
+                     _TAILLES_PUCE[-1])
+            nom_forme = f"Puce{n}"
+            # None = marqueur : le bouclage de cablage plus bas doit router
+            # ce composant par NOM de broche (gen._idx_broche), pas par le
+            # catalogue.
+            plan_broches = None
+        else:
+            spec = _TYPE_VERS_FORME.get(comp.type)
+            # Puce du catalogue (broches TOUTES numérotées, ex. NE555/74HC00) :
+            # la forme statique "AOP" 3 broches nommées perdrait chaque net
+            # (plan sans clé numérique -> broches silencieusement non émises).
+            # -> forme DIP générique PuceN, plan identité. Un U à broches
+            # nommées (IN+/IN-/OUT) garde la forme AOP historique.
+            if (spec is None or comp.type == "U") and comp.pins \
+                    and all(k.isdigit() for k in comp.pins):
+                n = next((t for t in _TAILLES_PUCE
+                          if t >= max(int(k) for k in comp.pins)), None)
+                # PLAFOND : au-delà de 16 broches (max _TAILLES_PUCE), n=None ->
+                # retombée forme AOP = broches numérotées perdues (comportement
+                # pré-Puce). Couvre tout le catalogue v1 (max 16) ; pour un DIP
+                # 20/28/40, ajouter la taille à _TAILLES_PUCE suffit. Les boîtiers
+                # 3 broches (7805/LM317) arrondissent à Puce4 (4e broche en l'air,
+                # cosmétique — net singleton, aucune collision).
+                if n is not None:
+                    spec = (f"Puce{n}", {k: k for k in comp.pins})
+            if spec is None and comp.pins:
+                # Dernier recours : boîte DIP générique, broches placées dans
+                # l'ORDRE. Sans cela `spec is None` supprimait le composant EN
+                # SILENCE — les 22 connecteurs (type J) des vraies cartes
+                # disparaissaient à l'export, avec toutes leurs liaisons.
+                noms = list(comp.pins)
+                n = next((t for t in _TAILLES_PUCE if t >= len(noms)), _TAILLES_PUCE[-1])
+                spec = (f"Puce{n}",
+                        {nom: str(i + 1) for i, nom in enumerate(noms[:n])})
+                if len(noms) > n:
+                    _log.warning(
+                        "%s : %d broches > %d (plus grand boîtier disponible) — "
+                        "les broches au-delà ne sont pas exportées",
+                        comp.ref, len(noms), n)
+            if spec is None:
+                continue
+            nom_forme, plan_broches = spec
+            # Une broche dont le NOM n'est pas au plan (D1 en '-'/'+', U2.1 en
+            # 'C'/'E' sur les vraies cartes) était ignorée plus bas -> liaisons
+            # perdues EN SILENCE. On lui attribue un emplacement LIBRE de la forme.
+            # COPIE obligatoire : les plans de _TYPE_VERS_FORME sont partagés au
+            # niveau module, les compléter en place empoisonnerait les exports
+            # suivants.
+            inconnues = [p for p in comp.pins if p not in plan_broches]
+            if inconnues:
+                plan_broches = dict(plan_broches)
+                # Emplacements réellement pris par CE composant — pas tous les
+                # alias du plan : la forme Diode mappe {A,K,1,2} sur DEUX broches
+                # physiques seulement, donc « tout est occupé » serait faux.
+                occupees = {plan_broches[p] for p in comp.pins if p in plan_broches}
+                libres = [p for p in _FORME.get(nom_forme, {}).get("pins", {})
+                          if p not in occupees]
+                for nom_broche in inconnues:
+                    if not libres:
+                        _log.warning("%s : broche %r sans emplacement libre sur %s",
+                                     comp.ref, nom_broche, nom_forme)
+                        break
+                    plan_broches[nom_broche] = libres.pop(0)
         angle = 0
         if positions and comp.ref in positions:
             pos_comp = positions[comp.ref]
@@ -1095,7 +1254,9 @@ def generer_xml(composants, resultats=None, results=None) -> str:
             x = 250 + (i % PER_RANGEE) * _LARG_COMP
             y = 250 + (i // PER_RANGEE) * _HAUT_RANGEE
         cid = gen.ajouter(nom_forme, comp.value, x=x, y=y, angle=angle, ref=comp.ref,
-                          group_id=ids_groupes.get(comp.ref, 0))
+                          group_id=ids_groupes.get(comp.ref, 0),
+                          primitives=getattr(comp, "primitives", None),
+                          pinout=getattr(comp, "pinout", None))
         ref_vers_cid[comp.ref] = cid
         ref_vers_map[comp.ref] = plan_broches
 
@@ -1104,12 +1265,25 @@ def generer_xml(composants, resultats=None, results=None) -> str:
         if comp.ref not in ref_vers_cid:
             continue
         cid = ref_vers_cid[comp.ref]
+        plan_broches = ref_vers_map[comp.ref]
         for broche_lib, net in comp.pins.items():
             if not net or net == "NC":
                 continue
-            broche_forme = ref_vers_map[comp.ref].get(broche_lib)
-            if broche_forme is None:
-                continue
+            if plan_broches is None:
+                # Composant a brochage reel (marqueur pose plus haut) : le
+                # NOM de broche EST la reference de cablage -- resolu plus
+                # bas par `gen._idx_broche` sur `comp.pinout`, pas via le
+                # catalogue. Une broche absente du pinout reel (ne devrait
+                # pas arriver, mais Composant.pins/.pinout peuvent diverger)
+                # est ignorée EN SILENCE, comme le fait déjà le `.get()`
+                # catalogue ci-dessous pour une broche hors plan.
+                if broche_lib not in comp.pinout:
+                    continue
+                broche_forme = broche_lib
+            else:
+                broche_forme = plan_broches.get(broche_lib)
+                if broche_forme is None:
+                    continue
             nets.setdefault(net, []).append((cid, broche_forme))
 
     # Noms canoniques ERetroDesign pour les rails d'alimentation (Lib.xml)
@@ -1126,13 +1300,13 @@ def generer_xml(composants, resultats=None, results=None) -> str:
                 # nom_lib = nom reconnu par ERetroDesign ; rail = valeur affichée
                 pcid = gen.ajouter(nom_lib, rail, x=px, y=py, forme=sym, group_id=gid)
                 for (cid, bp) in broches_groupe:
-                    _relier_par_idx(gen, pcid, _idx_broche_forme(gen, pcid, broche_pwr),
-                                    cid, _idx_broche_forme(gen, cid, bp))
+                    _relier_par_idx(gen, pcid, _idx_broche_auto(gen, pcid, broche_pwr),
+                                    cid, _idx_broche_auto(gen, cid, bp))
         else:
             for k in range(len(broches) - 1):
                 c1, bp1 = broches[k]; c2, bp2 = broches[k+1]
-                _relier_par_idx(gen, c1, _idx_broche_forme(gen, c1, bp1),
-                                c2, _idx_broche_forme(gen, c2, bp2))
+                _relier_par_idx(gen, c1, _idx_broche_auto(gen, c1, bp1),
+                                c2, _idx_broche_auto(gen, c2, bp2))
 
     return gen.vers_xml()
 
@@ -1190,6 +1364,32 @@ def _idx_broche_forme(gen, cid, broche) -> int:
     cle = comp.shape or comp.name
     nom = _ALIAS.get(cle, cle)
     return _FORME[nom]["pins"][broche][2]
+
+
+def _idx_broche_auto(gen, cid, broche) -> int:
+    """@brief Index de broche, routé par brochage réel si dispo, catalogue sinon.
+
+    `generer_xml()` câble aussi bien des composants au catalogue (symboles
+    GND/VCC, formes historiques) que des composants à brochage RÉEL
+    (Task 1/4, `comp.pinout`). `_idx_broche_forme` (catalogue, conserve son
+    repli sur `comp.shape` pour les symboles d'alimentation dont le nom
+    affiché diffère du nom de forme, ex. VCC+ / VCC) ne connaît pas
+    `comp.pinout` ; `_Generateur._idx_broche` (instance) le connaît déjà
+    mais n'était atteint que via `.relier()`, jamais par le bouclage de
+    câblage de `generer_xml()` -- d'où le bug (voir
+    task7-visual-loop-finding.md, 2026-08-07). Ce garde-fou choisit la bonne
+    branche composant par composant, pour que les deux familles cohabitent
+    dans le même bouclage (ex. un rail GND catalogue relié à un composant à
+    brochage réel).
+
+    @param gen Générateur (_Generateur).
+    @param cid Identifiant du composant.
+    @param broche Nom de la broche.
+    @return int Index de broche (dans le pinout réel ou dans la forme catalogue).
+    """
+    if gen._comps[cid].pinout:
+        return gen._idx_broche(cid, broche)
+    return _idx_broche_forme(gen, cid, broche)
 
 
 def _relier_par_idx(gen, c1, p1, c2, p2):
@@ -1742,15 +1942,91 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
                 and nom.strip() and len(elem['pins']) >= 6):
             correspondance, boite_ic = ('U', {}), True
 
+        # Reclassification catch-all sur un XML RE-EXPORTE par nous-memes
+        # (finding #2, boucle visuelle 2026-08-07) : a l'export, un composant
+        # catch-all a brochage reel (comp.pinout) recoit un <Name> neutralise
+        # en "PuceN" (jamais son nom d'origine — evite toute collision avec
+        # un plan catalogue nomme, cf. commentaire generer_xml ~ligne 1017).
+        # Ce "PuceN" resout ici en ('U', {}) via _NOM_VERS_TYPE AVANT d'
+        # atteindre ce point -> `correspondance is not None` des la ligne
+        # ci-dessus, le catch-all est saute, boite_ic reste False, et
+        # _forme_et_brochage_reels() n'est jamais tentee alors que le DataItem
+        # contient bel et bien le vrai polygone et les vraies broches
+        # nommees. Signal fiable pour distinguer ce cas du "PuceN" catalogue
+        # generique authentique (fallback ligne ~1047, transistor/connecteur
+        # a broches numerotees) : `elem['value']`, jamais ecrase par le
+        # renommage "PuceN" a l'export (`gen.ajouter(nom_forme, comp.value,
+        # ...)`) et qui porte encore le nom reel d'origine (ex. "A788J").
+        # `not par_forme` exclut le cas ('U', {}) obtenu par classification
+        # de FORME (porte logique 3 broches, classer_par_forme) — deja
+        # ecarte par le garde >=6 broches ci-dessous, mais explicite ici.
+        # Garde revu (revue finale round 1, Important 5+6) : le garde d'origine
+        # (`value` + seuil >=6 broches, commit 6f635aa) etait a la fois trop
+        # LARGE (un composant catalogue authentique dont la `value` d'origine
+        # ne matche aucun alias catalogue -- ex. un transfo/connecteur -- se
+        # faisait promouvoir boite_ic a tort, etat ensuite STICKY) et trop
+        # ETROIT (bloquait la reclassification de tout catch-all a MOINS de 6
+        # broches, notamment un connecteur J a contour reel). `value` et le
+        # compte de broches ne distinguent pas de facon fiable "ce PuceN vient
+        # d'un vrai comp.pinout" de "ce PuceN vient du fallback catalogue
+        # generique" -- mais le NOM des broches, si. `_xml_composant` ecrit
+        # les <Pname> du catalogue (branche `else`) TOUJOURS depuis
+        # `_FORME[nom_forme]["pins"]`, dont les cles sont litteralement les
+        # chaines "1".."n" pour toute forme PuceN, alors que la branche
+        # `pinout` ecrit les VRAIS noms de broches (`sorted(comp.pinout)`),
+        # numeriques seulement par coincidence rare. Compromis assume : un
+        # connecteur reel dont TOUTES les broches ont des noms purement
+        # numeriques ("1", "2"...) ne sera pas reclassifie apres un
+        # aller-retour -- faux negatif fail-closed accepte (perte silencieuse
+        # de fidelite visuelle sur un cas marginal, pas de corruption de
+        # donnees). Le seuil >=6 reste inchange pour le garde de PREMIER
+        # import ci-dessus (ligne ~1775) -- il n'est retire QUE de ce garde-ci.
+        if correspondance == ('U', {}) and not boite_ic and not par_forme:
+            if (elem.get('puce') is None
+                    and not all(p['pname'].strip().isdigit() for p in elem['pins'])):
+                boite_ic = True
+
+        def _forme_et_brochage_reels():
+            """Capture le contour/brochage reel via le meme parseur que la
+            bibliotheque (`eretro_lib._entree_depuis_dataitem`), ou (None, None)
+            si le symbole n'a ni geometrie ni broche exploitable.
+
+            Fail-closed si deux broches physiques se resolvent au meme nom (collision) :
+            brochage_reel (dict) les collapse, ce qui desaligne les indices physiques
+            et corrompt les nets. Retourne (None, None) pour laisser la construction
+            positionnelle par defaut prendre le relais."""
+            try:
+                _prefix, _entree = eretro_lib._entree_depuis_dataitem(elem['xml'])
+            except ValueError:
+                return None, None
+            if not _entree.get('primitives'):
+                return None, None
+            brochage_reel = {n: tuple(cd) for n, cd in _entree['brochage'].items()}
+            # Detecter les collisions de noms de broches (deux broches physiques
+            # avec le meme nom). brochage_reel étant un dict, les collisions
+            # réduisent sa taille sous len(elem['pins']).
+            if len(brochage_reel) != len(elem['pins']):
+                return None, None
+            return _entree['primitives'], brochage_reel
+
         if correspondance is None:
             # Composant inconnu : on le garde sous type 'X' pour ne pas perdre ses connexions
             ref = generer_ref('X', elem)
             cid_vers_ref[cid] = ref
+            forme_reelle, brochage_reel = _forme_et_brochage_reels()
             broches = {}
-            for pidx, info_b in enumerate(elem['pins']):
-                net = broche_vers_net.get((cid, pidx), 'NC')
-                broches[str(pidx + 1)] = net
-            composants.append(Component(ref=ref, type='X', pins=broches, value=elem['value']))
+            # Si on a un brochage reel, utiliser SES noms de broches pour les deux dicts
+            # (pins et pinout), sinon utiliser la derivation positionnelle par defaut.
+            if brochage_reel:
+                for pidx, pin_name in enumerate(brochage_reel.keys()):
+                    net = broche_vers_net.get((cid, pidx), 'NC')
+                    broches[pin_name] = net
+            else:
+                for pidx, info_b in enumerate(elem['pins']):
+                    net = broche_vers_net.get((cid, pidx), 'NC')
+                    broches[str(pidx + 1)] = net
+            composants.append(Component(ref=ref, type='X', pins=broches, value=elem['value'],
+                                        primitives=forme_reelle, pinout=brochage_reel))
             composants.warnings.append(
                 f"Composant inconnu '{nom}' (id={cid}) → gardé comme {ref} (type X)"
             )
@@ -1806,9 +2082,24 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             if v:
                 valeur = v
 
+        forme_reelle, brochage_reel = ((None, None) if not boite_ic
+                                       else _forme_et_brochage_reels())
+        # Si on a un brochage reel pour une boite_ic, reconstruire broches avec les
+        # memes noms que pinout pour garantir set(pins) == set(pinout).
+        if boite_ic and brochage_reel:
+            broches_corrigees = {}
+            for pidx, pin_name in enumerate(brochage_reel.keys()):
+                net = broche_vers_net.get((cid, pidx), 'NC')
+                broches_corrigees[pin_name] = net
+            # Conserver les broches AOP standard ajoutees ci-dessus pour les formes nommees
+            if type_prefix == 'U' and plan:
+                for std in ('IN+', 'IN-', 'OUT', 'V+', 'V-'):
+                    broches_corrigees.setdefault(std, 'NC')
+            broches = broches_corrigees
         composants.append(Component(ref=ref, type=type_prefix, pins=broches,
                                     value=valeur, par_forme=par_forme,
-                                    boite_ic=boite_ic))
+                                    boite_ic=boite_ic,
+                                    primitives=forme_reelle, pinout=brochage_reel))
         if par_forme:
             composants.warnings.append(
                 f"Composant '{nom}' (id={cid}) typé par sa forme (dessin) "

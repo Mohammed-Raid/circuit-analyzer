@@ -24,6 +24,7 @@ from gui.schematic_symbols import (
     est_boite_generique,
     etendue_primitives,
     geometrie_libre,
+    geometrie_reelle,
     primitives,
 )
 from gui.schematic_symbols import rotate_pin as _rotate_pin
@@ -196,6 +197,38 @@ def _dist_to_segment(px, py, ax, ay, bx, by) -> float:
     return math.hypot(px - ax - t*dx, py - ay - t*dy)
 
 
+def _normaliser_primitives(prims):
+    """@brief Reconstruit les tuples d'une liste de primitives depuis un
+    `.circ` relu (spec 2026-08-07).
+
+    JSON n'a pas de type tuple : un aller-retour `json.dump`/`json.load`
+    aplatit chaque tuple d'une primitive (et les points imbriqués des
+    primitives "line"/"polygon"/"text") en listes. `pinout` a toujours eu
+    cette reconstruction dans `load_dict` -- `forme_primitives` doit suivre
+    le même contrat, sinon les consommateurs (duck-typés, indexation
+    positionnelle) reçoivent une forme légèrement différente après un vrai
+    save+reload que juste après la pose.
+
+    Formes attendues (cf. doc de module `schematic_symbols.py`) :
+      ("line", [(x,y),...], epaisseur)
+      ("polygon", [(x,y),...], rempli: bool)
+      ("arc", (x0,y0,x1,y1), start_deg, extent_deg)
+      ("text", (x,y), texte, taille, ancre)
+    """
+    out = []
+    for p in prims:
+        kind = p[0]
+        if kind in ("line", "polygon"):
+            out.append((kind, [tuple(pt) for pt in p[1]], p[2]))
+        elif kind == "arc":
+            out.append((kind, tuple(p[1]), p[2], p[3]))
+        elif kind == "text":
+            out.append((kind, tuple(p[1]), p[2], p[3], p[4]))
+        else:
+            out.append(tuple(p))
+    return out
+
+
 @dataclass
 class CompInst:
     id:        int
@@ -209,6 +242,10 @@ class CompInst:
     # None = la géométrie du TYPE fait foi (comportement historique) ; un dict
     # (même vide) prend le pas dessus — cf. `_geom` (spec 2026-07-23).
     pinout:    dict | None = None
+    # Contour reel (import catch-all, choix bibliotheque, ou dessine a la
+    # main) : liste de primitives ou None. Purement ADDITIF au rendu -- ne
+    # remplace jamais `pinout` (spec 2026-08-07).
+    forme_primitives: list | None = None
 
 
 @dataclass
@@ -274,6 +311,10 @@ class SchematicEditor(tk.Frame):
         # Édition de broches : composant ciblé et broche sélectionnée.
         self._pinedit_id: int | None = None
         self._pin_selectionnee: str | None = None
+        # Dessin de contour (spec 2026-08-07) : composant cible et points
+        # accumules (coordonnees MONDE relatives au centre du composant).
+        self._shapedraw_id: int | None = None
+        self._shapedraw_points: list = []
 
         self._build()
 
@@ -742,14 +783,37 @@ class SchematicEditor(tk.Frame):
         broche, undo/redo, chargement, suppression) : un cache périmé donne des
         fils qui pointent à côté, symptôme pénible à diagnostiquer.
         """
-        if comp.pinout is None:
+        if comp.pinout is None and not comp.forme_primitives:
             return self._defs[comp.comp_type]
         d = self._geom_cache.get(comp.id)
         if d is None:
-            d = geometrie_libre(comp.pinout)
-            base = self._defs.get(comp.comp_type)
-            if base:
-                d["color"] = base["color"]
+            if comp.pinout is None:
+                # Contour dessine (Task 6) sur un composant SANS brochage libre
+                # d'instance (ex. resistance typee) : `pinout` et `primitives`
+                # sont deux informations INDEPENDANTES (revue finale round 1,
+                # Critical 1) -- passer `{}` a `geometrie_libre` ici ferait
+                # disparaitre les broches du TYPE. Les broches restent celles
+                # du type (COPIE, jamais l'objet partage de `self._defs`) ;
+                # seul le contour visuel change.
+                base = self._defs[comp.comp_type]
+                d = dict(base)
+                d["pins"] = dict(base.get("pins", {}))
+                # Injection conditionnelle (revue finale round 2, Minor B) :
+                # les COMP_DEFS natifs n'ont jamais de "cotes" -- en creer un
+                # systematiquement bascule silencieusement le rendu en
+                # t_rendu = TYPE_LIBRE des qu'un contour est dessine sur un
+                # composant type (cf. plus loin, "cotes" in defn). Inoffensif
+                # aujourd'hui seulement parce que `primitives()` court-circuite
+                # avant sur `defn["primitives"]` -- fragile, corrige.
+                if "cotes" in base:
+                    d["cotes"] = dict(base["cotes"])
+            else:
+                d = geometrie_reelle(comp.pinout, comp.forme_primitives)
+                base = self._defs.get(comp.comp_type)
+                if base:
+                    d["color"] = base["color"]
+            if comp.forme_primitives:
+                d["primitives"] = comp.forme_primitives
             self._geom_cache[comp.id] = d
         return d
 
@@ -889,6 +953,67 @@ class SchematicEditor(tk.Frame):
         self._redraw_all()
         self._dessiner_cadre_pinedit()
 
+    # ── Dessin de contour (mode "shapedraw", spec 2026-08-07) ─────────────────
+
+    def _entrer_dessin_forme(self, comp_id: int):
+        """@brief Passe en dessin de contour sur CE composant, clic par clic."""
+        if comp_id not in self._comps:
+            return
+        if self._state == "pinedit":
+            self._quitter_pinedit()
+        self._cancel_wiring()
+        self._deselect()
+        self._state           = "shapedraw"
+        self._shapedraw_id     = comp_id
+        self._shapedraw_points = []
+        self._canvas.configure(cursor="crosshair")
+        self._set_status("Clic = point du contour\n"
+                         "Revenir au 1er point = fermer\nÉchap = annuler")
+
+    def _quitter_dessin_forme(self):
+        """@brief Sort du mode de dessin de contour, sans rien valider."""
+        self._canvas.delete("shapedraw")
+        self._state           = "idle"
+        self._shapedraw_id     = None
+        self._shapedraw_points = []
+        self._canvas.configure(cursor="")
+        self._set_status("Prêt")
+
+    def _ajouter_point_forme(self, comp, wx, wy):
+        """@brief Ajoute un point aimanté à la grille au contour en cours."""
+        swx, swy = self._snap(wx, wy)
+        self._shapedraw_points.append((swx - comp.cx, swy - comp.cy))
+        self._dessiner_previsu_forme(comp)
+
+    def _dessiner_previsu_forme(self, comp):
+        """@brief Trace les segments déjà posés du contour en cours d'édition."""
+        self._canvas.delete("shapedraw")
+        pts = self._shapedraw_points
+        if len(pts) < 2:
+            return
+        coords = []
+        for dx, dy in pts:
+            sx, sy = self._w2s(comp.cx + dx, comp.cy + dy)
+            coords.extend([sx, sy])
+        self._canvas.create_line(*coords, fill=BLUE, dash=(4, 3), width=2,
+                                 tags="shapedraw")
+
+    def _fermer_forme(self, comp) -> bool:
+        """@brief Referme le contour en cours (>= 3 points) et l'enregistre.
+
+        @return False si moins de 3 points -- reste en mode dessin, aucune
+                mutation (permet à l'appelant de continuer à cliquer).
+        """
+        if len(self._shapedraw_points) < 3:
+            self._set_status("Il faut au moins\n3 points")
+            return False
+        self._push_undo()
+        comp.forme_primitives = [("polygon", list(self._shapedraw_points), False)]
+        self._invalider_geom(comp.id)
+        self._draw_comp(comp)
+        self._quitter_dessin_forme()
+        return True
+
     # ── Rendu ────────────────────────────────────────────────────────────────
 
     def _draw_comp(self, comp: CompInst):
@@ -976,7 +1101,14 @@ class SchematicEditor(tk.Frame):
         # Boîte générique (types perso, puces catalogue) : _tr_boite dessine
         # déjà un libellé par broche dans ses primitives — un second libellé
         # générique ici les superposerait (spec §5, défaut visuel Task 5).
-        boite = est_boite_generique(t_rendu)
+        # `defn["primitives"]` (contour dessiné, spec 2026-08-05) court-
+        # circuite `primitives()` vers `_libelles_broches` quel que soit
+        # `t_rendu` (gui/schematic_symbols.py::primitives) — y compris pour
+        # un type CATALOGUE (Q, M, U…) que `est_boite_generique` ne
+        # reconnaît pas comme "boîte" : sans ce second test, un composant
+        # typé au contour dessiné à la main affichait chaque libellé de
+        # broche EN DOUBLE (revue finale round 2 bis, régression trouvée).
+        boite = est_boite_generique(t_rendu) or bool(defn.get("primitives"))
         for pn, (pdx, pdy) in defn["pins"].items():
             rdx, rdy = _rotate_pin(pdx, pdy, rot)
             spx = scx + rdx * z
@@ -1116,6 +1248,20 @@ class SchematicEditor(tk.Frame):
                 self._pin_selectionnee = cible[1]
             else:
                 self._pin_selectionnee = self._ajouter_broche(comp, wx, wy)
+            return
+
+        if self._state == "shapedraw":
+            comp = self._comps.get(self._shapedraw_id)
+            if comp is None:
+                self._quitter_dessin_forme()
+                return
+            # Clic proche du 1er point deja pose = fermer le contour.
+            if self._shapedraw_points:
+                x0, y0 = self._shapedraw_points[0]
+                if math.hypot((wx - comp.cx) - x0, (wy - comp.cy) - y0) <= GRID / 2:
+                    self._fermer_forme(comp)
+                    return
+            self._ajouter_point_forme(comp, wx, wy)
             return
 
         if self._state == "wiring":
@@ -1260,6 +1406,8 @@ class SchematicEditor(tk.Frame):
         m.add_command(label="↻  Rotation",   command=lambda: self._rotate_comp(comp_id))
         m.add_command(label="⊹  Éditer broches",
                       command=lambda: self._entrer_pinedit(comp_id))
+        m.add_command(label="✎  Dessiner le contour",
+                      command=lambda: self._entrer_dessin_forme(comp_id))
         m.add_separator()
         m.add_command(label="🗑  Supprimer", command=lambda: self._delete_comp(comp_id))
         m.post(event.x_root, event.y_root)
@@ -1275,6 +1423,9 @@ class SchematicEditor(tk.Frame):
         self._delete_selected()
 
     def _on_escape(self, _=None):
+        if self._state == "shapedraw":
+            self._quitter_dessin_forme()
+            return
         if self._state == "pinedit":
             self._quitter_pinedit()
             return
@@ -1299,7 +1450,8 @@ class SchematicEditor(tk.Frame):
     # ── Copier / coller / dupliquer ───────────────────────────────────────────
 
     def _add_comp(self, comp_type: str, value: str, rotation: int,
-                  wx: int, wy: int, pinout: dict | None = None
+                  wx: int, wy: int, pinout: dict | None = None,
+                  forme_primitives: list | None = None
                   ) -> Optional['CompInst']:
         """@brief Crée, dessine et sélectionne un nouveau composant.
 
@@ -1321,7 +1473,8 @@ class SchematicEditor(tk.Frame):
         # deepcopy du brochage : « par instance » interdit que deux copies
         # partagent le même dict (éditer l'une modifierait l'autre).
         comp = CompInst(self._next_id, ref, comp_type, value, wx, wy, rotation,
-                        pinout=copy.deepcopy(pinout))
+                        pinout=copy.deepcopy(pinout),
+                        forme_primitives=copy.deepcopy(forme_primitives))
         self._next_id += 1
         self._comps[comp.id] = comp
         self._draw_comp(comp)
@@ -1335,7 +1488,8 @@ class SchematicEditor(tk.Frame):
         if not comp:
             return
         self._clipboard = {"type": comp.comp_type, "value": comp.value,
-                           "rotation": comp.rotation, "pinout": comp.pinout}
+                           "rotation": comp.rotation, "pinout": comp.pinout,
+                           "forme_primitives": comp.forme_primitives}
         self._set_status(f"Copié\n{comp.ref}")
 
     def _paste(self, _=None):
@@ -1346,7 +1500,8 @@ class SchematicEditor(tk.Frame):
         self._push_undo()
         comp = self._add_comp(self._clipboard["type"], self._clipboard["value"],
                               self._clipboard["rotation"], wx, wy,
-                              self._clipboard.get("pinout"))
+                              self._clipboard.get("pinout"),
+                              self._clipboard.get("forme_primitives"))
         if comp is None:
             # Type devenu inconnu : annule l'instantané inutile.
             self._undo_stack.pop()
@@ -1359,10 +1514,12 @@ class SchematicEditor(tk.Frame):
         if not src:
             return
         self._clipboard = {"type": src.comp_type, "value": src.value,
-                           "rotation": src.rotation, "pinout": src.pinout}
+                           "rotation": src.rotation, "pinout": src.pinout,
+                           "forme_primitives": src.forme_primitives}
         self._push_undo()
         comp = self._add_comp(src.comp_type, src.value, src.rotation,
-                              src.cx + GRID * 2, src.cy + GRID * 2, src.pinout)
+                              src.cx + GRID * 2, src.cy + GRID * 2, src.pinout,
+                              src.forme_primitives)
         if comp is None:
             self._undo_stack.pop()
             return
@@ -1694,10 +1851,13 @@ class SchematicEditor(tk.Frame):
             if t not in self._defs:
                 continue                      # type inconnu : ignoré
             po = c.get("pinout")
+            fp = c.get("forme_primitives")
             ci = CompInst(int(c["id"]), c["ref"], t, c.get("value", ""),
                           int(c["cx"]), int(c["cy"]), int(c.get("rotation", 0)),
                           pinout=({n: tuple(v) for n, v in po.items()}
-                                  if po is not None else None))
+                                  if po is not None else None),
+                          forme_primitives=(_normaliser_primitives(fp)
+                                             if fp is not None else None))
             new_comps[ci.id] = ci
             max_id = max(max_id, ci.id)
 
@@ -1820,7 +1980,9 @@ class SchematicEditor(tk.Frame):
             t, v = type_reel(comp.comp_type)
             broches = {pn: net_of(f"{comp.id}:{pn}") for pn in pins}
             composants.append(Composant(ref=comp.ref, type=t, pins=broches,
-                                        value=v or comp.value))
+                                        value=v or comp.value,
+                                        primitives=comp.forme_primitives,
+                                        pinout=comp.pinout))
         return composants
 
     # ── Utilitaires ──────────────────────────────────────────────────────────

@@ -22,6 +22,8 @@ class _Comp:
     type: str
     pins: dict
     value: str = ""
+    primitives: list | None = None
+    pinout: dict | None = None
 
 
 # ── build_from_components ─────────────────────────────────────────────────────
@@ -55,6 +57,53 @@ def test_import_broche_inconnue_est_comptee():
     ]
     doc = build_from_components(composants, COMP_DEFS)
     assert doc["_report"]["dropped_pins"] == 2          # V+ et V-
+
+
+def test_build_garde_le_brochage_reel_dune_puce_catch_all():
+    """Meme scenario que test_import_broche_inconnue_est_comptee, mais avec
+    un brochage reel : les broches ne doivent plus etre droppees."""
+    comp = _Comp("U1", "U",
+                 {"Vin+": "N1", "Vin-": "N2", "GND1": "GND"}, "",
+                 primitives=[("polygon", [(-36, -48), (-36, 48), (36, 48), (36, -48)], False)],
+                 pinout={"Vin+": ("L", -42), "Vin-": ("L", -6), "GND1": ("L", 42)})
+    doc = build_from_components([comp], COMP_DEFS)
+    c = doc["components"][0]
+    assert c["type"] == "U"
+    assert c["forme_primitives"] == comp.primitives
+    assert c["pinout"] == {"Vin+": ["L", -42], "Vin-": ["L", -6], "GND1": ["L", 42]}
+    assert doc["_report"]["dropped_pins"] == 0
+
+
+def test_build_sans_brochage_reel_comportement_inchange():
+    """Non-regression explicite : test_import_broche_inconnue_est_comptee
+    doit encore dropper V+/V- quand AUCUN brochage reel n'est fourni."""
+    comp = _Comp("U1", "U",
+                 {"IN+": "A", "IN-": "B", "OUT": "O", "V+": "VCC", "V-": "GND"})
+    doc = build_from_components([comp], COMP_DEFS)
+    assert doc["_report"]["dropped_pins"] == 2
+    assert "forme_primitives" not in doc["components"][0]
+    assert "pinout" not in doc["components"][0]
+
+
+def test_build_positionne_le_symbole_gnd_dans_le_contour_reel_pas_lheuristique():
+    """Important 4 (revue finale round 1) : `build_from_components` appelait
+    `geometrie_libre(comp.pinout)` SANS w_exact/h_exact pour placer le
+    symbole GND relie a une broche a brochage reel -- meme defaut
+    qu'Important 3 (`_geom` de l'editeur), deja corrige dans `_xml_composant`
+    (fix 48ddf30) mais pas ici. Contour reel tres etroit (w=200) vs
+    heuristique de remplissage (~88 pour une seule broche "GND1") : les deux
+    positions x resultantes sont assez eloignees pour survivre a la grille
+    d'alignement (20) et distinguer sans ambiguite les deux comportements."""
+    primitives = [("polygon", [(-100, -48), (-100, 48), (100, 48), (100, -48)], False)]
+    comp = _Comp("U1", "U", {"GND1": "GND"}, "",
+                 primitives=primitives, pinout={"GND1": ("L", 0)})
+    doc = build_from_components([comp], COMP_DEFS)
+
+    u1 = next(c for c in doc["components"] if c["type"] == "U")
+    gnd = next(c for c in doc["components"] if c["type"] == "GND")
+    # Broche 'L' du contour EXACT (w_exact=200 -> w2=100) : x = u1.cx - 100.
+    assert gnd["cx"] == u1["cx"] - 100, \
+        f"symbole GND positionne hors du contour reel (heuristique utilisee ?) : {gnd['cx']} vs {u1['cx'] - 100}"
 
 
 def test_import_type_inconnu_est_ignore():
