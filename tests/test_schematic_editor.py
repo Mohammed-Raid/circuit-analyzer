@@ -266,3 +266,27 @@ def test_exporter_composants_transporte_le_contour_reel(editeur):
     comp = next(x for x in editeur.exporter_composants() if x.ref == c.ref)
     assert comp.primitives == c.forme_primitives
     assert comp.pinout == {'1': ('L', 0)}
+
+
+def test_exporter_composants_synthetise_le_pinout_d_un_type_avec_forme_bibliotheque(editeur):
+    """Un type CUSTOM cree via l'onglet Composants (bibliotheque, chantier
+    2026-08-05) porte sa forme reelle au niveau du TYPE (`_defs[type]
+    ["primitives"]`), pas de l'instance -- `CompInst.forme_primitives`/
+    `.pinout` restent None pour une instance simplement posee depuis la
+    palette (jamais editee individuellement). `exporter_composants()` lisait
+    CES DEUX champs d'instance nus : pour un tel composant ils sont None, la
+    forme reelle du TYPE etait donc perdue a l'export -- repli sur le
+    catalogue par nom (le type custom n'y figure pas) -> boite generique
+    PuceN -> triangle AOP au reimport (constate en boucle visuelle,
+    AMP1/ANT1/BOU1 redevenus U1/U2/U3 "Puce4")."""
+    editeur._defs['AMP'] = {
+        'label': 'Ampli', 'color': '#000', 'w': 80, 'h': 60,
+        'pins': {'IN': (-40, 0), 'OUT': (40, 0)},
+        'default_value': '', 'fonctions': {},
+        'primitives': [('circle', (0, 0), 30)],
+    }
+    c = _place(editeur, 'AMP', 200, 200)
+    assert c.forme_primitives is None and c.pinout is None   # rien d'edite sur l'instance
+    comp = next(x for x in editeur.exporter_composants() if x.ref == c.ref)
+    assert comp.primitives == editeur._defs['AMP']['primitives']
+    assert comp.pinout is not None and set(comp.pinout) == {'IN', 'OUT'}

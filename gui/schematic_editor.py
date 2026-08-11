@@ -1976,13 +1976,31 @@ class SchematicEditor(tk.Frame):
 
         composants = []
         for comp in real_comps.values():
-            pins = self._geom(comp)["pins"]
+            geo = self._geom(comp)
+            pins = geo["pins"]
             t, v = type_reel(comp.comp_type)
             broches = {pn: net_of(f"{comp.id}:{pn}") for pn in pins}
+            primitives = comp.forme_primitives or geo.get("primitives")
+            if comp.pinout is not None:
+                pinout = comp.pinout
+            elif primitives:
+                # Forme reelle portee par le TYPE (bibliotheque onglet
+                # Composants, chantier 2026-08-05), pas par cette instance
+                # (comp.pinout reste None tant qu'aucune broche n'a ete
+                # editee individuellement) : sans synthetiser un brochage
+                # cote/decalage ici, l'export perdait cette forme -- repli
+                # sur le catalogue par nom (absent pour un type custom) ->
+                # boite generique -> triangle AOP au reimport (constate en
+                # boucle visuelle, AMP1/ANT1/BOU1 redevenus U1/U2/U3
+                # "Puce4"). Meme helper que `_amorcer_pinout`.
+                pinout = {pn: aimanter_bord(dx, dy, geo["w"], geo["h"], GRID)
+                         for pn, (dx, dy) in pins.items()}
+            else:
+                pinout = None
             composants.append(Composant(ref=comp.ref, type=t, pins=broches,
                                         value=v or comp.value,
-                                        primitives=comp.forme_primitives,
-                                        pinout=comp.pinout))
+                                        primitives=primitives,
+                                        pinout=pinout))
         return composants
 
     # ── Utilitaires ──────────────────────────────────────────────────────────
