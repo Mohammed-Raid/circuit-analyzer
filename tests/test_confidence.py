@@ -8,17 +8,22 @@ test_confidence.py — Tests pour le système de confiance, les alias de nets,
 le parser de valeurs et les améliorations XML.
 """
 import pytest
-from circuit_analyzer.parser import Component
+
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
+from circuit_analyzer.parser import Component
 from circuit_analyzer.patterns.base import (
-    is_ground_net, is_power_net, is_protective_earth_net, classify_net,
-    is_gnd, is_power,
+    classify_net,
+    is_gnd,
+    is_ground_net,
+    is_power,
+    is_power_net,
+    is_protective_earth_net,
 )
 from circuit_analyzer.value_parser import (
-    parse_valeur, classifier_resistance, classifier_condensateur,
+    classifier_resistance,
+    parse_valeur,
 )
-
 
 # =============================================================================
 # Alias backward-compat
@@ -60,13 +65,14 @@ def test_config_peut_RETIRER_un_alias(tmp_path):
     défaut. Avant, la fusion était une UNION avec des défauts codés en dur —
     on pouvait ajouter un alias, jamais en retirer un, en silence."""
     import json
+
     from circuit_analyzer.patterns import base
 
     (tmp_path / 'config').mkdir()
     (tmp_path / 'config' / 'net_aliases.json').write_text(
         json.dumps({"ground": ["GND"]}), encoding='utf-8')
 
-    import circuit_analyzer.chemins as chemins
+    from circuit_analyzer import chemins
     vrai = chemins.racine_application
     chemins.racine_application = lambda: tmp_path
     try:

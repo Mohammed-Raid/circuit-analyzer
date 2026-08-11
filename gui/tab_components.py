@@ -3,22 +3,31 @@
 @brief Onglet « Composants » : consultation des types intégrés et édition des types personnalisés.
 """
 import json
-import xml.etree.ElementTree as ET
 import tkinter as tk
+import xml.etree.ElementTree as ET
+from tkinter import filedialog, messagebox
+
 import customtkinter as ctk
-from tkinter import messagebox, filedialog
 
 from circuit_analyzer.composant import (
-    TYPES_COMPOSANTS as COMPONENT_TYPES, chemin_bibliotheque,
+    TYPES_COMPOSANTS as COMPONENT_TYPES,
+)
+from circuit_analyzer.composant import (
+    chemin_bibliotheque,
 )
 from circuit_analyzer.eretro_lib import (
-    composant_vers_symbole_xml, composants_depuis_xml,
-    definir_dossier_partage, dossier_partage, ecrire_dans_dossier,
+    composant_vers_symbole_xml,
+    composants_depuis_xml,
+    definir_dossier_partage,
+    dossier_partage,
+    ecrire_dans_dossier,
+    ecrire_formes_dans_dossier,
 )
-from gui.pin_canvas import GRILLE, PinCanvas
-from gui.theme import BG, CARD, CARD2, TEXT, TEXT_MUTED, BLUE, ERROR
+from circuit_analyzer.xml import formes_orphelines
 from gui import ui_kit
-from gui.widgets import ListeSectionnee, BandeauEtat, ligne_aide, lier_molette
+from gui.pin_canvas import GRILLE, PinCanvas
+from gui.theme import BG, BLUE, CARD, ERROR, TEXT, TEXT_MUTED
+from gui.widgets import BandeauEtat, ListeSectionnee, lier_molette, ligne_aide
 
 
 def _amorcer(broches: list) -> list:
@@ -55,7 +64,8 @@ class TabComponents:
         """@brief Construit l'onglet, charge la bibliothèque et affiche le mode « nouveau ».
 
         @param parent Widget parent (zone de contenu).
-        @param on_save Callback appelé après sauvegarde/suppression (rafraîchit l'onglet Circuits).
+        @param on_save Callback appelé après sauvegarde/suppression (rafraîchit
+                       la palette de composants de l'onglet Schéma).
         """
         self.frame = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
         self._on_save = on_save
@@ -71,6 +81,11 @@ class TabComponents:
                          "Bornier 4": ("Connecteur", 4),
                          "Connecteur N": ("Connecteur", 0)}
         self._etat_initial: tuple = ('', '', ())   # snapshot anti-perte
+        self._forme_primitives: list = []          # fond actif (spec 2026-08-05)
+        self._formes_disponibles: dict = {}         # {libelle: primitives}
+        self._xml_source_valide = False
+        self._xml_source_courant = ""
+        self._compose_courant = False               # spec revue finale 2026-08-06
         self._build()
         self._load()
         self._afficher_nouveau()
@@ -171,6 +186,16 @@ class TabComponents:
             width=90, height=30)
         self._btn_modele.pack(side="left")
 
+        frow = ctk.CTkFrame(form, fg_color="transparent")
+        frow.pack(fill="x", pady=(2, 2))
+        ctk.CTkLabel(frow, text="Forme :", font=ui_kit.font("caption"),
+                     text_color=TEXT_MUTED).pack(side="left", padx=(0, 6))
+        self._forme_var = tk.StringVar(value="Aucune")
+        self._forme_menu = ctk.CTkOptionMenu(
+            frow, values=["Aucune"], variable=self._forme_var,
+            width=200, height=30, command=self._sur_forme)
+        self._forme_menu.pack(side="left")
+
         self._canvas_broches = PinCanvas(form, on_change=self._sur_brochage)
         self._canvas_broches.pack(fill="x", pady=(4, 6))
 
@@ -223,6 +248,9 @@ class TabComponents:
         self._btn_envoyer = ui_kit.SecondaryButton(
             pied, "⇧  Envoyer mes composants", self._envoyer_biblio,
             height=38)
+        self._btn_orphelins = ui_kit.SecondaryButton(
+            pied, "⇧  Pousser mes symboles orphelins", self._pousser_symboles_orphelins,
+            height=38)
         self._btn_save.pack(fill="x")
 
         # La molette défile le formulaire même au-dessus des champs et des
@@ -248,7 +276,7 @@ class TabComponents:
         # avec `lecture_seule`, aucun clic ne mute alors le brochage.
         for b in (self._btn_save, self._btn_dupliquer,
                   self._btn_export, self._btn_import,
-                  self._btn_recevoir, self._btn_envoyer):
+                  self._btn_recevoir, self._btn_envoyer, self._btn_orphelins):
             b.pack_forget()
         (self._btn_dupliquer if lecture else self._btn_save).pack(fill="x")
         # Export : seulement pour un perso DEJA enregistre (on exporte le JSON).
@@ -258,11 +286,15 @@ class TabComponents:
         # Partage de bibliotheque : jamais lie au composant courant.
         self._btn_recevoir.pack(fill="x", pady=(8, 0))
         self._btn_envoyer.pack(fill="x", pady=(4, 0))
+        self._btn_orphelins.pack(fill="x", pady=(4, 0))
 
     def _afficher_nouveau(self):
         """@brief Affiche un formulaire vierge en mode « nouveau »."""
         self._current_key = None
         self._remplir_formulaire('', '', [])
+        self._xml_source_valide = False
+        self._xml_source_courant = ""
+        self._compose_courant = False
         self._definir_mode('nouveau', "➕  Nouveau type de composant")
         self._prendre_snapshot()
 
@@ -278,7 +310,11 @@ class TabComponents:
                                  v.get("brochage"),
                                  default_value=v.get("default_value", ""),
                                  fonctions=v.get("fonctions"),
-                                 boite=v.get("boite"))
+                                 boite=v.get("boite"),
+                                 primitives=v.get("primitives"))
+        self._xml_source_valide = bool(v.get("xml_source"))
+        self._xml_source_courant = v.get("xml_source", "")
+        self._compose_courant = bool(v.get("compose"))
         self._definir_mode('edition', f"✏  Modification de ★ {key}")
         self._prendre_snapshot()
 
@@ -335,10 +371,18 @@ class TabComponents:
         """@brief Le canevas a muté : sa liste ordonnée devient l'état du form."""
         self._brochage = list(brochage)
 
+    def _sur_forme(self, choix: str):
+        """@brief Le sélecteur de forme a changé : met à jour l'aperçu SANS
+        toucher au brochage, et invalide `xml_source` (spec 2026-08-05 —
+        une forme piochée à la main n'est plus « l'import original »)."""
+        self._xml_source_valide = False
+        self._forme_primitives = list(self._formes_disponibles.get(choix) or [])
+        self._canvas_broches.definir_forme(self._forme_primitives)
+
     def _remplir_formulaire(self, prefixe: str, nom: str, broches: list,
                             brochage: dict = None, lecture_seule: bool = False,
                             default_value: str = "", fonctions: dict = None,
-                            boite: dict = None):
+                            boite: dict = None, primitives: list = None):
         """@brief Remplit les champs du formulaire (préfixe, nom, brochage).
 
         @param prefixe Préfixe du type.
@@ -346,6 +390,8 @@ class TabComponents:
         @param broches Liste ORDONNÉE des noms de broches (ordre netlist).
         @param brochage {nom: [côté, décalage]} du fichier, ou None.
         @param lecture_seule Vrai pour un type intégré (canevas non éditable).
+        @param primitives Forme réelle du composant affiché (import), ou
+               None — dessinée en fond dans le canevas (spec 2026-08-05).
         @return None
         """
         # Réactiver avant d'écrire : un Entry disabled ignore les set()
@@ -366,9 +412,12 @@ class TabComponents:
         self._w_var.set(str(b.get("w", "")) if b else "")
         self._h_var.set(str(b.get("h", "")) if b else "")
         self._sur_auto_taille()
+        self._forme_primitives = list(primitives or [])
+        self._forme_var.set("Aucune")
         self._canvas_broches.charger(self._brochage, lecture_seule,
                                      roles=fonctions,
-                                     w_mini=b.get("w"), h_mini=b.get("h"))
+                                     w_mini=b.get("w"), h_mini=b.get("h"),
+                                     forme_primitives=self._forme_primitives)
 
     # ── Anti-perte de saisie ─────────────────────────────────────────────────
 
@@ -430,6 +479,13 @@ class TabComponents:
             personnalises=[f"{k}  —  {v.get('name', '')}"
                            for k, v in self._custom.items()],
         )
+        # Sélecteur de forme : uniquement les composants avec une forme réelle
+        # importée (spec 2026-08-05) — jamais de forme prédéfinie maison.
+        self._formes_disponibles = {
+            (f"{k} — {v['name']}" if v.get("name") else k): v["primitives"]
+            for k, v in self._custom.items() if v.get("primitives")
+        }
+        self._forme_menu.configure(values=["Aucune"] + sorted(self._formes_disponibles))
 
     def _ecrire(self):
         """@brief Écrit les types personnalisés dans le fichier de bibliothèque (JSON UTF-8)."""
@@ -474,7 +530,11 @@ class TabComponents:
         self._remplir_formulaire('', f"{nom} (copie)", broches, positions,
                                  default_value=self._default_var.get(),
                                  fonctions=self._canvas_broches.roles(),
-                                 boite=b or None)
+                                 boite=b or None,
+                                 primitives=self._forme_primitives)
+        self._xml_source_valide = False
+        self._xml_source_courant = ""
+        self._compose_courant = False
         self._definir_mode('nouveau',
                            "➕  Nouveau type (copie) — choisir un préfixe")
         self._prendre_snapshot()
@@ -578,18 +638,57 @@ class TabComponents:
         dossier = self._choisir_dossier_partage()
         if not dossier:
             return
+        composants = list(self._custom.items())
         try:
-            ecrits = ecrire_dans_dossier(dossier, list(self._custom.items()))
+            ecrits = ecrire_dans_dossier(dossier, composants)
+        except OSError as e:
+            messagebox.showerror("Envoi impossible", f"Ecriture impossible :\n{e}")
+            return
+        # Les composes sont volontairement laisses de cote (cf.
+        # eretro_lib.ecrire_dans_dossier) — le dire, jamais l'omettre.
+        ignores = len(composants) - len(ecrits)
+        detail = ""
+        if ignores:
+            detail = (f"\n{ignores} compose(s) NON renvoye(s) : ils vivent dans "
+                      "« CCLib » cote ERetroDesign et y restent la reference. "
+                      "Les recopier ici en ferait des doublons aplatis.\n")
+        messagebox.showinfo(
+            "Bibliotheque partagee",
+            f"{len(ecrits)} composant(s) ecrit(s) dans :\n{dossier}\n{detail}\n"
+            "IMPORTANT : ERetroDesign doit etre FERME pendant l'envoi, puis "
+            "rouvert pour les voir.\n"
+            "Sinon sa prochaine sauvegarde de bibliotheque efface le dossier "
+            "et vos composants avec.")
+
+    def _pousser_symboles_orphelins(self):
+        """@brief Pousse nos formes maison (zigzag, triangle AOP...) absentes
+        de sa bibliotheque, geometrie verbatim (ex. MOSFET, Fusible, Relais).
+
+        Distinct de `_envoyer_biblio` : celle-ci part de nos composants
+        PERSONNALISES (`self._custom`, modele boite+brochage) alors que cette
+        methode part de `circuit_analyzer.xml._FORME_MAISON` (nos formes
+        integrees, dessinees a la main) — voir `eretro_lib.
+        ecrire_formes_dans_dossier` pour pourquoi les deux ne se melangent pas.
+        """
+        dossier = self._choisir_dossier_partage()
+        if not dossier:
+            return
+        orphelines, typs = formes_orphelines(dossier)
+        if not orphelines:
+            messagebox.showinfo(
+                "Bibliotheque partagee",
+                "Aucun symbole orphelin : sa bibliotheque a deja tous nos noms.")
+            return
+        try:
+            ecrits = ecrire_formes_dans_dossier(dossier, orphelines, typs)
         except OSError as e:
             messagebox.showerror("Envoi impossible", f"Ecriture impossible :\n{e}")
             return
         messagebox.showinfo(
             "Bibliotheque partagee",
-            f"{len(ecrits)} composant(s) ecrit(s) dans :\n{dossier}\n\n"
+            f"{len(ecrits)} symbole(s) orphelin(s) ecrit(s) dans :\n{dossier}\n\n"
             "IMPORTANT : ERetroDesign doit etre FERME pendant l'envoi, puis "
-            "rouvert pour les voir.\n"
-            "Sinon sa prochaine sauvegarde de bibliotheque efface le dossier "
-            "et vos composants avec.")
+            "rouvert pour les voir.")
 
     def _importer_eretro(self):
         """@brief Importe un paquet ERetroDesign (.xml) : ajoute ses composants."""
@@ -642,8 +741,9 @@ class TabComponents:
             self._ecrire()
             self._load()
             self._afficher_nouveau()
-            # Comme à la sauvegarde : prévenir l'onglet Circuits que la
-            # bibliothèque a changé, sinon le composant supprimé reste proposé.
+            # Comme à la sauvegarde : prévenir l'onglet Schéma (palette de
+            # composants) que la bibliothèque a changé, sinon le composant
+            # supprimé reste proposé.
             if self._on_save:
                 self._on_save()
 
@@ -664,6 +764,12 @@ class TabComponents:
             return
         entree = {"name": name, "pins": pins,
                   "brochage": {n: [c, d] for n, c, d in self._brochage}}
+        if self._forme_primitives:
+            entree["primitives"] = self._forme_primitives
+            if self._xml_source_valide:
+                entree["xml_source"] = self._xml_source_courant
+        if self._compose_courant:
+            entree["compose"] = True
         defaut = self._default_var.get().strip()
         if defaut:
             entree["default_value"] = defaut

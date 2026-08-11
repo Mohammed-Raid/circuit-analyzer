@@ -47,13 +47,10 @@ _EXACTS_U = {
                  "4": "COLLECTEUR"}),
     "LM317": _e("Regulateur ajustable", "LM317",
                 {"1": "ADJ", "2": "OUT", "3": "IN"}, alias=True),
-    # SI844AB (isolateur) et WRB2424S-3WR2 (DC/DC Mornsun) des vraies cartes :
-    # entrees VOLONTAIREMENT absentes. Les nommer ici allonge l'etiquette du
-    # bloc en ilot, qui entre alors en collision avec un label de net sur la
-    # carte « pg carte » (audit test_cartes_reelles). La cause est en amont :
-    # `_titre_bloc` est classe _PRIO_COMPOSANT, donc c'est LUI qui doit ceder
-    # face au net, alors qu'il est ancre a sa boite et n'a nulle part ou aller.
-    # A rouvrir avec la priorite des titres ancres (cf. gui/schema_labels.py).
+    # Vues sur les vraies cartes, sans brochage sur : la boite reste etiquetee
+    # par son nom (broches=None), on n'invente aucun numero de patte.
+    "SI844AB": _e("Isolateur numerique", "SI844AB", None),
+    "WRB2424S3WR2": _e("Convertisseur DC/DC isole", "WRB2424S-3WR2", None),
 }
 
 # ── U : familles 74HC/74HCT (le T et le suffixe boîtier sont tolérés) ───────

@@ -6,7 +6,7 @@ import pytest
 
 ctk = pytest.importorskip("customtkinter")
 
-from gui.pin_canvas import PinCanvas          # noqa: E402
+from gui.pin_canvas import PinCanvas
 
 
 @pytest.fixture
@@ -253,3 +253,69 @@ def test_clic_est_converti_selon_l_echelle(canevas):
     ev = types.SimpleNamespace(x=cx + 50 * k, y=cy)
     bx, _by = canevas._boite(ev)
     assert abs(bx - 50) < 1e-6
+
+
+# ── Task 6 : fond visuel optionnel (spec 2026-08-05) ───────────────────────────
+
+def test_charger_avec_forme_dessine_un_fond(canevas):
+    canevas.charger([("1", "L", 0)],
+                    forme_primitives=[("polygon", [(0, -10), (10, 10), (-10, 10)], False)])
+    _dimensionner(canevas)
+    items = canevas._cv.find_all()
+    polygones = [i for i in items if canevas._cv.type(i) == "polygon"]
+    # 1 polygone de fond (forme) + 1 polygone de boite editable = 2
+    assert len(polygones) == 2
+
+
+def test_sans_forme_pas_de_fond(canevas):
+    canevas.charger([("1", "L", 0)])
+    _dimensionner(canevas)
+    items = canevas._cv.find_all()
+    polygones = [i for i in items if canevas._cv.type(i) == "polygon"]
+    assert len(polygones) == 1          # seulement la boite editable
+
+
+def test_definir_forme_ne_touche_pas_au_brochage(canevas):
+    canevas.charger([("1", "L", 0)])
+    canevas.definir_forme([("polygon", [(0, -10), (10, 10), (-10, 10)], False)])
+    _dimensionner(canevas)
+    assert canevas.brochage() == [("1", "L", 0)]
+    items = canevas._cv.find_all()
+    polygones = [i for i in items if canevas._cv.type(i) == "polygon"]
+    assert len(polygones) == 2
+
+
+def test_boite_reste_cliquable_par_dessus_le_fond(canevas):
+    canevas.charger(
+        [], forme_primitives=[("polygon", [(0, -200), (200, 200), (-200, 200)], False)])
+    # Une forme bien plus grande que la boite par defaut ne doit pas empecher
+    # de cliquer sur le bord GAUCHE de la boite editable (toujours reference).
+    assert canevas._ajouter(-40, 0) == "1"
+    _nom, cote, _dec = canevas.brochage()[0]
+    assert cote == "L"
+
+
+def test_echelle_tient_compte_de_la_forme_plus_grande_que_la_boite(canevas):
+    canevas._cv.configure(width=400, height=400)
+    canevas._cv.update_idletasks()
+    canevas.charger([("1", "L", 0)])
+    sans_forme = canevas._echelle()
+    canevas.definir_forme([("polygon", [(0, -300), (300, 300), (-300, 300)], False)])
+    avec_forme = canevas._echelle()
+    assert avec_forme < sans_forme
+
+
+def test_defn_avec_forme_utilise_la_taille_exacte_pas_l_heuristique(canevas):
+    """Meme regle que l'editeur/export (spec 2026-08-05, revue finale
+    2026-08-06) : une forme reelle bascule `_defn()` en taille EXACTE
+    (w_mini/h_mini). Sans ca, un Vss importe (boite 160x20) se voit
+    regonfle par l'heuristique de remplissage (h=100) alors que le
+    contour dessine s'arrete a h=20 -- la broche flotte loin du fond visuel."""
+    canevas.charger(
+        [("G", "B", 0)],
+        forme_primitives=[("polygon", [(-80, -10), (80, -10),
+                                       (80, 10), (-80, 10)], False)],
+        w_mini=160, h_mini=20)
+    d = canevas._defn()
+    assert d["h"] == 20
+    assert d["w"] == 160

@@ -5,12 +5,19 @@ On ne peut pas valider le RENDU dans l'app C# du collegue depuis ici ; on
 verrouille en revanche l'aller-retour par notre propre lecteur : un composant
 exporte puis relu redonne le meme brochage et la meme boite.
 """
+import json
+import math
 import xml.etree.ElementTree as ET
 
 import pytest
 
 from circuit_analyzer.eretro_lib import (
-    composant_vers_symbole_xml, composants_depuis_xml, symbole_vers_composant)
+    _primitives_vers_xml,
+    composant_vers_symbole_xml,
+    composants_depuis_xml,
+    ecrire_dans_dossier,
+    symbole_vers_composant,
+)
 
 
 def test_export_est_un_dataitem_importable():
@@ -114,8 +121,8 @@ def test_export_circuit_est_lisible_par_le_nouveau_format():
 
 def test_export_circuit_conserve_la_connexite():
     """Aller-retour : exporte puis relu, le point milieu reste partage."""
-    import tempfile
     import os
+    import tempfile
 
     from circuit_analyzer.composant import Composant
     from circuit_analyzer.xml import generer_xml, lire_xml
@@ -285,6 +292,35 @@ def test_lit_toute_la_bibliotheque_COMPOSEE_du_collegue():
     assert all(e["pins"] for _p, e in composants_depuis_xml(str(dossier)))
 
 
+def test_un_compose_est_marque_comme_tel(tmp_path):
+    """Sans marqueur, un compose RECU repart a l'ENVOI comme un DataItem
+    simple : il atterrit dans `Lib` alors que son original vit dans `CCLib`
+    -> DOUBLON dans la palette du collegue, et ses entrailles (DItemL/CCLine)
+    sont perdues au passage."""
+    cc = ('<CComp><Name>Pont</Name><datapin><DataPin><Pname>1</Pname>'
+          '<Pin><X>-40</X><Y>0</Y></Pin></DataPin></datapin>'
+          '<DItemL /><CCLine /></CComp>')
+    simple = ('<DataItem><Name>Resi</Name><datapin><DataPin><Pname>1</Pname>'
+              '<Pin><X>-40</X><Y>0</Y></Pin></DataPin></datapin></DataItem>')
+    (_p, compose), = composants_depuis_xml(cc)
+    (_q, plat), = composants_depuis_xml(simple)
+    assert compose.get("compose") is True
+    assert not plat.get("compose")
+
+
+def test_envoi_ne_reecrit_pas_les_composes(tmp_path):
+    """`ecrire_dans_dossier` ne sait ecrire QUE des <DataItem>. Y passer un
+    compose ecraserait la version riche du collegue par une boite vide : on
+    l'ignore, et l'appelant peut le dire a l'utilisateur (total - ecrits)."""
+    comps = [("R", {"name": "Resi", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                    "boite": {"w": 80, "h": 60}}),
+             ("PT", {"name": "Pont", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                     "boite": {"w": 80, "h": 60}, "compose": True})]
+    ecrits = ecrire_dans_dossier(str(tmp_path), comps)
+    assert len(ecrits) == 1
+    assert {p.name for p in tmp_path.iterdir()} == {"Resi.xml"}
+
+
 def test_dossier_ramasse_simples_ET_composes(tmp_path):
     """Cote C#, simples et composes vivent dans DEUX dossiers freres
     (LibItem/Lib et LibItem/CCLib). Choisir l'un ne doit pas faire rater
@@ -306,3 +342,239 @@ def test_dossier_ramasse_simples_ET_composes(tmp_path):
     assert {e["name"] for _p, e in composants_depuis_xml(str(libitem))} == {"Resi", "Pont"}
     # on designe Lib -> le frere CCLib est ramasse quand meme
     assert {e["name"] for _p, e in composants_depuis_xml(str(libitem / "Lib"))} == {"Resi", "Pont"}
+
+
+def test_entree_depuis_dataitem_capture_primitives_et_xml_source():
+    # cx,cy sont calcules depuis les points du datasegment (Spoint/Epoint) :
+    # ici xs=[10,30] -> cx=20, cy=0. Le segment est donc recentre autour de 0.
+    xml = ('<DataItem><Name>Test</Name>'
+           '<datasegment><DataSegment>'
+           '<Spoint><X>10</X><Y>0</Y></Spoint>'
+           '<Epoint><X>30</X><Y>0</Y></Epoint>'
+           '</DataSegment></datasegment>'
+           '<datapin><DataPin><Pname>1</Pname>'
+           '<Pin><X>40</X><Y>0</Y></Pin></DataPin></datapin></DataItem>')
+    _prefix, entree = symbole_vers_composant(xml)
+    assert entree["primitives"] == [("line", [(-10.0, 0.0), (10.0, 0.0)], 2)]
+    assert "<Name>Test</Name>" in entree["xml_source"]
+
+
+def test_entree_depuis_dataitem_connecteur_sans_forme_a_primitives_vide():
+    xml = ('<DataItem><Name>Connecteur</Name>'
+           '<datapin><DataPin><Pname>1</Pname>'
+           '<Pin><X>0</X><Y>0</Y></Pin></DataPin></datapin></DataItem>')
+    _prefix, entree = symbole_vers_composant(xml)
+    assert entree["primitives"] == []
+    assert entree["xml_source"]      # toujours present, meme sans forme
+
+
+def test_entree_depuis_dataitem_survit_a_un_aller_retour_json():
+    xml = ('<DataItem><Name>Test</Name>'
+           '<datasegment><DataSegment>'
+           '<Spoint><X>10</X><Y>0</Y></Spoint>'
+           '<Epoint><X>30</X><Y>0</Y></Epoint>'
+           '</DataSegment></datasegment>'
+           '<datapin><DataPin><Pname>1</Pname>'
+           '<Pin><X>40</X><Y>0</Y></Pin></DataPin></datapin></DataItem>')
+    _prefix, entree = symbole_vers_composant(xml)
+    relu = json.loads(json.dumps(entree))
+    # JSON n'a pas de tuple : les listes imbriquees restent utilisables telles
+    # quelles par primitives()/_rot_prims (aucun code ne teste isinstance(tuple)).
+    assert relu["primitives"] == [["line", [[-10.0, 0.0], [10.0, 0.0]], 2]]
+
+
+def test_entree_depuis_dataitem_primitives_et_brochage_partagent_l_origine():
+    # Composant decale loin de l'origine XML : bbox du segment xs=[960,1040]
+    # -> cx=1000 ; ys=[200,400] -> cy=300. La broche est au coin (1040,200)
+    # de cette bbox (dx=+40=w/2, dy=-100=-h/2 pile) : egalite T/R tranchee
+    # en faveur du bord horizontal T (aimanter_bord, arbitrage documente),
+    # decalage = dx = 40. Le second point du segment est au meme X=1040 :
+    # sa coordonnee recentree doit valoir le MEME 40.0, preuve que
+    # primitives_depuis_dataitem() et le calcul des broches partagent la
+    # meme origine (cx, cy).
+    xml = ('<DataItem><Name>Decale</Name>'
+           '<datasegment><DataSegment>'
+           '<Spoint><X>960</X><Y>200</Y></Spoint>'
+           '<Epoint><X>1040</X><Y>400</Y></Epoint>'
+           '</DataSegment></datasegment>'
+           '<datapin><DataPin><Pname>1</Pname>'
+           '<Pin><X>1040</X><Y>200</Y></Pin></DataPin></datapin></DataItem>')
+    _prefix, entree = symbole_vers_composant(xml)
+    cote, decalage = entree["brochage"]["1"]
+    assert cote == "T"
+    assert decalage == 40
+    # Le meme X=1040 dans le segment doit produire la meme abscisse
+    # recentree que le decalage de la broche : preuve d'une origine commune.
+    assert entree["primitives"][0][1][1][0] == 40.0
+
+
+def _dist_point_segment(px, py, ax, ay, bx, by):
+    dx, dy = bx - ax, by - ay
+    if dx == 0 and dy == 0:
+        return math.hypot(px - ax, py - ay)
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
+    return math.hypot(px - ax - t * dx, py - ay - t * dy)
+
+
+def test_broche_reste_pres_du_corps_polygone_meme_si_la_patte_est_loin():
+    """Defaut reel trouve en boucle visuelle sur VCC+.xml/Vss.xml du boss :
+    une patte (<DataSegment>) minuscule loin du corps (<DataPolygon>) faisait
+    calculer un centre/une boite sur la SEULE patte -> broche loin du corps
+    une fois le vrai contour dessine. `coords` doit couvrir le polygone aussi.
+
+    Reprend la forme exacte de VCC+.xml : patte (0,34)-(0,48), broche "+" a
+    (0,48), corps polygone couvrant Y de -48 a 34, loin de la patte.
+    """
+    xml = ('<DataItem><Name>VCCTest</Name>'
+           '<datapolygon>'
+           '<DataPolygon><point><X>-69</X><Y>-48</Y></point></DataPolygon>'
+           '<DataPolygon><point><X>69</X><Y>-48</Y></point></DataPolygon>'
+           '<DataPolygon><point><X>69</X><Y>34</Y></point></DataPolygon>'
+           '<DataPolygon><point><X>-69</X><Y>34</Y></point></DataPolygon>'
+           '</datapolygon>'
+           '<datasegment><DataSegment>'
+           '<Spoint><X>0</X><Y>34</Y></Spoint>'
+           '<Epoint><X>0</X><Y>48</Y></Epoint>'
+           '</DataSegment></datasegment>'
+           '<datapin><DataPin><Pname>+</Pname>'
+           '<Pin><X>0</X><Y>48</Y></Pin></DataPin></datapin></DataItem>')
+    _prefix, entree = symbole_vers_composant(xml)
+    from gui.schematic_editor import _auto_def
+    d = _auto_def(entree["name"], entree["pins"], entree["brochage"],
+                  entree.get("default_value", ""), entree.get("fonctions"),
+                  entree.get("boite"), entree.get("primitives"))
+    px, py = d["pins"]["+"]
+    pire = 1e9
+    for p in d["primitives"]:
+        if p[0] == "line":
+            (ax, ay), (bx, by) = p[1]
+            pire = min(pire, _dist_point_segment(px, py, ax, ay, bx, by))
+        elif p[0] == "polygon":
+            pts = p[1]
+            n = len(pts)
+            for i in range(n):
+                ax, ay = pts[i]
+                bx, by = pts[(i + 1) % n]
+                pire = min(pire, _dist_point_segment(px, py, ax, ay, bx, by))
+    # Avant le correctif : ~43 (broche calculee sur la seule patte, loin du
+    # polygone). Apres : la broche doit toucher le contour reel (tolerance
+    # d'aimantation a la grille, GRILLE=20, jamais un flottement franc).
+    assert pire <= 20, f"broche a {pire}px du contour reel (attendu <= 20)"
+
+
+def test_primitives_vers_xml_ligne_produit_un_segment():
+    from circuit_analyzer.eretro_lib import _primitives_vers_xml
+
+    def abs_pt(dx, dy):
+        return int(round(dx)), int(round(dy))
+
+    segments, polygone, arcs = _primitives_vers_xml(
+        [("line", [(10.0, 20.0), (30.0, 20.0)], 2)], abs_pt)
+    assert polygone == "" and arcs == ""
+    r = ET.fromstring(f"<x>{segments}</x>")
+    seg = r.find("DataSegment")
+    assert (seg.find("Spoint").findtext("X"), seg.find("Spoint").findtext("Y")) == ("10", "20")
+    assert (seg.find("Epoint").findtext("X"), seg.find("Epoint").findtext("Y")) == ("30", "20")
+
+
+def test_primitives_vers_xml_polygone_produit_un_point_par_sommet():
+    from circuit_analyzer.eretro_lib import _primitives_vers_xml
+
+    def abs_pt(dx, dy):
+        return int(round(dx)), int(round(dy))
+
+    segments, polygone, arcs = _primitives_vers_xml(
+        [("polygon", [(52.0, 0.0), (-52.0, -48.0), (-52.0, 48.0)], False)], abs_pt)
+    assert segments == "" and arcs == ""
+    r = ET.fromstring(f"<x>{polygone}</x>")
+    pts = [(p.find("point").findtext("X"), p.find("point").findtext("Y"))
+           for p in r.findall("DataPolygon")]
+    assert pts == [("52", "0"), ("-52", "-48"), ("-52", "48")]
+
+
+def test_primitives_vers_xml_arc_aller_retour_via_primitives_depuis_dataitem():
+    # Fragment reel (Self.xml) : centre (0,0), rayon 16, demi-cercle.
+    from circuit_analyzer.eretro_lib import _primitives_vers_xml
+    from gui.schematic_symbols import primitives_depuis_dataitem
+
+    def abs_pt(dx, dy):
+        return int(round(dx)), int(round(dy))
+
+    original = [("arc", (-16.0, -16.0, 16.0, 16.0), -180.0, 180.0)]
+    segments, polygone, arcs = _primitives_vers_xml(original, abs_pt)
+    assert segments == "" and polygone == ""
+    xml = f"<DataItem><datasegment/><datapolygon/><dataarc>{arcs}</dataarc></DataItem>"
+    relu = primitives_depuis_dataitem(xml, 1.0)
+    assert relu == original
+
+
+def test_export_avec_primitives_ecrit_un_vrai_contour_pas_une_boite():
+    entree = {"name": "Test", "pins": ["1", "2"],
+              "brochage": {"1": ["L", 0], "2": ["R", 0]},
+              "boite": {"w": 80, "h": 60},
+              "primitives": [("polygon", [(0, -10), (10, 10), (-10, 10)], False)]}
+    xml = composant_vers_symbole_xml("IC", entree)
+    r = ET.fromstring(xml)
+    assert len(r.findall("./datapolygon/DataPolygon")) == 3   # 3 sommets, pas 0
+    assert len(r.findall("./datasegment/DataSegment")) == 0   # plus de boite generique
+
+
+def test_export_sans_primitives_garde_la_boite_generique():
+    entree = {"name": "Test", "pins": ["1", "2"],
+              "brochage": {"1": ["L", 0], "2": ["R", 0]},
+              "boite": {"w": 80, "h": 60}}
+    xml = composant_vers_symbole_xml("IC", entree)
+    r = ET.fromstring(xml)
+    assert len(r.findall("./datapolygon/DataPolygon")) == 0
+    assert len(r.findall("./datasegment/DataSegment")) == 4   # boite inchangee
+
+
+def test_export_avec_forme_decentree_positionne_la_broche_pres_du_contour():
+    """Meme piege que Vss.xml/VCC+.xml (chantier precedent, commit bf341d4) :
+    sans le bypass w_exact/h_exact ici aussi, l'export retomberait sur le
+    bug de broche flottante deja corrige cote editeur."""
+    entree = {"name": "VCCTest", "pins": ["+"],
+              "brochage": {"+": ["B", 0]},
+              "boite": {"w": 160, "h": 20},
+              "primitives": [("line", [(0.0, -7.0), (0.0, 7.0)], 2),
+                            ("polygon", [(-80.0, -14.5), (80.0, -14.5),
+                                        (80.0, 7.0), (-80.0, 7.0)], False)]}
+    xml = composant_vers_symbole_xml("IC", entree)
+    r = ET.fromstring(xml)
+    pin = r.find("./datapin/DataPin/Pin")
+    py = float(pin.findtext("Y"))
+    assert abs(py) <= 20   # proche du corps (h=20), pas a 50 (bug corrige)
+
+
+def test_export_avec_forme_sans_boite_du_tout_positionne_la_broche_pres_du_contour():
+    """Scenario mesure par la revue finale (2026-08-06) : nouveau composant +
+    forme piochee au selecteur + "Ajuster automatiquement" coche -> `entree`
+    n'a AUCUNE cle `boite` (ni meme vide). Sans repli sur `etendue_primitives`,
+    `w_exact`/`h_exact` restent None -> `geometrie_libre` retombe sur
+    l'heuristique de remplissage -> broche a ~50 au lieu de rester pres du
+    contour reel (h=14)."""
+    entree = {"name": "VssTest", "pins": ["G"],
+              "brochage": {"G": ["B", 0]},
+              "primitives": [("line", [(0.0, -5.0), (0.0, 5.0)], 2),
+                            ("polygon", [(-40.0, -7.0), (40.0, -7.0),
+                                        (40.0, 7.0), (-40.0, 7.0)], False)]}
+    assert "boite" not in entree
+    xml = composant_vers_symbole_xml("IC", entree)
+    r = ET.fromstring(xml)
+    pin = r.find("./datapin/DataPin/Pin")
+    py = float(pin.findtext("Y"))
+    assert abs(py) <= 20   # proche du contour (h=14), pas a 50 (heuristique)
+
+
+def test_primitives_vers_xml_ignore_une_primitive_malformee():
+    """Le spec promet que les primitives malformees sont ignorees, jamais
+    une exception qui ferait echouer tout l'export (meme discipline que
+    `primitives_depuis_dataitem`, cote import)."""
+    def abs_pt(x, y):
+        return int(round(x)), int(round(y))
+
+    prims = [("line", [(0, 0), (1, 1)], 2), ("line", [(0, 0)], 2)]
+    segments, polygone, arcs = _primitives_vers_xml(prims, abs_pt)
+    assert "<DataSegment>" in segments
+    assert segments.count("<DataSegment>") == 1
+    assert polygone == "" and arcs == ""

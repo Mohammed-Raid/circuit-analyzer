@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import pytest
 
@@ -15,6 +16,7 @@ from circuit_analyzer.composant import construire_graphe
 from circuit_analyzer.xml import lire_xml
 from gui import theme
 from gui.circuit_viewer import _mesurer_montage  # noqa: F401 -- Step 2 du brief :
+
 # contrats "corpus" (orthogonalite, determinisme) deja verts sur l'ancien
 # chemin _fil_en_z -> le RED cible impose par le brief est l'ABSENCE de
 # l'assemblage grille+routeur (Task 4), verifiee ici par cet import.

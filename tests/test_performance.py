@@ -11,9 +11,9 @@ d'ordre de grandeur.
 """
 import time
 
-from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
+from circuit_analyzer.parser import Component
 
 
 def _bloc(i: int) -> list:

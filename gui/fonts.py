@@ -1,9 +1,9 @@
 """@file fonts.py
 @brief Enregistrement privé (sans installation système) de la police Inter.
 Windows : AddFontResourceEx(FR_PRIVATE). Fallback Segoe UI si absent/échec."""
+import ctypes
 import os
 import sys
-import ctypes
 
 FONT_FAMILY = "Segoe UI"
 
@@ -26,7 +26,3 @@ def register_fonts() -> str:
         if ok:
             FONT_FAMILY = "Inter"
     return FONT_FAMILY
-
-
-# Tailles de police des schémas (valeurs historiques, juste nommées).
-SCHEMA_FONTSIZES = {"label": 9, "titre": 11, "gain": 8, "legende": 9}

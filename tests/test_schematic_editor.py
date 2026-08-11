@@ -5,9 +5,8 @@ raccourcis, palette catalogue. Tk -> skip sans display.
 import pytest
 
 ctk = pytest.importorskip("customtkinter")
-import tkinter as tk                                    # noqa: E402
 
-from gui.schematic_editor import SchematicEditor        # noqa: E402
+from gui.schematic_editor import SchematicEditor
 
 
 @pytest.fixture

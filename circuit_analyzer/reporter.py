@@ -3,4 +3,4 @@
 @brief Shim de compatibilité — réexporte generer_rapport() et generate().
 @see circuit_analyzer.rapport
 """
-from circuit_analyzer.rapport import generer_rapport, generate
+from circuit_analyzer.rapport import generer_rapport, generate  # noqa: F401

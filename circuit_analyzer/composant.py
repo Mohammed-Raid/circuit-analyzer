@@ -12,10 +12,10 @@ Ce fichier regroupe :
 
 import copy
 import json
-import networkx as nx
 from dataclasses import dataclass
 from pathlib import Path
 
+import networkx as nx
 
 # =============================================================================
 # 1. TYPES DE COMPOSANTS RECONNUS
@@ -435,13 +435,13 @@ def _lire_netlist_texte(chemin: str, bibliotheque: dict = None) -> list:
             if not ref[0].isalpha():
                 raise ValueError(
                     f"Référence invalide '{ref}' (doit commencer par une lettre) "
-                    f"— ligne {num_ligne}: {repr(ligne)}"
+                    f"— ligne {num_ligne}: {ligne!r}"
                 )
 
             ref_maj = ref.upper()
             if ref_maj in refs_vus:
                 raise ValueError(
-                    f"Référence dupliquée '{ref}' — ligne {num_ligne}: {repr(ligne)}"
+                    f"Référence dupliquée '{ref}' — ligne {num_ligne}: {ligne!r}"
                 )
             refs_vus.add(ref_maj)
 
@@ -453,7 +453,7 @@ def _lire_netlist_texte(chemin: str, bibliotheque: dict = None) -> list:
             if len(noeuds_bruts) < nb_broches:
                 raise ValueError(
                     f"Composant '{ref}' ({type_comp}) attend {nb_broches} nœud(s) "
-                    f"mais {len(noeuds_bruts)} trouvé(s) — ligne {num_ligne}: {repr(ligne)}"
+                    f"mais {len(noeuds_bruts)} trouvé(s) — ligne {num_ligne}: {ligne!r}"
                 )
 
             noeuds = [n.upper().replace(' ', '') for n in noeuds_bruts]

@@ -6,11 +6,15 @@
 """
 Regression tests for the 8 bugs found by code review.
 """
-import json, os, tempfile, pytest
+import os
+import tempfile
 from pathlib import Path
-from circuit_analyzer.parser import parse_file, Component
+
+import pytest
+
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
+from circuit_analyzer.parser import Component, parse_file
 from circuit_analyzer.patterns.basic_circuits import HalfWaveRectifier, PeakDetector
 
 
@@ -93,7 +97,8 @@ def test_main_exits_cleanly_on_duplicate_ref(tmp_path):
 
     @return None
     """
-    import subprocess, sys
+    import subprocess
+    import sys
     netlist = tmp_path / 'bad.txt'
     netlist.write_text('R1 VCC GND 10k\nR1 NET_A NET_B 4k7\n', encoding='utf-8')
     result = subprocess.run(

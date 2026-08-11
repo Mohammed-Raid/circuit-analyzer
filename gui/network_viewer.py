@@ -4,6 +4,7 @@
 """
 import math
 import tkinter as tk
+
 import customtkinter as ctk
 
 # Couleur de fond par type de composant
@@ -162,7 +163,6 @@ class NetworkGraphViewer(ctk.CTkToplevel):
         panel = tk.Frame(self, bg=_PANEL_BG, width=220)
         panel.grid(row=0, column=1, sticky="nsew")
         panel.grid_propagate(False)
-        self._panel = panel
 
         tk.Label(panel, text="COMPOSANT", bg=_PANEL_BG, fg="#64748b",
                  font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=12, pady=(12, 4))

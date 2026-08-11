@@ -15,7 +15,6 @@ import re
 import schemdraw.elements as elm
 from schemdraw.elements import intcircuits as ic
 
-
 _HAUT = {"VCC", "VDD", "V+"}
 _BAS = {"GND", "VSS", "V-"}
 
@@ -169,9 +168,9 @@ def dessiner_puce(d, ref, entree, ci, origin=(4.0, 0), titre=True):
     haut = max((p[1] for p in nets.values()), default=origin[1]) + 0.8
     title_pt = (centre[0], haut + 0.4)
     if titre:
-        from gui.circuit_viewer import _TITRE_COLOR
+        from gui.circuit_viewer import _TITRE_COLOR, _sans_redite
         d.add(elm.Label().at(title_pt).label(
-            f"{entree['categorie']} ({entree['nom']})",
+            _sans_redite(entree["categorie"], entree["nom"], "{c} ({n})"),
             color=_TITRE_COLOR, fontsize=11))
     sorties = [pins_nets[num] for num, f in cablees if _cote(f) == "right"]
     entrees_g = [pins_nets[num] for num, f in cablees if _cote(f) == "left"]
@@ -201,7 +200,7 @@ def dessiner_z_locales(d, res, z_matches, ci):
     nœud du couplage n'est pas littéralement nommé "VCC" (cas réel et
     fréquent : R du réseau de temporisation d'un 555 entre VCC et DIS).
     """
-    from gui.circuit_viewer import _z_box, _bloc_couplage, _est_couplage, _BUS
+    from gui.circuit_viewer import _BUS, _bloc_couplage, _est_couplage, _z_box
     nets = res.get("nets", {})
     cotes = res.get("_cotes", {})
     offsets = {}

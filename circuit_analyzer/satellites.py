@@ -17,10 +17,15 @@ Format d'un satellite :
      'reason': 'R 10k entre NET_BASE et GND'}
 """
 from circuit_analyzer.patterns.base import (
-    is_ground_net, is_power_net, is_protective_earth_net, nodes_aplatis,
+    is_ground_net,
+    is_power_net,
+    is_protective_earth_net,
+    nodes_aplatis,
 )
 from circuit_analyzer.value_parser import (
-    parse_valeur, classifier_resistance, classifier_condensateur,
+    classifier_condensateur,
+    classifier_resistance,
+    parse_valeur,
 )
 
 SEUIL_SUR      = 0.6

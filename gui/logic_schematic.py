@@ -23,7 +23,6 @@ confiance aux ancres `start`/`end` du brief d'origine) :
 import schemdraw.elements as elm
 from schemdraw import logic as slogic
 
-
 _SYMBOLES = {"NOT": slogic.Not, "NAND": slogic.Nand, "NOR": slogic.Nor}
 
 _PAS_Y = 1.7      # écart vertical entre transistors empilés (série)
@@ -127,8 +126,8 @@ def _porte_transistors(d, result, ci, origin, titre, in_label, out_label):
     _PAS_Y) de `oy`, jamais collé dessus -- sinon le busbar OUT/GND et les
     fils de grille n'ont plus de place pour se croiser proprement.
     """
-    from gui.circuit_viewer import _enregistrer_position, _titre_montage
     from circuit_analyzer.logique import forme_pure
+    from gui.circuit_viewer import _enregistrer_position, _titre_montage
     entrees = result["nodes"]["entrees"]
     sortie = result["nodes"]["sortie"]
     comps = {r: (ci.get(r, {}) or {}) for r in result["components"]}

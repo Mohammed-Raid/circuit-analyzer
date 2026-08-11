@@ -19,6 +19,7 @@ Chaque test fige la geometrie corrigee d'un defaut constate sur les rendus
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 from circuit_analyzer import detecteur
@@ -63,8 +64,9 @@ def test_parallele_non_compact_ref_et_valeur_cote_a_cote():
 def test_zf_composite_deplie_degage_le_corps_de_l_aop():
     # V2 : la branche basse du R2//C1 deplie ne descend plus sur le triangle
     # (points des Line2D couleur condensateur dans la plage x du Zf).
-    from gui.circuit_viewer import _COMP_COLORS
     import matplotlib.colors as mcolors
+
+    from gui.circuit_viewer import _COMP_COLORS
     cyan = mcolors.to_rgba(_COMP_COLORS["C"])
     fig = _fig("aop_inverseurs_multiples", 0, detaille=True)
     ax = fig.axes[0]

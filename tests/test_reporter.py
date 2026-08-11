@@ -5,7 +5,6 @@
 
 from circuit_analyzer.reporter import generate
 
-
 SAMPLE_RESULTS = [
     {'circuit_type': 'Filtre RC passe-bas', 'components': ['R1', 'C1'], 'nodes': ['NET_IN', 'NET_MID', 'GND']},
     {'circuit_type': 'Pont diviseur de tension', 'components': ['R2', 'R3'], 'nodes': ['VCC', 'NET_DIV', 'GND']},

@@ -1,11 +1,9 @@
 """@file test_logique.py
 @brief Détection des portes CMOS (circuit_analyzer/logique.py) : algèbre
 d'arbres série/parallèle, réseaux pull-up/pull-down, classification et rejets."""
-import pytest
 
 from circuit_analyzer import logique
 from circuit_analyzer.composant import Composant, construire_graphe
-
 
 # ── Algèbre d'arbres ─────────────────────────────────────────────────────────
 

@@ -19,11 +19,17 @@ deux sens passent par le MEME modele boite+broches, d'ou un aller-retour exact.
   curseur. Seul CtrIem est accroche a la grille (Snap, GridStep=10) ; nos broches
   tombent sur des multiples de 10 -> cablage propre.
 """
+import math
 import os
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
-from gui.schematic_symbols import geometrie_libre, aimanter_bord
+from gui.schematic_symbols import (
+    aimanter_bord,
+    etendue_primitives,
+    geometrie_libre,
+    primitives_depuis_dataitem,
+)
 
 # Unites ERetroDesign par pixel de l'editeur ; geometrie CENTREE sur (0,0).
 # ECHELLE=1 : les vrais symboles de Lib.xml sont centres avec des coords ~±48..80
@@ -54,32 +60,92 @@ def _pinout(entree):
     return {nom: (cote, dec) for nom, (cote, dec) in br.items()}
 
 
+def _seg_xml(xa, ya, xb, yb):
+    """@brief Fragment <DataSegment> — partagé par la boîte générique et
+    `_primitives_vers_xml` (même format, une seule source)."""
+    return (f"<DataSegment><Spoint><X>{xa}</X><Y>{ya}</Y></Spoint>"
+            f"<Epoint><X>{xb}</X><Y>{yb}</Y></Epoint>"
+            f"<SPtGap><X>0</X><Y>0</Y></SPtGap>"
+            f"<EPtGap><X>0</X><Y>0</Y></EPtGap>"
+            f"<ESelected>false</ESelected><SSelected>false</SSelected></DataSegment>")
+
+
+def _primitives_vers_xml(prims, abs_pt):
+    """@brief Inverse de `primitives_depuis_dataitem` : primitives -> fragments XML.
+
+    @param prims Primitives ("line"|"arc"|"polygon", ...), mêmes coordonnées
+           que `geo["pins"]` (repère centré, AVANT `abs_pt`).
+    @param abs_pt Même transformation que celle déjà utilisée pour les
+           broches et la boîte -- même repère, aucune conversion
+           supplémentaire (spec 2026-08-05).
+    @return tuple (segments_xml, polygone_xml, arcs_xml) -- chaînes
+            concaténées, prêtes à insérer dans
+            <datasegment>/<datapolygon>/<dataarc>.
+    """
+    segments, polygone, arcs = [], [], []
+    for p in prims:
+        try:
+            if p[0] == "line":
+                (x1, y1), (x2, y2) = p[1]
+                xa, ya = abs_pt(x1, y1)
+                xb, yb = abs_pt(x2, y2)
+                segments.append(_seg_xml(xa, ya, xb, yb))
+            elif p[0] == "polygon":
+                for x, y in p[1]:
+                    px, py = abs_pt(x, y)
+                    polygone.append(
+                        f"<DataPolygon><point><X>{px}</X><Y>{py}</Y></point>"
+                        "<Selected>false</Selected>"
+                        "<PtGap><X>0</X><Y>0</Y></PtGap></DataPolygon>")
+            elif p[0] == "arc":
+                x0, y0, x1, y1 = p[1]
+                cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+                rayon = abs(x1 - x0) / 2
+                debut, etendue = p[2], p[3]
+                sx = cx + rayon * math.cos(math.radians(debut))
+                sy = cy + rayon * math.sin(math.radians(debut))
+                ex = cx + rayon * math.cos(math.radians(debut + etendue))
+                ey = cy + rayon * math.sin(math.radians(debut + etendue))
+                acx, acy = abs_pt(cx, cy)
+                asx, asy = abs_pt(sx, sy)
+                aex, aey = abs_pt(ex, ey)
+                arcs.append(
+                    f"<DataArc><pCenter><X>{acx}</X><Y>{acy}</Y></pCenter>"
+                    f"<stAngle>{debut}</stAngle><swAngle>{etendue}</swAngle>"
+                    f"<Spoint><X>{asx}</X><Y>{asy}</Y></Spoint>"
+                    f"<Epoint><X>{aex}</X><Y>{aey}</Y></Epoint></DataArc>")
+        except (ValueError, TypeError, IndexError, KeyError):
+            continue  # primitive malformee : ignoree, jamais d'echec d'export (spec 2026-08-05)
+    return "".join(segments), "".join(polygone), "".join(arcs)
+
+
 def _dataitem_fragment(prefix, entree):
     """@brief Fragment <DataItem> (geometrie centree) — sans declaration XML."""
     pinout = _pinout(entree)
     boite = entree.get("boite") or {}
-    geo = geometrie_libre(pinout, boite.get("w"), boite.get("h"))
+    prims = entree.get("primitives")
+    if prims:
+        # Bypass w_exact/h_exact : meme correctif que _auto_def (commit
+        # bf341d4) -- sans lui, une forme importee decentree (Vss, VCC+...)
+        # exporterait une broche flottante, comme avant ce correctif.
+        # Si `boite` ne fournit pas w/h (ex. nouveau composant + forme
+        # piochee au selecteur, "Ajuster automatiquement" coche : `boite`
+        # est absente), on retombe sur l'etendue reelle des primitives --
+        # sinon `geometrie_libre` retombe silencieusement sur l'heuristique
+        # de remplissage et la broche flotte a nouveau (revue finale 2026-08-06).
+        w_exact, h_exact = boite.get("w"), boite.get("h")
+        if w_exact is None or h_exact is None:
+            bw, bh = etendue_primitives(prims)
+            w_exact = w_exact if w_exact is not None else bw
+            h_exact = h_exact if h_exact is not None else bh
+        geo = geometrie_libre(pinout, w_exact=w_exact, h_exact=h_exact)
+    else:
+        geo = geometrie_libre(pinout, boite.get("w"), boite.get("h"))
     w, h = geo["w"], geo["h"]
 
     def abs_pt(dx, dy):
         # Centre a l'origine : Pin = decalage / CtrIem (=0 dans un symbole Lib).
         return int(round(dx * ECHELLE)), int(round(dy * ECHELLE))
-
-    x0, y0 = abs_pt(-w / 2, -h / 2)
-    x1, y1 = abs_pt(w / 2, h / 2)
-
-    def seg(xa, ya, xb, yb):
-        return (f"<DataSegment><Spoint><X>{xa}</X><Y>{ya}</Y></Spoint>"
-                f"<Epoint><X>{xb}</X><Y>{yb}</Y></Epoint>"
-                f"<SPtGap><X>0</X><Y>0</Y></SPtGap>"
-                f"<EPtGap><X>0</X><Y>0</Y></EPtGap>"
-                f"<ESelected>false</ESelected><SSelected>false</SSelected></DataSegment>")
-
-    # Boite = 4 aretes du rectangle.
-    segments = "".join([
-        seg(x0, y0, x1, y0), seg(x1, y0, x1, y1),
-        seg(x1, y1, x0, y1), seg(x0, y1, x0, y0),
-    ])
 
     broches = []
     for nom, (dx, dy) in geo["pins"].items():
@@ -92,13 +158,27 @@ def _dataitem_fragment(prefix, entree):
             f"<Selected>false</Selected>"
             f"<ShowNbTxt>true</ShowNbTxt><ShowNmTxt>false</ShowNmTxt></DataPin>")
 
+    if prims:
+        segments, polygone, arcs = _primitives_vers_xml(prims, abs_pt)
+    else:
+        x0, y0 = abs_pt(-w / 2, -h / 2)
+        x1, y1 = abs_pt(w / 2, h / 2)
+        # Boite = 4 aretes du rectangle.
+        segments = "".join([
+            _seg_xml(x0, y0, x1, y0), _seg_xml(x1, y0, x1, y1),
+            _seg_xml(x1, y1, x0, y1), _seg_xml(x0, y1, x0, y0),
+        ])
+        polygone, arcs = "", ""
+
     nom_symbole = entree.get("name") or prefix
     valeur = entree.get("default_value", "") or ""
     return (
         f"<DataItem>"
         f"<Name>{escape(nom_symbole)}</Name><Group>{escape(prefix)}</Group>"
         f"<reference /><value>{escape(valeur)}</value>"
-        f"<datapolygon /><datasegment>{segments}</datasegment><dataarc />"
+        f"<datapolygon>{polygone}</datapolygon>"
+        f"<datasegment>{segments}</datasegment>"
+        f"<dataarc>{arcs}</dataarc>"
         f"<datapin>{''.join(broches)}</datapin>"
         # CtrIem nul : recalcule a chaque rendu de palette (pictureBox2_Paint).
         # TL/BR, EUX, NE SONT PAS NULS : c'est la boite CLIQUABLE de la vignette
@@ -158,6 +238,13 @@ def ecrire_dans_dossier(dossier, composants):
         sa liste en memoire). Un envoi depuis notre app ne doit pas detruire la
         bibliotheque du collegue : on ecrase uniquement nos propres noms.
 
+    @warning Les composants COMPOSES (`entree["compose"]`, venus de `CCLib`)
+        sont IGNORES : cette fonction ne sait ecrire que des <DataItem>, et
+        recopier un compose ici l'aplatirait dans `Lib` alors que son original
+        vit dans `CCLib` -- doublon dans la palette du collegue, entrailles
+        perdues. L'appelant deduit le nombre d'ignores de `len(composants) -
+        len(retour)` pour le dire a l'utilisateur.
+
     @param dossier Dossier cible (cree s'il manque).
     @param composants Iterable de (prefix, entree).
     @return list[str] Chemins ecrits.
@@ -165,10 +252,66 @@ def ecrire_dans_dossier(dossier, composants):
     os.makedirs(dossier, exist_ok=True)
     pris, ecrits = set(), []
     for prefix, entree in composants:
+        if entree.get("compose"):
+            continue
         chemin = os.path.join(dossier,
                               _nom_fichier(entree.get("name") or prefix, pris) + ".xml")
         with open(chemin, "w", encoding="utf-8") as f:
             f.write(composant_vers_symbole_xml(prefix, entree))
+        ecrits.append(chemin)
+    return ecrits
+
+
+def ecrire_formes_dans_dossier(dossier, formes, typs=None):
+    """@brief Pousse nos formes `_FORME` dans sa bibliotheque, geometrie verbatim.
+
+    A ne pas confondre avec `ecrire_dans_dossier`, qui part du modele
+    boite+brochage de l'onglet Composants et REGENERE une boite generique :
+    l'employer ici perdrait nos dessins (zigzag de resistance, triangle d'AOP).
+
+    @warning N'ECRASE JAMAIS un fichier existant. Sa bibliotheque est son
+        travail ; on ne pousse que ce qui lui manque. Un nom deja pris est
+        saute et n'apparait pas dans le retour.
+
+    @param dossier Dossier `LibItem/Lib` cible (cree s'il manque).
+    @param formes dict nom -> entree `_FORME` (`pins`, `polygon`, `segment`, `arc`).
+    @param typs dict nom -> `typ` entier, ou None.
+    @return list[str] Chemins reellement ecrits.
+    """
+    os.makedirs(dossier, exist_ok=True)
+    typs = typs or {}
+    ecrits = []
+    for nom, forme in sorted(formes.items()):
+        chemin = os.path.join(dossier, _nom_fichier(nom, set()) + ".xml")
+        if os.path.exists(chemin):
+            continue
+        broches = "".join(
+            f"<DataPin><Pname>{escape(str(b))}</Pname>"
+            f"<Pnumber>{escape(str(b))}</Pnumber>"
+            f"<Pin><X>{x}</X><Y>{y}</Y></Pin>"
+            f"<PinGap><X>0</X><Y>0</Y></PinGap><Size>9</Size>"
+            f"<Selected>false</Selected><ShowNbTxt>false</ShowNbTxt>"
+            f"<ShowNmTxt>false</ShowNmTxt><VltgP>0</VltgP><typ>0</typ></DataPin>"
+            for b, (x, y, _rang) in sorted(forme["pins"].items(),
+                                           key=lambda kv: kv[1][2]))
+        with open(chemin, "w", encoding="utf-8") as f:
+            f.write(
+                '<?xml version="1.0" encoding="utf-8"?>\n'
+                f'<DataItem {_ENTETE_XSD}>'
+                f"<Name>{escape(nom)}</Name><Group /><reference /><value />"
+                f'<datapolygon>{forme.get("polygon", "")}</datapolygon>'
+                f'<datasegment>{forme.get("segment", "")}</datasegment>'
+                f'<dataarc>{forme.get("arc", "")}</dataarc>'
+                f"<datapin>{broches}</datapin><PinCL />"
+                f"<CtrIem><X>0</X><Y>0</Y></CtrIem><pgap><X>0</X><Y>0</Y></pgap>"
+                f"<TL><X>{_CLIC_TL[0]}</X><Y>{_CLIC_TL[1]}</Y></TL>"
+                f"<BR><X>{_CLIC_BR[0]}</X><Y>{_CLIC_BR[1]}</Y></BR>"
+                f"<angle>0</angle><id>0</id><GpId>0</GpId>"
+                f"<zmH>1</zmH><zmV>1</zmV><FlipX>n</FlipX><FlipY>n</FlipY>"
+                f"<typ>{int(typs.get(nom, 0))}</typ>"
+                f"<Bottom>false</Bottom><selected>false</selected>"
+                f"<focus>false</focus><Visible>true</Visible><Top>true</Top>"
+                f"<Begrp>false</Begrp><freeze>false</freeze></DataItem>")
         ecrits.append(chemin)
     return ecrits
 
@@ -240,13 +383,33 @@ def _racine(source):
 
 
 def _entree_depuis_dataitem(r):
-    """@brief Convertit un element <DataItem> en (prefix, entree bibliotheque)."""
+    """@brief Convertit un element <DataItem> en (prefix, entree bibliotheque).
+
+    `coords` doit couvrir TOUTE la geometrie visible (segments -- pattes --,
+    ET polygones/arcs -- le corps du symbole), pas seulement les segments :
+    un symbole dont le corps est un polygone loin de sa patte (ex. Vss, VCC+)
+    aurait sinon un centre et une boite calcules sur la seule patte, minuscule
+    et hors-corps -- broche qui flotte, loin de la forme reelle une fois celle-ci
+    dessinee (spec 2026-08-05, defaut trouve en boucle visuelle apres livraison).
+    """
     coords = []
     for s in r.findall("./datasegment/DataSegment"):
         for tag in ("Spoint", "Epoint"):
             e = s.find(tag)
             if e is not None:
                 coords.append((float(e.findtext("X") or 0), float(e.findtext("Y") or 0)))
+    for pg in r.findall("./datapolygon/DataPolygon"):
+        pt = pg.find("point")
+        if pt is not None:
+            coords.append((float(pt.findtext("X") or 0), float(pt.findtext("Y") or 0)))
+    for a in r.findall("./dataarc/DataArc"):
+        c, sp = a.find("pCenter"), a.find("Spoint")
+        if c is not None and sp is not None:
+            acx, acy = float(c.findtext("X") or 0), float(c.findtext("Y") or 0)
+            rayon = math.hypot(float(sp.findtext("X") or 0) - acx,
+                               float(sp.findtext("Y") or 0) - acy)
+            coords.append((acx - rayon, acy - rayon))
+            coords.append((acx + rayon, acy + rayon))
     pins_xy = []
     for dp in r.findall("./datapin/DataPin"):
         p = dp.find("Pin")
@@ -276,8 +439,18 @@ def _entree_depuis_dataitem(r):
     nom_symbole = (r.findtext("Name") or "").strip()
     if not prefix:
         prefix = (nom_symbole[:3].upper() or "X")
+    xml_texte = ET.tostring(r, encoding="unicode")
     entree = {"name": nom_symbole, "pins": pins, "brochage": brochage,
-              "boite": {"w": w, "h": h}}
+              "boite": {"w": w, "h": h},
+              "primitives": primitives_depuis_dataitem(xml_texte, ECHELLE, cx, cy),
+              "xml_source": xml_texte}
+    # Un COMPOSE (<CComp>, dossier CCLib) se lit comme une boite a broches,
+    # mais il ne doit JAMAIS repartir en <DataItem> : son original vit dans
+    # CCLib et porte des entrailles (DItemL/CCLine) que nous ne modelisons pas.
+    # Sans ce marqueur, l'envoi le recopiait aplati dans Lib -> doublon dans la
+    # palette du collegue et version riche perdue. Cf. `ecrire_dans_dossier`.
+    if r.tag.rsplit("}", 1)[-1] == "CComp":
+        entree["compose"] = True
     valeur = (r.findtext("value") or "").strip()
     if valeur:
         entree["default_value"] = valeur

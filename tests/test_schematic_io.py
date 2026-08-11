@@ -2,14 +2,17 @@
 @file test_schematic_io.py
 @brief Tests de la sérialisation .circ et de l'import netlist/XML dans l'éditeur.
 """
-import pytest
-
 from dataclasses import dataclass
 
-from gui.schematic_io import (editor_to_dict, build_from_components,
-                              points_jonction, type_reel)
-from gui.schematic_editor import COMP_DEFS
+import pytest
 
+from gui.schematic_editor import COMP_DEFS
+from gui.schematic_io import (
+    build_from_components,
+    editor_to_dict,
+    points_jonction,
+    type_reel,
+)
 
 # ── Doubles légers pour Composant (ref, type, pins, value) ────────────────────
 

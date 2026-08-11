@@ -23,10 +23,10 @@ from matplotlib import pyplot as plt
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from circuit_analyzer import detecteur  # noqa: E402
-from circuit_analyzer.composant import construire_graphe  # noqa: E402
-from circuit_analyzer.xml import lire_xml  # noqa: E402
-from gui import circuit_viewer as cv  # noqa: E402
+from circuit_analyzer import detecteur
+from circuit_analyzer.composant import construire_graphe
+from circuit_analyzer.xml import lire_xml
+from gui import circuit_viewer as cv
 
 OUT = ROOT / "tools" / "_renders" / "ilots_v2"
 

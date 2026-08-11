@@ -3,13 +3,16 @@
 @brief Tests automatises pour test_new_patterns.
 """
 
-from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
-from circuit_analyzer.patterns.opamp import (
-    Differentiator, SchmittTrigger, DifferentialAmplifier, SummingAmplifier, Comparator,
-)
+from circuit_analyzer.parser import Component
 from circuit_analyzer.patterns.basic_circuits import HalfWaveRectifier, PeakDetector
-
+from circuit_analyzer.patterns.opamp import (
+    Comparator,
+    DifferentialAmplifier,
+    Differentiator,
+    SchmittTrigger,
+    SummingAmplifier,
+)
 
 # --- Dérivateur ---
 

@@ -1,10 +1,10 @@
 from circuit_analyzer.composant import Composant, construire_graphe
 from gui.circuit_viewer import (
-    _build_island_model,
+    MULTI_PITCH,
     _build_dipole_model,
+    _build_island_model,
     _build_island_schematic_plan,
     _make_island_fig,
-    MULTI_PITCH,
 )
 
 
@@ -22,6 +22,7 @@ def test_z_locale_net_non_rail_termine_par_label():
     import matplotlib
     matplotlib.use("Agg")
     import schemdraw
+
     from gui import circuit_viewer as cv
     fig = cv.Figure(figsize=(4, 4))
     ax = fig.add_subplot(111)
@@ -383,15 +384,18 @@ def test_opamp_symbol_and_devices_do_not_overlap():
 
 
 def test_row_gap_widens_for_rows_carrying_a_value():
-    # Deux dipoles SANS valeur -> pas = ROW_PITCH (2.0).
-    # Deux dipoles AVEC valeur -> pas = ROW_PITCH + LABEL_LINE (2.5).
+    # Le pas suit l'ETIQUETTE REELLEMENT DESSINEE, pas le champ `value` : une
+    # impedance affiche sa COMPOSITION, une valeur seule ne lui fait pas de
+    # 2e ligne (et n'a donc pas a elargir la bande).
+    # Etiquette 1 ligne -> pas = ROW_PITCH (2.0).
+    # Etiquette 2 lignes -> pas = ROW_PITCH + LABEL_LINE (2.5).
     sans = {"label": "I", "components": [
-        _unit("Z1", "Z", {"1": "A", "2": "B"}),
-        _unit("Z2", "Z", {"1": "A", "2": "B"}),
-    ]}
-    avec = {"label": "I", "components": [
         _unit("Z1", "Z", {"1": "A", "2": "B"}, value="10k"),
         _unit("Z2", "Z", {"1": "A", "2": "B"}, value="1k"),
+    ]}
+    avec = {"label": "I", "components": [
+        _unit("Z1", "Z", {"1": "A", "2": "B"}, composition="R1+R2"),
+        _unit("Z2", "Z", {"1": "A", "2": "B"}, composition="C1//C2"),
     ]}
 
     ys_sans = [r["y"] for r in _build_island_schematic_plan(sans)["rows"]]

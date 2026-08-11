@@ -11,18 +11,21 @@ pour ne pas casser le reste du code.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
-from html import escape as _esc
-from typing import Dict, List, Tuple
-import logging
-import xml.etree.ElementTree as ET
 
-from circuit_analyzer import eretro
+import logging
+import re
+import xml.etree.ElementTree as ET
+from copy import deepcopy
+from dataclasses import dataclass, field
+from html import escape as _esc
+
+from circuit_analyzer import eretro, eretro_symboles
 from circuit_analyzer.composant import Composant as Component
 from circuit_analyzer.patterns.base import (
-    is_gnd, is_power, is_ground_net, is_power_net, is_protective_earth_net
+    is_gnd,
+    is_power,
+    is_protective_earth_net,
 )
-
 
 # =============================================================================
 # FORMES VISUELLES DES COMPOSANTS (coordonnées relatives au centre)
@@ -32,7 +35,7 @@ from circuit_analyzer.patterns.base import (
 
 _log = logging.getLogger(__name__)
 
-_FORME: Dict[str, dict] = {
+_FORME: dict[str, dict] = {
     "Résistance": {
         "pins": {"1": (80, 0, 1), "2": (-80, 0, 0)},
         "polygon": """
@@ -285,6 +288,14 @@ _TYPE_VERS_FORME = {
     "F": ("Fusible",    {"1": "1", "2": "2"}),
     "L": ("Self",       {"1": "1", "2": "2"}),
     "K": ("Relais_1FormC", {"A1": "A1", "A2": "A2", "11": "COM", "12": "NC", "14": "NO"}),
+    # Les rails portent une broche NUMEROTEE ("1") : sans entree ici, ils
+    # tombaient dans la branche « toutes broches numerotees » (l. 829) et
+    # ressortaient en boitier DIP 4 broches. Mesure : 3 composants en entree,
+    # 4 en sortie, dont un fantome. Noms de broches verifies sur _FORME apres
+    # fusion (Task 2) : GND -> "GND", VCC -> "VCC", Vss -> "VCC".
+    "GND": ("GND", {"1": "GND"}),
+    "VCC": ("VCC", {"1": "VCC"}),
+    "VSS": ("Vss", {"1": "VCC"}),
     # Composant inconnu (issu d'un XML avec nom non reconnu) → rendu comme résistance placeholder
     "X": ("Résistance", {"1": "1", "2": "2"}),
 }
@@ -296,6 +307,131 @@ _TYP_COMPOSANT = {
 }
 
 
+#: Nos formes historiques, AVANT fusion. Conservees telles quelles : ce sont
+#: elles qui servent de repli quand son dossier est absent (CI, .exe livre),
+#: et le point de comparaison quand un dessin diverge.
+#: Deep copy garantit l'indépendance complète, y compris les sous-dicts pins.
+_FORME_MAISON = deepcopy(_FORME)
+
+
+def _fusionner_bibliotheque_eretro():
+    """@brief Superpose SA bibliotheque vivante sur nos formes maison.
+
+    Decision du boss (2026-07-31) : sur les noms communs, SA geometrie fait
+    foi — nos deux bibliotheques sont deux copies divergees de la meme, et il
+    faut une seule source. Nos formes orphelines (MOSFET, Fusible, PuceN,
+    Relais...) sont CONSERVEES : il ne les a pas, et l'export en depend.
+
+    Le `typ`, lui, ne suit PAS le symbole. On partage la geometrie, pas la
+    semantique electrique : son `GND.xml` porte `typ=0` la ou le notre vaut 71
+    ('G'), la valeur meme dont `eretro.classer_rail` se sert pour reconnaitre
+    une masse. D'ou un `setdefault`, qui ne comble qu'une entree absente.
+
+    Les `pins` FUSIONNENT par RANG : on garde nos noms de clé (pour que
+    _TYPE_VERS_FORME et _idx_broche continuent de fonctionner), mais on prend
+    les POSITIONS (x, y) de SA bibliotheque au même rang. Cela garantit que la
+    géométrie dessinée (segments/polygones) et l'ancrage des fils coïncident.
+    """
+    for nom, forme in eretro_symboles.charger().items():
+        _TYP_COMPOSANT.setdefault(nom, forme["typ"])
+
+        if nom in _FORME:
+            # Merge: prendre sa géométrie, fusionner ses pins par rang
+            _FORME[nom].update({cle: valeur for cle, valeur in forme.items()
+                                if cle not in ("typ", "pins")})
+
+            # Fusionner les pins par RANG : garder nos noms, prendre ses positions
+            nos_pins = _FORME[nom]["pins"]
+            ses_pins = forme["pins"]
+
+            # Créer un map rang -> (nom_notre_clé, position_notre)
+            nos_pins_par_rang = {rang: (nom_clé, (x, y))
+                                 for nom_clé, (x, y, rang) in nos_pins.items()}
+            ses_pins_par_rang = {rang: (x, y)
+                                 for nom_clé, (x, y, rang) in ses_pins.items()}
+
+            # Les rangs doivent correspondre EXACTEMENT : un decompte egal
+            # mais des rangs differents est tout aussi desynchronisant qu'un
+            # decompte different. Le repli (garder notre position d'origine
+            # pour un rang orphelin) reste inchange ; on ajoute seulement la
+            # visibilite, faute de quoi ce cas passe en silence (cf. Tour de
+            # Correction 1, ou la meme desync geometrie/broches est apparue
+            # pour une autre cause).
+            if set(nos_pins_par_rang) != set(ses_pins_par_rang):
+                _log.warning(
+                    "forme %s : rangs de broches divergents apres fusion "
+                    "(%d chez nous, %d chez lui) - les rangs orphelins "
+                    "gardent notre position d'origine", nom,
+                    len(nos_pins_par_rang), len(ses_pins_par_rang))
+
+            # Construire les pins fusionnées
+            pins_fusionnées = {}
+            for rang, (nom_clé, _) in nos_pins_par_rang.items():
+                if rang in ses_pins_par_rang:
+                    # Prendre SA position au même rang, garder NOTRE nom
+                    x, y = ses_pins_par_rang[rang]
+                    pins_fusionnées[nom_clé] = (x, y, rang)
+                else:
+                    # Pas de broche au même rang chez lui : garder la nôtre
+                    pins_fusionnées[nom_clé] = nos_pins[nom_clé]
+
+            _FORME[nom]["pins"] = pins_fusionnées
+        else:
+            # New symbol from editor: use it as-is
+            _FORME[nom] = {cle: valeur for cle, valeur in forme.items() if cle != "typ"}
+
+    # Garde-fou (revue finale) : `_idx_broche_forme` (plus bas) fait un
+    # lookup NON protege `_FORME[nom]["pins"][broche][2]`. Si un plan de
+    # _TYPE_VERS_FORME reclame un nom de broche que la forme fusionnee ne
+    # porte plus — typiquement une forme NEUVE arrivee via la branche
+    # ci-dessus, dont les noms de broches sont les siens et pas les notres —
+    # generer_xml() plante avec un KeyError brut. Le chargeur ne leve JAMAIS
+    # pour cette meme raison (son dossier est un tiers, mouvant sans
+    # prevenir) ; ce garde-fou etend la garantie un niveau plus haut : on
+    # revient a notre forme maison plutot que de laisser l'export exploser.
+    for nom_forme, plan_broches in _TYPE_VERS_FORME.values():
+        if nom_forme not in _FORME:
+            continue
+        pins_disponibles = _FORME[nom_forme]["pins"]
+        manquantes = sorted({nom_broche for nom_broche in plan_broches.values()
+                             if nom_broche not in pins_disponibles})
+        if not manquantes:
+            continue
+        if nom_forme in _FORME_MAISON:
+            _FORME[nom_forme] = deepcopy(_FORME_MAISON[nom_forme])
+            _log.warning(
+                "forme %s : broches manquantes apres fusion (%s) - "
+                "repli sur notre forme maison", nom_forme, ", ".join(manquantes))
+        else:
+            _log.warning(
+                "forme %s : broches manquantes apres fusion (%s) et aucune "
+                "forme maison de repli disponible - la forme reste telle quelle",
+                nom_forme, ", ".join(manquantes))
+
+
+def formes_orphelines(dossier):
+    """@brief Nos formes maison absentes de sa bibliotheque (LibItem/Lib).
+
+    Expose `_FORME_MAISON`/`_TYP_COMPOSANT` (prives a ce module) via une
+    fonction publique, pour que `gui/tab_components.py` puisse pousser nos
+    symboles orphelins (`eretro_lib.ecrire_formes_dans_dossier`) sans
+    importer directement des noms prefixes `_` depuis un autre fichier.
+
+    @param dossier Dossier `LibItem/Lib` a comparer, ou None/vide.
+    @return tuple (formes: dict nom -> entree _FORME, typs: dict nom -> typ)
+            restreints aux noms absents de sa bibliotheque.
+    """
+    from circuit_analyzer import eretro_symboles
+    ses_formes = eretro_symboles.charger(dossier) if dossier else {}
+    orphelines = {nom: forme for nom, forme in _FORME_MAISON.items()
+                 if nom not in ses_formes}
+    typs = {nom: t for nom, t in _TYP_COMPOSANT.items() if nom in orphelines}
+    return orphelines, typs
+
+
+_fusionner_bibliotheque_eretro()
+
+
 # =============================================================================
 # GÉNÉRATION XML (Composants → fichier BoardSCH)
 # =============================================================================
@@ -303,7 +439,7 @@ _TYP_COMPOSANT = {
 @dataclass
 class _Comp:
     """@brief Composant placé sur le schéma (id, nom de forme, valeur, position, forme)."""
-    cid: int; name: str; value: str; x: int; y: int; angle: int = 0; shape: str = ""; group_id: int = 0
+    cid: int; name: str; value: str; x: int; y: int; angle: int = 0; shape: str = ""; group_id: int = 0; ref: str = ""
 
 @dataclass
 class _Wire:
@@ -316,11 +452,11 @@ class _Generateur:
 
     def __init__(self):
         """@brief Initialise un générateur vide (aucun composant ni fil)."""
-        self._comps: List[_Comp] = []
-        self._wires: List[_Wire] = []
+        self._comps: list[_Comp] = []
+        self._wires: list[_Wire] = []
         self._wire_id = 0
 
-    def ajouter(self, nom, valeur="", x=0, y=0, angle=0, forme="", group_id=0) -> int:
+    def ajouter(self, nom, valeur="", x=0, y=0, angle=0, forme="", group_id=0, ref="") -> int:
         """@brief Ajoute un composant au schéma.
 
         @param nom Nom de la forme BoardSCH (ex. 'Résistance', 'AOP').
@@ -330,10 +466,11 @@ class _Generateur:
         @param angle Angle de rotation (degrés).
         @param forme Forme explicite (sinon déduite du nom).
         @param group_id Identifiant de groupe BoardSCH (0 = aucun groupe).
+        @param ref Référence du composant (ex. 'R1', 'C1').
         @return int Identifiant (cid) du composant ajouté.
         """
         cid = len(self._comps)
-        self._comps.append(_Comp(cid, nom, valeur, x, y, angle, forme, group_id))
+        self._comps.append(_Comp(cid, nom, valeur, x, y, angle, forme, group_id, ref=ref))
         return cid
 
     def relier(self, cid1, broche1, cid2, broche2):
@@ -358,7 +495,7 @@ class _Generateur:
         parties = ['<?xml version="1.0" encoding="utf-8"?>',
                    '<BoardSCH xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
                    'xmlns:xsd="http://www.w3.org/2001/XMLSchema">', '  <CmpntL>']
-        noeuds_pins: Dict[Tuple[int,int], List[str]] = {}
+        noeuds_pins: dict[tuple[int,int], list[str]] = {}
         for w in self._wires:
             noeuds_pins.setdefault((w.c1, w.p1), []).append(f"{w.c1}_{w.p1}_0_{w.wid}")
             noeuds_pins.setdefault((w.c2, w.p2), []).append(f"{w.c2}_{w.p2}_1_{w.wid}")
@@ -465,7 +602,7 @@ class _Generateur:
         poly = forme.get("polygon", ""); seg = forme.get("segment", ""); arc = forme.get("arc", "")
         typ_val = _TYP_COMPOSANT.get(nom_forme, ord(nom_forme[0]) if nom_forme and nom_forme[0].isascii() else 82)
         return f"""    <DataItem>
-      <Name>{_esc(comp.name)}</Name><Group /><reference /><value>{_esc(comp.value)}</value>
+      <Name>{_esc(comp.name)}</Name><Group /><reference>{_esc(comp.ref)}</reference><value>{_esc(comp.value)}</value>
       <datapolygon>{poly}</datapolygon><datasegment>{seg}</datasegment><dataarc>{arc}</dataarc>
       <datapin>
 {''.join(parties_broches)}
@@ -515,9 +652,16 @@ _PAS_Y_BLOC  = 190
 
 @dataclass
 class _Bloc:
-    """@brief Bloc de mise en page : un libellé de circuit et ses composants."""
+    """@brief Bloc de mise en page : un libellé de circuit et ses composants.
+
+    `roles` associe un nom de rôle (ex. 'aop', 'Zin', 'Zf') à la liste des
+    refs qui le jouent — vide si le montage n'a pas de décomposition par
+    rôle connue (Divers, ou montage pas encore migré vers un positionneur
+    canonique).
+    """
     label: str
     comps: list
+    roles: dict = field(default_factory=dict)
 
 
 def _refs_du_bloc(r) -> list:
@@ -529,6 +673,44 @@ def _refs_du_bloc(r) -> list:
     refs = list(r["components"])
     refs += [s['ref'] for s in r.get('satellites', []) if s.get('status') == 'sure']
     return refs
+
+
+def _roles_du_bloc(r) -> dict:
+    """@brief Rôles des composants d'un match, depuis 'impedances'.
+
+    @param r Match d'un circuit détecté (sortie de detecteur.py).
+    @return dict {nom_role: [refs]} ; {} si le match n'a pas de champ
+            'impedances' (Divers, ou montage pas encore migré).
+
+    Le ou les refs de r['components'] qui n'apparaissent dans AUCUN rôle de
+    'impedances' sont regroupés sous le rôle 'aop' (l'ancre du montage —
+    vrai pour tous les montages AOP actuels, qui n'ont qu'un seul composant
+    hors impédances).
+
+    Un rôle de 'impedances' n'est pas toujours un dict {'refs': [...], ...} :
+    le Sommateur (detecteur.py, `detecter_amplificateur_sommateur`) range
+    plusieurs blocs d'entrée sous 'Zin' comme une LISTE de tels dicts (un par
+    résistance d'entrée), pas un dict unique — voir `_refs_du_role`.
+    """
+    impedances = r.get('impedances')
+    if not impedances:
+        return {}
+    roles = {nom: _refs_du_role(bloc) for nom, bloc in impedances.items()}
+    refs_connus = {ref for refs in roles.values() for ref in refs}
+    ancre = [ref for ref in r['components'] if ref not in refs_connus]
+    if ancre:
+        roles['aop'] = ancre
+    return roles
+
+
+def _refs_du_role(bloc) -> list:
+    """@brief Refs d'un rôle d'impédance : un dict {'refs': [...], ...} (cas
+    général) OU une liste de tels dicts (ex. 'Zin' du Sommateur, plusieurs
+    entrées — detecteur.py:701/718)."""
+    if isinstance(bloc, dict):
+        return list(bloc.get('refs', []))
+    return [ref for sous in (bloc or []) if isinstance(sous, dict)
+            for ref in sous.get('refs', [])]
 
 
 def _ordre_des_circuits(resultats) -> list:
@@ -571,7 +753,8 @@ def _grouper_par_circuit(composants, resultats):
         r = resultats[i]
         label = r["circuit_type"]
         b = _Bloc(label, [comp_par_ref[ref] for ref in _refs_du_bloc(r)
-                          if ref in comp_par_ref and type_du_ref.get(ref) == label])
+                          if ref in comp_par_ref and type_du_ref.get(ref) == label],
+                  roles=_roles_du_bloc(r))
         if b.comps:
             blocs.append(b)
     divers = [c for ref, c in comp_par_ref.items() if ref not in type_du_ref]
@@ -668,7 +851,7 @@ def _clusteriser_par_nets(comps) -> list:
     return list(clusters.values())
 
 
-def _positionner_blocs(blocs) -> Dict[str, Tuple[int, int]]:
+def _positionner_blocs(blocs) -> dict[str, tuple[int, int]]:
     """@brief Calcule la position (x, y) de chaque composant selon son bloc.
 
     @param blocs Liste de _Bloc à disposer en grille.
@@ -684,14 +867,55 @@ def _positionner_blocs(blocs) -> Dict[str, Tuple[int, int]]:
     return pos
 
 
-def _positionner_composants_bloc(bloc: _Bloc, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+def _positionner_amplificateur_inverseur(comps, roles: dict[str, list[str]], x: int, y: int) -> dict:
+    """@brief Gabarit canonique de l'ampli inverseur.
+
+    Zin en chaîne horizontale à gauche de l'AOP (alignée sur son entrée),
+    AOP au centre, Zf en chaîne horizontale AU-DESSUS de l'AOP — c'est la
+    POSITION (strictement au-dessus), pas une rotation, qui distingue le
+    chemin de contre-réaction de la chaîne Zin. Angle toujours 0 : la
+    rotation des broches de fil (_xml_fil, xml.py:626-632) n'est pas
+    garantie fiable pour un symbole tourné dans l'éditeur réel — à
+    revisiter si/quand ce chemin est validé.
+    Tout composant du bloc absent de `roles` (satellite) est placé par la
+    grille compacte existante, sous la disposition canonique — jamais perdu.
+
+    @param comps Composants du bloc (Composant/Component).
+    @param roles {'aop': [...], 'Zin': [...], 'Zf': [...]}.
+    @param x, y Origine du bloc.
+    @return dict {ref: (x, y, angle)} pour les rôles connus,
+            {ref: (x, y)} pour les satellites.
+    """
+    pos = {}
+    x_aop, y_aop = x + 2 * _PAS_X_BLOC, y + _PAS_Y_BLOC
+    for ref in roles.get('aop', []):
+        pos[ref] = (x_aop, y_aop, 0)
+    for j, ref in enumerate(roles.get('Zin', [])):
+        pos[ref] = (x + j * _PAS_X_BLOC, y_aop, 0)
+    for j, ref in enumerate(roles.get('Zf', [])):
+        pos[ref] = (x_aop + j * _PAS_X_BLOC, y, 0)
+    restants = [c for c in comps if c.ref not in pos]
+    pos.update(_positionner_grille_compacte(restants, x, y + 2 * _PAS_Y_BLOC))
+    return pos
+
+
+_POSITIONNEURS_PAR_MOTIF = {
+    "Amplificateur inverseur (AOP)": _positionner_amplificateur_inverseur,
+}
+
+
+def _positionner_composants_bloc(bloc: _Bloc, x: int, y: int) -> dict:
     """@brief Place les composants a l'interieur d'un bloc visuel.
 
     @param bloc Bloc de circuit detecte.
     @param x Origine horizontale du bloc.
     @param y Origine verticale du bloc.
-    @return dict {ref -> (x, y)} Positions absolues.
+    @return dict {ref -> (x, y)} ou {ref -> (x, y, angle)} pour les
+            montages avec un gabarit canonique. Positions absolues.
     """
+    positionneur = _POSITIONNEURS_PAR_MOTIF.get(bloc.label)
+    if positionneur is not None and any(bloc.roles.values()):
+        return positionneur(bloc.comps, bloc.roles, x, y)
     if "commande de relais" in bloc.label.lower():
         return _positionner_commande_relais(bloc.comps, x, y)
     if "pont diviseur" in bloc.label.lower():
@@ -705,7 +929,7 @@ def _positionner_composants_bloc(bloc: _Bloc, x: int, y: int) -> Dict[str, Tuple
     return _positionner_grille_compacte(bloc.comps, x, y)
 
 
-def _positionner_commande_relais(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+def _positionner_commande_relais(comps, x: int, y: int) -> dict[str, tuple[int, int]]:
     """@brief Gabarit compact pour relais + transistor/MOSFET + diode de roue libre."""
     pos = {}
     relais = [c for c in comps if c.type == "K"]
@@ -725,7 +949,7 @@ def _positionner_commande_relais(comps, x: int, y: int) -> Dict[str, Tuple[int, 
     return pos
 
 
-def _positionner_pont_diviseur(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+def _positionner_pont_diviseur(comps, x: int, y: int) -> dict[str, tuple[int, int]]:
     """@brief Gabarit vertical pour un pont diviseur et ses annexes eventuelles."""
     pos = {}
     resistances = [c for c in comps if c.type == "R"]
@@ -737,7 +961,7 @@ def _positionner_pont_diviseur(comps, x: int, y: int) -> Dict[str, Tuple[int, in
     return pos
 
 
-def _positionner_aop(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+def _positionner_aop(comps, x: int, y: int) -> dict[str, tuple[int, int]]:
     """@brief Gabarit AOP : opamp centré, résistances à gauche/droite, condensateurs en bas."""
     pos = {}
     aops = [c for c in comps if c.type in {"U", "AOP"}]
@@ -754,7 +978,7 @@ def _positionner_aop(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
     return pos
 
 
-def _positionner_rc(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+def _positionner_rc(comps, x: int, y: int) -> dict[str, tuple[int, int]]:
     """@brief Gabarit RC : résistance à gauche, condensateur à droite.
     Si pas de résistance (cap seul), le condensateur est placé à x sans offset."""
     pos = {}
@@ -775,7 +999,7 @@ def _positionner_rc(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
     return pos
 
 
-def _positionner_grille_compacte(comps, x: int, y: int) -> Dict[str, Tuple[int, int]]:
+def _positionner_grille_compacte(comps, x: int, y: int) -> dict[str, tuple[int, int]]:
     """@brief Placement par defaut en petite grille 2 colonnes."""
     return {
         comp.ref: (x + (j % 2) * _PAS_X_BLOC, y + (j // 2) * _PAS_Y_BLOC)
@@ -783,7 +1007,7 @@ def _positionner_grille_compacte(comps, x: int, y: int) -> Dict[str, Tuple[int, 
     }
 
 
-def _ids_groupes_par_ref(blocs) -> Dict[str, int]:
+def _ids_groupes_par_ref(blocs) -> dict[str, int]:
     """@brief Associe chaque référence composant à son identifiant de groupe BoardSCH.
 
     @param blocs Blocs de mise en page issus de _grouper_par_circuit().
@@ -875,12 +1099,16 @@ def generer_xml(composants, resultats=None, results=None) -> str:
                                  comp.ref, nom_broche, nom_forme)
                     break
                 plan_broches[nom_broche] = libres.pop(0)
+        angle = 0
         if positions and comp.ref in positions:
-            x, y = positions[comp.ref]
+            pos_comp = positions[comp.ref]
+            x, y = pos_comp[0], pos_comp[1]
+            if len(pos_comp) > 2:
+                angle = pos_comp[2]
         else:
             x = 250 + (i % PER_RANGEE) * _LARG_COMP
             y = 250 + (i // PER_RANGEE) * _HAUT_RANGEE
-        cid = gen.ajouter(nom_forme, comp.value, x=x, y=y,
+        cid = gen.ajouter(nom_forme, comp.value, x=x, y=y, angle=angle, ref=comp.ref,
                           group_id=ids_groupes.get(comp.ref, 0))
         ref_vers_cid[comp.ref] = cid
         ref_vers_map[comp.ref] = plan_broches
@@ -936,7 +1164,7 @@ def _grouper_broches_alim(gen, broches) -> dict:
     return groupes
 
 
-def _positionner_symbole_alim(gen, broches, sym: str, group_id: int) -> Tuple[int, int]:
+def _positionner_symbole_alim(gen, broches, sym: str, group_id: int) -> tuple[int, int]:
     """@brief Place un symbole VCC/GND pres des composants qu'il alimente.
 
     @param gen Generateur contenant les composants deja places.
@@ -1020,7 +1248,6 @@ _Generateur.to_xml  = _Generateur.vers_xml
 
 # Exposer BoardSCHGenerator pour les tests qui l'utilisent directement
 BoardSCHGenerator = _Generateur
-BoardSCHGenerator._TYPE_TO_SHAPE = _TYPE_VERS_FORME
 
 
 # =============================================================================
@@ -1043,10 +1270,16 @@ _NOM_VERS_TYPE = {
     'Inductor':    ('L', {'1': '1', '2': '2'}),
     'Self':        ('L', {'1': '1', '2': '2'}),
     # ── Diodes ───────────────────────────────────────────────────────────────
-    'Diode':       ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K'}),
-    'LED':         ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K'}),
-    'Zener':       ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K'}),
-    'TVS':         ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K'}),
+    # '+'/'-' : convention de polarite vue sur de vraies diodes ERetroDesign
+    # (cartes industrielles et schemas de test) — '+' = anode (le courant y
+    # entre en polarisation directe). Sans ce plan, ces broches restaient
+    # '+'/'-' telles quelles et les 4 detecteurs de diode qui lisent
+    # comp.pins.get('A')/.get('K') par nom litteral (roue libre, ESD,
+    # redresseur simple, detecteur de crete) ignoraient ces diodes en silence.
+    'Diode':       ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K', '+': 'A', '-': 'K'}),
+    'LED':         ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K', '+': 'A', '-': 'K'}),
+    'Zener':       ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K', '+': 'A', '-': 'K'}),
+    'TVS':         ('D', {'A': 'A', 'K': 'K', '1': 'A', '2': 'K', '+': 'A', '-': 'K'}),
     # ── Puces génériques à broches numérotées (catalogue, plan vide =
     #    passthrough : broche_lib = Pname tel quel) ─────────────────────────
     'Puce4':       ('U', {}),
@@ -1082,7 +1315,7 @@ _NOMS_ALIMENTATION = {
 }
 
 # Broches critiques par type (manquante → warning)
-_BROCHES_CRITIQUES: Dict[str, list] = {
+_BROCHES_CRITIQUES: dict[str, list] = {
     'U': ['IN+', 'IN-', 'OUT'],
     'Q': ['B', 'C', 'E'],
     'M': ['G', 'D', 'S'],
@@ -1095,6 +1328,8 @@ class ListeComposantsXML(list):
     @brief Liste de Composant retournée par lire_xml(), compatible avec list.
 
     Attribut .warnings : avertissements non-bloquants rencontrés pendant la lecture.
+    Attribut .source : SourceXML (arbre d'origine + pont ref->element) si la
+    liste vient d'un lire_xml, None sinon (ex. liste construite à la main).
     """
     def __init__(self, composants=None):
         """@brief Initialise la liste de composants XML et ses avertissements.
@@ -1105,8 +1340,9 @@ class ListeComposantsXML(list):
         super().__init__(composants or [])
         self.warnings: list[str] = []
         self.groupes_puces: dict[str, str] = {}
+        self.source = None
 
-_NET_ALIMENTATION: Dict[str, str] = {
+_NET_ALIMENTATION: dict[str, str] = {
     'GND': 'GND', 'AGND': 'GND', 'PGND': 'GND', 'DGND': 'GND',
     'VCC': 'VCC', 'Vcc': 'VCC', '+5V': 'VCC', '+3.3V': 'VCC', '+12V': 'VCC',
     'VDD': 'VDD', 'Vdd': 'VDD', 'VSS': 'VSS', 'Vss': 'VSS',
@@ -1155,6 +1391,59 @@ def _analyser_ref_packee(nid: str) -> tuple:
     return valeur // 1000, (valeur % 1000) // 100
 
 
+def _capturer_entete_source(chemin: str, tag_racine: str):
+    """@brief Capture ce que ET.parse() detruit silencieusement au parsing.
+
+    `xml.etree.ElementTree` (contrairement a lxml) ne conserve PAS les
+    declarations `xmlns:*` de la racine quand elles ne qualifient aucun
+    tag/attribut, et ne rejoue pas le prologue `<?xml ...?>` a la
+    serialisation. Cette info doit donc etre captee ICI, au moment de la
+    lecture — la reconstruire plus tard reviendrait a la deviner.
+
+    Best-effort explicitement : un echec de capture (fichier illisible en
+    utf-8, etc.) ne doit jamais faire echouer la lecture principale, qui a
+    deja reussi via ET.parse() au moment ou cette fonction est appelee.
+
+    Tout se lit sur le MEME texte, en une passe. La version precedente tirait
+    les namespaces d'un `ET.iterparse(events=('start-ns',))`, ce qui coutait
+    un second parsing complet du document (63 ms contre 43 ms pour le ET.parse
+    principal sur `pg carte.xml`, soit 38 % du temps de lecture) pour n'en
+    extraire que deux paires de chaines. Trois defauts tombent avec :
+      - la portee : `start-ns` remonte les xmlns declares sur N'IMPORTE QUEL
+        descendant, qu'on reposait ensuite sur la RACINE — donc une ligne
+        modifiee hors GpId, ce que le chantier promet de ne jamais faire ;
+      - le namespace par DEFAUT (`xmlns="..."`, prefixe vide) devenait un
+        `xmlns:=` litteral, du XML malforme ecrit sous un « Succes » ;
+      - le cout, dans un projet qui vise 5000 composants.
+    Le motif ci-dessous ne matche que `xmlns:prefixe=` sur la balise racine :
+    le defaut (`xmlns=`) est ignore par construction, et lui reste porte par
+    ET.parse() quand il qualifie reellement des tags.
+
+    @param chemin Chemin du fichier source (le meme que ET.parse(chemin)).
+    @param tag_racine Nom de la balise racine deja parsee (repere la fin
+    du texte a capturer, sans en dependre pour le contenu).
+    @return tuple (namespaces: list[(prefixe, uri)], avant_racine: str) —
+    listes/chaine vides si le fichier n'en portait pas (on ne fabrique rien).
+    """
+    namespaces: list = []
+    avant_racine = ""
+    try:
+        with open(chemin, 'rb') as f:
+            brut = f.read().decode('utf-8')
+    except (OSError, UnicodeDecodeError):
+        return namespaces, avant_racine
+
+    # Balise racine ouvrante, en tolerant un '>' a l'interieur d'une valeur
+    # entre guillemets (d'ou l'alternance guillemets/reste plutot qu'un [^>]*).
+    ouvrante = re.search(
+        r'<' + re.escape(tag_racine) + r'((?:"[^"]*"|\'[^\']*\'|[^>"\'])*)>', brut)
+    if ouvrante:
+        avant_racine = brut[:ouvrante.start()]
+        namespaces = re.findall(r'xmlns:([\w.-]+)\s*=\s*"([^"]*)"', ouvrante.group(1))
+
+    return namespaces, avant_racine
+
+
 def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     """
     @brief Lit un fichier BoardSCH XML et retourne une liste de Composant.
@@ -1174,13 +1463,17 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     except ET.ParseError as e:
         raise ValueError(f"Fichier XML invalide : {e}") from e
     racine = arbre.getroot()
+    # Capture, AVANT toute autre chose, ce que ET.parse() vient de detruire
+    # silencieusement (prologue, xmlns:* non qualifiants) — c'est le seul
+    # endroit ou `chemin` est encore en portee pour le relire.
+    namespaces_source, avant_racine_source = _capturer_entete_source(chemin, racine.tag)
 
     # Étape 1 : extraire tous les composants du fichier.
     # Indexation par POSITION dans CmpntL (sémantique du C# ERetroDesign) :
     # les vrais fichiers portent des <id> dupliqués (id=0 partout) qui
     # écraseraient les entrées d'un dict indexé par id.
     avertissements: list = []
-    elements: Dict[int, dict] = {}
+    elements: dict[int, dict] = {}
     for idx, item in enumerate(racine.findall('.//CmpntL/DataItem')):
         nom    = (item.findtext('Name') or '').strip()
         valeur = (item.findtext('value') or '').strip()
@@ -1198,7 +1491,8 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         typc = chr(int(typ_txt)) if typ_txt.isdigit() and 0 < int(typ_txt) < 0x110000 else ''
         elements[idx] = {'id': idx, 'name': nom, 'value': valeur, 'pins': broches,
                          'rail': eretro.classer_rail(typc, valeur, len(broches), nom),
-                         'geo': eretro.extraire_geometrie(item)}
+                         'geo': eretro.extraire_geometrie(item),
+                         'xml': item}
 
     # Étape 1 bis : puces composées ERetroDesign (CCmpntL) — dépliées.
     elements_cc, fils_cc, avert_cc = eretro.extraire_composes(racine, len(elements))
@@ -1206,7 +1500,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     avertissements.extend(avert_cc)
 
     # Étape 2 : Union-Find pour regrouper les broches reliées par des fils
-    parent: Dict[tuple, tuple] = {}
+    parent: dict[tuple, tuple] = {}
 
     def trouver(x):
         """@brief Trouve la racine Union-Find d'une broche avec compression de chemin.
@@ -1245,7 +1539,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     # EXACTEMENT 4 chiffres des fils lineL/Line sont décodées en dernier
     # recours via _analyser_ref_packee (voir resoudre_extremite plus bas) ;
     # les refs 5+ chiffres restent ambiguës et rejetées.
-    ref_vers_broche: Dict[str, tuple] = {}
+    ref_vers_broche: dict[str, tuple] = {}
     for cid, comp in elements.items():
         for pidx, b in enumerate(comp['pins']):
             for r in b['refs']:
@@ -1285,8 +1579,10 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     # l'INDICE du fil dans lineL (C# : `lLine[nl.AttachedLine].Name = nl.Net`),
     # PAS son <ID> — les vrais fichiers portent des <ID> tous à 0. On mémorise
     # donc, par indice de fil, une broche à laquelle il aboutit.
-    ligne_vers_broche: Dict[str, tuple] = {}
-    for idx_fil, fil in enumerate(racine.findall('.//lineL/Line')):
+    ligne_vers_broche: dict[str, tuple] = {}
+    lignes_xml = racine.findall('.//lineL/Line')
+    lignes_cids: dict[int, tuple] = {}
+    for idx_fil, fil in enumerate(lignes_xml):
         cf = (fil.findtext('CFirst') or '').strip()
         cl = (fil.findtext('CLast') or '').strip()
         bf = resoudre_extremite(cf, autoriser_packe=True)
@@ -1296,6 +1592,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             ligne_vers_broche[str(idx_fil)] = broche_fil
         if bf is not None and bl is not None:
             unir(bf, bl)
+            lignes_cids[idx_fil] = (bf[0], bl[0])
         elif cf or cl:
             avertissements.append(
                 f"Fil non résolu : CFirst={cf!r}, CLast={cl!r}"
@@ -1320,8 +1617,8 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     # encore à sa netlist ; on fait le câblage ici. Une étiquette désigne un
     # fil par son AttachedLine (ID de Line) ; on unit les broches des fils qui
     # portent le même nom, et ce nom baptise le net.
-    label_par_broche: Dict[tuple, str] = {}
-    premiere_broche_du_label: Dict[str, tuple] = {}
+    label_par_broche: dict[tuple, str] = {}
+    premiere_broche_du_label: dict[str, tuple] = {}
     for et in racine.findall('.//NetLabels/NetLabel'):
         nom_label = (et.findtext('Net') or '').strip()
         aid = (et.findtext('AttachedLine') or '').strip()
@@ -1337,14 +1634,14 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             premiere_broche_du_label[nom_label] = broche
 
     # Étape 3 : regrouper les broches par nœud électrique
-    groupes_nets: Dict[tuple, list] = {}
+    groupes_nets: dict[tuple, list] = {}
     for cid, comp in elements.items():
         for pidx in range(len(comp['pins'])):
             cle = trouver((cid, pidx))
             groupes_nets.setdefault(cle, []).append((cid, pidx))
 
     # Étape 4 : nommer les nœuds
-    racine_vers_net: Dict[tuple, str] = {}
+    racine_vers_net: dict[tuple, str] = {}
     compteur = 0
 
     def nom_net(cle):
@@ -1385,7 +1682,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         net = f'NET{compteur}'
         racine_vers_net[cle] = net; return net
 
-    broche_vers_net: Dict[tuple, str] = {}
+    broche_vers_net: dict[tuple, str] = {}
     for cle, membres in groupes_nets.items():
         net = nom_net(cle)
         for k in membres:
@@ -1394,9 +1691,10 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     # Étape 5 : construire les objets Composant
     composants = ListeComposantsXML()
     composants.warnings.extend(avertissements)
-    compteurs_type: Dict[str, int] = {}
-    refs_puces: Dict[int, str] = {}     # num composé → ref boîtier ('U7')
-    compteurs_internes: Dict[int, int] = {}
+    compteurs_type: dict[str, int] = {}
+    refs_puces: dict[int, str] = {}     # num composé → ref boîtier ('U7')
+    compteurs_internes: dict[int, int] = {}
+    cid_vers_ref: dict[int, str] = {}   # id composant (elements) → ref émise
 
     def generer_ref(type_prefix, elem):
         """@brief Réf du composant courant, partagée par les deux branches
@@ -1461,6 +1759,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         if correspondance is None:
             # Composant inconnu : on le garde sous type 'X' pour ne pas perdre ses connexions
             ref = generer_ref('X', elem)
+            cid_vers_ref[cid] = ref
             broches = {}
             for pidx, info_b in enumerate(elem['pins']):
                 net = broche_vers_net.get((cid, pidx), 'NC')
@@ -1473,6 +1772,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
 
         type_prefix, plan = correspondance
         ref = generer_ref(type_prefix, elem)
+        cid_vers_ref[cid] = ref
         broches = {}
         for pidx, info_b in enumerate(elem['pins']):
             pnom = info_b['pname']
@@ -1532,6 +1832,19 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     if alias_catalogue:
         from circuit_analyzer.catalogue import appliquer_catalogue
         appliquer_catalogue(composants)
+
+    composants.source = eretro.SourceXML(
+        arbre=arbre,
+        elements={ref: elements[cid]['xml']
+                  for cid, ref in cid_vers_ref.items()
+                  if elements[cid].get('xml') is not None},
+        lignes=lignes_xml,
+        lignes_refs={idx: (cid_vers_ref[a], cid_vers_ref[b])
+                     for idx, (a, b) in lignes_cids.items()
+                     if a in cid_vers_ref and b in cid_vers_ref},
+        namespaces=namespaces_source,
+        avant_racine=avant_racine_source,
+    )
 
     return composants
 

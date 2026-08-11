@@ -6,7 +6,6 @@ from collections import Counter
 
 from circuit_analyzer.patterns.base import nodes_aplatis
 
-
 # NB : sortie limitée aux caractères cp1252 (console Windows) — pas de
 # symboles Unicode (fleches, triangles d'avertissement, traits pleins).
 _NIVEAUX = {'high': 'élevée', 'medium': 'moyenne', 'low': 'faible'}

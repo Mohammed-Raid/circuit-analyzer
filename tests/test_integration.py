@@ -3,12 +3,13 @@
 @brief Tests automatises pour test_integration.
 """
 
-import subprocess, sys, os, tempfile
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 from circuit_analyzer.composant import Composant, construire_graphe
-from circuit_analyzer.detecteur import detecter_impedances, analyser
-
+from circuit_analyzer.detecteur import analyser, detecter_impedances
 
 SAMPLE_NETLIST = """\
 # Filtre RC passe-bas
@@ -128,3 +129,26 @@ def test_full_pipeline():
         assert 'Suiveur de tension (AOP)' in report
         assert 'R1' in report
         assert 'C1' in report
+
+
+def test_cli_affiche_les_composants_reels_identifies():
+    """@brief Bug reel : la CLI (main.py) n'affichait jamais la section
+    "Composants reels identifies" (catalogue) — generate() est appelee sans
+    le parametre composants=, contrairement a la GUI (gui/tab_analyze.py) qui
+    le passe. Une puce catalogue (ex. NE555) semblait donc invisible en CLI
+    alors qu'elle est bien reconnue."""
+    netlist = "U1  NET1  NET2  NET3  VCC  GND  NE555\n"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        netlist_path = Path(tmpdir) / 'circuit.txt'
+        report_path = Path(tmpdir) / 'report.txt'
+        netlist_path.write_text(netlist, encoding='utf-8')
+
+        result = subprocess.run(
+            [sys.executable, 'main.py', str(netlist_path), '--output', str(report_path)],
+            capture_output=True, text=True
+        )
+
+        assert result.returncode == 0, result.stderr
+        report = report_path.read_text(encoding='utf-8')
+        assert 'Composants reels identifies' in report or 'Composants réels identifiés' in report
+        assert 'NE555' in report

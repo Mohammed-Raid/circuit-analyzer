@@ -4,15 +4,23 @@
 """
 
 """Tests for the BoardSCH XML generator and the components→XML→components round-trip."""
-import tempfile
 import os
+import tempfile
+
 import pytest
 
-from circuit_analyzer.parser import Component
-from circuit_analyzer.xml_generator import BoardSCHGenerator, components_to_xml
-from circuit_analyzer.xml_parser import parse_xml
 from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.matcher import match_patterns
+from circuit_analyzer.parser import Component
+from circuit_analyzer.xml import (
+    _positionner_amplificateur_inverseur,
+    _positionner_composants_bloc,
+    _Bloc,
+    _PAS_X_BLOC,
+    _PAS_Y_BLOC,
+)
+from circuit_analyzer.xml_generator import BoardSCHGenerator, components_to_xml
+from circuit_analyzer.xml_parser import parse_xml
 
 
 def _xml_to_components(xml: str):
@@ -105,6 +113,27 @@ def test_roundtrip_inverting_amp():
     back = _xml_to_components(xml)
     types = [r["circuit_type"] for r in match_patterns(build_graph(back))]
     assert "Amplificateur inverseur (AOP)" in types
+
+
+def test_disposition_canonique_preserve_la_connectivite():
+    """@brief Contrainte dure : la regeneration avec disposition canonique
+    ne change AUCUNE connexion — verifie en re-detectant sur le resultat.
+    """
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    resultats = match_patterns(build_graph(comps))
+    orig = sorted(r["circuit_type"] for r in resultats)
+    xml = components_to_xml(comps, resultats)
+    item_zf, item_aop = _item(xml, "R2"), _item(xml, "U1")
+    assert item_zf is not None and item_aop is not None
+    assert float(item_zf.findtext("CtrIem/Y")) < float(item_aop.findtext("CtrIem/Y"))
+    back = _xml_to_components(xml)
+    roundtrip = sorted(r["circuit_type"] for r in match_patterns(build_graph(back)))
+    assert orig == roundtrip
 
 
 def test_roundtrip_transistor_switch():
@@ -221,8 +250,9 @@ def test_industrial_netlist_roundtrip_no_loss():
     """
     # A multi-rail industrial-style circuit must not LOSE any pattern through XML
     # (the greedy matcher may add an equivalent one, but never drop structure).
-    from circuit_analyzer.parser import parse_file
     import os
+
+    from circuit_analyzer.parser import parse_file
     sim = os.path.join("simulations", "ldo_regulator.txt")
     if not os.path.exists(sim):
         return  # simulations folder optional
@@ -237,7 +267,7 @@ def test_industrial_netlist_roundtrip_no_loss():
 
 # ── _Block / _layout_groups ───────────────────────────────────────────────────
 
-from circuit_analyzer.xml_generator import _layout_groups, _Block, _place_blocks
+from circuit_analyzer.xml_generator import _Block, _layout_groups, _place_blocks
 
 
 def test_layout_groups_one_block_per_pattern():
@@ -335,6 +365,73 @@ def test_place_blocks_generic_groups_wrap_to_compact_grid():
 
     assert len({y for _, y in pos.values()}) > 1
     assert max(x for x, _ in pos.values()) - min(x for x, _ in pos.values()) < 3 * 320
+
+
+def test_layout_groups_extracts_roles_from_impedances():
+    """@brief Un match avec 'impedances' peuple bloc.roles (aop/Zin/Zf)."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    results = [{
+        "circuit_type": "Amplificateur inverseur (AOP)",
+        "components": ["U1", "R2", "R1"],
+        "nodes": [],
+        "impedances": {
+            "Zin": {"refs": ["R1"], "composition": "R1", "nodes": ("NET_INV", "NET_IN")},
+            "Zf":  {"refs": ["R2"], "composition": "R2", "nodes": ("NET_INV", "NET_OUT")},
+        },
+    }]
+    blocks = _layout_groups(comps, results)
+    assert len(blocks) == 1
+    assert blocks[0].roles == {"Zin": ["R1"], "Zf": ["R2"], "aop": ["U1"]}
+
+
+def test_layout_groups_roles_empty_without_impedances():
+    """@brief Sans 'impedances' (montage pas migre, ou Divers), roles reste vide."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    results = [{"circuit_type": "Amplificateur inverseur (AOP)",
+                "components": ["U1", "R1", "R2"], "nodes": []}]
+    blocks = _layout_groups(comps, results)
+    assert blocks[0].roles == {}
+
+
+def test_grouper_par_circuit_sommateur_zin_liste_ne_plante_pas():
+    """@brief Le Sommateur a Zin en LISTE de blocs (pas un dict) — regression
+    du bug documente en memoire projet (detecteur.py:701/718)."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_IN1", "2": "NET_INV"}),
+        Component("R2", "R", {"1": "NET_IN2", "2": "NET_INV"}),
+        Component("Rf", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    resultats = match_patterns(build_graph(comps))
+    assert any(r["circuit_type"] == "Amplificateur sommateur (AOP)" for r in resultats)
+    xml = components_to_xml(comps, resultats)  # ne doit pas lever AttributeError
+    assert "R1" in xml and "Rf" in xml
+
+
+def test_export_corpus_industriel_ne_plante_jamais():
+    """@brief Balaie circuits_industriels/*.xml : detection + regeneration
+    sans exception. Garde-fou pour les montages non migres par ce plan."""
+    import glob
+
+    from circuit_analyzer.xml import lire_xml
+
+    fichiers = glob.glob(os.path.join("circuits_industriels", "*.xml"))
+    assert fichiers, "corpus circuits_industriels/ introuvable depuis le cwd de pytest"
+    for chemin in fichiers:
+        comps = lire_xml(chemin)
+        resultats = match_patterns(build_graph(comps))
+        components_to_xml(comps, resultats)  # ne doit jamais lever
 
 
 def test_components_to_xml_backward_compatible_without_results():
@@ -493,8 +590,8 @@ def test_circuits_industriels_sans_bobine():
 
     @return None
     """
-    from pathlib import Path
     import re
+    from pathlib import Path
     dossier = Path(__file__).resolve().parent.parent / "circuits_industriels"
     fichiers_avec_bobine = []
     for f in sorted(dossier.glob("*.xml")):
@@ -512,6 +609,7 @@ def test_connecteur_J_n_est_pas_perdu_a_l_export():
     `if spec is None: continue` le supprimait EN SILENCE. Sur PG 2, 9 des 23
     composants disparaissaient a l'export."""
     import xml.etree.ElementTree as ET
+
     from circuit_analyzer.composant import Composant
     from circuit_analyzer.xml import generer_xml
 
@@ -537,6 +635,7 @@ def test_aucun_type_n_est_supprime_en_silence():
     """Contrat general : tout composant a broches ressort a l'export, quel que
     soit son type — sinon la carte du collegue revient amputee."""
     import xml.etree.ElementTree as ET
+
     from circuit_analyzer.composant import Composant
     from circuit_analyzer.xml import generer_xml
 
@@ -555,6 +654,7 @@ def test_broche_au_nom_inattendu_n_est_pas_perdue():
     Vu sur PowtranAlim : D1 a des broches '-'/'+' et U2.1 des 'C'/'E', absentes
     du plan Diode {A,K,1,2} -> toutes leurs liaisons disparaissaient."""
     import xml.etree.ElementTree as ET
+
     from circuit_analyzer.composant import Composant
     from circuit_analyzer.xml import generer_xml
 
@@ -576,9 +676,110 @@ def test_le_plan_de_forme_partage_n_est_jamais_mute():
     """Les plans de _TYPE_VERS_FORME sont des dicts PARTAGES au niveau module :
     les completer en place empoisonnerait tous les exports suivants."""
     from circuit_analyzer.composant import Composant
-    from circuit_analyzer.xml import generer_xml, _TYPE_VERS_FORME
+    from circuit_analyzer.xml import _TYPE_VERS_FORME, generer_xml
 
     avant = dict(_TYPE_VERS_FORME["D"][1])
     generer_xml([Composant(ref="D1", type="D", value="x",
                            pins={"-": "NA", "+": "NB"})])
     assert _TYPE_VERS_FORME["D"][1] == avant, "plan de forme MUTE"
+
+
+# ── Positioner canonical inverting amplifier ──────────────────────────────────
+
+def test_positionner_amplificateur_inverseur_places_roles_canoniquement():
+    """@brief Zin a gauche, AOP au centre, Zf strictement au-dessus (angle 0)."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    roles = {"aop": ["U1"], "Zin": ["R1"], "Zf": ["R2"]}
+    pos = _positionner_amplificateur_inverseur(comps, roles, 100, 200)
+    x_aop, y_aop = 100 + 2 * _PAS_X_BLOC, 200 + _PAS_Y_BLOC
+    assert pos["U1"] == (x_aop, y_aop, 0)
+    assert pos["R1"] == (100, y_aop, 0)
+    assert pos["R2"] == (x_aop, 200, 0)
+    assert pos["R2"][1] < pos["U1"][1]  # Zf strictement au-dessus de l'AOP
+
+
+def test_positionner_amplificateur_inverseur_garde_les_satellites():
+    """@brief Un composant du bloc absent des roles (satellite) est place, pas perdu."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+        Component("C3", "C", {"1": "NET_IN", "2": "GND"}),
+    ]
+    roles = {"aop": ["U1"], "Zin": ["R1"], "Zf": ["R2"]}
+    pos = _positionner_amplificateur_inverseur(comps, roles, 0, 0)
+    assert "C3" in pos
+    assert len(pos["C3"]) == 2
+
+
+def test_positionner_amplificateur_inverseur_zin_composite_en_chaine():
+    """@brief Un Zin composite (2 refs) se place en chaine horizontale, pas superpose."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_MID"}),
+        Component("C1", "C", {"1": "NET_MID", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    roles = {"aop": ["U1"], "Zin": ["R1", "C1"], "Zf": ["R2"]}
+    pos = _positionner_amplificateur_inverseur(comps, roles, 0, 0)
+    assert pos["R1"][0] != pos["C1"][0]
+    assert pos["R1"][1] == pos["C1"][1]
+
+
+# ── Dispatch registry (Task 3) ────────────────────────────────────────────────
+
+def test_positionner_composants_bloc_utilise_le_canonique_si_roles():
+    """@brief Bloc reconnu + roles peuples -> positionneur canonique (pas le gabarit famille)."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    roles = {"aop": ["U1"], "Zin": ["R1"], "Zf": ["R2"]}
+    bloc = _Bloc("Amplificateur inverseur (AOP)", comps, roles=roles)
+    attendu = _positionner_amplificateur_inverseur(comps, roles, 50, 60)
+    assert _positionner_composants_bloc(bloc, 50, 60) == attendu
+
+
+def test_positionner_composants_bloc_repli_si_pas_de_roles():
+    """@brief Meme circuit_type SANS roles (montage pas migre) garde l'ancien gabarit famille."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    bloc = _Bloc("Amplificateur inverseur (AOP)", comps)  # roles={} par defaut
+    resultat = _positionner_composants_bloc(bloc, 50, 60)
+    # L'ancien gabarit famille place l'AOP a (x + _PAS_X_BLOC, y) — pas x+2*_PAS_X_BLOC.
+    assert resultat["U1"][:2] == (50 + _PAS_X_BLOC, 60)
+
+
+def _item(xml_str, ref):
+    """@brief Helper de test : le <DataItem> dont <reference> vaut `ref`."""
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(xml_str)
+    for item in root.iter("DataItem"):
+        if item.findtext("reference") == ref:
+            return item
+    return None
+
+
+def test_generer_xml_positionne_zf_au_dessus_de_laop():
+    """@brief Signature du gabarit canonique dans le XML : Zf strictement au-dessus de l'AOP."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    resultats = match_patterns(build_graph(comps))
+    xml = components_to_xml(comps, resultats)
+    item_zf, item_aop = _item(xml, "R2"), _item(xml, "U1")
+    assert item_zf is not None and item_aop is not None
+    y_zf = float(item_zf.findtext("CtrIem/Y"))
+    y_aop = float(item_aop.findtext("CtrIem/Y"))
+    assert y_zf < y_aop

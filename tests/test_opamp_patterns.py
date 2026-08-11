@@ -3,11 +3,14 @@
 @brief Tests automatises pour test_opamp_patterns.
 """
 
-from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
+from circuit_analyzer.parser import Component
 from circuit_analyzer.patterns.opamp import (
-    InvertingAmplifier, NonInvertingAmplifier, VoltageFollower,
-    Integrator, Comparator
+    Comparator,
+    Integrator,
+    InvertingAmplifier,
+    NonInvertingAmplifier,
+    VoltageFollower,
 )
 
 

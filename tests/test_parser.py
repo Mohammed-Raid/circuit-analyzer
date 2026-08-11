@@ -3,8 +3,10 @@
 @brief Tests automatises pour test_parser.
 """
 
-import os, tempfile, pytest
-from circuit_analyzer.parser import parse_file, Component
+import os
+import tempfile
+
+from circuit_analyzer.parser import parse_file
 
 
 def _write_tmp(content):

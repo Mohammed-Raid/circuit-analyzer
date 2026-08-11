@@ -17,17 +17,17 @@ Ordre d'appel important (voir la fonction principale `analyser`) :
   détectée comme un "pont diviseur de tension".
 """
 
-import networkx as nx
-from circuit_analyzer.patterns.base import (
-    is_ground_net, is_power_net, is_protective_earth_net, classify_net,
-    nodes_aplatis,
-)
-from circuit_analyzer.value_parser import parse_valeur
-from circuit_analyzer.satellites import rattacher_satellites
-from circuit_analyzer.ilots import detecter_ilots
 from circuit_analyzer import impedance
+from circuit_analyzer.ilots import detecter_ilots
 from circuit_analyzer.impedance import expandre_composites
 from circuit_analyzer.logique import detecter_portes_cmos
+from circuit_analyzer.patterns.base import (
+    is_ground_net,
+    is_power_net,
+    is_protective_earth_net,
+    nodes_aplatis,
+)
+from circuit_analyzer.satellites import rattacher_satellites
 
 # Alias français (= les nouvelles fonctions enrichies par le fichier de config)
 est_masse        = is_ground_net
@@ -1167,21 +1167,35 @@ def detecter_pont_redresseur(graphe):
                     # Vérifier si n4 reboucle sur n1 avec une 4e diode différente
                     for retour, d4 in adj_diodes.get(n4, []):
                         if retour == n1 and len({d1, d2, d3, d4}) == 4:
-                            noeuds_cycle = {n1, n2, n3, n4}
-                            # Exclure les arrays ESD (qui ont à la fois une alim ET une masse)
+                            # Un nœud à la fois alim ET masse (aliasing de net
+                            # douteux) : jamais un pont crédible.
                             if est_alimentation(n1) and est_masse(n1):
                                 continue
-                            a_alim = any(est_alimentation(n) for n in noeuds_cycle)
-                            a_masse = any(est_masse(n) for n in noeuds_cycle)
-                            if a_alim and a_masse:
-                                continue  # Array ESD, pas un pont redresseur
                             cle = frozenset([d1, d2, d3, d4])
                             if cle not in cycles_vus:
                                 cycles_vus.add(cle)
+                                noeuds_cycle = [n1, n2, n3, n4]
+                                # Un vrai pont a très souvent son alim ET sa
+                                # masse sur le cycle (c'est justement ce qu'il
+                                # PRODUIT en sortie DC) — mais un array de
+                                # diodes de protection ESD sur 2 lignes signal
+                                # indépendantes, chacune clampée sur alim et
+                                # masse, forme la MÊME topologie de cycle à 4
+                                # nœuds (aucune différence purement
+                                # topologique). Impossible à trancher ici :
+                                # signalé pour l'ingénieur plutôt que deviné
+                                # (cf. _enrichir), jamais exclu en silence —
+                                # bug réel trouvé sur
+                                # schema_test/5_pont_redresseur.xml, dont la
+                                # sortie DC nommée VCC/GND était rejetée à tort.
+                                rails_sur_cycle = (
+                                    any(est_alimentation(n) for n in noeuds_cycle)
+                                    and any(est_masse(n) for n in noeuds_cycle))
                                 resultats.append({
                                     'circuit_type': 'Pont redresseur (Graetz)',
                                     'components': [d1, d2, d3, d4],
-                                    'nodes': [n1, n2, n3, n4],
+                                    'nodes': noeuds_cycle,
+                                    'rails_sur_cycle': rails_sur_cycle,
                                 })
     return resultats
 
@@ -1368,6 +1382,34 @@ def detecter_impedances(graphe):
     return resultats
 
 
+def detecter_diodes_non_classifiees(graphe):
+    """
+    @brief Émet chaque diode non capturée par un autre pattern.
+
+    @param graphe Graphe RÉDUIT (sortie de impedance.reduire()).
+    @return list[dict] Un match par diode isolée restante.
+
+    Contrairement à R/L/C (-> Impédance Z), les diodes n'avaient AUCUN
+    filet de sécurité : une diode entre deux nœuds signal, ni sur un rail
+    ni dans un cycle à 4 (aucun des 5 patterns diode ne s'applique alors),
+    disparaissait du rapport sans même un statut « non classifié ».
+
+    Placé en dernier dans la chaîne de détection (_DETECTEURS_SIMPLES,
+    après detecter_impedances) : l'anti-vol d'analyser() saute les diodes
+    déjà prises par un montage (pont, roue libre, ESD, redresseur...).
+    """
+    resultats = []
+    for u, v, data in graphe.edges(data=True):
+        if data.get('type') != 'D':
+            continue
+        resultats.append({
+            'circuit_type': 'Diode non classifiée',
+            'components': [data['ref']],
+            'nodes': [u, v],
+        })
+    return resultats
+
+
 # =============================================================================
 # FONCTION PRINCIPALE
 # =============================================================================
@@ -1422,27 +1464,8 @@ _CATEGORIES: dict[str, str] = {
     'Redresseur simple alternance':        'alimentation',
     'Détecteur de crête':                  'traitement_signal',
     'Impédance Z':                         'impedance',
+    'Diode non classifiée':                'protection',
 }
-
-
-def _valeur(graphe, ref: str) -> str:
-    """@brief Retourne la valeur d'un composant.
-
-    Cherche dans le dict des composants multi-broches puis dans les arêtes.
-
-    @param graphe Graphe NetworkX du circuit.
-    @param ref Référence du composant recherché.
-    @return str Valeur du composant, ou '' si absente/introuvable.
-    """
-    if not ref:
-        return ''
-    comp = graphe.graph.get('components', {}).get(ref)
-    if comp:
-        return comp.value or ''
-    for u, v, data in graphe.edges(data=True):
-        if data.get('ref') == ref:
-            return data.get('value', '')
-    return ''
 
 
 def _enrichir(match: dict, graphe) -> dict:
@@ -1525,8 +1548,15 @@ def _enrichir(match: dict, graphe) -> dict:
         reasons.append("Bobine de relais + transistor (collecteur/drain sur bobine)")
 
     elif ct == 'Pont redresseur (Graetz)':
-        confidence = 0.95
         reasons.append("Cycle fermé de 4 diodes détecté")
+        if match.get('rails_sur_cycle'):
+            confidence = 0.60
+            warnings.append(
+                "Topologie compatible avec un réseau de diodes de protection "
+                "ESD sur 2 lignes signal indépendantes (chacune clampée sur "
+                "l'alimentation et la masse) selon le contexte")
+        else:
+            confidence = 0.95
 
     elif ct == 'Diode de roue libre':
         confidence = 0.70
@@ -1546,6 +1576,10 @@ def _enrichir(match: dict, graphe) -> dict:
     elif ct == 'Détecteur de crête':
         confidence = 0.75
         reasons.append("Diode en série + condensateur vers GND")
+
+    elif ct == 'Diode non classifiée':
+        confidence = 0.50
+        reasons.append("Diode isolée, aucune topologie reconnue (ni rail, ni cycle à 4)")
 
     elif ct == 'Impédance Z':
         confidence = 0.80
@@ -1611,7 +1645,14 @@ _DETECTEURS_COMPLEXES = [
 # il n'existe plus de détecteur passif nommé (filtre RC, pont diviseur, etc.).
 _DETECTEURS_SIMPLES = [
     detecter_impedances,
+    detecter_diodes_non_classifiees,
 ]
+
+# Labels emis par les detecteurs "filet de securite" de _DETECTEURS_SIMPLES —
+# des singletons systematiques, jamais un montage reconnu. Exporte pour que
+# les appelants (ex. l'export groupe du schema dessine, gui/tab_draw.py)
+# puissent les exclure du groupage sans dupliquer la liste.
+TYPES_CATCH_ALL = {"Impédance Z", "Diode non classifiée"}
 
 # Noms de tous les circuits intégrés, dans l'ordre d'affichage de l'interface
 NOMS_CIRCUITS = [
@@ -1628,6 +1669,7 @@ NOMS_CIRCUITS = [
     "Inverseur (CMOS)", "Porte NAND (CMOS)", "Porte NOR (CMOS)",
     "Pont redresseur (Graetz)", "Diode de roue libre",
     "Diode de protection ESD", "Redresseur simple alternance", "Détecteur de crête",
+    "Diode non classifiée",
     "Impédance Z",
 ]
 

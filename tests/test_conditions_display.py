@@ -3,11 +3,14 @@
 @brief Couche d'affichage des conditions : libellés clairs, regroupement, et
        rétro-compatibilité du doublon retiré.
 """
-from custom_circuits.loader import (
-    CONDITION_LABELS, CONDITION_DISPLAY, CONDITION_GROUPS,
-    condition_display, CustomCircuitPattern,
-)
 from circuit_analyzer.composant import Composant, construire_graphe
+from custom_circuits.loader import (
+    CONDITION_DISPLAY,
+    CONDITION_GROUPS,
+    CONDITION_LABELS,
+    CustomCircuitPattern,
+    condition_display,
+)
 
 
 def test_display_couvre_toutes_les_conditions():

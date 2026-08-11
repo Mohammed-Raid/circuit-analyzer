@@ -1,7 +1,7 @@
 """@file test_detecteur_aop.py
 @brief Tests d'enrichissement des montages AOP (impedances structurees + gain)."""
-from circuit_analyzer.composant import Composant, construire_graphe
 from circuit_analyzer import detecteur
+from circuit_analyzer.composant import Composant, construire_graphe
 
 
 def _ampli_inverseur_zf_composite():

@@ -10,9 +10,8 @@ import tempfile
 
 import pytest
 
-from circuit_analyzer.eretro import normaliser_nom, mapper_nom
-from circuit_analyzer.xml import lire_xml, _analyser_ref_packee
-
+from circuit_analyzer.eretro import mapper_nom, normaliser_nom
+from circuit_analyzer.xml import _analyser_ref_packee, lire_xml
 
 # ── Helpers fixtures ──────────────────────────────────────────────────────────
 
@@ -65,7 +64,7 @@ def _fil(cfirst, clast):
 def _boardsch(items, fils, ccomps=''):
     """@brief Document BoardSCH complet à partir des fragments."""
     return (f'{ENTETE}\n<CmpntL>\n' + '\n'.join(items) + '\n</CmpntL>\n'
-            f'<lineL>\n' + '\n'.join(fils) + '\n</lineL>\n'
+            '<lineL>\n' + '\n'.join(fils) + '\n</lineL>\n'
             f'<CCmpntL>{ccomps}</CCmpntL>\n</BoardSCH>')
 
 
@@ -139,6 +138,23 @@ def test_import_diode_plan_anode_cathode():
     xml = _boardsch(
         [_item('DIODE', pins=[_pin(pnumber='1', pname='ANODE'),
                               _pin(pnumber='2', pname='CATHODE')])],
+        [],
+    )
+    comps = _lire(xml)
+    d = next(c for c in comps if c.type == 'D')
+    assert set(d.pins) == {'A', 'K'}
+
+
+def test_import_diode_plan_plus_moins():
+    # Bug reel : plusieurs diodes ERetroDesign (cartes reelles et schemas de
+    # test) utilisent des broches '+'/'-' plutot que A/K ou 1/2. Sans plan
+    # pour ce cas, les broches restaient '+'/'-' telles quelles -> les
+    # detecteurs qui lisent comp.pins.get('A')/.get('K') (roue libre, ESD,
+    # redresseur simple, detecteur de crete) ignoraient silencieusement ces
+    # diodes. '+' = anode (le courant y entre en polarisation directe).
+    xml = _boardsch(
+        [_item('DIODE', pins=[_pin(pnumber='+'),
+                              _pin(pnumber='-')])],
         [],
     )
     comps = _lire(xml)
@@ -221,10 +237,10 @@ def _ccomp(name, pins_ext=(), items_int=(), fils_int=()):
     return (f'  <CComp>\n'
             f'    <Name>{name}</Name><value />\n'
             f'    <datapin>\n' + '\n'.join(pins_ext) + '\n    </datapin>\n'
-            f'    <id>0</id>\n'
-            f'    <DItemL>\n' + '\n'.join(items_int) + '\n    </DItemL>\n'
-            f'    <CCLine>\n' + '\n'.join(fils_int) + '\n    </CCLine>\n'
-            f'  </CComp>')
+            '    <id>0</id>\n'
+            '    <DItemL>\n' + '\n'.join(items_int) + '\n    </DItemL>\n'
+            '    <CCLine>\n' + '\n'.join(fils_int) + '\n    </CCLine>\n'
+            '  </CComp>')
 
 
 def test_compose_aplati_en_items_internes():

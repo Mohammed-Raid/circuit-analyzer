@@ -27,6 +27,7 @@ boîtier), vérifié empiriquement sur Diag2.xml.
 import math
 import re
 import unicodedata
+from dataclasses import dataclass, field
 
 
 def normaliser_nom(nom: str) -> str:
@@ -42,7 +43,7 @@ def normaliser_nom(nom: str) -> str:
 
 
 _PLAN_D = {'A': 'A', 'K': 'K', '1': 'A', '2': 'K',
-           'ANODE': 'A', 'CATHODE': 'K'}
+           'ANODE': 'A', 'CATHODE': 'K', '+': 'A', '-': 'K'}
 _PLAN_Q = {'B': 'B', 'C': 'C', 'E': 'E'}
 _PLAN_M = {'G': 'G', 'D': 'D', 'S': 'S'}
 
@@ -426,7 +427,7 @@ def extraire_composes(racine, prochain_idx):
             # Boîte noire : émise telle quelle avec ses broches externes.
             elements_sup[idx] = {'id': idx, 'name': nom_puce, 'value': valeur,
                                  'pins': _lire_broches(cc),
-                                 'emettre': True, 'puce': None}
+                                 'emettre': True, 'puce': None, 'xml': cc}   # boite noire
             idx += 1
             avertissements.append(
                 f"Puce composée '{nom_puce}' sans intérieur lisible → boîte noire"
@@ -435,14 +436,15 @@ def extraire_composes(racine, prochain_idx):
         # Boîtier pass-through : broches dans l'Union-Find, composant non émis.
         elements_sup[idx] = {'id': idx, 'name': nom_puce, 'value': valeur,
                              'pins': _lire_broches(cc),
-                             'emettre': False, 'puce': None}
+                             'emettre': False, 'puce': None, 'xml': cc}      # boitier
         idx += 1
         for item in items_internes:
             nom_int = (item.findtext('Name') or '').strip()
             val_int = (item.findtext('value') or '').strip()
             elements_sup[idx] = {'id': idx, 'name': nom_int, 'value': val_int,
                                  'pins': _lire_broches(item),
-                                 'emettre': True, 'puce': (num, nom_puce)}
+                                 'emettre': True, 'puce': (num, nom_puce),
+                                 'xml': cc}   # DELIBERE : le boitier, pas `item`.
             idx += 1
         for fil in cc.findall('CCLine/Line'):
             cf = (fil.findtext('CFirst') or '').strip()
@@ -450,3 +452,23 @@ def extraire_composes(racine, prochain_idx):
             if cf or cl:
                 fils_sup.append((cf, cl))
     return elements_sup, fils_sup, avertissements
+
+
+@dataclass
+class SourceXML:
+    """@brief Fichier BoardSCH d'ORIGINE, conserve pour etre patche tel quel.
+
+    On garde l'arbre parse plutot que le chemin : le patch doit ecrire dans les
+    MEMES elements que ceux qui ont servi a la lecture, sinon rien ne garantit
+    que l'indexation par position (cle de tout le decodage) reste la meme.
+    """
+    arbre: object                    # ET.ElementTree
+    elements: dict                   # ref -> ET.Element (<DataItem> ou <CComp>)
+    lignes: list                     # <Line> de lineL, dans l'ordre du fichier
+    lignes_refs: dict                # indice de fil -> (ref_a, ref_b)
+    # Ce que ET.parse() detruit silencieusement et que le patch doit restituer
+    # tel quel (jamais fabrique) : xml.etree.ElementTree ne conserve PAS les
+    # declarations xmlns:* non utilisees pour qualifier un tag/attribut — un
+    # fichier sans namespace donne `namespaces=[]`, jamais une valeur devinee.
+    namespaces: list = field(default_factory=list)   # [(prefixe, uri), ...] dans l'ordre du fichier
+    avant_racine: str = ""           # texte brut avant la balise racine ouvrante (prologue inclus)

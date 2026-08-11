@@ -14,10 +14,10 @@ import weakref
 
 import pytest
 
+import gui.circuit_viewer as cv
 from circuit_analyzer.composant import construire_graphe
 from circuit_analyzer.detecteur import analyser
 from circuit_analyzer.xml import lire_xml
-import gui.circuit_viewer as cv
 
 
 @pytest.fixture

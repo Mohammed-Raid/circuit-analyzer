@@ -4,7 +4,7 @@
        et charger_bibliotheque (load_library).
 @see circuit_analyzer.composant
 """
-from circuit_analyzer.composant import (
+from circuit_analyzer.composant import (  # noqa: F401
     Composant as Component,
     lire_netlist as parse_file,
     lire_spice as parse_spice,

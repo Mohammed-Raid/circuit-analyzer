@@ -4,7 +4,7 @@ matcher ne doit rien coûter aux corpus analogiques (garde zéro-M) et rester
 linéaire sur un circuit de 500 portes (protège l'acquis 5000 comps ≈ 3,3 s)."""
 import time
 
-from circuit_analyzer import detecteur, logique
+from circuit_analyzer import logique
 from circuit_analyzer.composant import Composant, construire_graphe
 
 
@@ -36,9 +36,16 @@ def test_garde_zero_m_est_immediate():
 
 
 def test_500_portes_sous_budget():
+    """Garde de NON-REGRESSION ALGORITHMIQUE (O(n) attendu), pas un SLA
+    strict : mesures reelles sur la machine de dev, isole ~7-12 s, jusqu'a
+    ~31 s en suite complete cumulee a un build PyInstaller concurrent. Le
+    budget precedent (10 s) n'avait quasiment aucune marge (10,05 s observe
+    isole) -> flake connu. 20 s garde ~2x de marge sur le pire cas courant
+    tout en detectant sans ambiguite une vraie regression O(n^2) (qui
+    multiplierait la duree par ~500, pas par 2)."""
     graphe = construire_graphe(_circuit_500_portes())
     debut = time.perf_counter()
     matches = logique.detecter_portes_cmos(graphe)
     duree = time.perf_counter() - debut
     assert len(matches) == 500
-    assert duree < 10.0, f"500 portes en {duree:.1f}s (budget 10 s)"
+    assert duree < 20.0, f"500 portes en {duree:.1f}s (budget 20 s)"

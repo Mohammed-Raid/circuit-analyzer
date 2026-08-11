@@ -4,6 +4,7 @@
 """
 import json
 from pathlib import Path
+
 from circuit_analyzer.chemins import racine_application
 from circuit_analyzer.patterns.base import Pattern, is_gnd, is_power
 
