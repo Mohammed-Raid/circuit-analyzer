@@ -547,6 +547,7 @@ def test_ecrire_groupes_agrege_les_votes_d_un_compose_avant_d_ecrire(monkeypatch
     from circuit_analyzer import eretro_patch
     from circuit_analyzer.eretro import SourceXML
     from circuit_analyzer.eretro_patch import ecrire_groupes
+    from circuit_analyzer.xml import _Bloc
 
     racine = ET.Element("BoardSCH")
     ccomp = ET.SubElement(ET.SubElement(racine, "CCmpntL"), "CComp")
@@ -558,7 +559,8 @@ def test_ecrire_groupes_agrege_les_votes_d_un_compose_avant_d_ecrire(monkeypatch
     src = SourceXML(arbre=ET.ElementTree(racine), elements=elements,
                      lignes=[], lignes_refs={})
 
-    monkeypatch.setattr(eretro_patch, "_grouper_par_circuit", lambda comps, res: ["bloc"])
+    monkeypatch.setattr(eretro_patch, "_grouper_par_circuit",
+                        lambda comps, res: [_Bloc("Montage", [], roles={})])
     monkeypatch.setattr(eretro_patch, "_ids_groupes_par_ref",
                          lambda blocs: {"U7.1": 2, "U7.2": 2, "U7.3": 5})
 
@@ -985,6 +987,51 @@ def test_ecrire_groupes_preserve_la_connectivite_apres_translation(tmp_path):
     types_relu = sorted(r["circuit_type"] for r in res_relu)
     assert "Amplificateur inverseur (AOP)" in types_relu
     assert {c.ref for c in relu} == {"U1", "R1", "R2"}
+
+
+def test_ecrire_groupes_mixed_board_ne_deplace_que_les_montages_reconnus(tmp_path):
+    """@brief Integration : sur une MEME carte, un montage reconnu bouge mais un
+    composant bystander reste exactement a sa position initiale.
+
+    Verifie que la garantie « non-role components stay put » s'applique en
+    presence d'autres montages migres."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+
+    # Ampli inverseur reconnu + capacité isolée (bystander sans pattern)
+    comps = [
+        Composant("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Composant("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Composant("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+        Composant("C1", "C", {"1": "VCC", "2": "GND"}),  # bystander isolé
+    ]
+    chemin = _fichier_synthetique(tmp_path, comps)
+    lus, res = _analyser(chemin)
+
+    # Positions avant
+    positions_avant = {
+        ref: (float(el.find("CtrIem/X").text), float(el.find("CtrIem/Y").text))
+        for ref, el in lus.source.elements.items()
+    }
+
+    xml_patche = ecrire_groupes(lus.source, lus, res)
+    racine = ET.fromstring(xml_patche)
+
+    # Positions après
+    positions_apres = {
+        item.findtext("reference"):
+            (float(item.find("CtrIem/X").text), float(item.find("CtrIem/Y").text))
+        for item in racine.findall(".//CmpntL/DataItem")
+    }
+
+    # Capacité bystander doit rester exactement a sa position (byte-for-byte)
+    assert positions_avant["C1"] == positions_apres["C1"], \
+        "bystander sans pattern doit garder sa position exacte"
+
+    # Au moins un composant de l'ampli doit avoir bouge
+    ampli_comps = ("U1", "R1", "R2")
+    assert any(positions_avant[ref] != positions_apres[ref] for ref in ampli_comps), \
+        "au moins un composant du montage reconnu doit etre translate"
 
 
 def _comparer_sauf_groupes(a, b, chemin="/"):
