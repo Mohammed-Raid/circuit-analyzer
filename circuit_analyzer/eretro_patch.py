@@ -16,8 +16,6 @@ from collections import Counter
 from circuit_analyzer.xml import (
     _grouper_par_circuit,
     _ids_groupes_par_ref,
-    _PAS_X_BLOC,
-    _PAS_Y_BLOC,
     _POSITIONNEURS_PAR_MOTIF,
     _positionner_amplificateur_inverseur,
 )
@@ -120,7 +118,14 @@ def _deltas_disposition_canonique(source, composants, blocs) -> dict:
     for bloc in blocs:
         if bloc.label not in _POSITIONNEURS_PAR_MOTIF or not bloc.roles:
             continue
-        refs_role = [ref for refs in bloc.roles.values() for ref in refs]
+        # Scope strict au bloc COURANT : le chemin netlist appelle toujours
+        # le positionneur avec exactement bloc.comps, jamais un ensemble plus
+        # large — aligner ce chemin dessus interdit par construction de
+        # deplacer une ref qui n'appartiendrait pas a CE bloc precis (revue
+        # de branche, Minor #5).
+        refs_du_bloc = {c.ref for c in bloc.comps}
+        refs_role = [ref for refs in bloc.roles.values() for ref in refs
+                     if ref in refs_du_bloc]
         positions_reelles = {}
         for ref in refs_role:
             element = source.elements.get(ref)
@@ -138,23 +143,37 @@ def _deltas_disposition_canonique(source, composants, blocs) -> dict:
 
         cx = sum(p[0] for p in positions_reelles.values()) / len(positions_reelles)
         cy = sum(p[1] for p in positions_reelles.values()) / len(positions_reelles)
-        # _positionner_amplificateur_inverseur(comps, roles, x, y) centre son
-        # AOP a (x + 2*_PAS_X_BLOC, y + _PAS_Y_BLOC) et sa chaine Zf a (., y) :
-        # on choisit (x, y) pour que ce centre approximatif de la disposition
-        # coincide avec le centroide reel calcule ci-dessus.
-        x_origine = cx - 1.5 * _PAS_X_BLOC
-        y_origine = cy - _PAS_Y_BLOC
-        comps_role = [comp_par_ref[ref] for ref in positions_reelles if ref in comp_par_ref]
-        nouvelles = _positionner_amplificateur_inverseur(
-            comps_role, bloc.roles, x_origine, y_origine)
 
-        for ref, position in nouvelles.items():
-            if ref not in positions_reelles:
-                continue
-            nx, ny = position[0], position[1]
+        comps_role = [comp_par_ref[ref] for ref in positions_reelles
+                      if ref in comp_par_ref and ref in refs_du_bloc]
+        # Placer provisoirement a une origine arbitraire (0,0) juste pour
+        # connaitre le CENTROIDE de la disposition canonique elle-meme, puis
+        # ne garder que le DECALAGE necessaire pour amener CE centroide sur
+        # le centroide reel. Immunise contre le nombre de composants par role
+        # et contre tout changement futur de la geometrie interne du
+        # positionneur (contrairement a des coefficients devines a la main,
+        # qui avaient produit une derive de (-43, -63) a chaque export —
+        # revue de branche, jamais convergente).
+        provisoire = _positionner_amplificateur_inverseur(comps_role, bloc.roles, 0, 0)
+        provisoire_role = {ref: pos for ref, pos in provisoire.items() if ref in positions_reelles}
+        if not provisoire_role:
+            continue
+        cx_canon = sum(p[0] for p in provisoire_role.values()) / len(provisoire_role)
+        cy_canon = sum(p[1] for p in provisoire_role.values()) / len(provisoire_role)
+        decalage_x, decalage_y = cx - cx_canon, cy - cy_canon
+
+        for ref, position in provisoire_role.items():
+            nx, ny = position[0] + decalage_x, position[1] + decalage_y
             ox, oy = positions_reelles[ref]
             dx, dy = nx - ox, ny - oy
-            if dx or dy:
+            # Tolerance flottante, pas `if dx or dy` : deux moyennes ("/3")
+            # calculees a des passes differentes peuvent differer de ~1e-14
+            # sans qu'aucun deplacement REEL n'ait eu lieu (idempotence
+            # verifiee analytiquement, cf. test associe) — sous ce seuil, le
+            # bruit d'arrondi flottant ne doit jamais se traduire par un
+            # delta ecrit (a fortiori _decaler_point arrondit de toute facon
+            # a l'entier le plus proche).
+            if abs(dx) > 1e-6 or abs(dy) > 1e-6:
                 deltas[ref] = (dx, dy)
     return deltas
 
@@ -202,10 +221,31 @@ def _appliquer_deltas(source, deltas) -> None:
         points = ligne.findall("LP/PointF")
         if len(points) < 2:
             continue
-        if ra in deltas:
-            _decaler_point(points[0], deltas[ra])
-        if rb in deltas:
-            _decaler_point(points[-1], deltas[rb])
+        delta_a, delta_b = deltas.get(ra), deltas.get(rb)
+        if delta_a is not None and delta_a == delta_b:
+            # Meme delta aux deux bouts (rare pour ce montage aujourd'hui,
+            # mais correct en general) : le fil entier translate en bloc,
+            # coudes compris.
+            for point in points:
+                _decaler_point(point, delta_a)
+            continue
+        if len(points) > 2 and (delta_a is not None or delta_b is not None):
+            # Coude(s) intermediaire(s) laisse(s) en place alors qu'une
+            # extremite bouge d'un delta different de l'autre : limite
+            # connue, non geree ici (deciderait comment router le coude).
+            # On ne fait rien de pire que deplacer l'extremite concernee —
+            # jamais de fil casse (CFirst/CLast intacts) — mais le trace
+            # visuel peut devenir une diagonale traversant la carte. A
+            # traiter avec la detection de collision (design doc, hors
+            # perimetre de ce chantier).
+            _log.warning(
+                "fil %d : %d points, extremites deplacees de deltas "
+                "differents — coude(s) intermediaire(s) non ajuste(s)",
+                idx, len(points))
+        if delta_a is not None:
+            _decaler_point(points[0], delta_a)
+        if delta_b is not None:
+            _decaler_point(points[-1], delta_b)
 
 
 def ecrire_groupes(source, composants, resultats=None) -> str:

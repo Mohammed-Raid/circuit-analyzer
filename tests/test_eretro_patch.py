@@ -10,13 +10,21 @@ import pytest
 from circuit_analyzer.composant import Composant
 from circuit_analyzer.xml import generer_xml, lire_xml
 
+# Aucune des cartes reelles disponibles dans ce depot (CARTE POUR TESTER,
+# exemples/) ne contient d'ampli inverseur detectable — verifie lors de la
+# revue de branche du 2026-08-11. La disposition canonique sur carte
+# scannee est donc aujourd'hui dormante sur toutes les donnees reelles
+# disponibles : bonne nouvelle pour la securite du merge, mais signifie
+# aussi que ce code n'a encore ete exerce que sur des fixtures synthetiques.
 _DOSSIER_REEL = "CARTE POUR TESTER (VRAI TEST)"
 
 
 def test_deltas_disposition_canonique_ancre_sur_le_centroide_reel(tmp_path):
     """@brief Les refs de role (aop/Zin/Zf) d'un ampli inverseur recoivent un
-    delta qui les ramene vers la disposition canonique, centree sur leur
-    centroide REEL actuel — pas une origine arbitraire."""
+    delta qui les ramene vers la disposition canonique, VRAIMENT centree sur
+    leur centroide reel actuel (pas juste "quelque part proche") — et le
+    resultat est IDEMPOTENT : reappliquer sur un groupe deja canonique ne
+    produit plus aucun delta (regression du bug de derive (-43,-63))."""
     from circuit_analyzer.eretro_patch import _deltas_disposition_canonique
     from circuit_analyzer.xml import _grouper_par_circuit
 
@@ -30,12 +38,33 @@ def test_deltas_disposition_canonique_ancre_sur_le_centroide_reel(tmp_path):
     lus, res = _analyser(chemin)
     source = lus.source
     blocs = _grouper_par_circuit(lus, res)
-    assert len(blocs) == 1 and blocs[0].roles, "l'ampli inverseur doit etre reconnu avec ses roles"
+    assert len(blocs) == 1 and blocs[0].roles
+
+    positions_avant = {
+        ref: (float(source.elements[ref].find("CtrIem/X").text),
+              float(source.elements[ref].find("CtrIem/Y").text))
+        for ref in ("U1", "R1", "R2")
+    }
+    cx_avant = sum(p[0] for p in positions_avant.values()) / 3
+    cy_avant = sum(p[1] for p in positions_avant.values()) / 3
 
     deltas = _deltas_disposition_canonique(source, lus, blocs)
     assert set(deltas) == {"U1", "R1", "R2"}
-    for ref, (dx, dy) in deltas.items():
-        assert isinstance(dx, (int, float)) and isinstance(dy, (int, float))
+
+    # Le centroide APRES application des deltas doit egaler le centroide REEL
+    # d'origine (a l'epsilon flottant pres) : c'est la definition meme de
+    # "ancre sur le centroide reel".
+    cx_apres = sum((positions_avant[ref][0] + deltas[ref][0]) for ref in deltas) / 3
+    cy_apres = sum((positions_avant[ref][1] + deltas[ref][1]) for ref in deltas) / 3
+    assert abs(cx_apres - cx_avant) < 1e-6
+    assert abs(cy_apres - cy_avant) < 1e-6
+
+    # Idempotence : appliquer les deltas, puis redemander des deltas depuis
+    # les positions DEJA canoniques -> plus rien a bouger.
+    from circuit_analyzer.eretro_patch import _appliquer_deltas
+    _appliquer_deltas(source, deltas)
+    deltas_second_passage = _deltas_disposition_canonique(source, lus, blocs)
+    assert deltas_second_passage == {}
 
 
 def test_deltas_disposition_canonique_vide_sans_roles(tmp_path):
@@ -909,6 +938,63 @@ def test_decaler_point_failsoft_avec_pointf_malformee():
     point_vide = ET.Element("PointF")
     _decaler_point(point_vide, (10.0, 20.0))  # ne doit pas lever
     assert len(list(point_vide)) == 0, "un PointF vide doit rester vide"
+
+
+def test_appliquer_deltas_translate_tout_le_fil_si_meme_delta_aux_deux_bouts():
+    """@brief Un fil a coudes (>2 points) dont les DEUX extremites recoivent
+    le MEME delta translate en bloc, coudes compris — pas seulement ses
+    deux extremites."""
+    from circuit_analyzer.eretro_patch import _appliquer_deltas
+    from circuit_analyzer.eretro import SourceXML
+
+    racine = ET.Element("BoardSCH")
+    ligne = ET.SubElement(racine, "Line")
+    lp = ET.SubElement(ligne, "LP")
+    coords = [(0, 0), (50, 10), (100, 0)]
+    for x, y in coords:
+        pf = ET.SubElement(lp, "PointF")
+        ET.SubElement(pf, "X").text = str(x)
+        ET.SubElement(pf, "Y").text = str(y)
+
+    source = SourceXML(arbre=ET.ElementTree(racine), elements={},
+                        lignes=[ligne], lignes_refs={0: ("A", "B")})
+    _appliquer_deltas(source, {"A": (5.0, 5.0), "B": (5.0, 5.0)})
+
+    resultat = [(float(p.findtext("X")), float(p.findtext("Y")))
+                for p in ligne.findall("LP/PointF")]
+    assert resultat == [(5.0, 5.0), (55.0, 15.0), (105.0, 5.0)]
+
+
+def test_appliquer_deltas_avec_coude_et_deltas_differents_journalise(caplog):
+    """@brief Un fil a coudes dont les deux extremites bougent de deltas
+    DIFFERENTS deplace quand meme les extremites (jamais de fil casse) mais
+    journalise l'avertissement — le coude intermediaire reste en place,
+    limite connue et documentee, pas silencieuse."""
+    import logging
+
+    from circuit_analyzer.eretro_patch import _appliquer_deltas
+    from circuit_analyzer.eretro import SourceXML
+
+    racine = ET.Element("BoardSCH")
+    ligne = ET.SubElement(racine, "Line")
+    lp = ET.SubElement(ligne, "LP")
+    coords = [(0, 0), (50, 10), (100, 0)]
+    for x, y in coords:
+        pf = ET.SubElement(lp, "PointF")
+        ET.SubElement(pf, "X").text = str(x)
+        ET.SubElement(pf, "Y").text = str(y)
+
+    source = SourceXML(arbre=ET.ElementTree(racine), elements={},
+                        lignes=[ligne], lignes_refs={0: ("A", "B")})
+    with caplog.at_level(logging.WARNING):
+        _appliquer_deltas(source, {"A": (5.0, 5.0), "B": (9.0, 1.0)})
+
+    resultat = [(float(p.findtext("X")), float(p.findtext("Y")))
+                for p in ligne.findall("LP/PointF")]
+    assert resultat[0] == (5.0, 5.0)     # bout A deplace de son delta
+    assert resultat[1] == (50.0, 10.0)   # coude intermediaire INTACT
+    assert resultat[2] == (109.0, 1.0)   # bout B deplace de SON delta
+    assert any("coude" in r.message for r in caplog.records)
 
 
 def test_ecrire_groupes_deplace_lampli_inverseur_vers_sa_disposition_canonique(tmp_path):
