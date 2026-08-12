@@ -965,13 +965,12 @@ def test_appliquer_deltas_translate_tout_le_fil_si_meme_delta_aux_deux_bouts():
     assert resultat == [(5.0, 5.0), (55.0, 15.0), (105.0, 5.0)]
 
 
-def test_appliquer_deltas_avec_coude_et_deltas_differents_journalise(caplog):
+def test_appliquer_deltas_avec_coude_et_deltas_differents_retrace_en_ligne_droite():
     """@brief Un fil a coudes dont les deux extremites bougent de deltas
-    DIFFERENTS deplace quand meme les extremites (jamais de fil casse) mais
-    journalise l'avertissement — le coude intermediaire reste en place,
-    limite connue et documentee, pas silencieuse."""
-    import logging
-
+    DIFFERENTS (fil interne a un groupe deplace) est retrace en ligne DROITE
+    entre les nouvelles positions — le coude intermediaire, fige a son
+    ancienne position, produisait un croisement chaotique visible a l'oeil
+    dans ERetroDesign (constat du 2026-08-12, capture reelle a l'appui)."""
     from circuit_analyzer.eretro_patch import _appliquer_deltas
     from circuit_analyzer.eretro import SourceXML
 
@@ -986,15 +985,35 @@ def test_appliquer_deltas_avec_coude_et_deltas_differents_journalise(caplog):
 
     source = SourceXML(arbre=ET.ElementTree(racine), elements={},
                         lignes=[ligne], lignes_refs={0: ("A", "B")})
-    with caplog.at_level(logging.WARNING):
-        _appliquer_deltas(source, {"A": (5.0, 5.0), "B": (9.0, 1.0)})
+    _appliquer_deltas(source, {"A": (5.0, 5.0), "B": (9.0, 1.0)})
 
     resultat = [(float(p.findtext("X")), float(p.findtext("Y")))
                 for p in ligne.findall("LP/PointF")]
-    assert resultat[0] == (5.0, 5.0)     # bout A deplace de son delta
-    assert resultat[1] == (50.0, 10.0)   # coude intermediaire INTACT
-    assert resultat[2] == (109.0, 1.0)   # bout B deplace de SON delta
-    assert any("coude" in r.message for r in caplog.records)
+    # Plus que 2 points : le coude intermediaire a ete retire, pas juste laisse en place.
+    assert resultat == [(5.0, 5.0), (109.0, 1.0)]
+
+
+def test_appliquer_deltas_droite_meme_sans_coude_prealable():
+    """@brief Un fil DEJA a 2 points (pas de coude) dont les deux bouts
+    bougent de deltas differents reste a 2 points, juste deplaces."""
+    from circuit_analyzer.eretro_patch import _appliquer_deltas
+    from circuit_analyzer.eretro import SourceXML
+
+    racine = ET.Element("BoardSCH")
+    ligne = ET.SubElement(racine, "Line")
+    lp = ET.SubElement(ligne, "LP")
+    for x, y in [(0, 0), (100, 0)]:
+        pf = ET.SubElement(lp, "PointF")
+        ET.SubElement(pf, "X").text = str(x)
+        ET.SubElement(pf, "Y").text = str(y)
+
+    source = SourceXML(arbre=ET.ElementTree(racine), elements={},
+                        lignes=[ligne], lignes_refs={0: ("A", "B")})
+    _appliquer_deltas(source, {"A": (5.0, 5.0), "B": (9.0, 1.0)})
+
+    resultat = [(float(p.findtext("X")), float(p.findtext("Y")))
+                for p in ligne.findall("LP/PointF")]
+    assert resultat == [(5.0, 5.0), (109.0, 1.0)]
 
 
 def test_ecrire_groupes_deplace_lampli_inverseur_vers_sa_disposition_canonique(tmp_path):

@@ -223,25 +223,28 @@ def _appliquer_deltas(source, deltas) -> None:
             continue
         delta_a, delta_b = deltas.get(ra), deltas.get(rb)
         if delta_a is not None and delta_a == delta_b:
-            # Meme delta aux deux bouts (rare pour ce montage aujourd'hui,
-            # mais correct en general) : le fil entier translate en bloc,
-            # coudes compris.
+            # Meme delta aux deux bouts : le fil entier translate en bloc,
+            # coudes compris — deplacement rigide, la forme reste valide.
             for point in points:
                 _decaler_point(point, delta_a)
             continue
-        if len(points) > 2 and (delta_a is not None or delta_b is not None):
-            # Coude(s) intermediaire(s) laisse(s) en place alors qu'une
-            # extremite bouge d'un delta different de l'autre : limite
-            # connue, non geree ici (deciderait comment router le coude).
-            # On ne fait rien de pire que deplacer l'extremite concernee —
-            # jamais de fil casse (CFirst/CLast intacts) — mais le trace
-            # visuel peut devenir une diagonale traversant la carte. A
-            # traiter avec la detection de collision (design doc, hors
-            # perimetre de ce chantier).
-            _log.warning(
-                "fil %d : %d points, extremites deplacees de deltas "
-                "differents — coude(s) intermediaire(s) non ajuste(s)",
-                idx, len(points))
+        if delta_a is not None and delta_b is not None:
+            # Fil INTERNE a un groupe deplace, deltas DIFFERENTS aux deux
+            # bouts : un coude intermediaire fige a son ancienne position
+            # produit un croisement chaotique, visible a l'oeil dans
+            # ERetroDesign (constat du 2026-08-12, capture reelle a l'appui,
+            # sur un cas aussi simple que 3 composants). On retrace donc une
+            # ligne DROITE entre les nouvelles positions plutot que de
+            # garder un coude devenu faux — seuls les fils dont un SEUL bout
+            # est dans le groupe (vers un composant non deplace, hors
+            # perimetre du chantier) gardent leurs coudes intacts ci-dessous.
+            _decaler_point(points[0], delta_a)
+            _decaler_point(points[-1], delta_b)
+            if len(points) > 2:
+                lp = ligne.find("LP")
+                for point in points[1:-1]:
+                    lp.remove(point)
+            continue
         if delta_a is not None:
             _decaler_point(points[0], delta_a)
         if delta_b is not None:
