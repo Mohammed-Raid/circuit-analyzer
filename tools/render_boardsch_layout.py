@@ -83,3 +83,22 @@ if __name__ == "__main__":
     xml = components_to_xml(comps, resultats)
     render(xml, OUT / "disposition_ampli_inverseur.png")
     print(f"Rendu ecrit : {OUT / 'disposition_ampli_inverseur.png'}")
+
+    # Chemin carte scannee (ecrire_groupes) : avant/apres translation.
+    import tempfile
+
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    from circuit_analyzer.xml import lire_xml
+
+    with tempfile.TemporaryDirectory() as tmp:
+        chemin = str(Path(tmp) / "carte.xml")
+        with open(chemin, "w", encoding="utf-8") as f:
+            f.write(xml)
+        render(xml, OUT / "carte_scannee_avant.png")
+        print(f"Rendu ecrit : {OUT / 'carte_scannee_avant.png'}")
+
+        relus = lire_xml(chemin)
+        res_relus = match_patterns(build_graph(relus))
+        xml_patche = ecrire_groupes(relus.source, relus, res_relus)
+        render(xml_patche, OUT / "carte_scannee_apres.png")
+        print(f"Rendu ecrit : {OUT / 'carte_scannee_apres.png'}")
