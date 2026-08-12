@@ -166,8 +166,12 @@ def _decaler_point(point, delta) -> None:
     if x_elem is None or y_elem is None:
         return
     try:
-        x_elem.text = str(float(x_elem.text) + dx)
-        y_elem.text = str(float(y_elem.text) + dy)
+        # Valide les DEUX avant de modifier L'UNE SEULE : sinon, si Y est
+        # mauvais, X a deja change et c'est un no-op partiel (regression).
+        new_x = str(int(round(float(x_elem.text) + dx)))
+        new_y = str(int(round(float(y_elem.text) + dy)))
+        x_elem.text = new_x
+        y_elem.text = new_y
     except (TypeError, ValueError):
         return
 

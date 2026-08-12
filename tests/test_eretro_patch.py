@@ -754,6 +754,161 @@ def test_appliquer_deltas_translate_ctriem_et_lextremite_du_fil_touchee(tmp_path
     assert deltas_observes == sorted([(0.0, 0.0), (50.0, -30.0)])
 
 
+def test_appliquer_deltas_avec_deltas_differents_aux_deux_extremites(tmp_path):
+    """@brief Finding 1 : un fil dont les DEUX extremites sont dans deltas avec
+    des valeurs DIFFERENTES voit chaque bout se decaler PAR SON PROPRE delta,
+    independemment. Teste le cas du fil interne au groupe."""
+    from circuit_analyzer.eretro_patch import _appliquer_deltas
+
+    comps = [
+        Composant("R1", "R", {"1": "N1", "2": "N2"}),
+        Composant("R2", "R", {"1": "N2", "2": "N3"}),
+        Composant("R3", "R", {"1": "N3", "2": "GND"}),
+    ]
+    chemin = _fichier_synthetique(tmp_path, comps)
+    lus, _ = _analyser(chemin)
+    source = lus.source
+
+    # Capture l'etat AVANT pour comparer apres.
+    r1_x_avant = float(source.elements["R1"].find("CtrIem/X").text)
+    r1_y_avant = float(source.elements["R1"].find("CtrIem/Y").text)
+    r2_x_avant = float(source.elements["R2"].find("CtrIem/X").text)
+    r2_y_avant = float(source.elements["R2"].find("CtrIem/Y").text)
+
+    # Le fil entre R1 et R2 : capte SES PointF AVANT translation.
+    idx_fil_r1_r2 = next(i for i, (ra, rb) in source.lignes_refs.items()
+                         if {ra, rb} == {"R1", "R2"})
+    points_r1_r2_avant = [(float(p.findtext("X")), float(p.findtext("Y")))
+                          for p in source.lignes[idx_fil_r1_r2].findall("LP/PointF")]
+
+    # Le fil entre R2 et R3 : capte SES PointF AVANT translation.
+    idx_fil_r2_r3 = next(i for i, (ra, rb) in source.lignes_refs.items()
+                         if {ra, rb} == {"R2", "R3"})
+    points_r2_r3_avant = [(float(p.findtext("X")), float(p.findtext("Y")))
+                          for p in source.lignes[idx_fil_r2_r3].findall("LP/PointF")]
+
+    # Appliquer deux deltas DIFFERENTS : R1 et R2 ne bougent PAS du meme montant.
+    deltas = {"R1": (10.0, 20.0), "R2": (30.0, 40.0)}
+    _appliquer_deltas(source, deltas)
+
+    # Verifie que R1 et R2 ont chacun bouge de son propre delta.
+    assert float(source.elements["R1"].find("CtrIem/X").text) == r1_x_avant + 10.0
+    assert float(source.elements["R1"].find("CtrIem/Y").text) == r1_y_avant + 20.0
+    assert float(source.elements["R2"].find("CtrIem/X").text) == r2_x_avant + 30.0
+    assert float(source.elements["R2"].find("CtrIem/Y").text) == r2_y_avant + 40.0
+
+    # Le fil R1-R2 : son premier PointF (R1 side) doit avoir bouge de (10, 20),
+    # son dernier (R2 side) doit avoir bouge de (30, 40) — des MONTANTS
+    # DIFFERENTS, exactement ce qu'on teste ici.
+    points_r1_r2_apres = [(float(p.findtext("X")), float(p.findtext("Y")))
+                          for p in source.lignes[idx_fil_r1_r2].findall("LP/PointF")]
+    delta_r1_side = (
+        round(points_r1_r2_apres[0][0] - points_r1_r2_avant[0][0], 6),
+        round(points_r1_r2_apres[0][1] - points_r1_r2_avant[0][1], 6)
+    )
+    delta_r2_side = (
+        round(points_r1_r2_apres[-1][0] - points_r1_r2_avant[-1][0], 6),
+        round(points_r1_r2_apres[-1][1] - points_r1_r2_avant[-1][1], 6)
+    )
+    assert delta_r1_side == (10.0, 20.0), \
+        f"extremite R1 du fil R1-R2 doit bouger de (10, 20), pas {delta_r1_side}"
+    assert delta_r2_side == (30.0, 40.0), \
+        f"extremite R2 du fil R1-R2 doit bouger de (30, 40), pas {delta_r2_side}"
+
+    # Le fil R2-R3 : son premier PointF (R2 side) doit avoir bouge de (30, 40),
+    # son dernier (R3 side) reste inchange (R3 n'a pas de delta).
+    points_r2_r3_apres = [(float(p.findtext("X")), float(p.findtext("Y")))
+                          for p in source.lignes[idx_fil_r2_r3].findall("LP/PointF")]
+    delta_r2_r3_side = (
+        round(points_r2_r3_apres[0][0] - points_r2_r3_avant[0][0], 6),
+        round(points_r2_r3_apres[0][1] - points_r2_r3_avant[0][1], 6)
+    )
+    delta_r3_r2_side = (
+        round(points_r2_r3_apres[-1][0] - points_r2_r3_avant[-1][0], 6),
+        round(points_r2_r3_apres[-1][1] - points_r2_r3_avant[-1][1], 6)
+    )
+    assert delta_r2_r3_side == (30.0, 40.0), \
+        f"extremite R2 du fil R2-R3 doit bouger de (30, 40), pas {delta_r2_r3_side}"
+    assert delta_r3_r2_side == (0.0, 0.0), \
+        f"extremite R3 du fil R2-R3 ne doit pas bouger, pas {delta_r3_r2_side}"
+
+
+def test_decaler_point_ecrit_des_entiers_pas_des_floats():
+    """@brief Finding 2 : _decaler_point doit ecrire des entiers, pas des floats,
+    car l'XmlSerializer C# les deserialize en int et rejette "1250.0"."""
+    from circuit_analyzer.eretro_patch import _decaler_point
+    point = ET.Element("PointF")
+    ET.SubElement(point, "X").text = "1200"
+    ET.SubElement(point, "Y").text = "800"
+
+    _decaler_point(point, (50.0, -30.0))
+
+    x_texte = point.find("X").text
+    y_texte = point.find("Y").text
+    # Les TEXTES doivent etre des entiers, pas des floats.
+    assert x_texte == "1250", f"X doit etre '1250', pas '{x_texte}'"
+    assert y_texte == "770", f"Y doit etre '770', pas '{y_texte}'"
+    # Verifie que ce ne sont PAS des floats (pas de point decimal).
+    assert "." not in x_texte, f"X ne doit pas avoir de point decimal : '{x_texte}'"
+    assert "." not in y_texte, f"Y ne doit pas avoir de point decimal : '{y_texte}'"
+
+
+def test_decaler_point_arrondit_les_deltas_non_entiers():
+    """@brief Finding 2 (extension) : si le delta est non-entier, on arrondit."""
+    from circuit_analyzer.eretro_patch import _decaler_point
+    point = ET.Element("PointF")
+    ET.SubElement(point, "X").text = "1200"
+    ET.SubElement(point, "Y").text = "800"
+
+    _decaler_point(point, (50.7, -30.3))
+
+    x_texte = point.find("X").text
+    y_texte = point.find("Y").text
+    # Arrondir 1200 + 50.7 = 1250.7 donne 1251 (round vers pair)
+    # Arrondir 800 - 30.3 = 769.7 donne 770
+    assert x_texte == "1251", f"X doit etre arrondi a '1251', pas '{x_texte}'"
+    assert y_texte == "770", f"Y doit etre arrondi a '770', pas '{y_texte}'"
+
+
+def test_decaler_point_failsoft_avec_pointf_malformee():
+    """@brief Finding 3 : _decaler_point ne leve JAMAIS si la structure est
+    malforme (X ou Y manquants, ou contenu non-numerique). C'est un no-op."""
+    from circuit_analyzer.eretro_patch import _decaler_point
+
+    # Cas 1 : X manquant
+    point_sans_x = ET.Element("PointF")
+    ET.SubElement(point_sans_x, "Y").text = "100"
+    _decaler_point(point_sans_x, (10.0, 20.0))  # ne doit pas lever
+    assert point_sans_x.findtext("Y") == "100", "Y ne doit pas changer si X est absent"
+
+    # Cas 2 : Y manquant
+    point_sans_y = ET.Element("PointF")
+    ET.SubElement(point_sans_y, "X").text = "100"
+    _decaler_point(point_sans_y, (10.0, 20.0))  # ne doit pas lever
+    assert point_sans_y.findtext("X") == "100", "X ne doit pas changer si Y est absent"
+
+    # Cas 3 : X non-numerique
+    point_nan_x = ET.Element("PointF")
+    ET.SubElement(point_nan_x, "X").text = "abc"
+    ET.SubElement(point_nan_x, "Y").text = "100"
+    _decaler_point(point_nan_x, (10.0, 20.0))  # ne doit pas lever
+    assert point_nan_x.findtext("X") == "abc", "X ne doit pas changer si non-numerique"
+    assert point_nan_x.findtext("Y") == "100", "Y ne doit pas changer si X est mauvais"
+
+    # Cas 4 : Y non-numerique
+    point_nan_y = ET.Element("PointF")
+    ET.SubElement(point_nan_y, "X").text = "100"
+    ET.SubElement(point_nan_y, "Y").text = "xyz"
+    _decaler_point(point_nan_y, (10.0, 20.0))  # ne doit pas lever
+    assert point_nan_y.findtext("X") == "100", "X ne doit pas changer si Y est mauvais"
+    assert point_nan_y.findtext("Y") == "xyz", "Y ne doit pas changer si non-numerique"
+
+    # Cas 5 : PointF completement vide
+    point_vide = ET.Element("PointF")
+    _decaler_point(point_vide, (10.0, 20.0))  # ne doit pas lever
+    assert len(list(point_vide)) == 0, "un PointF vide doit rester vide"
+
+
 def _comparer_sauf_groupes(a, b, chemin="/"):
     """@brief Egalite RECURSIVE de deux arbres, hors champs de groupe.
 
