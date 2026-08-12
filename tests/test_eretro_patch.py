@@ -1040,6 +1040,34 @@ def test_appliquer_deltas_route_en_l_evite_un_autre_composant_du_groupe():
     assert resultat == [(0.0, 0.0), (0.0, 1000.0), (1000.0, 1000.0)]
 
 
+def test_appliquer_deltas_route_en_l_vide_pgap_desynchronise():
+    """@brief <pGap> porte un <Point> par <PointF> de <LP> dans le dialecte
+    reel (constat empirique : toujours meme compte, ex. 3/3, 2/2). Router en
+    L change le nombre de points de <LP> (ici 2 -> 3) ; <pGap> doit etre vide
+    plutot que laisse au vieux compte (LP=3/pGap=2 n'existe dans aucun
+    fichier reel)."""
+    from circuit_analyzer.eretro_patch import _appliquer_deltas
+    from circuit_analyzer.eretro import SourceXML
+
+    racine = ET.Element("BoardSCH")
+    ligne = ET.SubElement(racine, "Line")
+    lp = ET.SubElement(ligne, "LP")
+    for x, y in [(0, 0), (100, 0)]:
+        pf = ET.SubElement(lp, "PointF")
+        ET.SubElement(pf, "X").text = str(x)
+        ET.SubElement(pf, "Y").text = str(y)
+    gap = ET.SubElement(ligne, "pGap")
+    for _ in range(2):
+        ET.SubElement(gap, "Point")
+
+    source = SourceXML(arbre=ET.ElementTree(racine), elements={},
+                        lignes=[ligne], lignes_refs={0: ("A", "B")})
+    _appliquer_deltas(source, {"A": (5.0, 5.0), "B": (9.0, 1.0)})
+
+    assert len(ligne.findall("LP/PointF")) == 3
+    assert ligne.find("pGap").findall("Point") == []
+
+
 def test_segment_croise_rectangle_horizontal_dedans():
     """@brief Un segment horizontal qui passe par l'interieur d'un rectangle est detecte."""
     from circuit_analyzer.eretro_patch import _segment_croise_rectangle

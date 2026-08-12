@@ -365,6 +365,17 @@ def _appliquer_deltas(source, deltas) -> None:
                 pf = ET.SubElement(lp, "PointF")
                 ET.SubElement(pf, "X").text = str(int(round(x)))
                 ET.SubElement(pf, "Y").text = str(int(round(y)))
+            # <pGap> porte un <Point> par <PointF> de <LP> dans le dialecte
+            # reel (constat sur exemples/carte pour tester.xml : LP et pGap
+            # ont toujours le meme compte, ex. 3/3, 2/2). Le nombre de
+            # points de <LP> vient de changer (2 ou 3, selon _router_fil_en_l)
+            # : on vide <pGap> plutot que de le laisser desynchronise a
+            # l'ancien compte. pGap a 0 points est un etat deja tolere par
+            # l'appli reelle (observe sur des fils authentiques avec LP=2).
+            gap = ligne.find("pGap")
+            if gap is not None:
+                for point in list(gap):
+                    gap.remove(point)
             continue
         if delta_a is not None:
             _decaler_point(points[0], delta_a)

@@ -97,7 +97,7 @@ if __name__ == "__main__":
     # de revue de branche).
     import tempfile
 
-    from circuit_analyzer.eretro_patch import ecrire_groupes
+    from circuit_analyzer.eretro_patch import _decaler_point, ecrire_groupes
     from circuit_analyzer.xml import lire_xml
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -114,6 +114,22 @@ if __name__ == "__main__":
             x_elem, y_elem = element.find("CtrIem/X"), element.find("CtrIem/Y")
             x_elem.text = str(int(float(x_elem.text) + dx))
             y_elem.text = str(int(float(y_elem.text) + dy))
+        # Le composant bouge, mais un fil qui s'y raccroche doit bouger AVEC
+        # lui (meme rapport broche/centre que le reste de cette feature) --
+        # sinon le fil reste a sa position canonique pendant que le corps du
+        # composant se disperse, et l'extremite se retrouve loin du
+        # composant qu'elle est censee relier (constat de revue de branche :
+        # ~370 unites d'ecart sur carte_scannee_apres.png). Meme lookup
+        # CFirst/CLast -> ref que _appliquer_deltas (source.lignes_refs).
+        for idx, ligne in enumerate(relus.source.lignes):
+            ra, rb = relus.source.lignes_refs.get(idx, (None, None))
+            points = ligne.findall("LP/PointF")
+            if not points:
+                continue
+            if ra in dispersion:
+                _decaler_point(points[0], dispersion[ra])
+            if rb in dispersion:
+                _decaler_point(points[-1], dispersion[rb])
         xml_disperse = ET.tostring(relus.source.arbre.getroot(), encoding="unicode")
 
         render(xml_disperse, OUT / "carte_scannee_avant.png")
