@@ -713,6 +713,47 @@ _CHAMPS_GROUPE = {"GpId", "Begrp", "BeIngrp"}
 _BRANCHE_AJOUTEE = "GrpL"
 
 
+def test_appliquer_deltas_translate_ctriem_et_lextremite_du_fil_touchee(tmp_path):
+    """@brief Un ref avec un delta voit son CtrIem ET l'extremite de fil qui le
+    touche decales du meme montant. L'AUTRE extremite (composant non deplace)
+    reste intacte."""
+    from circuit_analyzer.eretro_patch import _appliquer_deltas
+
+    comps = [
+        Composant("R1", "R", {"1": "N1", "2": "N2"}),
+        Composant("R2", "R", {"1": "N2", "2": "N3"}),
+    ]
+    chemin = _fichier_synthetique(tmp_path, comps)
+    lus, _ = _analyser(chemin)
+    source = lus.source
+
+    x_avant = float(source.elements["R1"].find("CtrIem/X").text)
+    y_avant = float(source.elements["R1"].find("CtrIem/Y").text)
+    x2_avant = float(source.elements["R2"].find("CtrIem/X").text)
+
+    # Le fil entre R1 et R2 (les deux refs connues du pont) : capte SES
+    # PointF AVANT translation pour comparer apres.
+    idx_fil = next(i for i, (ra, rb) in source.lignes_refs.items()
+                   if {ra, rb} == {"R1", "R2"})
+    points_avant = [(float(p.findtext("X")), float(p.findtext("Y")))
+                    for p in source.lignes[idx_fil].findall("LP/PointF")]
+
+    _appliquer_deltas(source, {"R1": (50.0, -30.0)})
+
+    assert float(source.elements["R1"].find("CtrIem/X").text) == x_avant + 50.0
+    assert float(source.elements["R1"].find("CtrIem/Y").text) == y_avant - 30.0
+    # R2 n'a pas de delta : son CtrIem est intact.
+    assert float(source.elements["R2"].find("CtrIem/X").text) == x2_avant
+
+    points_apres = [(float(p.findtext("X")), float(p.findtext("Y")))
+                    for p in source.lignes[idx_fil].findall("LP/PointF")]
+    # Exactement UNE extremite a bouge de (50, -30), l'autre est intacte.
+    deltas_observes = sorted(
+        (round(ax - bx, 6), round(ay - by, 6))
+        for (ax, ay), (bx, by) in zip(points_apres, points_avant))
+    assert deltas_observes == sorted([(0.0, 0.0), (50.0, -30.0)])
+
+
 def _comparer_sauf_groupes(a, b, chemin="/"):
     """@brief Egalite RECURSIVE de deux arbres, hors champs de groupe.
 

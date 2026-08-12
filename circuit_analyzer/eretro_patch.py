@@ -159,6 +159,51 @@ def _deltas_disposition_canonique(source, composants, blocs) -> dict:
     return deltas
 
 
+def _decaler_point(point, delta) -> None:
+    """@brief Translate un <PointF> (X, Y) du delta donne. No-op si malforme."""
+    dx, dy = delta
+    x_elem, y_elem = point.find("X"), point.find("Y")
+    if x_elem is None or y_elem is None:
+        return
+    try:
+        x_elem.text = str(float(x_elem.text) + dx)
+        y_elem.text = str(float(y_elem.text) + dy)
+    except (TypeError, ValueError):
+        return
+
+
+def _appliquer_deltas(source, deltas) -> None:
+    """@brief Translate <CtrIem> et les extremites de fil des refs deplacees.
+
+    @param source SourceXML (pont ref -> ET.Element, fils, refs de fils).
+    @param deltas {ref: (dx, dy)} — sortie de _deltas_disposition_canonique.
+
+    Ne touche jamais <angle> (translation pure). Un fil dont une SEULE
+    extremite est dans `deltas` ne voit QUE cette extremite bouger — l'autre
+    (composant non deplace) reste a sa position reelle scannee. Un fil dont
+    les DEUX extremites sont dans `deltas` (fil interne au groupe) voit
+    chacune bouger de SON propre delta.
+    """
+    for ref, delta in deltas.items():
+        element = source.elements.get(ref)
+        if element is None:
+            continue
+        ctr = element.find("CtrIem")
+        if ctr is None:
+            continue
+        _decaler_point(ctr, delta)
+
+    for idx, ligne in enumerate(source.lignes):
+        ra, rb = source.lignes_refs.get(idx, (None, None))
+        points = ligne.findall("LP/PointF")
+        if len(points) < 2:
+            continue
+        if ra in deltas:
+            _decaler_point(points[0], deltas[ra])
+        if rb in deltas:
+            _decaler_point(points[-1], deltas[rb])
+
+
 def ecrire_groupes(source, composants, resultats=None) -> str:
     """@brief Renvoie le XML d'origine, enrichi des groupes d'analyse.
 
