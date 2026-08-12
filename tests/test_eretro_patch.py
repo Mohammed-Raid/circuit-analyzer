@@ -1040,6 +1040,47 @@ def test_segment_croise_rectangle_frontiere_praticable():
     assert _segment_croise_rectangle((0, 40), (100, 40), (40, 40, 60, 60)) is False
 
 
+def test_router_fil_en_l_prefere_horizontal_puis_vertical_si_libre():
+    """@brief Sans obstacle, le premier candidat (horizontal puis vertical) est retenu."""
+    from circuit_analyzer.eretro_patch import _router_fil_en_l
+    chemin = _router_fil_en_l((0, 0), (100, 100), [])
+    assert chemin == [(0, 0), (100, 0), (100, 100)]
+
+
+def test_router_fil_en_l_bascule_si_horizontal_bloque():
+    """@brief Si le segment horizontal du 1er candidat traverse un obstacle,
+    le 2e candidat (vertical puis horizontal) est retenu a la place."""
+    from circuit_analyzer.eretro_patch import _router_fil_en_l
+    obstacle = (40, -10, 60, 10)  # bloque le segment horizontal (0,0)->(100,0)
+    chemin = _router_fil_en_l((0, 0), (100, 100), [obstacle])
+    assert chemin == [(0, 0), (0, 100), (100, 100)]
+
+
+def test_router_fil_en_l_repli_ligne_droite_si_tout_bloque():
+    """@brief Si les DEUX candidats sont bloques, repli sur la ligne droite."""
+    from circuit_analyzer.eretro_patch import _router_fil_en_l
+    obstacles = [(40, -10, 60, 10), (-10, 40, 10, 60)]
+    chemin = _router_fil_en_l((0, 0), (100, 100), obstacles)
+    assert chemin == [(0, 0), (100, 100)]
+
+
+def test_router_fil_en_l_deja_droit_reste_a_2_points():
+    """@brief p1/p2 deja alignes (meme Y) -> pas de coude degenere, 2 points."""
+    from circuit_analyzer.eretro_patch import _router_fil_en_l
+    chemin = _router_fil_en_l((0, 0), (100, 0), [])
+    assert chemin == [(0, 0), (100, 0)]
+
+
+def test_boite_obstacle_centree_sur_le_composant():
+    """@brief La boite generique est centree sur le point donne, taille fixe."""
+    from circuit_analyzer.eretro_patch import _boite_obstacle, _LARGEUR_OBSTACLE, _HAUTEUR_OBSTACLE
+    x0, y0, x1, y1 = _boite_obstacle((500, 300))
+    assert x1 - x0 == _LARGEUR_OBSTACLE
+    assert y1 - y0 == _HAUTEUR_OBSTACLE
+    assert (x0 + x1) / 2 == 500
+    assert (y0 + y1) / 2 == 300
+
+
 def test_ecrire_groupes_deplace_lampli_inverseur_vers_sa_disposition_canonique(tmp_path):
     """@brief Bout en bout : un ampli inverseur reconnu sur une carte "scannee"
     (chemin ecrire_groupes) est translate vers sa disposition canonique."""

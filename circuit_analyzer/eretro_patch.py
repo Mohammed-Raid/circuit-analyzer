@@ -222,6 +222,46 @@ def _segment_croise_rectangle(p, q, rect) -> bool:
     return xlo < x1 and xhi > x0
 
 
+_LARGEUR_OBSTACLE = 160
+_HAUTEUR_OBSTACLE = 80
+
+
+def _boite_obstacle(centre) -> tuple:
+    """@brief Rectangle (x0,y0,x1,y1) approximatif autour d'un centre de composant.
+
+    Taille generique (~resistance/AOP a cette echelle) : Composant ne porte
+    pas de forme reelle cote analyse, seulement une position.
+    """
+    cx, cy = centre
+    return (cx - _LARGEUR_OBSTACLE / 2, cy - _HAUTEUR_OBSTACLE / 2,
+            cx + _LARGEUR_OBSTACLE / 2, cy + _HAUTEUR_OBSTACLE / 2)
+
+
+def _router_fil_en_l(p1, p2, obstacles) -> list:
+    """@brief Chemin en angle droit (un seul coude) entre p1 et p2, en
+    evitant les rectangles `obstacles`.
+
+    @param p1, p2 Nouvelles positions des deux extremites du fil.
+    @param obstacles Rectangles (x0,y0,x1,y1) des AUTRES composants du
+           groupe (jamais ceux que ce fil relie lui-meme).
+    @return [p1, p2] (ligne droite) si le chemin ne necessite pas de coude,
+            ou si aucun des deux candidats n'evite tous les obstacles ;
+            [p1, coude, p2] sinon.
+    """
+    candidats = [
+        (p2[0], p1[1]),  # horizontal puis vertical
+        (p1[0], p2[1]),  # vertical puis horizontal
+    ]
+    for coude in candidats:
+        segments = [(p1, coude), (coude, p2)]
+        if any(_segment_croise_rectangle(a, b, r) for a, b in segments for r in obstacles):
+            continue
+        if coude[0] == p1[0] == p2[0] or coude[1] == p1[1] == p2[1]:
+            return [p1, p2]
+        return [p1, coude, p2]
+    return [p1, p2]
+
+
 def _appliquer_deltas(source, deltas) -> None:
     """@brief Translate <CtrIem> et les extremites de fil des refs deplacees.
 
