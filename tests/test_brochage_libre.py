@@ -2,11 +2,13 @@
 @brief Brochage libre par instance (spec 2026-07-23) : resolveur de geometrie,
 rendu en boite, mode d'edition de broches, persistance. Tk -> skip sans display.
 """
+import json
+
 import pytest
 
 ctk = pytest.importorskip("customtkinter")
 
-from gui.schematic_editor import SchematicEditor        # noqa: E402
+from gui.schematic_editor import SchematicEditor
 
 
 @pytest.fixture
@@ -300,3 +302,220 @@ def test_boite_vierge_sans_broche_reste_rendue_en_boite_libre(editeur):
     items = editeur._canvas.find_withtag(f"comp_{c.id}")
     assert not any(editeur._canvas.type(i) == "arc" for i in items), \
         "encoche DIP de _tr_boite : mauvais traceur"
+
+
+# ── Task 3 (2026-08-07) : forme reelle survit au rendu et au round-trip .circ ─
+
+def test_geom_combine_pinout_et_forme_reelle(editeur):
+    c = _place(editeur, 'X', 200, 200)
+    c.pinout = {'A': ('L', 0), 'B': ('R', 0)}
+    c.forme_primitives = [('polygon', [(-10, -10), (-10, 10), (10, 10), (10, -10)], False)]
+    editeur._invalider_geom()
+    d = editeur._geom(c)
+    assert set(d['pins']) == {'A', 'B'}
+    assert d.get('primitives') == c.forme_primitives
+
+
+def test_round_trip_circ_conserve_la_forme_reelle(editeur):
+    c = _place(editeur, 'X', 200, 200)
+    c.pinout = {'1': ('L', 0)}
+    c.forme_primitives = [('polygon', [(-5, -5), (-5, 5), (5, 5), (5, -5)], False)]
+    editeur._invalider_geom()
+    editeur.load_dict(editeur.to_dict())
+    r = next(x for x in editeur._comps.values() if x.comp_type == 'X')
+    assert r.forme_primitives == [('polygon', [(-5, -5), (-5, 5), (5, 5), (5, -5)], False)]
+
+
+def test_round_trip_json_reel_conserve_les_tuples_de_la_forme(editeur):
+    """Reviewer 2026-08-07 : `load_dict(to_dict())` en memoire ne passe PAS
+    par JSON -- to_dict() renvoie encore l'objet liste d'origine, donc l'==
+    du test precedent passe par coincidence d'identite, pas par une vraie
+    persistance verifiee. Ici on force un aller-retour `json.dumps`/
+    `json.loads` (ce que fait reellement un fichier .circ sur disque, cf.
+    gui/tab_draw.py) pour verifier que `load_dict` reconstruit bien les
+    tuples que JSON a aplatis en listes, a chaque niveau (primitive ET
+    points/bbox imbriques), exactement comme `pinout` le fait deja."""
+    c = _place(editeur, 'X', 200, 200)
+    c.pinout = {'1': ('L', 0)}
+    original = [
+        ('line', [(-10, 0), (10, 0)], 2),
+        ('polygon', [(-5, -5), (-5, 5), (5, 5), (5, -5)], True),
+        ('arc', (-8, -8, 8, 8), 0, 180),
+        ('text', (0, 12), 'X', 10, 'n'),
+    ]
+    c.forme_primitives = original
+    editeur._invalider_geom()
+
+    document = json.loads(json.dumps(editeur.to_dict()))
+    editeur.load_dict(document)
+
+    r = next(x for x in editeur._comps.values() if x.comp_type == 'X')
+    assert r.forme_primitives == original
+    # Egalite structurelle ET typage exact -- une liste `[-10, 0]` == un
+    # tuple `(-10, 0)` en Python, donc `==` seul ne detecterait pas une
+    # normalisation manquante : on verifie explicitement le type a chaque
+    # niveau imbrique.
+    for prim in r.forme_primitives:
+        assert isinstance(prim, tuple)
+        kind = prim[0]
+        if kind in ('line', 'polygon'):
+            assert isinstance(prim[1], list)
+            for pt in prim[1]:
+                assert isinstance(pt, tuple)
+        elif kind == 'arc':
+            assert isinstance(prim[1], tuple)
+        elif kind == 'text':
+            assert isinstance(prim[1], tuple)
+
+
+def test_circ_sans_forme_reelle_se_relit(editeur):
+    _place(editeur, 'R', 200, 200)
+    d = editeur.to_dict()
+    for comp in d['components']:
+        comp.pop('forme_primitives', None)
+    editeur.load_dict(d)
+    assert all(c.forme_primitives is None for c in editeur._comps.values())
+
+
+# ── Task 6 : dessin de contour a la main (mode "shapedraw") ─────────────────
+
+def test_dessiner_une_forme_produit_un_polygone(editeur):
+    c = _place(editeur, 'X', 200, 200)
+    editeur._entrer_dessin_forme(c.id)
+    editeur._ajouter_point_forme(c, 200 - 20, 200 - 20)
+    editeur._ajouter_point_forme(c, 200 - 20, 200 + 20)
+    editeur._ajouter_point_forme(c, 200 + 20, 200 + 20)
+    assert editeur._fermer_forme(c) is True
+    assert c.forme_primitives == [('polygon', [(-20, -20), (-20, 20), (20, 20)], False)]
+    assert editeur._state == 'idle'
+
+
+def test_fermer_avec_moins_de_3_points_est_refuse(editeur):
+    c = _place(editeur, 'X', 200, 200)
+    editeur._entrer_dessin_forme(c.id)
+    editeur._ajouter_point_forme(c, 200 - 20, 200 - 20)
+    assert editeur._fermer_forme(c) is False
+    assert c.forme_primitives is None
+    assert editeur._state == 'shapedraw'  # reste en mode dessin
+
+
+def test_dessin_de_forme_est_annulable(editeur):
+    c = _place(editeur, 'X', 200, 200)
+    c.forme_primitives = [('polygon', [(0, 0), (0, 1), (1, 1)], False)]
+    editeur._entrer_dessin_forme(c.id)
+    editeur._ajouter_point_forme(c, 200 - 10, 200 - 10)
+    editeur._ajouter_point_forme(c, 200 - 10, 200 + 10)
+    editeur._ajouter_point_forme(c, 200 + 10, 200 + 10)
+    editeur._fermer_forme(c)
+    editeur._undo()
+    assert editeur._comps[c.id].forme_primitives == [('polygon', [(0, 0), (0, 1), (1, 1)], False)]
+
+
+def test_echap_en_dessin_annule_la_forme_en_cours(editeur):
+    c = _place(editeur, 'X', 200, 200)
+    editeur._entrer_dessin_forme(c.id)
+    editeur._ajouter_point_forme(c, 200 - 10, 200 - 10)
+    editeur._on_escape()
+    assert editeur._state == 'idle'
+    assert c.forme_primitives is None
+
+
+# ── Revue finale round 1 : Critical 1 — pinout/primitives sont deux
+# informations INDEPENDANTES, dessiner un contour ne doit jamais effacer
+# les broches du TYPE quand il n'y a pas de brochage libre d'instance ──────
+
+def test_contour_dessine_sur_resistance_conserve_ses_broches(editeur):
+    """`_geom` traitait `comp.pinout` et `comp.forme_primitives` comme un
+    seul signal : dessiner un contour sur une resistance (qui n'a PAS de
+    `pinout` d'instance, seulement `forme_primitives`) faisait tomber dans
+    `geometrie_libre(comp.pinout or {})` == `geometrie_libre({})` -> les 2
+    broches de la resistance disparaissaient de `_geom(comp)["pins"]`."""
+    c = _place(editeur, 'R', 200, 200)
+    editeur._entrer_dessin_forme(c.id)
+    editeur._ajouter_point_forme(c, 200 - 30, 200 - 15)
+    editeur._ajouter_point_forme(c, 200 - 30, 200 + 15)
+    editeur._ajouter_point_forme(c, 200 + 30, 200 + 15)
+    assert editeur._fermer_forme(c) is True
+
+    geo = editeur._geom(c)
+    assert set(geo["pins"]) == {"1", "2"}, \
+        f"broches du type perdues apres dessin de contour : {geo['pins']}"
+    assert geo["pins"] == editeur._defs["R"]["pins"], \
+        "les positions de broche doivent rester celles du TYPE (contour visuel seul change)"
+    assert geo.get("primitives") == c.forme_primitives
+
+
+def test_redraw_apres_contour_dessine_sur_resistance_cablee_ne_leve_pas(editeur):
+    """Meme scenario que ci-dessus, mais avec un fil DEJA relie a la broche
+    AVANT le dessin du contour : reproduit le crash DIFFERE (KeyError sur le
+    nom de broche disparu) constate en revue au prochain `_redraw_all()`
+    (`_fermer_forme` n'appelle que `_draw_comp`, pas un redraw complet)."""
+    r1 = _place(editeur, 'R', 200, 200)
+    r2 = _place(editeur, 'R', 320, 200)
+    editeur._add_wire(r1.id, "2", r2.id, "1")
+
+    editeur._entrer_dessin_forme(r1.id)
+    editeur._ajouter_point_forme(r1, 200 - 30, 200 - 15)
+    editeur._ajouter_point_forme(r1, 200 - 30, 200 + 15)
+    editeur._ajouter_point_forme(r1, 200 + 30, 200 + 15)
+    assert editeur._fermer_forme(r1) is True
+
+    editeur._redraw_all()  # avant fix : KeyError sur la broche "2" disparue
+
+
+def test_entrer_dessin_forme_quitte_le_mode_pinedit(editeur):
+    """Minor 9 (revue finale round 1) : entrer en mode dessin de contour
+    depuis le mode edition de broches laissait l'overlay pinedit affiche."""
+    c = _place(editeur, 'R', 200, 200)
+    editeur._entrer_pinedit(c.id)
+    assert editeur._state == "pinedit"
+    editeur._entrer_dessin_forme(c.id)
+    assert editeur._state == "shapedraw"
+    assert editeur._pinedit_id is None
+    assert not editeur._canvas.find_withtag("pinedit")
+
+
+# ── Revue finale round 1 : Important 3 — `_geom` doit passer w_exact/h_exact
+# a `geometrie_libre` des que le contour reel est connu, comme `_xml_composant`
+# le fait deja (fix 48ddf30) ────────────────────────────────────────────────
+
+def test_geom_avec_pinout_et_contour_reel_place_les_broches_dans_le_contour(editeur):
+    """Sans w_exact/h_exact, `geometrie_libre` retombe sur son heuristique de
+    remplissage et une broche calculee peut se retrouver HORS du contour
+    reel (exemple A788J du plan : contour reel 72x96, mais l'heuristique
+    donne une boite plus grande)."""
+    c = _place(editeur, "X", 200, 200)
+    c.pinout = {"Vin+": ("L", -42), "GND1": ("L", 42)}
+    c.forme_primitives = [("polygon", [(-36, -48), (-36, 48), (36, 48), (36, -48)], False)]
+    editeur._invalider_geom()
+
+    geo = editeur._geom(c)
+    assert (geo["w"], geo["h"]) == (72, 96), \
+        f"la boite doit prendre la taille EXACTE du contour reel, pas l'heuristique : {geo['w']}x{geo['h']}"
+    for nom, (dx, dy) in geo["pins"].items():
+        assert -36 <= dx <= 36 and -48 <= dy <= 48, \
+            f"broche '{nom}' hors du contour reel : ({dx}, {dy})"
+
+
+def test_contour_dessine_sur_transistor_ne_double_pas_les_libelles_de_broches(editeur):
+    """Revue finale round 2 bis (re-revue de 951effb) : `_geom` (Minor B,
+    round 2) copie desormais les broches du TYPE sans injecter `"cotes"` --
+    mais `primitives()` (gui/schematic_symbols.py) court-circuite DEJA vers
+    `_libelles_broches` des que `defn["primitives"]` existe, quel que soit
+    `t_rendu`. `boite = est_boite_generique(t_rendu)` l'ignorait pour un
+    type CATALOGUE (Q, M, U...) qui n'est pas dans `_TRACEURS` -- chaque
+    libelle de broche ressortait donc DEUX FOIS a l'ecran (celui de
+    `_libelles_broches`, dessine dans les primitives, PLUS le libelle
+    generique de secours de `_draw_comp`)."""
+    c = _place(editeur, 'Q', 200, 200)
+    c.forme_primitives = [('polygon', [(-20, -15), (-20, 15), (20, 15), (20, -15)], False)]
+    editeur._invalider_geom()
+    editeur._redraw_all()
+
+    textes = [editeur._canvas.itemcget(i, "text")
+              for i in editeur._canvas.find_withtag(f"comp_{c.id}")
+              if editeur._canvas.type(i) == "text"]
+    for pn in editeur._geom(c)["pins"]:
+        occurrences = sum(1 for t in textes if t.startswith(pn))
+        assert occurrences <= 1, \
+            f"libelle de broche '{pn}' duplique dans le rendu : {textes}"

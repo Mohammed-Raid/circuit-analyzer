@@ -8,10 +8,11 @@ chips-export). Le test Tk d'integration (clic reel, scroll, disparition de
 l'anneau) vit dans tests/test_island_viewport.py, meme idiome.
 """
 import matplotlib
+
 matplotlib.use("Agg")
 from matplotlib.figure import Figure
 
-from gui.circuit_viewer import _position_composant, _fraction_centree
+from gui.circuit_viewer import _fraction_centree, _position_composant
 
 
 def _fig_vide():

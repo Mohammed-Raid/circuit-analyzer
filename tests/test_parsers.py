@@ -5,14 +5,15 @@
 
 import os
 import tempfile
-import pytest
 
 from circuit_analyzer.composant import (
-    lire_spice, lire_kicad_net, lire_netlist, _detect_format,
+    _detect_format,
+    lire_kicad_net,
+    lire_netlist,
+    lire_spice,
 )
-from circuit_analyzer.graph_builder import build_graph
 from circuit_analyzer.detecteur import match_patterns
-
+from circuit_analyzer.graph_builder import build_graph
 
 # ── SPICE parser ──────────────────────────────────────────────────────────────
 

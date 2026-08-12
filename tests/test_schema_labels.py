@@ -4,6 +4,7 @@
 condition explicite du design), résolution effective sur collision réelle,
 et non-régression des symboles (seuls les Text bougent)."""
 import matplotlib
+
 matplotlib.use("Agg")
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
@@ -111,6 +112,33 @@ def test_symboles_lignes_non_deplaces_par_la_resolution():
     ajuster_labels(fig)
     assert list(line.get_xdata()) == xdata_avant
     assert list(line.get_ydata()) == ydata_avant
+
+
+def test_texte_coince_entre_un_fil_et_un_net_ne_boucle_pas():
+    """@brief Repli du solveur : un texte pris en tenaille entre un FIL et un
+    NOM DE NET oscille indefiniment (mesure sur la carte « pg carte » :
+    « Isolateur numerique (SI844AB) » pousse de -15.8 px par NET97, repousse de
+    +15.8 px par un fil, 20 iterations durant). Le texte de moindre priorite
+    n'a alors AUCUNE position valide : la seule issue est que son partenaire
+    prioritaire s'ecarte a son tour."""
+    fig = Figure(figsize=(4, 3))
+    ax = fig.add_subplot(111)
+    ax.axis("off")
+    # Le fil et le net encadrent la case du composant de si pres que fuir l'un
+    # revient a entrer dans l'autre.
+    ax.plot([0.0, 1.0], [0.44, 0.44], lw=1.0)
+    ax.text(0.5, 0.5, "Isolateur numerique", fontsize=11, ha="center")
+    ax.text(0.5, 0.52, "NET97", fontsize=11, ha="center")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+
+    ajuster_labels(fig)
+
+    canvas = FigureCanvasAgg(fig)
+    canvas.draw()
+    rnd = canvas.get_renderer()
+    a, b = [t.get_window_extent(rnd) for t in ax.texts]
+    assert not a.overlaps(b), "chevauchement survivant : le solveur a boucle"
 
 
 def test_aucun_texte_ne_deborde_apres_resolution():

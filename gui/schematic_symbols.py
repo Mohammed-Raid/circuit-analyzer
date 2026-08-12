@@ -10,6 +10,9 @@ Primitive :
   ("text", (x,y), texte, taille, ancre)
 """
 
+import math
+import xml.etree.ElementTree as ET
+
 from gui.theme import SCHEMA_COLORS
 
 # Couleur des composants sans symbole dedie (boite generique, brochage libre).
@@ -227,10 +230,13 @@ def est_boite_generique(comp_type: str) -> bool:
 def primitives(comp_type, defn, rotation, value=""):
     """@brief Primitives monde du symbole, rotation appliquee.
 
-    Types traces : table _TRACEURS. Tout autre type (perso, puce catalogue)
-    -> boite generique a encoche avec stubs et libelles de broches.
+    Types traces : table _TRACEURS. Un type avec une forme importee
+    (defn["primitives"], spec 2026-08-05) court-circuite le dispatch. Tout
+    autre type (perso, puce catalogue) -> boite generique a encoche.
     """
-    if comp_type == TYPE_LIBRE:
+    if defn.get("primitives"):
+        prims = list(defn["primitives"]) + _libelles_broches(defn)
+    elif comp_type == TYPE_LIBRE:
         prims = _tr_boite_libre(defn)
     elif comp_type == "D":
         prims = _tr_d(defn, value)
@@ -267,6 +273,76 @@ def def_puce(value, broches):
     }
 
 
+def primitives_depuis_dataitem(xml_texte: str, echelle: float,
+                                cx: float = 0.0, cy: float = 0.0) -> list:
+    """@brief Contour reel d'un <DataItem> ERetroDesign en primitives d'edition.
+
+    Parse datasegment/DataSegment (Spoint/Epoint -> "line"), dataarc/DataArc
+    (pCenter/stAngle/swAngle, rayon = distance pCenter->Spoint -> "arc"),
+    datapolygon/DataPolygon (points groupes -> un seul "polygon" ferme).
+    Chaque coordonnee est recentree sur (cx, cy) PUIS divisee par *echelle* —
+    exactement la meme formule que le calcul des broches dans eretro_lib.py
+    (`(px - cx) / ECHELLE`), pour que forme et broches partagent la meme
+    origine. L'appelant DOIT passer le meme (cx, cy, echelle) que celui utilise
+    pour les broches, jamais des valeurs cablees en dur ici, sous peine de
+    desaligner pattes et contour.
+    Ne leve JAMAIS : XML invalide ou geometrie degeneree -> ignores, jamais
+    une exception qui ferait echouer tout l'import du composant.
+
+    @param xml_texte Fragment <DataItem>...</DataItem> (texte).
+    @param echelle Facteur d'echelle unites BoardSCH -> unites editeur (=
+           eretro_lib.ECHELLE, actuellement 1 : pas de mise a l'echelle).
+    @param cx, cy Origine (centroide) a soustraire avant division, en unites
+           XML — memes valeurs que le cx, cy utilises pour les broches.
+    @return list[tuple] Primitives ("line"|"arc"|"polygon", ...). Vide si le
+            composant n'a ni polygone, ni segment, ni arc exploitable.
+    """
+    try:
+        r = ET.fromstring(xml_texte)
+    except ET.ParseError:
+        return []
+    prims = []
+    for s in r.findall("./datasegment/DataSegment"):
+        try:
+            sp, ep = s.find("Spoint"), s.find("Epoint")
+            x1 = (float(sp.findtext("X") or 0) - cx) / echelle
+            y1 = (float(sp.findtext("Y") or 0) - cy) / echelle
+            x2 = (float(ep.findtext("X") or 0) - cx) / echelle
+            y2 = (float(ep.findtext("Y") or 0) - cy) / echelle
+            prims.append(("line", [(x1, y1), (x2, y2)], 2))
+        except (AttributeError, ValueError, TypeError):
+            continue
+    for a in r.findall("./dataarc/DataArc"):
+        try:
+            c = a.find("pCenter")
+            acx = (float(c.findtext("X") or 0) - cx) / echelle
+            acy = (float(c.findtext("Y") or 0) - cy) / echelle
+            sp = a.find("Spoint")
+            sx = (float(sp.findtext("X") or 0) - cx) / echelle
+            sy = (float(sp.findtext("Y") or 0) - cy) / echelle
+            rayon = math.hypot(sx - acx, sy - acy)
+            if rayon <= 0:
+                continue
+            debut = float(a.findtext("stAngle") or 0)
+            etendue = float(a.findtext("swAngle") or 0)
+            prims.append(("arc",
+                         (acx - rayon, acy - rayon, acx + rayon, acy + rayon),
+                         debut, etendue))
+        except (AttributeError, ValueError, TypeError):
+            continue
+    points = []
+    for p in r.findall("./datapolygon/DataPolygon"):
+        try:
+            pt = p.find("point")
+            points.append(((float(pt.findtext("X") or 0) - cx) / echelle,
+                           (float(pt.findtext("Y") or 0) - cy) / echelle))
+        except (AttributeError, ValueError, TypeError):
+            continue
+    if len(points) >= 3:
+        prims.append(("polygon", points, False))
+    return prims
+
+
 # ── Brochage libre par instance (spec 2026-07-23) ────────────────────────────
 
 TYPE_LIBRE = "__libre__"   # type de RENDU d'un composant au brochage libre
@@ -277,7 +353,8 @@ BOITE_MARGE = 20
 CHAR_W = 7          # largeur approx. d'un caractere du libelle de broche
 
 
-def geometrie_libre(pinout, w_mini=None, h_mini=None, roles=None):
+def geometrie_libre(pinout, w_mini=None, h_mini=None, roles=None,
+                    w_exact=None, h_exact=None):
     """@brief Def d'une boite au brochage libre (spec 2026-07-23).
 
     @param pinout  {nom: (cote 'L'/'R'/'T'/'B', decalage signe sur ce bord)}.
@@ -287,30 +364,47 @@ def geometrie_libre(pinout, w_mini=None, h_mini=None, roles=None):
            composant dont les broches debordent du cadre.
     @param roles   {nom: role} — le libelle devient « nom ROLE », comme le fait
            deja `_tr_boite` pour les puces du catalogue.
-    @return def compatible COMP_DEFS, taille AUTO-AJUSTEE.
+    @param w_exact,h_exact Taille EXACTE (pas un plancher) : court-circuite le
+           calcul heuristique de marge/libelle ci-dessous. Reserve aux formes
+           importees (primitives reelles, spec 2026-08-05) dont la vraie
+           taille est deja connue -- le remplissage genereux pense pour une
+           boite etiquetee A LA MAIN n'a pas de sens pour un contour reel deja
+           dessine : broche qui flotte loin de la forme (defaut trouve en
+           boucle visuelle sur Vss.xml/VCC+.xml du boss apres livraison).
+    @return def compatible COMP_DEFS, taille AUTO-AJUSTEE (ou EXACTE).
     """
     roles = roles or {}
 
     def _lab(n):
         return f"{n} {roles.get(n, '')}".strip()
 
-    lat = [abs(d) for c, d in pinout.values() if c in ("L", "R")]
-    ver = [abs(d) for c, d in pinout.values() if c in ("T", "B")]
-    # La boite doit aussi loger les LIBELLES, dessines a l'interieur : sans ca
-    # les noms des bords opposes se telescopent ("IN1 VCCOUT1", defaut trouve
-    # en boucle visuelle le 2026-07-23). Le ROLE en fait partie.
-    lg = max((len(_lab(n)) for n, (c, _d) in pinout.items() if c == "L"), default=0)
-    ld = max((len(_lab(n)) for n, (c, _d) in pinout.items() if c == "R"), default=0)
-    h = max(BOITE_MIN_H, 2 * max(lat, default=0) + BOITE_MARGE)
-    w = max(BOITE_MIN_W, 2 * max(ver, default=0) + BOITE_MARGE,
-            (lg + ld) * CHAR_W + 3 * BOITE_MARGE)
-    if ver:
-        # Les libelles du haut/bas mordent vers l'interieur : on leur reserve
-        # une bande, sinon ils croisent ceux des bords lateraux.
-        h += 2 * BOITE_MARGE
-    # PLANCHER applique APRES l'auto-ajustement : jamais sous le besoin reel.
-    w = max(w, int(w_mini or 0))
-    h = max(h, int(h_mini or 0))
+    if w_exact is not None and h_exact is not None:
+        # EXACTE veut dire EXACTE : pas de BOITE_MIN_W/H ici, sinon une forme
+        # reelle plus petite que le plancher UI (ex. VCC+/Vss, h=20) se fait
+        # regonfler et la broche recalculee au-dela du contour reel (meme
+        # symptome que le bug corrige en bf341d4, cette fois pour w_exact/
+        # h_exact eux-memes). Le plancher `1` evite juste un rectangle
+        # degenere si une forme importee a une dimension nulle.
+        w = max(1, int(w_exact))
+        h = max(1, int(h_exact))
+    else:
+        lat = [abs(d) for c, d in pinout.values() if c in ("L", "R")]
+        ver = [abs(d) for c, d in pinout.values() if c in ("T", "B")]
+        # La boite doit aussi loger les LIBELLES, dessines a l'interieur : sans
+        # ca les noms des bords opposes se telescopent ("IN1 VCCOUT1", defaut
+        # trouve en boucle visuelle le 2026-07-23). Le ROLE en fait partie.
+        lg = max((len(_lab(n)) for n, (c, _d) in pinout.items() if c == "L"), default=0)
+        ld = max((len(_lab(n)) for n, (c, _d) in pinout.items() if c == "R"), default=0)
+        h = max(BOITE_MIN_H, 2 * max(lat, default=0) + BOITE_MARGE)
+        w = max(BOITE_MIN_W, 2 * max(ver, default=0) + BOITE_MARGE,
+                (lg + ld) * CHAR_W + 3 * BOITE_MARGE)
+        if ver:
+            # Les libelles du haut/bas mordent vers l'interieur : on leur
+            # reserve une bande, sinon ils croisent ceux des bords lateraux.
+            h += 2 * BOITE_MARGE
+        # PLANCHER applique APRES l'auto-ajustement : jamais sous le besoin reel.
+        w = max(w, int(w_mini or 0))
+        h = max(h, int(h_mini or 0))
     w2, h2 = w // 2, h // 2
     pins, cotes = {}, {}
     for nom, (cote, dec) in pinout.items():
@@ -320,6 +414,63 @@ def geometrie_libre(pinout, w_mini=None, h_mini=None, roles=None):
     return {"label": "", "color": AUTO_COLOR, "w": w, "h": h,
             "pins": pins, "cotes": cotes, "fonctions": dict(roles),
             "default_value": ""}
+
+
+def etendue_primitives(prims) -> tuple:
+    """@brief (largeur, hauteur) totale de primitives, centrees sur (0,0).
+
+    Sert de repli quand une forme reelle est choisie sans `boite` explicite
+    (ex. nouveau composant + forme piochee au selecteur, "Ajuster
+    automatiquement" coche) -- sans lui, `geometrie_libre` retombe sur
+    l'heuristique de remplissage et fait a nouveau flotter la broche loin
+    du contour reel (meme defaut que bf341d4, cette fois cote hand-picked
+    plutot qu'import).
+    """
+    mx = my = 0
+    for p in prims:
+        if p[0] in ("line", "polygon"):
+            for x, y in p[1]:
+                mx, my = max(mx, abs(x)), max(my, abs(y))
+        elif p[0] == "arc":
+            x0, y0, x1, y1 = p[1]
+            mx = max(mx, abs(x0), abs(x1))
+            my = max(my, abs(y0), abs(y1))
+    return mx * 2, my * 2
+
+
+def geometrie_reelle(pinout, primitives=None, w_exact=None, h_exact=None, **kwargs):
+    """@brief `geometrie_libre` qui derive w_exact/h_exact d'un contour reel.
+
+    Centralise la combinaison `etendue_primitives(primitives)` +
+    `geometrie_libre(..., w_exact=, h_exact=)` reprise A L'IDENTIQUE sur
+    plusieurs sites independants (export XML `_xml_composant`, rendu editeur
+    `_geom`, import `.circ` `build_from_components`) -- revue finale de
+    branche round 1, Important 3+4. Sans elle, une broche recalculee
+    "flotte" hors du contour reel des qu'un site oublie w_exact/h_exact
+    (meme defaut que bf341d4/48ddf30, propage ailleurs).
+
+    @param pinout {nom: (cote, decalage)} — brochage libre de l'instance.
+    @param primitives Contour reel de l'instance, ou None/vide (heuristique
+           habituelle de `geometrie_libre`).
+    @param w_exact Largeur EXACTE a imposer, si l'appelant l'a deja calculee
+           autrement qu'a partir de `primitives` (ex. boite catalogue) --
+           prime alors sur le calcul automatique depuis `primitives`. None
+           (defaut) laisse `primitives` decider.
+    @param h_exact Idem pour la hauteur.
+    @param kwargs Reste transmis tel quel a `geometrie_libre` (ex. `roles`).
+           Note (revue finale round 2, Minor A) : `w_exact`/`h_exact` sont
+           desormais des parametres nommes explicites -- avant ce fix, un
+           appelant qui les passait via `**kwargs` declenchait
+           `TypeError: got multiple values for keyword argument 'w_exact'`,
+           puisque la fonction les passait deja par mot-cle en interne.
+           Piege latent : personne ne les passait encore, mais restait un
+           piege pour le prochain appelant.
+    """
+    if (w_exact is None or h_exact is None) and primitives:
+        bw, bh = etendue_primitives(primitives)
+        w_exact = w_exact if w_exact is not None else bw
+        h_exact = h_exact if h_exact is not None else bh
+    return geometrie_libre(pinout, w_exact=w_exact, h_exact=h_exact, **kwargs)
 
 
 def aimanter_bord(dx, dy, w, h, pas):
@@ -337,9 +488,6 @@ def aimanter_bord(dx, dy, w, h, pas):
         if d[cote] == m:
             long_ = dx if cote in ("T", "B") else dy
             return (cote, int(round(long_ / pas) * pas))
-
-
-MODELES = ("DIP", "Connecteur")
 
 
 def modele_brochage(modele, n=0):
@@ -377,6 +525,28 @@ def modele_brochage(modele, n=0):
     raise ValueError(f"modele inconnu : {modele!r}")
 
 
+def _libelles_broches(defn):
+    """@brief Un libelle texte par broche, positionne selon son cote (defn["cotes"]).
+
+    Factorise depuis `_tr_boite_libre` : reutilise par tout traceur qui a
+    besoin des labels de broches standard sans les redessiner lui-meme (forme
+    reelle importee d'ERetroDesign, spec 2026-08-05).
+    """
+    prims = []
+    for pn, (px, py) in defn["pins"].items():
+        cote = (defn.get("cotes") or {}).get(pn, "L")
+        fonction = (defn.get("fonctions") or {}).get(pn, "")
+        libelle = f"{pn} {fonction}".strip()
+        if cote in ("L", "R"):
+            ancre = "w" if cote == "L" else "e"
+            tx, ty = px + (6 if cote == "L" else -6), py
+        else:
+            ancre = "center"
+            tx, ty = px, py + (10 if cote == "T" else -10)
+        prims.append(("text", (tx, ty), libelle, 7, ancre))
+    return prims
+
+
 def _tr_boite_libre(defn):
     """@brief Boite au brochage libre : broches sur les 4 bords (spec 2026-07-23).
 
@@ -387,17 +557,5 @@ def _tr_boite_libre(defn):
     """
     w2, h2 = defn["w"] // 2, defn["h"] // 2
     prims = [("polygon", [(-w2, -h2), (w2, -h2), (w2, h2), (-w2, h2)], False)]
-    for pn, (px, py) in defn["pins"].items():
-        cote = (defn.get("cotes") or {}).get(pn, "L")
-        fonction = (defn.get("fonctions") or {}).get(pn, "")
-        libelle = f"{pn} {fonction}".strip()
-        if cote in ("L", "R"):
-            # Ancre cote BORD : le libelle croit VERS l'interieur, jamais sur
-            # la pastille de broche (meme regle que `_tr_boite`).
-            ancre = "w" if cote == "L" else "e"
-            tx, ty = px + (6 if cote == "L" else -6), py
-        else:
-            ancre = "center"
-            tx, ty = px, py + (10 if cote == "T" else -10)
-        prims.append(("text", (tx, ty), libelle, 7, ancre))
+    prims.extend(_libelles_broches(defn))
     return prims

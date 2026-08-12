@@ -6,8 +6,8 @@ import glob
 import pytest
 
 from circuit_analyzer import detecteur, logique
-from circuit_analyzer.detecteur import analyser
 from circuit_analyzer.composant import Composant, construire_graphe
+from circuit_analyzer.detecteur import analyser
 from circuit_analyzer.xml import lire_xml
 
 

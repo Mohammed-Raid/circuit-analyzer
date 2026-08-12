@@ -10,9 +10,8 @@ import tempfile
 
 import pytest
 
-from circuit_analyzer.eretro import normaliser_nom, mapper_nom
-from circuit_analyzer.xml import lire_xml, _analyser_ref_packee
-
+from circuit_analyzer.eretro import mapper_nom, normaliser_nom
+from circuit_analyzer.xml import _analyser_ref_packee, lire_xml
 
 # ── Helpers fixtures ──────────────────────────────────────────────────────────
 
@@ -21,7 +20,7 @@ ENTETE = ('<?xml version="1.0" encoding="utf-8"?>\n'
           'xmlns:xsd="http://www.w3.org/2001/XMLSchema">')
 
 
-def _pin(refs=(), pnumber='', pname=''):
+def _pin(refs=(), pnumber='', pname='', x=0, y=0):
     """@brief Fragment <DataPin> ERetroDesign (Pname/Pnumber optionnels, comme les vrais fichiers)."""
     node_l = ''.join(f'<string>{r}</string>' for r in refs)
     morceaux = ['    <DataPin>']
@@ -30,16 +29,25 @@ def _pin(refs=(), pnumber='', pname=''):
     if pnumber:
         morceaux.append(f'      <Pnumber>{pnumber}</Pnumber>')
     morceaux.append(f'      <NodeL>{node_l}</NodeL>')
-    morceaux.append('      <Pin><X>0</X><Y>0</Y></Pin>')
+    morceaux.append(f'      <Pin><X>{x}</X><Y>{y}</Y></Pin>')
     morceaux.append('    </DataPin>')
     return '\n'.join(morceaux)
 
 
-def _item(name, value='', pins=(), comp_id=0, typ=None, segments=(), nb_arcs=0):
+def _polygon(points):
+    """@brief Fragment <datapolygon> ERetroDesign — un point par élément."""
+    pts = ''.join(
+        f'<DataPolygon><point><X>{x}</X><Y>{y}</Y></point></DataPolygon>'
+        for x, y in points)
+    return f'<datapolygon>{pts}</datapolygon>'
+
+
+def _item(name, value='', pins=(), comp_id=0, typ=None, segments=(), nb_arcs=0, polygon_xml=''):
     """@brief Fragment <DataItem> ERetroDesign. pins = liste de fragments _pin().
 
     @param segments Liste de (sx, sy, ex, ey) → <datasegment><DataSegment>...
     @param nb_arcs Nombre d'arcs vides à émettre dans <dataarc> (pour classer_par_forme).
+    @param polygon_xml XML pour remplacer le <datapolygon> vide par défaut.
     """
     typ_xml = f'<typ>{typ}</typ>' if typ is not None else ''
     segs_xml = ''.join(
@@ -49,6 +57,7 @@ def _item(name, value='', pins=(), comp_id=0, typ=None, segments=(), nb_arcs=0):
     arcs_xml = '<DataArc />' * nb_arcs
     return (f'  <DataItem>\n'
             f'    <Name>{name}</Name><value>{value}</value>\n'
+            f'    {polygon_xml or "<datapolygon></datapolygon>"}\n'
             f'    <datasegment>{segs_xml}</datasegment>\n'
             f'    <dataarc>{arcs_xml}</dataarc>\n'
             f'    <datapin>\n' + '\n'.join(pins) + '\n    </datapin>\n'
@@ -65,7 +74,7 @@ def _fil(cfirst, clast):
 def _boardsch(items, fils, ccomps=''):
     """@brief Document BoardSCH complet à partir des fragments."""
     return (f'{ENTETE}\n<CmpntL>\n' + '\n'.join(items) + '\n</CmpntL>\n'
-            f'<lineL>\n' + '\n'.join(fils) + '\n</lineL>\n'
+            '<lineL>\n' + '\n'.join(fils) + '\n</lineL>\n'
             f'<CCmpntL>{ccomps}</CCmpntL>\n</BoardSCH>')
 
 
@@ -139,6 +148,23 @@ def test_import_diode_plan_anode_cathode():
     xml = _boardsch(
         [_item('DIODE', pins=[_pin(pnumber='1', pname='ANODE'),
                               _pin(pnumber='2', pname='CATHODE')])],
+        [],
+    )
+    comps = _lire(xml)
+    d = next(c for c in comps if c.type == 'D')
+    assert set(d.pins) == {'A', 'K'}
+
+
+def test_import_diode_plan_plus_moins():
+    # Bug reel : plusieurs diodes ERetroDesign (cartes reelles et schemas de
+    # test) utilisent des broches '+'/'-' plutot que A/K ou 1/2. Sans plan
+    # pour ce cas, les broches restaient '+'/'-' telles quelles -> les
+    # detecteurs qui lisent comp.pins.get('A')/.get('K') (roue libre, ESD,
+    # redresseur simple, detecteur de crete) ignoraient silencieusement ces
+    # diodes. '+' = anode (le courant y entre en polarisation directe).
+    xml = _boardsch(
+        [_item('DIODE', pins=[_pin(pnumber='+'),
+                              _pin(pnumber='-')])],
         [],
     )
     comps = _lire(xml)
@@ -221,10 +247,10 @@ def _ccomp(name, pins_ext=(), items_int=(), fils_int=()):
     return (f'  <CComp>\n'
             f'    <Name>{name}</Name><value />\n'
             f'    <datapin>\n' + '\n'.join(pins_ext) + '\n    </datapin>\n'
-            f'    <id>0</id>\n'
-            f'    <DItemL>\n' + '\n'.join(items_int) + '\n    </DItemL>\n'
-            f'    <CCLine>\n' + '\n'.join(fils_int) + '\n    </CCLine>\n'
-            f'  </CComp>')
+            '    <id>0</id>\n'
+            '    <DItemL>\n' + '\n'.join(items_int) + '\n    </DItemL>\n'
+            '    <CCLine>\n' + '\n'.join(fils_int) + '\n    </CCLine>\n'
+            '  </CComp>')
 
 
 def test_compose_aplati_en_items_internes():
@@ -391,3 +417,109 @@ def test_forme_reconnue_pose_le_marqueur_par_forme():
     comps = _lire(_boardsch([inconnu], []))
     zig = next(c for c in comps if c.type == 'R')
     assert zig.par_forme is True
+
+
+# ── Task 1 : primitives/pinout capture aux deux cas catch-all ───────────────
+
+def test_import_puce_catch_all_garde_contour_et_broches_reelles():
+    # 4 broches reelles sur les cotes gauche/droite d'un rectangle 72x96 —
+    # meme forme que le vrai composant A788J (pg carte.xml).
+    xml = _boardsch(
+        [_item('A788J', pins=[
+            _pin(pname='Vin+', x=-36, y=-42), _pin(pname='Vin-', x=-36, y=-6),
+            _pin(pname='GND1', x=-36, y=42),
+            _pin(pname='Vout', x=36, y=6), _pin(pname='GND2', x=36, y=42),
+            _pin(pname='GND2b', x=36, y=-42),
+        ], polygon_xml=_polygon([(-36, -48), (-36, 48), (36, 48), (36, -48)]))],
+        [],
+    )
+    comps = _lire(xml)
+    u = next(c for c in comps if c.type == 'U')
+    assert set(u.pins) == {'Vin+', 'Vin-', 'GND1', 'Vout', 'GND2', 'GND2b'}
+    assert u.primitives is not None and len(u.primitives) >= 1
+    assert u.pinout is not None
+    assert set(u.pinout) == set(u.pins)
+    cote, dec = u.pinout['Vin+']
+    assert cote == 'L'
+
+
+def test_import_inconnu_garde_aussi_le_contour():
+    xml = _boardsch(
+        [_item('transfo', pins=[_pin(x=-20, y=-10), _pin(x=-20, y=10),
+                                _pin(x=20, y=-10), _pin(x=20, y=10)],
+               polygon_xml=_polygon([(-20, -20), (-20, 20), (20, 20), (20, -20)]))],
+        [],
+    )
+    comps = _lire(xml)
+    x = next(c for c in comps if c.type == 'X')
+    assert x.primitives is not None
+    assert x.pinout is not None and len(x.pinout) == 4
+
+
+def test_import_resistance_plan_nomme_sans_forme_reelle():
+    # Non-regression : un type a PLAN NOMME (R) reste hors perimetre --
+    # primitives/pinout absents, comportement generique inchange.
+    xml = _boardsch(
+        [_item('resistance trad', value='1k',
+               pins=[_pin(refs=['A']), _pin()])],
+        [],
+    )
+    comps = _lire(xml)
+    r = next(c for c in comps if c.type == 'R')
+    assert r.primitives is None
+    assert r.pinout is None
+
+
+def test_import_catch_all_pins_et_pinout_meme_clefs_avec_pnumber_pname_differents():
+    # Regression : pins et pinout doivent partager exactement les memes clefs,
+    # meme quand Pnumber et Pname different (le cas reel que cette feature preserve).
+    # Utiliser Pnumber=chiffre, Pname=lettre pour le rendre evident.
+    xml = _boardsch(
+        [_item('mysterieux', pins=[
+            _pin(pnumber='1', pname='A', x=-20, y=-10),
+            _pin(pnumber='2', pname='B', x=-20, y=10),
+            _pin(pnumber='3', pname='C', x=20, y=-10),
+            _pin(pnumber='4', pname='D', x=20, y=10),
+        ], polygon_xml=_polygon([(-20, -20), (-20, 20), (20, 20), (20, -20)]))],
+        [],
+    )
+    comps = _lire(xml)
+    x = next(c for c in comps if c.type == 'X')
+    # pins et pinout doivent avoir exactement les memes clefs (union de Pname/Pnumber)
+    assert set(x.pins) == set(x.pinout), \
+        f"pins keys {set(x.pins)} != pinout keys {set(x.pinout)}"
+
+
+def test_import_catch_all_collision_noms_broches_desambiguisee():
+    # Regression : quand deux broches physiques se resolvent au meme nom
+    # affiche (ex: deux 'GND', cas reel A788J de pg carte.xml), l'ancien
+    # comportement (brochage_reel dict collapse -> fail-closed, primitives/
+    # pinout jetes entierement) perdait la forme reelle pour TOUT composant
+    # ayant ne serait-ce qu'une paire de broches homonymes. `eretro_lib.
+    # _entree_depuis_dataitem` desambiguise desormais chaque occurrence
+    # (GND, GND#2...) : plus aucune broche physique n'est perdue, et la
+    # forme/le brochage reels restent captures.
+    xml = _boardsch(
+        [_item('boite_collision', pins=[
+            _pin(pname='GND', refs=['A'], x=-20, y=-10),   # deux broches => meme nom
+            _pin(pname='GND', refs=['B'], x=-20, y=10),
+            _pin(pname='VCC', refs=['C'], x=20, y=0),
+        ], polygon_xml=_polygon([(-20, -20), (-20, 20), (20, 20), (20, -20)]))],
+        [_fil('A', 'B')],  # A et B connectes entre eux => differents nets
+    )
+    comps = _lire(xml)
+    x = next(c for c in comps if c.type == 'X')
+    assert x.primitives is not None, "la forme reelle ne doit plus etre jetee"
+    assert x.pinout is not None and len(x.pinout) == 3, \
+        "les 3 broches physiques doivent rester distinctes dans le brochage"
+    assert set(x.pinout) == {'GND', 'GND#2', 'VCC'}
+    # Verification que les nets ne sont pas corrompus : les deux premieres
+    # broches (toutes deux nommees GND a l'origine) doivent avoir des nets
+    # differents (elles sont wired), pas fusionnees en une seule.
+    pins_list = list(x.pins.values())
+    assert len(pins_list) == 3, f"Should have 3 pins, got {len(pins_list)}"
+    assert pins_list[0] != 'NC', "First pin should be wired"
+    assert pins_list[1] != 'NC', "Second pin should be wired"
+    assert pins_list[0] == pins_list[1], "First two pins (both GND) should share a net"
+    assert pins_list[2] != 'NC', "Third pin should be wired"
+    assert pins_list[2] != pins_list[0], "Third pin (VCC) should have a different net than first two"

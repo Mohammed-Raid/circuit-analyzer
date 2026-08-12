@@ -99,6 +99,139 @@ def test_deplacer_une_broche_rend_le_formulaire_sale(onglet):
     assert t._etat_courant() != t._etat_initial
 
 
+def test_selecteur_de_forme_liste_les_composants_importes(onglet):
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "AOP2": {"name": "AOP2", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                 "primitives": [["polygon", [[0, -10], [10, 10], [-10, 10]], False]]},
+        "SANS": {"name": "SansForme", "pins": ["1"], "brochage": {"1": ["L", 0]}},
+    }), encoding="utf-8")
+    t._load()
+    assert any("AOP2" in cle for cle in t._formes_disponibles)
+    assert not any("SANS" in cle for cle in t._formes_disponibles)
+
+
+def test_choisir_une_forme_met_a_jour_l_apercu_sans_toucher_aux_broches(onglet):
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "AOP2": {"name": "AOP2", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                 "primitives": [["polygon", [[0, -10], [10, 10], [-10, 10]], False]]},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_nouveau()
+    t._brochage = [("X", "L", 0)]
+    cle = next(c for c in t._formes_disponibles if "AOP2" in c)
+    t._sur_forme(cle)
+    assert t._forme_primitives == [["polygon", [[0, -10], [10, 10], [-10, 10]], False]]
+    assert t._brochage == [("X", "L", 0)]     # broches inchangees
+
+
+def test_afficher_perso_montre_la_forme_de_l_import(onglet):
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "AOP2": {"name": "AOP2", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                 "primitives": [["polygon", [[0, -10], [10, 10], [-10, 10]], False]],
+                 "xml_source": "<DataItem>...</DataItem>"},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_perso("AOP2")
+    assert t._forme_primitives == [["polygon", [[0, -10], [10, 10], [-10, 10]], False]]
+    assert t._xml_source_valide is True
+
+
+def test_resauver_sans_toucher_la_forme_preserve_primitives_et_xml_source(onglet):
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "AOP2": {"name": "AOP2", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                 "primitives": [["polygon", [[0, -10], [10, 10], [-10, 10]], False]],
+                 "xml_source": "<DataItem>ORIGINAL</DataItem>"},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_perso("AOP2")
+    t._sauvegarder()
+    data = json.loads(chemin.read_text(encoding="utf-8"))
+    assert data["AOP2"]["primitives"] == [["polygon", [[0, -10], [10, 10], [-10, 10]], False]]
+    assert data["AOP2"]["xml_source"] == "<DataItem>ORIGINAL</DataItem>"
+
+
+def test_changer_de_forme_invalide_le_xml_source_a_la_sauvegarde(onglet):
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "AOP2": {"name": "AOP2", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                 "primitives": [["polygon", [[0, -10], [10, 10], [-10, 10]], False]],
+                 "xml_source": "<DataItem>ORIGINAL</DataItem>"},
+        "SELF2": {"name": "Self2", "pins": ["2"], "brochage": {"2": ["R", 0]},
+                  "primitives": [["line", [[0, -7], [0, 7]], 2]]},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_perso("AOP2")
+    cle = next(c for c in t._formes_disponibles if "SELF2" in c)
+    t._sur_forme(cle)
+    t._sauvegarder()
+    data = json.loads(chemin.read_text(encoding="utf-8"))
+    assert "xml_source" not in data["AOP2"]
+    assert data["AOP2"]["primitives"] == [["line", [[0, -7], [0, 7]], 2]]
+
+
+def test_nouveau_composant_avec_forme_choisie_a_primitives_mais_pas_xml_source(onglet):
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "AOP2": {"name": "AOP2", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                 "primitives": [["polygon", [[0, -10], [10, 10], [-10, 10]], False]]},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_nouveau()
+    t._prefix_var.set("NEUF")
+    t._brochage = [("A", "L", 0), ("B", "R", 0)]
+    cle = next(c for c in t._formes_disponibles if "AOP2" in c)
+    t._sur_forme(cle)
+    t._sauvegarder()
+    data = json.loads(chemin.read_text(encoding="utf-8"))
+    assert data["NEUF"]["primitives"] == [["polygon", [[0, -10], [10, 10], [-10, 10]], False]]
+    assert "xml_source" not in data["NEUF"]
+
+
+def test_resauver_un_compose_preserve_le_marqueur_compose(onglet):
+    """Un compose (`<CComp>` de la CCLib du collegue) doit rester exclu de
+    `ecrire_dans_dossier` apres re-sauvegarde -- perdre `compose` le ferait
+    ecrire comme un `<DataItem>` normal, aplati mais convaincant (revue
+    finale 2026-08-06)."""
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "PONT": {"name": "Pont", "pins": ["1", "2"],
+                 "brochage": {"1": ["L", 0], "2": ["R", 0]},
+                 "primitives": [["polygon", [[0, -10], [10, 10], [-10, 10]], False]],
+                 "compose": True},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_perso("PONT")
+    assert t._compose_courant is True
+    t._sauvegarder()
+    data = json.loads(chemin.read_text(encoding="utf-8"))
+    assert data["PONT"]["compose"] is True
+
+
+def test_nouveau_composant_n_a_jamais_le_marqueur_compose(onglet):
+    """Non-regression : un type flambant neuf (ou une duplication) n'est
+    jamais un `<CComp>` original -- `compose` ne doit pas fuir dedans."""
+    t, chemin = onglet
+    chemin.write_text(json.dumps({
+        "PONT": {"name": "Pont", "pins": ["1"], "brochage": {"1": ["L", 0]},
+                 "compose": True},
+    }), encoding="utf-8")
+    t._load()
+    t._afficher_perso("PONT")
+    assert t._compose_courant is True
+    t._afficher_nouveau()
+    assert t._compose_courant is False
+    t._prefix_var.set("NEUF")
+    t._name_var.set("Neuf")
+    t._brochage = [("A", "L", 0)]
+    t._sauvegarder()
+    data = json.loads(chemin.read_text(encoding="utf-8"))
+    assert "compose" not in data["NEUF"]
+
+
 def test_duplication_clone_le_brochage(onglet):
     t, _ = onglet
     t._brochage = [("VCC", "T", 0)]
@@ -231,3 +364,78 @@ def test_recevoir_n_ecrase_pas_les_composants_du_collegue(onglet, tmp_path, monk
     t._envoyer_biblio()
 
     assert temoin.exists(), "le composant du collegue a ete supprime"
+
+
+def test_envoyer_ne_renvoie_pas_les_composes_recus(onglet, tmp_path, monkeypatch):
+    """Un composé reçu de CCLib ne doit pas repartir aplati dans Lib : côté
+    collègue ça ferait un DOUBLON dans la palette, et la version riche
+    (DItemL/CCLine) serait remplacée par une boîte vide."""
+    t, _chemin = onglet
+    source = tmp_path / "LibItem" / "CCLib"
+    source.mkdir(parents=True)
+    (source / "Pont.xml").write_text(
+        '<CComp><Name>Pont</Name><Group>PT</Group><datapin>'
+        '<DataPin><Pname>1</Pname><Pin><X>-40</X><Y>0</Y></Pin></DataPin>'
+        '<DataPin><Pname>2</Pname><Pin><X>40</X><Y>0</Y></Pin></DataPin>'
+        '</datapin><DItemL /><CCLine /></CComp>', encoding="utf-8")
+    monkeypatch.setattr("gui.tab_components.dossier_partage", lambda: str(source))
+    t._recevoir_biblio()
+    assert any(e.get("name") == "Pont" for e in t._custom.values())
+
+    cible = tmp_path / "Sortie"
+    cible.mkdir()
+    monkeypatch.setattr("gui.tab_components.dossier_partage", lambda: str(cible))
+    t._envoyer_biblio()
+    assert not (cible / "Pont.xml").exists(), "compose renvoye aplati"
+
+
+def test_pousser_symboles_orphelins_ecrit_les_formes_maison(onglet, tmp_path, monkeypatch):
+    """Bouton « Pousser mes symboles orphelins » : ecrivain distinct de
+    _envoyer_biblio, part de circuit_analyzer.xml._FORME_MAISON (nos formes
+    integrees) plutot que de self._custom (composants personnalises)."""
+    t, _chemin = onglet
+    partage = tmp_path / "LibShared"
+    partage.mkdir()
+    monkeypatch.setattr("gui.tab_components.dossier_partage", lambda: str(partage))
+
+    t._pousser_symboles_orphelins()
+
+    assert (partage / "MOSFET.xml").exists()
+    assert (partage / "Fusible.xml").exists()
+    assert any("orphelin" in msg for msg in t._boites.infos)
+
+
+def test_pousser_symboles_orphelins_n_ecrase_jamais_un_nom_deja_present(
+        onglet, tmp_path, monkeypatch):
+    t, _chemin = onglet
+    partage = tmp_path / "LibShared"
+    partage.mkdir()
+    temoin = partage / "MOSFET.xml"
+    temoin.write_text("<DataItem><Name>MOSFET</Name></DataItem>", encoding="utf-8")
+    monkeypatch.setattr("gui.tab_components.dossier_partage", lambda: str(partage))
+
+    t._pousser_symboles_orphelins()
+
+    with open(temoin, encoding="utf-8") as f:
+        assert f.read() == "<DataItem><Name>MOSFET</Name></DataItem>"
+
+
+def test_pousser_symboles_orphelins_previent_si_rien_a_pousser(
+        onglet, tmp_path, monkeypatch):
+    """Sa bibliotheque a deja TOUS nos noms (simule via un dossier qui
+    contient une copie de chacune de nos formes maison) : rien a ecrire."""
+    t, _chemin = onglet
+    from circuit_analyzer.xml import _FORME_MAISON
+    partage = tmp_path / "LibShared"
+    partage.mkdir()
+    for nom in _FORME_MAISON:
+        nom_fichier = "".join(c for c in nom if c.isalnum()) or "X"
+        (partage / f"{nom_fichier}.xml").write_text(
+            f"<DataItem><Name>{nom}</Name><datapin>"
+            "<DataPin><Pname>1</Pname><Pin><X>0</X><Y>0</Y></Pin></DataPin>"
+            "</datapin></DataItem>", encoding="utf-8")
+    monkeypatch.setattr("gui.tab_components.dossier_partage", lambda: str(partage))
+
+    t._pousser_symboles_orphelins()
+
+    assert any("Aucun symbole orphelin" in msg for msg in t._boites.infos)

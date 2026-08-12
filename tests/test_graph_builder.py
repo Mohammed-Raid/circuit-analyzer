@@ -3,8 +3,8 @@
 @brief Tests automatises pour test_graph_builder.
 """
 
-from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
+from circuit_analyzer.parser import Component
 
 
 def test_nodes_are_nets():

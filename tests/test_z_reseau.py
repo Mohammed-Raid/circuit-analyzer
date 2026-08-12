@@ -2,12 +2,13 @@
 import math
 
 from circuit_analyzer.impedance import arbre_expr
-from gui.circuit_viewer import _agencement_entre, _amorce_centree, _z_locale_extra
+from gui.circuit_viewer import _amorce_centree, _z_locale_extra
+from gui.impedance_schematic import agencement_entre
 
 
 def test_serie_horizontale_reste_sur_l_axe():
     arbre = arbre_expr("(R1)+(R2)")
-    symboles, fils = _agencement_entre((0.0, 0.0), (6.0, 0.0), arbre)
+    symboles, fils = agencement_entre((0.0, 0.0), (6.0, 0.0), arbre)
     assert [s[0] for s in symboles] == ["R1", "R2"]
     for _ref, pa, pb in symboles:          # tout sur l'axe y=0
         assert abs(pa[1]) < 1e-6 and abs(pb[1]) < 1e-6
@@ -16,7 +17,7 @@ def test_serie_horizontale_reste_sur_l_axe():
 
 def test_parallele_branches_de_part_et_d_autre():
     arbre = arbre_expr("(R1)//(C1)")
-    symboles, fils = _agencement_entre((0.0, 0.0), (6.0, 0.0), arbre)
+    symboles, fils = agencement_entre((0.0, 0.0), (6.0, 0.0), arbre)
     ys = sorted(s[1][1] for s in symboles)
     assert len(symboles) == 2 and ys[0] < ys[1]      # branches empilées
     assert fils, "rails et connecteurs attendus"
@@ -24,7 +25,7 @@ def test_parallele_branches_de_part_et_d_autre():
 
 def test_segment_vertical_pivote():
     arbre = arbre_expr("(R1)+(R2)")
-    symboles, _ = _agencement_entre((0.0, 0.0), (0.0, -6.0), arbre)
+    symboles, _ = agencement_entre((0.0, 0.0), (0.0, -6.0), arbre)
     for _ref, pa, pb in symboles:          # tout sur l'axe x=0, y décroissant
         assert abs(pa[0]) < 1e-6 and abs(pb[0]) < 1e-6
     assert symboles[0][1][1] > symboles[1][1][1]
@@ -155,9 +156,10 @@ def test_z_reseau_compact_trop_dense_dessine_des_symboles_reels():
     """Un reseau composite trop compresse dans un montage principal reste en
     vue detaillee R/L/C : il est decale, mais avec les vrais symboles, pas une
     simple ligne annotee."""
+    import schemdraw
     from matplotlib.figure import Figure
     from schemdraw.elements.lines import Label
-    import schemdraw
+
     import gui.circuit_viewer as cv
 
     fig = Figure(figsize=(4, 3))
@@ -252,8 +254,9 @@ def test_z_reseau_decale_place_les_labels_hors_du_rail():
     doivent jamais poser leur étiquette dans l'entrefer symbole<->rail (trop
     étroit pour un texte lisible) : chaque label tombe au-delà du rail le
     plus proche de sa branche."""
-    from matplotlib.figure import Figure
     import schemdraw
+    from matplotlib.figure import Figure
+
     import gui.circuit_viewer as cv
 
     fig = Figure(figsize=(4, 3))
@@ -310,8 +313,9 @@ def test_fil_canal_avec_couplage_reseau_large_reste_dans_le_segment_alloue():
     Reproduit les coordonnées réelles de ce circuit (cf.
     tools/render_ilots_v2.py + circuits_industriels/ilot_reel_fanout_filtres_rlc.xml).
     """
-    from matplotlib.figure import Figure
     import schemdraw
+    from matplotlib.figure import Figure
+
     import gui.circuit_viewer as cv
 
     fig = Figure(figsize=(6, 4))

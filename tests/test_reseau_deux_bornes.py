@@ -4,8 +4,8 @@
 Remplace la grille generique pour les ilots qui se reduisent a UN reseau entre
 deux nets-bornes (GND/VOUT, GND/VCC, AVCC/GND...), nœuds internes NETxx tolere.
 """
-from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
+from circuit_analyzer.parser import Component
 from gui import circuit_viewer as cv
 from gui import impedance_schematic
 

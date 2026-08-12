@@ -16,9 +16,10 @@ vert une fois le moteur branché en fin des fabriques de figures.
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
-from matplotlib.backends.backend_agg import FigureCanvasAgg
 import pytest
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from circuit_analyzer import detecteur
 from circuit_analyzer.composant import construire_graphe

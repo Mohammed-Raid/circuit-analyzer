@@ -5,31 +5,57 @@
 import json
 import os
 import tempfile
-from typing import Callable, Optional
+from collections.abc import Callable
+from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
-from tkinter import messagebox, filedialog
 
-from gui.theme import BG, CARD, CARD2, TEXT, TEXT_MUTED
+from circuit_analyzer.composant import construire_graphe, lire_netlist
+from circuit_analyzer.detecteur import TYPES_CATCH_ALL
+from circuit_analyzer.detecteur import analyser as detecter_montages
+from circuit_analyzer.xml import generer_xml, lire_xml
 from gui import ui_kit
 from gui.schematic_editor import SchematicEditor
 from gui.schematic_io import build_from_components
-from circuit_analyzer.composant import lire_netlist, construire_graphe
-from circuit_analyzer.xml import generer_xml, lire_xml
+from gui.theme import BG, CARD, CARD2, TEXT, TEXT_MUTED
+
+
+def _xml_groupe_par_circuit(composants) -> str:
+    """@brief XML BoardSCH avec groupage automatique par circuit reconnu.
+
+    Fait tourner le meme detecteur que l'onglet Analyser sur les composants
+    du schema dessine a la main, pour que l'export profite du meme groupage
+    <GrpL> que l'onglet Analyse (tab_analyze.py::_texte_export_analyse) —
+    jusqu'ici toujours vide faute de `results` passe a generer_xml.
+
+    Filtre les detecteurs catch-all (impedances Z et diodes non classifiees
+    residuelles — filets de securite, jamais des montages reconnus) : sans
+    ce filtre, generer_xml les fusionnerait quand meme en <GRPS>, meme
+    monocomposant, ce qui briserait le contrat non-regression (vide si
+    aucun montage reconnu).
+    """
+    graphe    = construire_graphe(composants)
+    resultats = detecter_montages(graphe)
+    # Exclure les detecteurs catch-all (filets de securite, pas des montages)
+    resultats_filtres = [r for r in resultats
+                         if r.get("circuit_type") not in TYPES_CATCH_ALL]
+    return generer_xml(composants, results=resultats_filtres)
 
 
 class TabDraw:
     """@brief Onglet éditeur de schéma (palette + canvas + barre d'actions)."""
 
-    def __init__(self, parent, on_analyze: Optional[Callable[[str], None]] = None,
-                 on_pattern_created: Optional[Callable[[], None]] = None):
+    def __init__(self, parent, on_analyze: Callable[[str], None] | None = None,
+                 on_pattern_created: Callable[[], None] | None = None):
         """@brief Construit l'onglet.
 
         @param parent     Widget parent (zone de contenu).
         @param on_analyze Callback(path) appelé avec le chemin du fichier netlist
                           temporaire après clic sur « Analyser ».
         @param on_pattern_created Callback() appelé après création d'un pattern
-                          (pour rafraîchir l'onglet Circuits).
+                          depuis le wizard. Non câblé par app_window depuis le
+                          retrait de l'onglet Circuits (aucun consommateur
+                          actuel) ; conservé pour un futur abonné.
         """
         self.frame               = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
         self._on_analyze         = on_analyze
@@ -150,8 +176,16 @@ class TabDraw:
         if not path:
             return
         try:
+            # REGENERATION assumee, et sans avertissement — contrairement a
+            # l'onglet Analyse (`_texte_export_analyse`, gui/tab_analyze.py),
+            # qui rend la carte RECUE intacte et alerte quand il doit se
+            # replier sur `generer_xml`. Ici il n'y a pas de carte source : ce
+            # schema est dessine dans l'app, il n'y a rien a preserver. Ne PAS
+            # en conclure que l'export est fidele — l'editeur fidele est le
+            # Chantier B, differe (voir docs/superpowers/specs/
+            # 2026-07-29-retour-fidele-eretrodesign-design.md).
             with open(path, "w", encoding="utf-8") as f:
-                f.write(generer_xml(composants))
+                f.write(_xml_groupe_par_circuit(composants))
         except OSError as exc:
             messagebox.showerror("Erreur",
                                  f"Impossible d'écrire le fichier :\n{exc}",
@@ -227,6 +261,18 @@ class TabDraw:
         puces du catalogue, contrairement à une netlist SPICE positionnelle.
         N'affiche PAS l'avertissement de broches non câblées (spécifique à
         l'analyse, géré par l'appelant).
+
+        Écrit volontairement du XML NON groupé (`generer_xml` brut, GpId=0
+        partout) — contrairement à `_export_circuit_xml`. Ce fichier est un
+        relais interne : "Analyser ce circuit" et "Enregistrer comme pattern"
+        le relisent (`lire_xml`), et `lire_xml` fixe `.source` sur les
+        composants. Si ce XML portait de vrais `<GpId>` (via
+        `_xml_groupe_par_circuit`), un export ultérieur depuis l'onglet
+        Analyser prendrait la branche fidèle (`ecrire_groupes`), et
+        `eretro_patch._est_a_lui` (0 < GpId < 1000) confondrait ces groupes
+        avec des groupes faits à la main dans ERetroDesign — l'onglet
+        Analyser sauterait alors ces composants et ses propres groupes ne
+        seraient jamais écrits.
 
         @param prefix Préfixe du fichier temporaire.
         @return str | None Chemin du fichier écrit, ou None si le circuit est vide.
@@ -324,11 +370,11 @@ class TabDraw:
         )
 
     def _pattern_created(self):
-        """@brief Après création d'un pattern : rafraîchit Circuits et confirme."""
+        """@brief Après création d'un pattern : notifie l'appelant et confirme."""
         if self._on_pattern_created:
             self._on_pattern_created()
         messagebox.showinfo(
             "Pattern créé",
-            "Le pattern a été enregistré et ajouté à l'onglet « Circuits ».\n"
+            "Le pattern a été enregistré.\n"
             "Il sera reconnu à la prochaine analyse.",
             parent=self.frame)

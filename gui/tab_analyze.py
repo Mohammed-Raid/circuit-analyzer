@@ -4,27 +4,48 @@
 """
 import logging
 import tkinter as tk
-import customtkinter as ctk
 from pathlib import Path
 from tkinter import filedialog, messagebox
+
+import customtkinter as ctk
+
+
 # Le cœur d'analyse tire networkx (~1 s). Importé à la demande (chargement /
 # analyse d'un circuit) via _coeur_analyse(), pas au démarrage : la fenêtre
 # s'affiche sans attendre networkx.
 def _coeur_analyse():
     """@brief Importe et renvoie les fonctions du cœur d'analyse (lazy, networkx)."""
-    from circuit_analyzer.composant import lire_netlist as parse_file, construire_graphe as build_graph
-    from circuit_analyzer.xml import lire_xml as parse_xml, generer_xml as components_to_xml
+    from circuit_analyzer.composant import construire_graphe as build_graph
+    from circuit_analyzer.composant import lire_netlist as parse_file
     from circuit_analyzer.detecteur import analyser as match_patterns
-    from circuit_analyzer.rapport import generate
     from circuit_analyzer.drc import verifier_drc
+    from circuit_analyzer.rapport import generate
+    from circuit_analyzer.xml import generer_xml as components_to_xml
+    from circuit_analyzer.xml import lire_xml as parse_xml
     return (parse_file, build_graph, parse_xml, components_to_xml,
             match_patterns, generate, verifier_drc)
 # gui.circuit_viewer importe matplotlib + schemdraw (~2 s). On le charge à la
 # demande (ouverture d'un schéma), pas au démarrage : la fenêtre s'affiche vite.
 
-from gui.theme import (BG, CARD, CARD2, BORDER, BORDER_SOFT, TEXT, MUTED, BLUE,
-                       TEXT_MUTED, TEXT_DIM, SUCCESS, CYAN, ERROR, WARN, SP, R)
 from gui import ui_kit
+from gui.theme import (
+    BG,
+    BLUE,
+    BORDER,
+    BORDER_SOFT,
+    CARD,
+    CARD2,
+    CYAN,
+    ERROR,
+    MUTED,
+    SP,
+    SUCCESS,
+    TEXT,
+    TEXT_DIM,
+    TEXT_MUTED,
+    WARN,
+    R,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -46,6 +67,25 @@ TYPE_COLORS = {
     "default":     ("#1e293b", "#94a3b8", "⚙"),
 }
 
+def _texte_export_analyse(comps, resultats):
+    """@brief XML à exporter depuis l'onglet Analyse.
+
+    @param comps Composants analysés (liste, ou ListeComposantsXML si l'analyse
+                 est partie d'un .xml : elle porte alors `.source`).
+    @param resultats Sortie du détecteur, ou None.
+    @return tuple (xml, fidele). fidele=True : la carte REÇUE est renvoyée telle
+    quelle, enrichie des seuls groupes. fidele=False : elle a été RÉGÉNÉRÉE
+    (positions, formes et zooms inventés) faute de fichier source — cas d'une
+    analyse partie d'un .net. L'appelant DOIT le dire à l'utilisateur.
+    """
+    source = getattr(comps, "source", None)
+    if source is not None:
+        from circuit_analyzer.eretro_patch import ecrire_groupes
+        return ecrire_groupes(source, comps, resultats), True
+    from circuit_analyzer.xml import generer_xml
+    return generer_xml(comps, results=resultats), False
+
+
 def _type_style(name: str):
     """@brief Style visuel (fond, texte, icône) associé à un type de circuit.
 
@@ -66,14 +106,16 @@ class TabAnalyze:
 
         @param parent Widget parent (zone de contenu).
         @param on_pattern_created Callback() après création d'un pattern
-                                  (rafraîchit l'onglet Circuits).
+                                  depuis le wizard. Non câblé par app_window
+                                  depuis le retrait de l'onglet Circuits
+                                  (aucun consommateur actuel) ; conservé pour
+                                  un futur abonné.
         """
         self.frame = ctk.CTkFrame(parent, corner_radius=0, fg_color=BG)
         self._on_pattern_created_cb = on_pattern_created
         self._file_path = tk.StringVar()
         self._report_text    = ""
         self._results        = []
-        self._all_refs       = []
         self._unclassified   = []
         self._comp_info      = {}
         self._comps          = []
@@ -282,7 +324,6 @@ class TabAnalyze:
 
             self._report_text    = report
             self._results        = results
-            self._all_refs       = all_refs
             self._comps          = comps
             self._graph          = graph
             self._drc_violations = drc
@@ -386,13 +427,23 @@ class TabAnalyze:
         if not path:
             return
         try:
-            from circuit_analyzer.xml import generer_xml as components_to_xml
-            xml = components_to_xml(self._comps, results=self._results)
+            xml, fidele = _texte_export_analyse(self._comps, self._results)
+            # Mode texte volontaire (pas de newline="") : `ecrire_groupes`
+            # renvoie du LF pur et compte sur Windows pour retraduire chaque
+            # '\n' en '\r\n', ce qui restitue exactement le CRLF de la source.
             with open(path, "w", encoding="utf-8") as f:
                 f.write(xml)
-            messagebox.showinfo("Succès ✓",
-                f"Schéma XML exporté :\n{path}\n\n"
-                "Ouvrable dans le logiciel de design.")
+            if fidele:
+                messagebox.showinfo("Succès ✓",
+                    f"Schéma XML exporté :\n{path}\n\n"
+                    "Carte d'origine conservée (positions, symboles, angles) "
+                    "avec les groupes d'analyse ajoutés.")
+            else:
+                messagebox.showwarning("Exporté, mais REGÉNÉRÉ",
+                    f"Schéma XML exporté :\n{path}\n\n"
+                    "Aucun fichier XML source : le schéma a été REDESSINÉ sur "
+                    "une grille. Positions, symboles et zooms sont inventés.\n\n"
+                    "Pour un retour fidèle, partez d'un .xml ERetroDesign.")
         except Exception as e:
             _log.exception("export XML échoué")
             messagebox.showerror("Erreur export XML", str(e))
@@ -713,7 +764,7 @@ class TabAnalyze:
         if self._on_pattern_created_cb:
             self._on_pattern_created_cb()
         messagebox.showinfo("Pattern créé ✓",
-            "Le pattern a été sauvegardé et ajouté à l'onglet « Circuits ».\n"
+            "Le pattern a été sauvegardé.\n"
             "Il sera actif à la prochaine analyse.")
 
     def _ouvrir_wizard_pattern(self):

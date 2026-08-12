@@ -11,8 +11,8 @@ n'existent plus : tout passif R/L/C est désormais réduit en « Impédance Z »
 les circuits à diodes conservent un Pattern dédié.
 """
 
-from circuit_analyzer.patterns.base import Pattern, is_gnd, is_power
 from circuit_analyzer import detecteur
+from circuit_analyzer.patterns.base import Pattern
 
 
 class ESDProtectionDiode(Pattern):
@@ -43,13 +43,3 @@ class PeakDetector(Pattern):
     """@brief Pattern « Détecteur de crête » (délègue à detecteur)."""
     name = "Détecteur de crête"
     def match(self, graph): return detecteur.detecter_detecteur_crete(graph)
-
-
-## @brief Liste des patterns à diodes dans leur ordre de détection.
-ALL_PATTERNS = [
-    BridgeRectifier(),
-    FlybackDiode(),
-    ESDProtectionDiode(),
-    HalfWaveRectifier(),
-    PeakDetector(),
-]

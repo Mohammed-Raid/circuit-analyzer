@@ -26,11 +26,6 @@ def snap_ceil(v: float) -> float:
     return math.ceil(v / PAS - 1e-9) * PAS
 
 
-def snap_point(p):
-    """@brief Snappe un point (x, y) sur la grille."""
-    return (snap(p[0]), snap(p[1]))
-
-
 @dataclass(frozen=True)
 class Rect:
     """@brief Rectangle axis-aligned (x0<=x1, y0<=y1) en unites schemdraw."""
@@ -42,9 +37,6 @@ class Rect:
     def contient_strict(self, x: float, y: float) -> bool:
         """@brief Interieur STRICT (la frontiere reste praticable, spec §4.1)."""
         return self.x0 < x < self.x1 and self.y0 < y < self.y1
-
-    def dilate(self, m: float) -> "Rect":
-        return Rect(self.x0 - m, self.y0 - m, self.x1 + m, self.y1 + m)
 
 
 @dataclass(frozen=True)

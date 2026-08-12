@@ -12,10 +12,10 @@ Ce fichier regroupe :
 
 import copy
 import json
-import networkx as nx
 from dataclasses import dataclass
 from pathlib import Path
 
+import networkx as nx
 
 # =============================================================================
 # 1. TYPES DE COMPOSANTS RECONNUS
@@ -122,6 +122,13 @@ class Composant:
     value: str = ''
     par_forme: bool = False
     boite_ic: bool = False
+    # Contour reel (lignes/arcs/polygones) capture a l'import, uniquement
+    # pour les types catch-all sans symbole dedie (U a plan vide, X) --
+    # spec 2026-08-07. None = comportement generique inchange.
+    primitives: list | None = None
+    # Brochage reel {nom: (cote, decalage)}, meme format que CompInst.pinout
+    # (spec 2026-07-23) -- toujours renseigne EN MEME TEMPS que primitives.
+    pinout: dict | None = None
 
     @property
     def net1(self) -> str:
@@ -435,13 +442,13 @@ def _lire_netlist_texte(chemin: str, bibliotheque: dict = None) -> list:
             if not ref[0].isalpha():
                 raise ValueError(
                     f"Référence invalide '{ref}' (doit commencer par une lettre) "
-                    f"— ligne {num_ligne}: {repr(ligne)}"
+                    f"— ligne {num_ligne}: {ligne!r}"
                 )
 
             ref_maj = ref.upper()
             if ref_maj in refs_vus:
                 raise ValueError(
-                    f"Référence dupliquée '{ref}' — ligne {num_ligne}: {repr(ligne)}"
+                    f"Référence dupliquée '{ref}' — ligne {num_ligne}: {ligne!r}"
                 )
             refs_vus.add(ref_maj)
 
@@ -453,7 +460,7 @@ def _lire_netlist_texte(chemin: str, bibliotheque: dict = None) -> list:
             if len(noeuds_bruts) < nb_broches:
                 raise ValueError(
                     f"Composant '{ref}' ({type_comp}) attend {nb_broches} nœud(s) "
-                    f"mais {len(noeuds_bruts)} trouvé(s) — ligne {num_ligne}: {repr(ligne)}"
+                    f"mais {len(noeuds_bruts)} trouvé(s) — ligne {num_ligne}: {ligne!r}"
                 )
 
             noeuds = [n.upper().replace(' ', '') for n in noeuds_bruts]

@@ -3,7 +3,7 @@
 son montage AOP attendu (cf. docs/superpowers/specs/2026-06-25-demos-aop-restants-design.md)."""
 import pytest
 
-from circuit_analyzer.composant import lire_netlist, construire_graphe
+from circuit_analyzer.composant import construire_graphe, lire_netlist
 from circuit_analyzer.detecteur import analyser
 
 # (netlist simulations/*.txt, circuit_type attendu)

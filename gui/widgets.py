@@ -11,10 +11,10 @@
     y compris au-dessus d'enfants ajoutés dynamiquement.
 """
 import tkinter as tk
+
 import customtkinter as ctk
 
-from gui import theme
-from gui import ui_kit
+from gui import theme, ui_kit
 
 
 class ListeSectionnee:

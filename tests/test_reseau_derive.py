@@ -1,7 +1,7 @@
 """@file test_reseau_derive.py
 @brief Recognizer + drawer du reseau derive sur prise (diviseurs / filtrage rail)."""
-from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
+from circuit_analyzer.parser import Component
 from gui import circuit_viewer as cv
 
 

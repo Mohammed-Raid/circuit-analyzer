@@ -1,11 +1,12 @@
 """@file test_cas_rc_inverses.py
 @brief Tests des cas RC inverses autour de l'ampli inverseur AOP."""
 import matplotlib
+
 matplotlib.use("Agg")
 
-from circuit_analyzer.composant import Composant, construire_graphe
-from circuit_analyzer import detecteur
 import gui.circuit_viewer as cv
+from circuit_analyzer import detecteur
+from circuit_analyzer.composant import Composant, construire_graphe
 
 
 def _rc():

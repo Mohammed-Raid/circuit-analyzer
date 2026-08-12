@@ -2,12 +2,21 @@
 @brief Primitives vectorielles des symboles (spec 2026-07-15 §3) : chaque
 type trace, rotation coherente, DIP catalogue, purete d'import.
 """
+import os
+import pytest
 import subprocess
 import sys
 
-from gui.schematic_symbols import (aimanter_bord, def_puce,
-                                    est_boite_generique, geometrie_libre,
-                                    primitives, rotate_pin)
+from gui.schematic_symbols import (
+    aimanter_bord,
+    def_puce,
+    est_boite_generique,
+    geometrie_libre,
+    primitives,
+    primitives_depuis_dataitem,
+    rotate_pin,
+    TYPE_LIBRE,
+)
 
 # Géométries minimales suffisantes pour tracer (pins réels de COMP_DEFS).
 DEFS = {
@@ -190,6 +199,7 @@ def test_modele_connecteur_tout_a_gauche():
 
 def test_modele_dip_impair_refuse():
     import pytest
+
     from gui.schematic_symbols import modele_brochage
     with pytest.raises(ValueError):
         modele_brochage("DIP", 7)
@@ -211,6 +221,16 @@ def test_taille_mini_ne_descend_jamais_sous_le_besoin_reel():
     assert force["h"] == auto["h"] and force["w"] == auto["w"]
 
 
+def test_taille_exacte_ignore_le_plancher_ui():
+    """EXACTE, pas un plancher : une forme reelle plus petite que
+    BOITE_MIN_W/H (ex. VCC+/Vss, h=20) ne doit pas se faire regonfler,
+    sinon la broche recalculee flotte au-dela du contour reel importe
+    (meme symptome que le bug corrige en bf341d4, cette fois pour
+    w_exact/h_exact eux-memes plutot que pour le fallback heuristique)."""
+    d = geometrie_libre({"+": ("B", 0)}, w_exact=160, h_exact=20)
+    assert (d["w"], d["h"]) == (160, 20)
+
+
 def test_role_apparait_dans_le_libelle():
     from gui.schematic_symbols import _tr_boite_libre
     d = geometrie_libre({"VCC": ("L", 0)}, roles={"VCC": "Alim"})
@@ -223,3 +243,126 @@ def test_largeur_tient_compte_du_role():
     avec = geometrie_libre({"A": ("L", 0), "B": ("R", 0)},
                            roles={"A": "Alim", "B": "Sortie"})
     assert avec["w"] > sans["w"]
+
+
+def test_primitives_depuis_dataitem_segment_devient_une_ligne():
+    xml = ('<DataItem><datasegment><DataSegment>'
+           '<Spoint><X>10</X><Y>20</Y></Spoint>'
+           '<Epoint><X>30</X><Y>20</Y></Epoint>'
+           '</DataSegment></datasegment></DataItem>')
+    assert primitives_depuis_dataitem(xml, 1.0) == [
+        ("line", [(10.0, 20.0), (30.0, 20.0)], 2)]
+
+
+def test_primitives_depuis_dataitem_applique_l_echelle():
+    # Meme convention que le reste du codebase : division par echelle
+    # (eretro_lib.py fait (px - cx) / ECHELLE), donc echelle=0.5 DOUBLE.
+    xml = ('<DataItem><datasegment><DataSegment>'
+           '<Spoint><X>10</X><Y>20</Y></Spoint>'
+           '<Epoint><X>30</X><Y>20</Y></Epoint>'
+           '</DataSegment></datasegment></DataItem>')
+    assert primitives_depuis_dataitem(xml, 0.5) == [
+        ("line", [(20.0, 40.0), (60.0, 40.0)], 2)]
+
+
+def test_primitives_depuis_dataitem_recentre_sur_cx_cy():
+    # Meme formule que les broches ((px - cx) / echelle) : un decalage
+    # d'origine doit se retrouver soustrait, pas ignore.
+    xml = ('<DataItem><datasegment><DataSegment>'
+           '<Spoint><X>110</X><Y>220</Y></Spoint>'
+           '<Epoint><X>130</X><Y>220</Y></Epoint>'
+           '</DataSegment></datasegment></DataItem>')
+    assert primitives_depuis_dataitem(xml, 1.0, cx=100, cy=200) == [
+        ("line", [(10.0, 20.0), (30.0, 20.0)], 2)]
+
+
+def test_primitives_depuis_dataitem_arc_devient_un_arc():
+    # Fragment reel (Self.xml de la bibliotheque ERetroDesign).
+    xml = ('<DataItem><dataarc><DataArc>'
+           '<pCenter><X>0</X><Y>0</Y></pCenter>'
+           '<stAngle>-180</stAngle><swAngle>180</swAngle>'
+           '<Spoint><X>-16</X><Y>0</Y></Spoint>'
+           '<Epoint><X>16</X><Y>0</Y></Epoint>'
+           '</DataArc></dataarc></DataItem>')
+    assert primitives_depuis_dataitem(xml, 1.0) == [
+        ("arc", (-16.0, -16.0, 16.0, 16.0), -180.0, 180.0)]
+
+
+def test_primitives_depuis_dataitem_arc_de_rayon_nul_ignore():
+    xml = ('<DataItem><dataarc><DataArc>'
+           '<pCenter><X>5</X><Y>5</Y></pCenter>'
+           '<stAngle>0</stAngle><swAngle>90</swAngle>'
+           '<Spoint><X>5</X><Y>5</Y></Spoint>'
+           '<Epoint><X>5</X><Y>5</Y></Epoint>'
+           '</DataArc></dataarc></DataItem>')
+    assert primitives_depuis_dataitem(xml, 1.0) == []
+
+
+def test_primitives_depuis_dataitem_polygone_groupe_en_une_forme_fermee():
+    # Fragment reel (AOP.xml) : 3 <DataPolygon>, un point chacun -> 1 triangle.
+    xml = ('<DataItem><datapolygon>'
+           '<DataPolygon><point><X>52</X><Y>0</Y></point></DataPolygon>'
+           '<DataPolygon><point><X>-52</X><Y>-48</Y></point></DataPolygon>'
+           '<DataPolygon><point><X>-52</X><Y>48</Y></point></DataPolygon>'
+           '</datapolygon></DataItem>')
+    assert primitives_depuis_dataitem(xml, 1.0) == [
+        ("polygon", [(52.0, 0.0), (-52.0, -48.0), (-52.0, 48.0)], False)]
+
+
+def test_primitives_depuis_dataitem_polygone_incomplet_ignore():
+    xml = ('<DataItem><datapolygon>'
+           '<DataPolygon><point><X>0</X><Y>0</Y></point></DataPolygon>'
+           '<DataPolygon><point><X>10</X><Y>0</Y></point></DataPolygon>'
+           '</datapolygon></DataItem>')
+    assert primitives_depuis_dataitem(xml, 1.0) == []
+
+
+def test_primitives_depuis_dataitem_sans_forme_retourne_vide():
+    xml = '<DataItem><datapin><DataPin><Pname>1</Pname></DataPin></datapin></DataItem>'
+    assert primitives_depuis_dataitem(xml, 1.0) == []
+
+
+def test_primitives_depuis_dataitem_xml_invalide_ne_leve_pas():
+    assert primitives_depuis_dataitem("pas du xml", 1.0) == []
+
+
+_DOSSIER_REEL = os.path.join("ERetroDesign", "ERetroDesign", "bin", "Debug",
+                             "LibItem", "Lib")
+
+
+@pytest.mark.skipif(not os.path.isdir(_DOSSIER_REEL), reason="ERetroDesign absent")
+@pytest.mark.parametrize("nom,famille", [
+    ("AOP.xml", "polygon"),
+    ("Self.xml", "arc"),
+    ("Diode.xml", "polygon"),
+])
+def test_vrais_symboles_produisent_la_famille_de_primitive_attendue(nom, famille):
+    with open(os.path.join(_DOSSIER_REEL, nom), encoding="utf-8") as f:
+        xml = f.read()
+    prims = primitives_depuis_dataitem(xml, 1.0)
+    assert any(p[0] == famille for p in prims)
+
+
+def test_primitives_utilise_les_primitives_de_la_def_si_presentes():
+    defn = {"w": 80, "h": 60, "pins": {"1": (-40, 0)}, "cotes": {"1": "L"},
+            "primitives": [("polygon", [(0, -10), (10, 10), (-10, 10)], False)]}
+    prims = primitives("PERSO", defn, 0)
+    assert ("polygon", [(0, -10), (10, 10), (-10, 10)], False) in prims
+    # Piege identifie en auto-revision du spec : le libelle de broche standard
+    # doit etre ajoute par-dessus la vraie forme, sinon il disparait.
+    assert any(p[0] == "text" and p[2] == "1" for p in prims)
+
+
+def test_primitives_repli_boite_libre_si_pas_de_primitives():
+    defn = {"w": 80, "h": 60, "pins": {"1": (-40, 0)}, "cotes": {"1": "L"}}
+    prims = primitives(TYPE_LIBRE, defn, 0)
+    # Non-regression explicite : la boite generique reste un rectangle 4 sommets.
+    assert prims[0] == ("polygon", [(-40, -30), (40, -30), (40, 30), (-40, 30)], False)
+
+
+def test_primitives_avec_primitives_subissent_la_rotation():
+    defn = {"w": 80, "h": 60, "pins": {}, "cotes": {},
+            "primitives": [("line", [(0, 0), (10, 5)], 2)]}
+    prims = primitives("PERSO", defn, 90)
+    ligne = next(p for p in prims if p[0] == "line")
+    assert ligne[1] == [rotate_pin(0, 0, 90), rotate_pin(10, 5, 90)]

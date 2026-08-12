@@ -5,14 +5,16 @@
 
 """Tests for new industrial patterns: FlybackDiode, ESDProtectionDiode,
 HighSideMosfet, RelayDriver, and BridgeRectifier ESD-exclusion fix."""
-from circuit_analyzer.parser import Component
 from circuit_analyzer.graph_builder import build_graph
+from circuit_analyzer.parser import Component
 from circuit_analyzer.patterns.basic_circuits import (
-    FlybackDiode, ESDProtectionDiode, HalfWaveRectifier, PeakDetector,
     BridgeRectifier,
+    ESDProtectionDiode,
+    FlybackDiode,
+    HalfWaveRectifier,
+    PeakDetector,
 )
 from circuit_analyzer.patterns.transistor import HighSideMosfet, RelayDriver
-
 
 # ---------------------------------------------------------------------------
 # FlybackDiode
@@ -205,10 +207,18 @@ def test_peak_detector_found_for_valid_topology():
 # BridgeRectifier — ESD exclusion test
 # ---------------------------------------------------------------------------
 
-def test_bridge_rectifier_not_found_for_esd_clamp_array():
-    """@brief Verifie bridge rectifier not found for esd clamp array.
-
-    @return None
+def test_bridge_rectifier_flagged_ambigu_for_esd_clamp_array():
+    """@brief Un array de 2 lignes signal indépendantes clampées sur alim ET
+    masse forme le MÊME cycle à 4 nœuds qu'un vrai pont (aucune différence
+    topologique : alim/masse sur des coins opposés dans les deux cas — voir
+    detecter_pont_redresseur). Impossible à trancher par la seule topologie :
+    signalé (rails_sur_cycle=True) plutôt qu'exclu en silence — c'est
+    l'exclusion silencieuse d'origine qui produisait un faux négatif sur un
+    vrai pont dont la sortie DC s'appelle VCC/GND (bug réel, voir
+    test_bridge_rectifier_avec_sortie_vcc_gnd_est_detecte dans
+    test_patterns.py). La confiance réduite + l'avertissement (test
+    d'intégration via analyser(), cf. test_confidence.py) sont la façon dont
+    l'ambiguïté est portée à l'ingénieur, pas une exclusion muette.
     """
     # 4 ESD diodes: two clamp to AVCC, two from AGND — same 4-node cycle
     comps = [
@@ -218,7 +228,50 @@ def test_bridge_rectifier_not_found_for_esd_clamp_array():
         Component('D4', 'D', {'A': '/AGND', 'K': '/SIG_N'}),
     ]
     matches = BridgeRectifier().match(build_graph(comps))
-    assert matches == [], f"Expected no match but got: {matches}"
+    assert len(matches) == 1
+    assert matches[0]['rails_sur_cycle'] is True
+
+
+def test_pont_confiance_reduite_et_avertie_quand_alim_et_masse_sur_cycle():
+    """@brief Intégration (via analyser(), pas le pattern brut) : le cas
+    ambigu ci-dessus obtient une confiance réduite (0.60) et un avertissement
+    explicite — jamais exclu en silence, jamais accepté à pleine confiance
+    non plus."""
+    from circuit_analyzer.matcher import match_patterns
+    comps = [
+        Component('D1', 'D', {'A': '/SIG_P', 'K': '/AVCC'}),
+        Component('D2', 'D', {'A': '/AGND', 'K': '/SIG_P'}),
+        Component('D3', 'D', {'A': '/SIG_N', 'K': '/AVCC'}),
+        Component('D4', 'D', {'A': '/AGND', 'K': '/SIG_N'}),
+    ]
+    resultats = match_patterns(build_graph(comps))
+    pont = next(r for r in resultats if r['circuit_type'] == 'Pont redresseur (Graetz)')
+    assert pont['confidence'] == 0.60
+    assert any('protection ESD' in w for w in pont['warnings'])
+
+
+def test_pont_avec_sortie_vcc_gnd_est_detecte_avec_avertissement():
+    """@brief Bug réel (schema_test/5_pont_redresseur.xml) : un vrai pont dont
+    la sortie DC est nommée VCC/GND (le cas le plus courant en pratique) est
+    maintenant DÉTECTÉ (avant : disparaissait en silence, exclu comme un
+    array ESD). Il reçoit la MÊME confiance réduite + le même avertissement
+    que le cas ESD ci-dessus : la topologie seule ne permet PAS de distinguer
+    un vrai pont d'un array de protection à 2 lignes (voir
+    detecter_pont_redresseur) — mentir sur une pleine confiance serait pire
+    que le signaler. L'important, corrigé ici, est que le composant
+    n'apparaisse plus jamais nulle part (l'ancien bug)."""
+    from circuit_analyzer.matcher import match_patterns
+    comps = [
+        Component('D1', 'D', {'A': 'AC1', 'K': 'VCC'}),
+        Component('D2', 'D', {'A': 'AC2', 'K': 'VCC'}),
+        Component('D3', 'D', {'A': 'GND', 'K': 'AC1'}),
+        Component('D4', 'D', {'A': 'GND', 'K': 'AC2'}),
+    ]
+    resultats = match_patterns(build_graph(comps))
+    pont = next(r for r in resultats if r['circuit_type'] == 'Pont redresseur (Graetz)')
+    assert set(pont['components']) == {'D1', 'D2', 'D3', 'D4'}
+    assert pont['confidence'] == 0.60
+    assert any('protection ESD' in w for w in pont['warnings'])
 
 
 def test_bridge_rectifier_found_for_valid_graetz():

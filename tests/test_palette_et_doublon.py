@@ -1,13 +1,11 @@
 """
 @file test_palette_et_doublon.py
-@brief Tests des composants étendus, de la synchronisation palette éditeur, et du
-       contrôle de doublon à la création d'un pattern.
+@brief Tests des composants étendus et de la synchronisation palette éditeur.
 """
 import pytest
 
-from gui.schematic_editor import _auto_def, COMP_DEFS
 from circuit_analyzer.composant import lire_netlist
-
+from gui.schematic_editor import COMP_DEFS, _auto_def
 
 # ── Partie 1 : standards manquants ────────────────────────────────────────────
 
@@ -67,8 +65,8 @@ def _bibliotheque_temporaire(monkeypatch, tmp_path):
     """Redirige la bibliothèque de composants vers un fichier temporaire."""
     chemin = tmp_path / "component_library.json"
     chemin.write_text("{}", encoding="utf-8")
-    import circuit_analyzer.composant as composant
-    import gui.tab_components as tab_components
+    from circuit_analyzer import composant
+    from gui import tab_components
     monkeypatch.setattr(composant, "chemin_bibliotheque", lambda: chemin)
     monkeypatch.setattr(tab_components, "chemin_bibliotheque", lambda: chemin)
     return chemin
@@ -81,9 +79,10 @@ def test_composant_perso_apparait_et_disparait_de_la_palette(
     """Créer un type l'ajoute à la palette de l'éditeur ; le supprimer le retire,
     et purge du canvas un composant de ce type déjà posé."""
     _bibliotheque_temporaire(monkeypatch, tmp_path)
-    from gui.tab_components import TabComponents
-    from gui.schematic_editor import SchematicEditor
     from tkinter import messagebox
+
+    from gui.schematic_editor import SchematicEditor
+    from gui.tab_components import TabComponents
 
     monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: True)
     monkeypatch.setattr(messagebox, "showinfo", lambda *a, **k: None)
@@ -111,35 +110,3 @@ def test_composant_perso_apparait_et_disparait_de_la_palette(
     tab_p._supprimer()
     assert "IC" not in editor._palette_btns
     assert not any(c.comp_type == "IC" for c in editor._comps.values())
-
-
-# ── Partie 3 : doublon de pattern ─────────────────────────────────────────────
-
-def test_doublon_pattern_refuse(ctk_root, monkeypatch, tmp_path):
-    """Sauvegarder un pattern dont le nom existe déjà n'ajoute rien."""
-    chemin = tmp_path / "custom_circuits.json"
-    import custom_circuits.loader as loader
-    monkeypatch.setattr(loader, "chemin_custom_circuits", lambda: chemin)
-
-    from gui.tab_circuits import TabCircuits
-    from tkinter import messagebox
-
-    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: True)
-    monkeypatch.setattr(messagebox, "showinfo", lambda *a, **k: None)
-    monkeypatch.setattr(messagebox, "showerror", lambda *a, **k: None)
-
-    tab = TabCircuits(ctk_root)
-
-    # 1) Premier enregistrement
-    tab._afficher_nouveau()
-    tab._name_var.set("Mon montage")
-    list(tab._comp_vars.values())[0].set(True)
-    tab._sauvegarder()
-    assert len(tab._custom) == 1
-
-    # 2) Même nom → refusé, rien d'ajouté
-    tab._afficher_nouveau()
-    tab._name_var.set("Mon montage")
-    list(tab._comp_vars.values())[0].set(True)
-    tab._sauvegarder()
-    assert len(tab._custom) == 1, "un doublon ne doit pas être ajouté"

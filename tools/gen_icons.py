@@ -15,11 +15,11 @@ Runtime dependency: NONE (only PIL at runtime for the GUI; this script is
 dev-time only).
 """
 
-import os
-import io
 import math
+import os
 import urllib.request
 import xml.etree.ElementTree as ET
+
 from PIL import Image, ImageDraw
 
 # ---------------------------------------------------------------------------

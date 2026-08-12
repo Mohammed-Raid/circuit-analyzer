@@ -6,7 +6,6 @@ import customtkinter as ctk
 from circuit_analyzer import __version__
 from gui.fonts import register_fonts, FONT_FAMILY
 from gui.tab_analyze import TabAnalyze
-from gui.tab_circuits import TabCircuits
 from gui.tab_components import TabComponents
 from gui.tab_draw import TabDraw
 import gui.ui_kit as ui_kit
@@ -18,7 +17,7 @@ from gui.theme import BG, SURFACE, CARD, BORDER, TEXT, MUTED, BLUE, BLUE_D
 
 
 class AppWindow:
-    """@brief Fenêtre principale de l'application (barre latérale + 4 onglets)."""
+    """@brief Fenêtre principale de l'application (barre latérale + 3 onglets)."""
 
     def __init__(self):
         """@brief Construit la fenêtre, ses dimensions et son contenu."""
@@ -77,7 +76,6 @@ class AppWindow:
         items = [
             ("search",   "Analyser",   "Lire et analyser"),
             ("pen-tool", "Schéma",     "Dessiner un circuit"),
-            ("zap",      "Circuits",   "Patterns personnalisés"),
             ("wrench",   "Composants", "Bibliothèque"),
         ]
         for i, (icon, label, sub) in enumerate(items):
@@ -100,33 +98,17 @@ class AppWindow:
         content.grid_columnconfigure(0, weight=1)
         content.grid_rowconfigure(0, weight=1)
 
-        # Liaison tardive : tab_c n'existe pas encore quand tab_a/tab_d sont créés,
-        # mais ce callback n'est appelé qu'après une action utilisateur (le nom
-        # tab_c est alors résolu).
-        def _on_pattern_created():
-            # Un pattern vient d'être créé (éditeur/analyse) : recharger la liste
-            # de l'onglet Circuits, sinon il n'y apparaît qu'au prochain démarrage.
-            tab_c.refresh_circuits()
-
-        tab_a = TabAnalyze(content, on_pattern_created=_on_pattern_created)
+        tab_a = TabAnalyze(content)
         tab_d = TabDraw(content,
                         on_analyze=lambda path: (
                             tab_a._file_path.set(path),
                             tab_a._analyze(),
                             self._switch(0),
-                        ),
-                        on_pattern_created=_on_pattern_created)
-        tab_c = TabCircuits(content)
+                        ))
 
-        def _on_lib_change():
-            # La bibliothèque a changé : rafraîchir l'onglet Circuits ET la
-            # palette de l'éditeur de schéma (nouveaux types / types supprimés).
-            tab_c.refresh_component_list()
-            tab_d.refresh_palette()
+        tab_p = TabComponents(content, on_save=tab_d.refresh_palette)
 
-        tab_p = TabComponents(content, on_save=_on_lib_change)
-
-        self._frames = [tab_a.frame, tab_d.frame, tab_c.frame, tab_p.frame]
+        self._frames = [tab_a.frame, tab_d.frame, tab_p.frame]
         for f in self._frames:
             f.grid(row=0, column=0, sticky="nsew")
 
@@ -135,7 +117,7 @@ class AppWindow:
     def _switch(self, idx: int):
         """@brief Active l'onglet d'indice idx et met à jour la navigation.
 
-        @param idx Indice de l'onglet à afficher (0=Analyser, 1=Schéma, 2=Circuits, 3=Composants).
+        @param idx Indice de l'onglet à afficher (0=Analyser, 1=Schéma, 2=Composants).
         @return None
         """
         self._active = idx
@@ -161,7 +143,7 @@ class _NavButton(ctk.CTkFrame):
         @param command Callback appelé au clic.
         """
         # Hauteur fixe : sans elle un CTkFrame garde sa hauteur par défaut (200 px)
-        # et seuls 2 des 4 onglets tenaient à l'écran (Circuits/Composants cachés).
+        # et tous les onglets ne tenaient pas à l'écran (Composants caché).
         super().__init__(parent, fg_color="transparent", corner_radius=10, height=52)
         self.pack_propagate(False)
         self._cmd = command

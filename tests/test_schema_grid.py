@@ -5,9 +5,17 @@ x(c)/y(b), obstacles = slots, déterminisme strict, pureté d'import.
 import subprocess
 import sys
 
-from gui.schema_grid import (PAS, MARGE, CANAL_H, CANAL_V, X0,
-                             EtageMesure, PlanGrille, Rect, poser,
-                             snap, snap_ceil)
+from gui.schema_grid import (
+    CANAL_H,
+    CANAL_V,
+    MARGE,
+    PAS,
+    X0,
+    EtageMesure,
+    poser,
+    snap,
+    snap_ceil,
+)
 
 
 def _etages_2x1():

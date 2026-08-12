@@ -10,23 +10,26 @@ dans _DRAWERS. Les fonctions _draw_* reçoivent toutes (d, result, ci) :
 """
 import logging
 import math
+import tkinter as tk
+from tkinter import messagebox
 
 import customtkinter as ctk
-import tkinter as tk
+from custom_circuits.loader import load_custom_circuits, save_custom_circuits
 import matplotlib
+
 matplotlib.use("TkAgg")
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.patches as mpatches
 import schemdraw
 import schemdraw.elements as elm
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+
 from circuit_analyzer.patterns.base import (
     is_ground_net,
     is_power_net,
     is_protective_earth_net,
 )
-from gui import theme
-from gui import ui_kit
+from gui import theme, ui_kit
 from gui.schema_labels import ajuster_labels, obtenir_renderer
 from gui.theme import BLUE_HOVER
 
@@ -110,7 +113,6 @@ _CHIP_MSG_DELAY_MS = 2500
 # unites data appliquee de chaque cote de la bbox de contenu avant savefig.
 _EXPORT_MARGE_DATA = 0.5
 
-_Z_DETAIL_PERP_MIN_SCALE = 0.85
 _Z_DETAIL_LABEL_AXIS_EPS = 0.05
 # 7 illisible en fenetre compressee (audit fenetre F2) ; 8 reste compact tout
 # en restant net une fois la figure redimensionnee dans le popup.
@@ -247,12 +249,6 @@ def _bind_scrollable_mpl_events(widget, on_mousewheel, on_pan_start, on_pan_drag
     widget.bind("<MouseWheel>", on_mousewheel, add="+")
     widget.bind("<ButtonPress-1>", on_pan_start, add="+")
     widget.bind("<B1-Motion>", on_pan_drag, add="+")
-
-
-def _is_rail_net(net: str) -> bool:
-    return bool(net) and (
-        is_ground_net(net) or is_power_net(net) or is_protective_earth_net(net)
-    )
 
 
 def _info_for_ref(ref: str, graph, comp_info: dict) -> dict:
@@ -449,6 +445,16 @@ def _suivre_curseur_z(canvas, fig):
     return canvas.mpl_connect("motion_notify_event", _on_motion)
 
 
+def _supprimer_circuit_personnalise(nom: str) -> None:
+    """@brief Retire un pattern personnalise de custom_circuits.json par nom.
+
+    @param nom Nom exact du pattern (result["circuit_type"]).
+    @return None
+    """
+    circuits = [c for c in load_custom_circuits() if c.get("name") != nom]
+    save_custom_circuits(circuits)
+
+
 def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
     """@brief Ouvre une fenêtre affichant le schéma d'un circuit détecté.
 
@@ -460,6 +466,7 @@ def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
     """
     name    = result["circuit_type"]
     drawer  = _DRAWERS.get(name)
+    est_perso = any(c.get("name") == name for c in load_custom_circuits())
 
     popup = ctk.CTkToplevel(parent)
     popup.title(f"Schéma — {name}")
@@ -529,6 +536,19 @@ def show_circuit(result: dict, comp_info: dict, parent=None, graph=None):
                   fg_color=theme.BLUE_PRESS, hover_color=theme.BLUE_HOVER,
                   command=lambda: _export(fig, name, popup)).pack(
                       side="left", padx=12, pady=7)
+    if est_perso:
+        def _supprimer():
+            if messagebox.askyesno(
+                    "Confirmer",
+                    f"Supprimer le circuit personnalisé « {name} » ?\n"
+                    "Les prochaines analyses ne le reconnaîtront plus."):
+                _supprimer_circuit_personnalise(name)
+                popup.destroy()
+        ctk.CTkButton(bar, text="🗑  Supprimer",
+                      width=140, height=30, corner_radius=6,
+                      font=ctk.CTkFont("Segoe UI", 11),
+                      fg_color=theme.ERROR, hover_color=theme.ERROR_HOVER,
+                      command=_supprimer).pack(side="left", padx=(0, 12), pady=7)
     ctk.CTkButton(bar, text="Fermer",
                   width=90, height=30, corner_radius=6,
                   font=ctk.CTkFont("Segoe UI", 11),
@@ -715,7 +735,7 @@ def _reseau_derive_ilot(ilot, graph):
     @param graph Graphe original (porte graph['components']).
     @return dict {top, prise, serie, shunt} ou None si la forme ne s'applique pas.
     """
-    from circuit_analyzer.ilots import _nets_derives, _est_gnd, _PASSIFS
+    from circuit_analyzer.ilots import _PASSIFS, _est_gnd, _nets_derives
     from circuit_analyzer.patterns.base import is_power_net
 
     raw = getattr(graph, "graph", {}).get("components", {}) or {}
@@ -1953,7 +1973,7 @@ def _make_puce_fig(ref, entree, comp_info, matches, detaille: bool = False):
             except Exception:
                 title_pt = res["title"]
             d.add(elm.Label().at(title_pt).label(
-                f"{entree['categorie']} ({entree['nom']})",
+                _sans_redite(entree["categorie"], entree["nom"], "{c} ({n})"),
                 color=_TITRE_COLOR, fontsize=11))
             fig._z_hitboxes = list(d._z_hitboxes)
             fig._comp_positions = dict(d._comp_positions)
@@ -2346,6 +2366,13 @@ LABEL_LINE = 0.5       # rallonge le pas quand une bande porte une valeur (2 lig
 BAND_GAP = 1.0         # marge horizontale entre deux dipoles d'une meme bande
 STUB_REACH = 3.4       # extent x d'un moignon (symbole + fil + label/drapeau de net)
 ISO_REACH = 2.0        # extent x d'un dipole isole
+# Largeur d'un caractere d'etiquette, en unites data. MESUREE (get_window_extent
+# sur « pg carte » : 0.45-0.48 selon le texte, a COL_PITCH = 2.4). Sert a reserver
+# la place de l'etiquette dans le compactage en bandes : un « Z6 / R15+C8+C9 »
+# fait 4.3 de large, soit presque deux colonnes, alors que son SYMBOLE en fait 1.6.
+# ponytail: heuristique liee a la fonte ; si la taille de police du canvas change,
+# remesurer plutot que d'ajuster au jugé.
+_LARGEUR_CAR = 0.48
 
 
 def _dipole_span(pins, x_by_net):
@@ -2361,6 +2388,18 @@ def _dipole_span(pins, x_by_net):
     if len(cols) == 1:
         return (cols[0], cols[0] + STUB_REACH)
     return (0.0, ISO_REACH)
+
+
+def _span_avec_etiquette(span, etiquette):
+    """@brief Elargit l'extent d'un dipole a son ETIQUETTE, centree sur le symbole.
+
+    Sans ca, deux impedances voisines tiennent dans la meme bande parce que leurs
+    SYMBOLES ne se touchent pas, pendant que leurs titres se marchent dessus
+    ("Z6 / R15+C8+C9" contre "Z9 / C12" sur « pg carte »)."""
+    lo, hi = span
+    demi = _LARGEUR_CAR * max(len(l) for l in etiquette.split("\n")) / 2.0
+    mid = (lo + hi) / 2.0
+    return (min(lo, mid - demi), max(hi, mid + demi))
 
 
 def _pack_bands(spans):
@@ -2391,7 +2430,11 @@ def _make_row(comp, y, net_pins, col_nets):
     """@brief Construit une ligne de plan (dipole ou device) a l'ordonnee y."""
     pins = list((comp.get("pins", {}) or {}).items())
     stubs = [(p, n) for p, n in pins if n in net_pins and n not in col_nets]
+    # `cols` est fige ICI pour que le PLAN (espacement des blocs, extent des bus)
+    # raisonne sur EXACTEMENT les broches que le dessin cablera a gauche.
+    cols = [(p, n) for p, n in pins if n in col_nets]
     return {
+        "cols": cols,
         "ref": comp.get("ref", "?"),
         "type": comp.get("type", "?"),
         "value": comp.get("value", ""),
@@ -2572,14 +2615,25 @@ def _build_island_schematic_plan(model):
 
     # Compactage des dipoles en bandes (anti-escalier).
     dip_pins = [list((c.get("pins", {}) or {}).items()) for c in dipoles]
-    spans = [_dipole_span(p, x_by_net) for p in dip_pins]
+    # L'etiquette EST une piece du dessin : on la mesure une fois et on s'en sert
+    # pour les DEUX dimensions du compactage (largeur de bande, hauteur de pas).
+    etiquettes = [
+        _component_label(
+            {**c, "symbol": c.get("symbol") or _schematic_symbol(c.get("type", "?"))})
+        for c in dipoles
+    ]
+    spans = [_span_avec_etiquette(_dipole_span(p, x_by_net), e)
+             for p, e in zip(dip_pins, etiquettes)]
     band_of = _pack_bands(spans)
     n_bands = max(band_of) + 1 if band_of else 0
 
-    # Une bande dont un dipole porte une valeur est espacee davantage (label 2 lignes).
+    # Une bande dont un dipole porte un label 2 lignes est espacee davantage.
+    # On interroge `_component_label`, PAS `c["value"]` : une impedance affiche
+    # sa COMPOSITION ("Z4\nC7+R7+R14") sans avoir de value -- sa bande n'etait
+    # donc pas elargie et le titre debordait sur le dipole du dessous.
     band_value = [False] * n_bands
-    for c, bi in zip(dipoles, band_of):
-        if c.get("value"):
+    for etiq, bi in zip(etiquettes, band_of):
+        if "\n" in etiq:
             band_value[bi] = True
 
     band_y = []
@@ -2609,12 +2663,21 @@ def _build_island_schematic_plan(model):
         ys = [col_y[n] for n in (dev.get("pins", {}) or {}).values() if n in col_y]
         return sum(ys) / len(ys) if ys else floor
 
-    last = None
+    # L'ecart entre deux blocs suit leurs HAUTEURS REELLES : depuis que la
+    # boite grandit avec son nombre de broches (correctif D1), un pas constant
+    # laissait un connecteur 13 broches et un isolateur 16 broches se
+    # chevaucher purement et simplement.
+    last_y = last_demi = None
     for dev in sorted(devices, key=lambda d: -_target_y(d)):
-        ty = _target_y(dev)
-        y = ty if last is None else min(ty, last - MULTI_PITCH)
-        rows.append(_make_row(dev, y, net_pins, col_nets))
-        last = y
+        row = _make_row(dev, _target_y(dev), net_pins, col_nets)
+        demi = _demi_hauteur_bloc(row)
+        if last_y is not None:
+            # MULTI_PITCH compte ici BORD A BORD : le titre d'un bloc est pose
+            # au-dessus de sa boite, sur deux lignes possibles -- un ecart plus
+            # serre le fait tomber dans la boite du dessus.
+            row["y"] = min(row["y"], last_y - last_demi - demi - MULTI_PITCH)
+        rows.append(row)
+        last_y, last_demi = row["y"], demi
 
     _fill_column_extents(columns, net_pins, rows)
 
@@ -2642,10 +2705,17 @@ def _order_columns(col_nets):
 
 
 def _fill_column_extents(columns, net_pins, rows):
-    """@brief Rogne l'extent vertical de chaque colonne aux lignes qui la touchent."""
-    y_by_ref = {r["ref"]: r["y"] for r in rows}
+    """@brief Rogne l'extent vertical de chaque colonne aux lignes qui la touchent.
+
+    Un bloc multi-broches evente ses broches : le bus est borne aux ordonnees
+    REELLES de ses points d'accroche (`_y_broches_colonne`), sinon les fils du
+    haut et du bas de l'eventail depassent leur colonne."""
+    ys_par_net = {}
+    for r in rows:
+        for net, ys in _y_broches_colonne(r).items():
+            ys_par_net.setdefault(net, []).extend(ys)
     for c in columns:
-        ys = [y_by_ref[ref] for ref, _pin in net_pins.get(c["net"], []) if ref in y_by_ref]
+        ys = ys_par_net.get(c["net"])
         if ys:
             c["y_top"], c["y_bottom"] = max(ys), min(ys)
 
@@ -2662,6 +2732,17 @@ _SYMBOL_ELM = {
 }
 
 
+def _voie_devices(columns):
+    """@brief Abscisse (centre) de la voie verticale des composants multi-broches.
+
+    Le bord GAUCHE de la boite doit degager STUB_REACH depuis la derniere
+    colonne : un dipole « bus a gauche, E/S a droite » sort son symbole puis son
+    nom de net jusque-la. A un seul COL_PITCH, la diode D4 de « pg carte » etait
+    dessinee A TRAVERS l'isolateur SI844AB."""
+    return (max((c["x"] for c in columns), default=0.0)
+            + 2 * COL_PITCH + _W_BLOC / 2.0)
+
+
 def _draw_island_schematic(d, plan, hitboxes=None):
     """@brief Dessine le schema assaini a partir du plan (colonnes + lignes + stubs).
 
@@ -2676,7 +2757,7 @@ def _draw_island_schematic(d, plan, hitboxes=None):
     # Voie dediee a droite pour les composants multi-broches (AOP, blocs) :
     # ils y sont empiles par ligne, donc deux composants actifs ne se chevauchent
     # jamais (chacun a son y) et ne se regroupent plus au barycentre.
-    device_x = max((c["x"] for c in columns), default=0.0) + COL_PITCH
+    device_x = _voie_devices(columns)
 
     # Colonnes-bus rognees : ligne verticale + etiquette + masse eventuelle.
     for c in columns:
@@ -2776,63 +2857,177 @@ def _draw_two_pin_row(d, row, x_by_net, label_loc="top", hitboxes=None):
     _hit(0.0, 1.4)
 
 
+def _sans_redite(categorie, nom, gabarit="{c}\n{n}"):
+    """@brief « Connecteur » + « connecteur traversant » -> « connecteur
+    traversant ».
+
+    Le dialecte réel nomme parfois le composant PAR sa catégorie. Répéter le
+    mot n'apprend rien et allonge une étiquette qui doit ensuite trouver sa
+    place au milieu des fils (cf. gui/schema_labels).
+
+    @param gabarit Assemblage quand les deux apportent quelque chose : deux
+           lignes pour un bloc de grille, « Cat (nom) » pour une boîte puce."""
+    if not nom:
+        return categorie
+    if categorie.lower() in nom.lower():
+        return nom
+    return gabarit.format(c=categorie, n=nom)
+
+
 def _titre_bloc(row):
     """@brief Étiquette honnête d'un bloc multi-broches NON-AOP (connecteur/IC
     nommée/régulateur catalogué), ou None pour garder le rendu AOP/bloc actuel."""
     t, val = row.get("type"), row.get("value") or ""
     if t == "J":
-        return f"Connecteur\n{val}" if val else "Connecteur"
+        return _sans_redite("Connecteur", val)
     if t == "U":
         from circuit_analyzer.catalogue import identifier
         e = identifier("U", val)
         if e is not None and e.get("categorie") != "AOP":
-            return f"{e['categorie']}\n{e['nom']}"
+            return _sans_redite(e["categorie"], e["nom"])
         if row.get("boite_ic"):
-            return f"CI\n{val}" if val else "CI"
+            return _sans_redite("CI", val)
     return None
+
+
+# Pas vertical entre deux broches d'un bloc : >= la hauteur d'un label de net
+# (0.7 empilait NET15/NET16). La BOITE et l'extent des colonnes doivent tous
+# deux s'accorder a ce pas, sinon les broches sortent de leur boite (defaut D1)
+# ou les fils depassent leur bus.
+_ESP_MOIGNON = 1.0
+_H_BLOC_MIN = 1.0
+_W_BLOC = 2.6           # large : les noms de broches sont ecrits DANS la boite
+
+
+def _rendu_en_triangle(row):
+    """@brief Vrai si ce bloc sera dessine en AOP (triangle) plutot qu'en boite.
+
+    Predicat MIROIR de `_draw_block_row` : une puce cataloguee porte un titre
+    et sort en BOITE meme si son symbole generique est "opamp". Les deux
+    endroits doivent trancher pareil, sinon la place reservee ne correspond pas
+    a la forme dessinee (mesure : le regulateur 78L05 reservait 0,5 pour une
+    boite de 2,0 -> il chevauchait le convertisseur du dessus)."""
+    return row.get("symbol") == "opamp" and _titre_bloc(row) is None
+
+
+def _stubs_visibles(row):
+    """@brief Moignons reellement dessines (les broches NC n'en produisent pas)."""
+    return [(p, n) for p, n in row.get("stubs") or [] if not _is_not_connected(n)]
+
+
+def _demi_hauteur_bloc(row):
+    """@brief Demi-hauteur qu'un bloc occupera au dessin — MIROIR de `_draw_block_row`.
+
+    Le compte est `max(gauche, droite)`, PAS `len(pins)` : sur une puce 16
+    broches cablee 8 a gauche / 8 a droite, majorer a 17 reservait deux fois la
+    hauteur reelle, ecartait les blocs a l'exces et alignait tous les hauts de
+    bus a la meme ordonnee — 17 chevauchements d'etiquettes de net sur
+    « pg carte »."""
+    if _rendu_en_triangle(row) or len(row.get("pins") or []) <= 2:
+        return _H_BLOC_MIN / 2.0
+    n = max(len(row.get("cols") or []), len(_stubs_visibles(row)))
+    return max(_H_BLOC_MIN, (n + 1) * _ESP_MOIGNON) / 2.0
+
+
+def _eventail(n, y):
+    """@brief Ordonnees de n broches centrees sur y, du haut vers le bas."""
+    return [y + (n - 1) * _ESP_MOIGNON / 2.0 - k * _ESP_MOIGNON for k in range(n)]
+
+
+def _y_broches_colonne(row):
+    """@brief {net: [ordonnees]} des broches de `row` cablees vers une colonne.
+
+    Sert a borner les bus sur leurs VRAIS points d'accroche : un bloc evente ses
+    broches, mais un bus n'a aucune raison de couvrir toute la bande du bloc si
+    une seule broche s'y accroche."""
+    cols = row.get("cols") or []
+    if _rendu_en_triangle(row) or len(row.get("pins") or []) <= 2:
+        ys = [row["y"]] * len(cols)
+    else:
+        ys = _eventail(len(cols), row["y"])
+    par_net = {}
+    for (_pin, net), yy in zip(cols, ys):
+        par_net.setdefault(net, []).append(yy)
+    return par_net
 
 
 def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
     """@brief Composant multi-broches : AOP (triangle) ou bloc, place dans la voie
     dediee a droite (device_x), broches cablees vers les colonnes."""
     y = row["y"]
+    stubs = _stubs_visibles(row)
     titre = _titre_bloc(row)
-    if titre is not None:
-        # Etiquette AU-DESSUS de la boite (loc="top") : centree dans la boite,
-        # elle chevauchait les labels de net qui sortent a DROITE des boites
-        # connecteur/IC multi-broches (audit cartes reelles : "connecteur
-        # traversant" 13 broches). Au-dessus, elle est degagee du faisceau droit.
-        d += elm.Rect(w=2.2, h=1.0).at((device_x, y)).label(titre, loc="top").color(_WIRE)
-        block_right = (device_x + 1.1, y)    # bord droit du bloc
-    elif row["symbol"] == "opamp":
+    if row["symbol"] == "opamp" and titre is None:
         op = elm.Opamp().at((device_x, y)).right().color(_WIRE).fill(_OPAMP_FILL).label(
             row["ref"], loc="center")
         d += op
-        block_right = tuple(op.out)          # pointe droite du triangle
-    else:
-        d += elm.Rect(w=1.8, h=0.8).at((device_x, y)).label(row["ref"])
-        block_right = (device_x + 0.9, y)    # bord droit du bloc
+        _enregistrer_position(d, row.get("ref"), (device_x, y))
+        _brancher_colonnes(d, cols_pins, x_by_net, [y] * len(cols_pins), device_x, None)
+        _brancher_moignons(d, stubs, [tuple(op.out)[1]] * len(stubs),
+                           tuple(op.out)[0], None)
+        return
+
+    # Boite : sa HAUTEUR suit le nombre de broches. A hauteur fixe, les broches
+    # s'eventaient au-dela du cadre et flottaient dans le vide (defaut D1 de
+    # l'audit visuel 2026-07-28 : 12 moignons detaches sur SI844AB).
+    # `n + 1` et non `n` : l'eventail occupe (n-1) pas, la boite en reserve un
+    # de plus pour que la broche du HAUT ne soit pas collee au bord -- le titre
+    # est pose juste au-dessus de ce bord et venait sinon buter dessus.
+    n = max(len(cols_pins), len(stubs))
+    h = max(_H_BLOC_MIN, (n + 1) * _ESP_MOIGNON)
+    # PIEGE schemdraw : `elm.Rect` prend corner1/corner2, PAS w/h. Un
+    # `Rect(w=2.2, h=1.0)` part dans **kwargs et est IGNORE EN SILENCE -> toutes
+    # les boites sortaient au carre unite par defaut, ancrees par leur coin bas
+    # gauche (d'ou le fil qui arrivait dans un angle). Coins explicites et
+    # CENTRES sur (device_x, y).
+    # Etiquette AU-DESSUS de la boite (loc="top") : centree, elle chevauchait
+    # les labels de net qui sortent a DROITE des boites multi-broches.
+    d += elm.Rect(corner1=(-_W_BLOC / 2.0, -h / 2.0),
+                  corner2=(_W_BLOC / 2.0, h / 2.0)).at((device_x, y)).label(
+        titre if titre is not None else row["ref"], loc="top").color(_WIRE)
     _enregistrer_position(d, row.get("ref"), (device_x, y))
+    gauche, droite = device_x - _W_BLOC / 2.0, device_x + _W_BLOC / 2.0
 
-    for pin, net in cols_pins:
+    # Colonnes (bord gauche) et moignons (bord droit) sont eventes
+    # INDEPENDAMMENT, tous deux centres sur la MEME ordonnee `y` avec le MEME
+    # pas `_ESP_MOIGNON` -- des que les deux comptes n'ont pas la meme
+    # parite, un indice de colonne et un indice de moignon tombent
+    # SYSTEMATIQUEMENT sur la meme ordonnee (pas une coincidence rare).
+    # Invisible avec les anciens noms de broches courts ("1".."16"), mais un
+    # nom reel plus long (VDD1, GND2#2...) fait alors chevaucher visuellement
+    # les deux etiquettes -- `ajuster_labels` ne peut pas separer deux
+    # textes qui DEMARRENT exactement au meme endroit (trouve sur A788J,
+    # pg carte.xml, 7 cols/9 stubs). Decaler les moignons d'un DEMI-pas
+    # (seulement quand les deux bords sont utilises) les entrelace au lieu de
+    # les faire coincider, sans jamais depasser la hauteur de boite deja
+    # reservee (cf. `_demi_hauteur_bloc`, MIROIR de ce calcul, non modifie).
+    y_stubs = y + _ESP_MOIGNON / 2.0 if (cols_pins and stubs) else y
+    _brancher_colonnes(d, cols_pins, x_by_net, _eventail(len(cols_pins), y),
+                       gauche, gauche + 0.3)
+    _brancher_moignons(d, stubs, _eventail(len(stubs), y_stubs), droite, droite - 0.3)
+
+
+def _brancher_colonnes(d, cols_pins, x_by_net, ys, x_bord, x_nom):
+    """@brief Relie chaque broche cablee a sa colonne-bus, a SA propre ordonnee.
+
+    Toutes les broches arrivaient auparavant a la meme ordonnee : sur un
+    transistor dont C et E partagent un net, cela donnait deux traits
+    exactement superposes (defaut D2)."""
+    for (pin, net), yy in zip(cols_pins, ys):
         x = x_by_net[net]
-        d += elm.Line().at((x, y)).to((device_x, y)).color(_WIRE)
-        # pas de label de broche : le nom de pin (IN+/IN-/OUT) est redondant avec
-        # les marques +/- du triangle et encombre le milieu du schema.
-        d += elm.Dot().at((x, y)).color(_WIRE)
+        d += elm.Line().at((x, yy)).to((x_bord, yy)).color(_WIRE)
+        d += elm.Dot().at((x, yy)).color(_WIRE)
+        if x_nom is not None:
+            d += elm.Label().at((x_nom, yy)).label(pin, fontsize=8, color=_WIRE)
 
-    # Moignons de net a droite : eventail VERS LE BAS depuis le centre de la
-    # boite (le haut est reserve a l'etiquette loc="top" -> pas de conflit
-    # titre/labels), espacement >= hauteur d'un label de net (0.7 empilait
-    # NET15/NET16 -> 1.0), reach allonge (0.6 -> 0.9) pour degager les labels
-    # du bloc. Donne assez d'air a l'anti-collision pour converger sur les
-    # boites a nombreuses broches (connecteur traversant 13 broches).
-    stubs = [(pin, net) for pin, net in row["stubs"] if not _is_not_connected(net)]
-    _ESP_MOIGNON = 1.0
-    for k, (pin, net) in enumerate(stubs):
-        yy = block_right[1] - k * _ESP_MOIGNON
-        d += elm.Line().at((block_right[0], yy)).right(0.9).color(_WIRE)
+
+def _brancher_moignons(d, stubs, ys, x_bord, x_nom):
+    """@brief Moignon + borne nommee a droite de la boite, un par broche libre."""
+    for (pin, net), yy in zip(stubs, ys):
+        d += elm.Line().at((x_bord, yy)).right(0.9).color(_WIRE)
         _draw_net_end(d, net)
+        if x_nom is not None:
+            d += elm.Label().at((x_nom, yy)).label(pin, fontsize=8, color=_WIRE)
 
 
 def _component_label(comp):
@@ -3295,46 +3490,6 @@ def _sum_input_label_anchor(dot_pt):
     }
 
 
-def _agencement_entre(p1, p2, arbre):
-    """@brief Place le réseau R/L/C de `arbre` entre p1 et p2 (coordonnées globales).
-
-    Réutilise impedance_schematic.agencer(arbre) (mise en page locale ; borne
-    gauche (0, dims.y_borne), borne droite (dims.largeur, dims.y_borne)) puis
-    applique translation p1 + rotation (angle p1->p2) + échelle uniforme
-    (dist(p1,p2) / dims.largeur), pour amener les deux bornes locales sur p1/p2.
-    Le perpendiculaire local (écart à l'axe des bornes) utilise la même échelle
-    avec un minimum lisible pour ne pas écraser les branches parallèles courtes.
-
-    @param p1, p2 Bornes globales (x, y) entre lesquelles agencer le réseau.
-    @param arbre Arbre série/parallèle (cf. circuit_analyzer.impedance.arbre_expr).
-    @return (symboles, fils) en coordonnées globales :
-        symboles = [(ref, (xa,ya), (xb,yb))] ; fils = [((xa,ya),(xb,yb))].
-    """
-    from gui import impedance_schematic
-    symboles_loc, fils_loc, dims = impedance_schematic.agencer(arbre)
-    dx, dy = p2[0] - p1[0], p2[1] - p1[1]
-    dist = math.hypot(dx, dy)
-    echelle = dist / dims.largeur if dims.largeur else 0.0
-    # Les couplages courts compriment fortement les branches paralleles si l'on
-    # applique l'echelle uniforme aux deux axes. Garder un minimum perpendiculaire
-    # preserve la lisibilite des labels sans changer les bornes p1/p2.
-    echelle_perp = max(echelle, _Z_DETAIL_PERP_MIN_SCALE)
-    theta = math.atan2(dy, dx)
-    cos_t, sin_t = math.cos(theta), math.sin(theta)
-
-    def _vers_global(lx, ly):
-        along = lx * echelle
-        perp = (ly - dims.y_borne) * echelle_perp
-        return (p1[0] + along * cos_t - perp * sin_t,
-                p1[1] + along * sin_t + perp * cos_t)
-
-    symboles = [(ref, _vers_global(x1, y), _vers_global(x2, y))
-                for ref, x1, x2, y in symboles_loc]
-    fils = [(_vers_global(xa, ya), _vers_global(xb, yb))
-            for (xa, ya), (xb, yb) in fils_loc]
-    return symboles, fils
-
-
 def _label_loc_side(label_loc, nx, ny):
     """@brief Signe du cote de decalage correspondant a un label_loc."""
     vecteurs = {
@@ -3456,7 +3611,7 @@ def _z_reseau(d, p1, p2, bloc, ci, label_loc="top", wire_color=_WIRE) -> bool:
         symboles, fils, label_p1, label_p2 = _agencement_compact_decale(
             p1, p2, arbre, label_loc)
     else:
-        symboles, fils = _agencement_entre(p1, p2, arbre)
+        symboles, fils = impedance_schematic.agencement_entre(p1, p2, arbre)
         label_p1, label_p2 = p1, p2
     dx, dy = label_p2[0] - label_p1[0], label_p2[1] - label_p1[1]
     dist = math.hypot(dx, dy) or 1.0
@@ -4118,7 +4273,7 @@ def _fil_canal_avec_couplage(d, out_pt, in_pt, channel_x, cc, ci):
     dans l'espace alloué) et on repousse le canal vertical à gauche pour
     rejoindre sa borne réelle d'entrée -- jamais l'inverse : les fils du
     caller se terminent toujours sur les bornes réelles p1/p2 du réseau
-    (cf. `_agencement_entre`), sans jamais les dépasser.
+    (cf. `impedance_schematic.agencement_entre`), sans jamais les dépasser.
     """
     cap_x = (channel_x + in_pt[0]) / 2
     demi = 0.6 + _z_locale_extra(d, cc, 1.2) / 2
@@ -4139,12 +4294,6 @@ def _refs_couplage(cc):
     """@brief Refs brutes d'un match Impédance Z de couplage."""
     refs = cc.get("refs") or cc.get("components") or []
     return [r for r in refs if isinstance(r, str) and not r.startswith("Z")]
-
-
-def _couplage_simple_cap(cc, ci):
-    """@brief Vrai si le couplage est un condensateur unique."""
-    refs = _refs_couplage(cc)
-    return len(refs) == 1 and ci.get(refs[0], {}).get("type") == "C"
 
 
 def _bloc_couplage(cc):

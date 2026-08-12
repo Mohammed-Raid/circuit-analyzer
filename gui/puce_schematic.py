@@ -15,16 +15,24 @@ import re
 import schemdraw.elements as elm
 from schemdraw.elements import intcircuits as ic
 
-
 _HAUT = {"VCC", "VDD", "V+"}
 _BAS = {"GND", "VSS", "V-"}
 
 
 def _cote(fonction):
     f = fonction.upper()
-    if f in _HAUT:
+    # Rail nu ("VDD") OU rail numerote/duplique d'un boitier reel a
+    # plusieurs broches d'alimentation ("VDD1", "GND2", "VDD2#2" — le
+    # suffixe "#N" vient de la desambiguisation des broches homonymes,
+    # cf. `eretro_lib._entree_depuis_dataitem`) : sans ce repli, un boitier
+    # comme A788J (pg carte.xml) n'a AUCUNE broche qui matche _HAUT/_BAS en
+    # egalite stricte, et jusqu'a 15 broches s'entassent sur le seul bord
+    # "left" -> chevauchements d'etiquettes inevitables.
+    base = re.sub(r"#\d+$", "", f)
+    base = re.sub(r"\d+$", "", base)
+    if base in _HAUT:
         return "top"
-    if f in _BAS:
+    if base in _BAS:
         return "bottom"
     if "OUT" in f or re.fullmatch(r"\d?N?[YQ]\d?", f) or f.startswith("Y"):
         return "right"
@@ -169,9 +177,9 @@ def dessiner_puce(d, ref, entree, ci, origin=(4.0, 0), titre=True):
     haut = max((p[1] for p in nets.values()), default=origin[1]) + 0.8
     title_pt = (centre[0], haut + 0.4)
     if titre:
-        from gui.circuit_viewer import _TITRE_COLOR
+        from gui.circuit_viewer import _TITRE_COLOR, _sans_redite
         d.add(elm.Label().at(title_pt).label(
-            f"{entree['categorie']} ({entree['nom']})",
+            _sans_redite(entree["categorie"], entree["nom"], "{c} ({n})"),
             color=_TITRE_COLOR, fontsize=11))
     sorties = [pins_nets[num] for num, f in cablees if _cote(f) == "right"]
     entrees_g = [pins_nets[num] for num, f in cablees if _cote(f) == "left"]
@@ -201,7 +209,7 @@ def dessiner_z_locales(d, res, z_matches, ci):
     nœud du couplage n'est pas littéralement nommé "VCC" (cas réel et
     fréquent : R du réseau de temporisation d'un 555 entre VCC et DIS).
     """
-    from gui.circuit_viewer import _z_box, _bloc_couplage, _est_couplage, _BUS
+    from gui.circuit_viewer import _BUS, _bloc_couplage, _est_couplage, _z_box
     nets = res.get("nets", {})
     cotes = res.get("_cotes", {})
     offsets = {}

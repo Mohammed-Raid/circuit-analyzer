@@ -11,17 +11,24 @@ Ouvre une fenêtre modale 860×540 avec :
 import json
 import logging
 import tkinter as tk
-import customtkinter as ctk
 
+import customtkinter as ctk
+import schemdraw
+import schemdraw.elements as elm
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+
+from circuit_analyzer.detecteur import NOMS_CIRCUITS
 from custom_circuits.loader import (
-    CONDITION_LABELS,
     CONDITION_DESCRIPTIONS,
+    CONDITION_LABELS,
     condition_display,
     load_custom_circuits,
     save_custom_circuits,
     suggest_conditions,
 )
-from gui.theme import CARD, CARD2, BORDER, TEXT, MUTED, BLUE, BLUE_D
+from gui.theme import BLUE, BLUE_D, BORDER, CARD, CARD2, MUTED, TEXT
+from gui.impedance_schematic import style_symbole
 
 _log = logging.getLogger(__name__)
 
@@ -115,6 +122,7 @@ class PatternWizard(ctk.CTkToplevel):
 
         # Panneau JSON live
         self._json_box    = None
+        self._apercu_canvas = None
 
         self._setup_window()
         self._build()
@@ -449,13 +457,18 @@ class PatternWizard(ctk.CTkToplevel):
     # ── Étape 4 : Prévisualisation ────────────────────────────────────────────
 
     def _build_step4(self):
-        """@brief Construit le contenu de l'étape 4 (résumé JSON + bouton Créer)."""
+        """@brief Construit le contenu de l'étape 4 (aperçu schéma + JSON + bouton Créer)."""
         frame = ctk.CTkFrame(self._left, fg_color="transparent")
         frame.grid(row=0, column=0, sticky="nsew")
         frame.grid_remove()
-        frame.grid_rowconfigure(0, weight=1)
+        frame.grid_rowconfigure(0, weight=2)
+        frame.grid_rowconfigure(1, weight=1)
         frame.grid_columnconfigure(0, weight=1)
         self._step_frames[4] = frame
+
+        self._apercu_frame = ctk.CTkFrame(frame, fg_color=_JSON_BG,
+                                          corner_radius=10)
+        self._apercu_frame.grid(row=0, column=0, sticky="nsew", pady=(0, 8))
 
         self._preview_box = ctk.CTkTextbox(
             frame,
@@ -467,14 +480,14 @@ class PatternWizard(ctk.CTkToplevel):
             wrap="none",
             state="disabled",
         )
-        self._preview_box.grid(row=0, column=0, sticky="nsew", pady=(0, 10))
+        self._preview_box.grid(row=1, column=0, sticky="nsew", pady=(0, 10))
 
         self._summary_label = ctk.CTkLabel(
             frame, text="",
             font=ctk.CTkFont("Segoe UI", 11),
             text_color=MUTED, justify="left", anchor="w",
             wraplength=560)
-        self._summary_label.grid(row=1, column=0, sticky="ew")
+        self._summary_label.grid(row=2, column=0, sticky="ew")
 
         self._btn_create = ctk.CTkButton(
             frame,
@@ -483,7 +496,7 @@ class PatternWizard(ctk.CTkToplevel):
             font=ctk.CTkFont("Segoe UI", 13, "bold"),
             fg_color=_BTN_CREATE, hover_color=_BTN_CREATE_H,
             command=self._create_pattern)
-        self._btn_create.grid(row=2, column=0, sticky="ew", pady=(10, 0))
+        self._btn_create.grid(row=3, column=0, sticky="ew", pady=(10, 0))
 
     # ── Navigation ────────────────────────────────────────────────────────────
 
@@ -594,8 +607,15 @@ class PatternWizard(ctk.CTkToplevel):
             if not name:
                 self._show_error("Le nom ne peut pas être vide.")
                 return False
-            # Vérifier doublon
-            existing = [c.get("name", "") for c in load_custom_circuits()]
+            # Vérifier doublon : circuits intégrés (NOMS_CIRCUITS) + personnalisés.
+            # Sans le volet intégrés, un pattern pourrait reprendre le nom d'un
+            # circuit natif ; la popup schéma (circuit_viewer._supprimer) décide
+            # alors "personnalisé" PAR NOM et proposerait un bouton Supprimer sur
+            # le circuit intégré, qui supprimerait en fait l'entrée personnalisée
+            # homonyme.
+            existing = set(NOMS_CIRCUITS) | {
+                c.get("name", "") for c in load_custom_circuits()
+            }
             if name in existing:
                 self._show_error(f"Un pattern nommé « {name} » existe déjà.")
                 return False
@@ -642,6 +662,82 @@ class PatternWizard(ctk.CTkToplevel):
         @return list[str] Labels des conditions activées.
         """
         return [lbl for lbl, var in self._cond_vars.items() if var.get()]
+
+    def _dessiner_apercu(self) -> Figure:
+        """@brief Apercu schematique simple des composants selectionnes.
+
+        Rendu volontairement simple (spec 2026-08-04) : vrais symboles
+        (style_symbole), alignes en ligne, fils droits entre composants
+        partageant un net. Pas de gestion rails/branches/compaction — ce
+        n'est pas le moteur ilots, une decision explicite du boss.
+
+        @return matplotlib.figure.Figure prete a afficher dans un canvas Tk.
+        """
+        refs = self._selected_refs()
+        fig = Figure(figsize=(6.5, 2.4))
+        ax = fig.add_subplot(111)
+        fig.patch.set_facecolor(_BG)
+        ax.set_facecolor(_BG)
+        ax.axis("off")
+        ax.set_aspect("equal")
+        # Paires (ref_a, ref_b) reliees par un fil, dans l'ordre de trace —
+        # meme idiome que fig._z_hitboxes/_comp_positions ailleurs dans le
+        # projet : le test inspecte cet etat plutot que de gratter les
+        # artistes matplotlib (les symboles eux-memes contiennent deja des
+        # segments de ligne, ambigu a distinguer d'un vrai fil par type).
+        fig._apercu_connexions = []
+        if not refs:
+            return fig
+
+        espace = 2.5
+        bornes = {}
+        with schemdraw.Drawing(canvas=ax, show=False) as d:
+            d.config(fontsize=10, inches_per_unit=0.5)
+            for i, ref in enumerate(refs):
+                info = self._comp_info.get(ref, {})
+                typ = info.get("type", "?")
+                val = info.get("value", "")
+                cls, coul, ref_txt, valeur = style_symbole(typ, val, ref)
+                x0, x1 = i * espace, i * espace + 1.5
+                el = cls().at((x0, 0)).to((x1, 0)).color(coul).label(
+                    ref_txt, loc="bottom", fontsize=9, color=coul)
+                if valeur:
+                    el = el.label(valeur, loc="top", fontsize=9, color=coul)
+                d.add(el)
+                bornes[ref] = (x0, x1)
+
+            # Câblage par net : chaîne (non clique) pour éviter que les fils
+            # ne traversent les composants intermédiaires.
+            # Pour chaque net unique, connecter uniquement les composants
+            # CONSÉCUTIFS (dans l'ordre de refs) qui le partagent.
+            nets_by_ref = {}
+            for ref in refs:
+                nets_by_ref[ref] = set((self._comp_info.get(ref, {})
+                                       .get("pins") or {}).values())
+
+            # Recenser tous les nets
+            all_nets = set()
+            for nets_set in nets_by_ref.values():
+                all_nets.update(nets_set)
+
+            # Pour chaque net, connecter les composants consécutifs qui le partagent
+            for net in all_nets:
+                components_on_net = [ref for ref in refs
+                                    if net in nets_by_ref[ref]]
+                # Connecter chaque composant au suivant (dans l'ordre)
+                for j in range(len(components_on_net) - 1):
+                    ref_a = components_on_net[j]
+                    ref_b = components_on_net[j + 1]
+                    _xa0, xa1 = bornes[ref_a]
+                    xb0, _xb1 = bornes[ref_b]
+                    d.add(elm.Line().at((xa1, 0)).to((xb0, 0))
+                          .color("#64748b"))
+                    fig._apercu_connexions.append((ref_a, ref_b))
+        try:
+            fig.tight_layout(pad=0.4)
+        except Exception:
+            _log.debug("tight_layout ignore", exc_info=True)
+        return fig
 
     def _build_pattern_dict(self) -> dict:
         """@brief Construit le dict JSON du pattern en cours de création.
@@ -695,7 +791,17 @@ class PatternWizard(ctk.CTkToplevel):
     # ── Prévisualisation étape 4 ──────────────────────────────────────────────
 
     def _update_preview(self):
-        """@brief Met à jour la grande boîte JSON et le résumé texte de l'étape 4."""
+        """@brief Reconstruit l'apercu schematique et met a jour JSON/resume de l'etape 4."""
+        if self._apercu_canvas is not None:
+            self._apercu_canvas.get_tk_widget().destroy()
+        fig = self._dessiner_apercu()
+        self._apercu_canvas = FigureCanvasTkAgg(fig, master=self._apercu_frame)
+        self._apercu_canvas.draw()
+        self._apercu_canvas.get_tk_widget().configure(
+            bg=_JSON_BG, highlightthickness=0)
+        self._apercu_canvas.get_tk_widget().pack(
+            fill="both", expand=True, padx=4, pady=4)
+
         payload = self._build_pattern_dict()
         text = json.dumps(payload, ensure_ascii=False, indent=2)
 

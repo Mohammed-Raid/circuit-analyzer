@@ -8,13 +8,12 @@ config/net_aliases.json, puis figés : la classification d'un net est donc
 mémoïsable (lru_cache), ce qui évite des milliers de reclassements sur une
 grosse netlist.
 """
-from abc import ABC, abstractmethod
-from functools import lru_cache
 import json
 import re
-from pathlib import Path
-import networkx as nx
+from abc import ABC, abstractmethod
+from functools import cache
 
+import networkx as nx
 
 # =============================================================================
 # CHARGEMENT DES ALIAS DE NETS
@@ -90,7 +89,7 @@ _PE_PREFIXES  = _compiler_prefixes(_PE_EXACTS)
 # est donc mémoïsable (les détecteurs reclassent les mêmes nets des milliers
 # de fois sur une grosse netlist).
 
-@lru_cache(maxsize=None)
+@cache
 def is_ground_net(net: str) -> bool:
     """@brief Indique si le net est une masse (GND, AGND, 0V, VSS…).
 
@@ -106,7 +105,7 @@ def is_ground_net(net: str) -> bool:
     return _GND_PREFIXES is not None and _GND_PREFIXES.match(n) is not None
 
 
-@lru_cache(maxsize=None)
+@cache
 def is_power_net(net: str) -> bool:
     """@brief Indique si le net est un rail d'alimentation (VCC, VDD, +5V…).
 
@@ -122,7 +121,7 @@ def is_power_net(net: str) -> bool:
     return _PWR_PREFIXES is not None and _PWR_PREFIXES.match(n) is not None
 
 
-@lru_cache(maxsize=None)
+@cache
 def is_protective_earth_net(net: str) -> bool:
     """@brief Indique si le net est une terre de protection (PE, EARTH, CHASSIS…).
 
@@ -198,7 +197,6 @@ class Pattern(ABC):
 
         @return str Nom du circuit détecté.
         """
-        pass
 
     @abstractmethod
     def match(self, graph: nx.MultiGraph) -> list[dict]:
@@ -209,4 +207,3 @@ class Pattern(ABC):
         @return list[dict] Liste de matches, chacun de la forme
                 {'components': [ref, ...], 'nodes': [net, ...]}.
         """
-        pass

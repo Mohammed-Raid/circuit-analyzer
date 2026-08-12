@@ -5,8 +5,8 @@
 Toute la logique de détection est dans circuit_analyzer/detecteur.py.
 """
 
-from circuit_analyzer.patterns.base import Pattern
 from circuit_analyzer import detecteur
+from circuit_analyzer.patterns.base import Pattern
 
 
 class TransistorSwitch(Pattern):
@@ -61,17 +61,3 @@ class RelayDriver(Pattern):
     """@brief Pattern « Commande de relais » (délègue à detecteur)."""
     name = "Commande de relais"
     def match(self, graph): return detecteur.detecter_commande_relais(graph)
-
-
-## @brief Liste ordonnée des patterns à transistors (miroir/relais avant les commutations simples).
-TRANSISTOR_PATTERNS = [
-    PushPull(),
-    Darlington(),
-    CurrentMirror(),
-    RelayDriver(),
-    SuiveurEmetteur(),
-    CommonEmitterAmp(),
-    TransistorSwitch(),
-    MosfetSwitch(),
-    HighSideMosfet(),
-]

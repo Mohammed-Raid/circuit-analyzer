@@ -24,6 +24,7 @@ def test_aucun_hex_en_dur(nom):
 
 def test_tokens_schemas_presents_et_figes():
     from types import MappingProxyType
+
     from gui import theme
     assert isinstance(theme.SCHEMA_COLORS, MappingProxyType)
     assert isinstance(theme.SCHEMA_DIMS, MappingProxyType)
