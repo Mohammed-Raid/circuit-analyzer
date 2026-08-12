@@ -195,6 +195,33 @@ def _decaler_point(point, delta) -> None:
         return
 
 
+def _segment_croise_rectangle(p, q, rect) -> bool:
+    """@brief Un segment axis-aligned (horizontal OU vertical) traverse-t-il
+    l'INTERIEUR d'un rectangle ?
+
+    @param p, q Extremites du segment (x, y) — partagent x (segment
+           vertical) OU y (segment horizontal).
+    @param rect Rectangle (x0, y0, x1, y1), x0<=x1, y0<=y1.
+    @return True si le segment coupe l'interieur STRICT de rect — la
+            frontiere reste praticable (meme convention que
+            gui/schema_grid.py:Rect.contient_strict, reimplementee ici
+            sans nouvelle dependance vers gui/).
+    """
+    x0, y0, x1, y1 = rect
+    (px, py), (qx, qy) = p, q
+    if px == qx:
+        x = px
+        if not (x0 < x < x1):
+            return False
+        ylo, yhi = min(py, qy), max(py, qy)
+        return ylo < y1 and yhi > y0
+    y = py
+    if not (y0 < y < y1):
+        return False
+    xlo, xhi = min(px, qx), max(px, qx)
+    return xlo < x1 and xhi > x0
+
+
 def _appliquer_deltas(source, deltas) -> None:
     """@brief Translate <CtrIem> et les extremites de fil des refs deplacees.
 

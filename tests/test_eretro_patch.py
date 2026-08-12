@@ -1016,6 +1016,30 @@ def test_appliquer_deltas_droite_meme_sans_coude_prealable():
     assert resultat == [(5.0, 5.0), (109.0, 1.0)]
 
 
+def test_segment_croise_rectangle_horizontal_dedans():
+    """@brief Un segment horizontal qui passe par l'interieur d'un rectangle est detecte."""
+    from circuit_analyzer.eretro_patch import _segment_croise_rectangle
+    assert _segment_croise_rectangle((0, 50), (100, 50), (40, 40, 60, 60)) is True
+
+
+def test_segment_croise_rectangle_horizontal_dehors():
+    """@brief Un segment horizontal qui ne touche pas le rectangle n'est pas detecte."""
+    from circuit_analyzer.eretro_patch import _segment_croise_rectangle
+    assert _segment_croise_rectangle((0, 10), (100, 10), (40, 40, 60, 60)) is False
+
+
+def test_segment_croise_rectangle_vertical_dedans():
+    """@brief Un segment vertical qui passe par l'interieur d'un rectangle est detecte."""
+    from circuit_analyzer.eretro_patch import _segment_croise_rectangle
+    assert _segment_croise_rectangle((50, 0), (50, 100), (40, 40, 60, 60)) is True
+
+
+def test_segment_croise_rectangle_frontiere_praticable():
+    """@brief Un segment exactement SUR le bord du rectangle n'est pas bloque (frontiere praticable)."""
+    from circuit_analyzer.eretro_patch import _segment_croise_rectangle
+    assert _segment_croise_rectangle((0, 40), (100, 40), (40, 40, 60, 60)) is False
+
+
 def test_ecrire_groupes_deplace_lampli_inverseur_vers_sa_disposition_canonique(tmp_path):
     """@brief Bout en bout : un ampli inverseur reconnu sur une carte "scannee"
     (chemin ecrire_groupes) est translate vers sa disposition canonique."""
