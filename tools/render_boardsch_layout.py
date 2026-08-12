@@ -85,6 +85,12 @@ if __name__ == "__main__":
     print(f"Rendu ecrit : {OUT / 'disposition_ampli_inverseur.png'}")
 
     # Chemin carte scannee (ecrire_groupes) : avant/apres translation.
+    # "avant" doit etre GENUINEMENT non-canonique pour que la comparaison
+    # montre quelque chose : components_to_xml canonise deja l'ampli
+    # inverseur (chantier precedent), donc on disperse les positions REELLES
+    # a la main apres lecture, avant de patcher — sinon les deux rendus sont
+    # visuellement identiques et le controle visuel ne prouve rien (constat
+    # de revue de branche).
     import tempfile
 
     from circuit_analyzer.eretro_patch import ecrire_groupes
@@ -94,10 +100,21 @@ if __name__ == "__main__":
         chemin = str(Path(tmp) / "carte.xml")
         with open(chemin, "w", encoding="utf-8") as f:
             f.write(xml)
-        render(xml, OUT / "carte_scannee_avant.png")
-        print(f"Rendu ecrit : {OUT / 'carte_scannee_avant.png'}")
 
         relus = lire_xml(chemin)
+        dispersion = {"U1": (0, 0), "R1": (-400, 300), "R2": (350, -250)}
+        for ref, (dx, dy) in dispersion.items():
+            element = relus.source.elements.get(ref)
+            if element is None:
+                continue
+            x_elem, y_elem = element.find("CtrIem/X"), element.find("CtrIem/Y")
+            x_elem.text = str(int(float(x_elem.text) + dx))
+            y_elem.text = str(int(float(y_elem.text) + dy))
+        xml_disperse = ET.tostring(relus.source.arbre.getroot(), encoding="unicode")
+
+        render(xml_disperse, OUT / "carte_scannee_avant.png")
+        print(f"Rendu ecrit : {OUT / 'carte_scannee_avant.png'}")
+
         res_relus = match_patterns(build_graph(relus))
         xml_patche = ecrire_groupes(relus.source, relus, res_relus)
         render(xml_patche, OUT / "carte_scannee_apres.png")
