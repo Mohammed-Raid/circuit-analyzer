@@ -195,6 +195,43 @@ def _decaler_point(point, delta) -> None:
         return
 
 
+def _point_translate(point, delta):
+    """@brief Nouvelle position (x, y) d'un <PointF>/<CtrIem> apres un
+    delta, SANS muter l'element. None si absent/malforme.
+
+    Contrairement a _decaler_point (qui ecrit), celle-ci calcule seulement
+    -- necessaire pour router un fil AVANT de savoir quel chemin on va
+    finalement ecrire.
+    """
+    x_elem, y_elem = point.find("X"), point.find("Y")
+    if x_elem is None or y_elem is None:
+        return None
+    try:
+        return (float(x_elem.text) + delta[0], float(y_elem.text) + delta[1])
+    except (TypeError, ValueError):
+        return None
+
+
+def _position_actuelle(source, ref):
+    """@brief Position (x, y) ACTUELLE du CtrIem d'une ref (deja translatee
+    si elle fait partie des deltas appliques plus haut dans cette meme
+    fonction), ou None si la ref/le CtrIem est absent ou malforme.
+
+    Usage : construire une boite d'evitement pour un AUTRE composant du
+    groupe -- jamais pour l'extremite du fil lui-meme (cf. _point_translate).
+    """
+    element = source.elements.get(ref)
+    if element is None:
+        return None
+    x_elem, y_elem = element.find("CtrIem/X"), element.find("CtrIem/Y")
+    if x_elem is None or y_elem is None:
+        return None
+    try:
+        return (float(x_elem.text), float(y_elem.text))
+    except (TypeError, ValueError):
+        return None
+
+
 def _segment_croise_rectangle(p, q, rect) -> bool:
     """@brief Un segment axis-aligned (horizontal OU vertical) traverse-t-il
     l'INTERIEUR d'un rectangle ?
@@ -297,20 +334,37 @@ def _appliquer_deltas(source, deltas) -> None:
             continue
         if delta_a is not None and delta_b is not None:
             # Fil INTERNE a un groupe deplace, deltas DIFFERENTS aux deux
-            # bouts : un coude intermediaire fige a son ancienne position
-            # produit un croisement chaotique, visible a l'oeil dans
-            # ERetroDesign (constat du 2026-08-12, capture reelle a l'appui,
-            # sur un cas aussi simple que 3 composants). On retrace donc une
-            # ligne DROITE entre les nouvelles positions plutot que de
-            # garder un coude devenu faux — seuls les fils dont un SEUL bout
-            # est dans le groupe (vers un composant non deplace, hors
-            # perimetre du chantier) gardent leurs coudes intacts ci-dessous.
-            _decaler_point(points[0], delta_a)
-            _decaler_point(points[-1], delta_b)
-            if len(points) > 2:
-                lp = ligne.find("LP")
-                for point in points[1:-1]:
-                    lp.remove(point)
+            # bouts : route en angle droit plutot qu'une diagonale -- constat
+            # visuel reel dans ERetroDesign (capture du 2026-08-12) montrant
+            # un croisement chaotique de fils, meme sur un groupe a 3
+            # composants. Repli sur la ligne droite (comportement precedent,
+            # commit 121786d) si les positions sont indisponibles ou si
+            # aucun des deux chemins en L n'evite les autres composants.
+            p1 = _point_translate(points[0], delta_a)
+            p2 = _point_translate(points[-1], delta_b)
+            if p1 is None or p2 is None:
+                _decaler_point(points[0], delta_a)
+                _decaler_point(points[-1], delta_b)
+                if len(points) > 2:
+                    lp = ligne.find("LP")
+                    for point in points[1:-1]:
+                        lp.remove(point)
+                continue
+            obstacles = [
+                _boite_obstacle(pos)
+                for autre in deltas
+                if autre not in (ra, rb)
+                for pos in [_position_actuelle(source, autre)]
+                if pos is not None
+            ]
+            chemin = _router_fil_en_l(p1, p2, obstacles)
+            lp = ligne.find("LP")
+            for point in points:
+                lp.remove(point)
+            for x, y in chemin:
+                pf = ET.SubElement(lp, "PointF")
+                ET.SubElement(pf, "X").text = str(int(round(x)))
+                ET.SubElement(pf, "Y").text = str(int(round(y)))
             continue
         if delta_a is not None:
             _decaler_point(points[0], delta_a)

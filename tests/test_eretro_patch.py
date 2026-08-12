@@ -965,12 +965,10 @@ def test_appliquer_deltas_translate_tout_le_fil_si_meme_delta_aux_deux_bouts():
     assert resultat == [(5.0, 5.0), (55.0, 15.0), (105.0, 5.0)]
 
 
-def test_appliquer_deltas_avec_coude_et_deltas_differents_retrace_en_ligne_droite():
-    """@brief Un fil a coudes dont les deux extremites bougent de deltas
-    DIFFERENTS (fil interne a un groupe deplace) est retrace en ligne DROITE
-    entre les nouvelles positions — le coude intermediaire, fige a son
-    ancienne position, produisait un croisement chaotique visible a l'oeil
-    dans ERetroDesign (constat du 2026-08-12, capture reelle a l'appui)."""
+def test_appliquer_deltas_avec_coude_et_deltas_differents_route_en_l():
+    """@brief Un fil dont les deux bouts bougent de deltas DIFFERENTS est
+    maintenant route en angle droit (pas juste une diagonale) quand aucun
+    autre composant du groupe ne bloque les deux chemins possibles."""
     from circuit_analyzer.eretro_patch import _appliquer_deltas
     from circuit_analyzer.eretro import SourceXML
 
@@ -989,31 +987,57 @@ def test_appliquer_deltas_avec_coude_et_deltas_differents_retrace_en_ligne_droit
 
     resultat = [(float(p.findtext("X")), float(p.findtext("Y")))
                 for p in ligne.findall("LP/PointF")]
-    # Plus que 2 points : le coude intermediaire a ete retire, pas juste laisse en place.
-    assert resultat == [(5.0, 5.0), (109.0, 1.0)]
+    # Nouvelles extremites : A -> (5,5), B -> (109,1). Pas d'obstacle
+    # (elements={} ici, donc aucune autre ref connue) -> chemin en L
+    # horizontal-puis-vertical, 3 points.
+    assert resultat == [(5.0, 5.0), (109.0, 5.0), (109.0, 1.0)]
 
 
-def test_appliquer_deltas_droite_meme_sans_coude_prealable():
-    """@brief Un fil DEJA a 2 points (pas de coude) dont les deux bouts
-    bougent de deltas differents reste a 2 points, juste deplaces."""
+def test_appliquer_deltas_route_en_l_evite_un_autre_composant_du_groupe():
+    """@brief Bout en bout : un 3e composant du groupe, positionne pile sur
+    le segment horizontal du 1er candidat, fait basculer sur l'autre.
+
+    Coordonnees deliberement larges (0..1000, pas 0..100) : la boite
+    d'evitement fait 160x80, comparable a un trajet court — sur un trajet
+    de seulement 100x100 elle bloquerait les DEUX candidats a la fois
+    (verifie a la main en ecrivant ce test), ce qui ne testerait rien.
+    """
     from circuit_analyzer.eretro_patch import _appliquer_deltas
     from circuit_analyzer.eretro import SourceXML
 
     racine = ET.Element("BoardSCH")
+
+    def _composant(cx, cy):
+        item = ET.Element("DataItem")
+        ctr = ET.SubElement(item, "CtrIem")
+        ET.SubElement(ctr, "X").text = str(cx)
+        ET.SubElement(ctr, "Y").text = str(cy)
+        return item
+
+    # A -> (0,0) et B -> (1000,1000) apres translation (delta applique au
+    # point du FIL lui-meme, pas au CtrIem de A/B — non representes ici).
+    # C doit AUSSI etre dans `deltas` (delta nul : il ne bouge pas, mais
+    # les obstacles ne sont construits que pour les AUTRES refs de
+    # `deltas`, cf. implementation — un composant du groupe absent de
+    # `deltas` ne serait jamais considere comme obstacle). C reste donc a
+    # (500,0) : pile sur le segment horizontal du 1er candidat
+    # (0,0)->(1000,0), loin des deux segments du 2e candidat (vertical
+    # x=0, horizontal y=1000).
+    elements = {"C": _composant(500, 0)}
     ligne = ET.SubElement(racine, "Line")
     lp = ET.SubElement(ligne, "LP")
-    for x, y in [(0, 0), (100, 0)]:
+    for x, y in [(-5, -5), (990, 999)]:
         pf = ET.SubElement(lp, "PointF")
         ET.SubElement(pf, "X").text = str(x)
         ET.SubElement(pf, "Y").text = str(y)
 
-    source = SourceXML(arbre=ET.ElementTree(racine), elements={},
+    source = SourceXML(arbre=ET.ElementTree(racine), elements=elements,
                         lignes=[ligne], lignes_refs={0: ("A", "B")})
-    _appliquer_deltas(source, {"A": (5.0, 5.0), "B": (9.0, 1.0)})
+    _appliquer_deltas(source, {"A": (5.0, 5.0), "B": (10.0, 1.0), "C": (0.0, 0.0)})
 
     resultat = [(float(p.findtext("X")), float(p.findtext("Y")))
                 for p in ligne.findall("LP/PointF")]
-    assert resultat == [(5.0, 5.0), (109.0, 1.0)]
+    assert resultat == [(0.0, 0.0), (0.0, 1000.0), (1000.0, 1000.0)]
 
 
 def test_segment_croise_rectangle_horizontal_dedans():

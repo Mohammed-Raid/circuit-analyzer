@@ -55,9 +55,13 @@ def render(xml_str: str, out_path: Path, largeur: int = 180, hauteur: int = 100)
         points = line.findall("LP/PointF")
         if len(points) < 2:
             continue
-        x1, y1 = float(points[0].findtext("X")), float(points[0].findtext("Y"))
-        x2, y2 = float(points[-1].findtext("X")), float(points[-1].findtext("Y"))
-        ax.plot([x1, x2], [y1, y2], color="black", linewidth=1)
+        # Trace TOUS les points, pas seulement le premier/dernier : un fil
+        # route en L a un coude intermediaire qui doit rester visible pour
+        # la verification visuelle (sinon impossible de distinguer une
+        # diagonale d'un chemin en angle droit sur le rendu).
+        xs = [float(p.findtext("X")) for p in points]
+        ys = [float(p.findtext("Y")) for p in points]
+        ax.plot(xs, ys, color="black", linewidth=1)
 
     ax.set_aspect("equal")
     ax.autoscale()
