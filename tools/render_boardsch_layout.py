@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT))
 OUT = ROOT / "tools" / "_renders"
 
 
-def render(xml_str: str, out_path: Path, largeur: int = 80, hauteur: int = 40) -> None:
+def render(xml_str: str, out_path: Path, largeur: int = 180, hauteur: int = 100) -> None:
     """@brief Dessine chaque <DataItem> du XML en rectangle labellise.
 
     @param xml_str Document BoardSCH (sortie de generer_xml/components_to_xml).
@@ -50,6 +50,14 @@ def render(xml_str: str, out_path: Path, largeur: int = 80, hauteur: int = 40) -
                           fill=False, edgecolor="black")
         ax.add_patch(rect)
         ax.text(cx, cy, ref, ha="center", va="center", fontsize=9)
+
+    for line in root.iter("Line"):
+        points = line.findall("LP/PointF")
+        if len(points) < 2:
+            continue
+        x1, y1 = float(points[0].findtext("X")), float(points[0].findtext("Y"))
+        x2, y2 = float(points[-1].findtext("X")), float(points[-1].findtext("Y"))
+        ax.plot([x1, x2], [y1, y2], color="black", linewidth=1)
 
     ax.set_aspect("equal")
     ax.autoscale()

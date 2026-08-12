@@ -825,16 +825,30 @@ def _roles_du_bloc(r) -> dict:
     'impedances' sont regroupés sous le rôle 'aop' (l'ancre du montage —
     vrai pour tous les montages AOP actuels, qui n'ont qu'un seul composant
     hors impédances).
+
+    Une valeur de 'impedances' peut être un dict {'refs': [...], ...} (cas
+    général) OU une liste de tels dicts (ex. 'Zin' du Sommateur, plusieurs
+    entrées — detecteur.py:701/718).
     """
     impedances = r.get('impedances')
     if not impedances:
         return {}
-    roles = {nom: list(bloc.get('refs', [])) for nom, bloc in impedances.items()}
+    roles = {nom: _refs_du_role(bloc) for nom, bloc in impedances.items()}
     refs_connus = {ref for refs in roles.values() for ref in refs}
     ancre = [ref for ref in r['components'] if ref not in refs_connus]
     if ancre:
         roles['aop'] = ancre
     return roles
+
+
+def _refs_du_role(bloc) -> list:
+    """@brief Refs d'un rôle d'impédance : un dict {'refs': [...], ...} (cas
+    général) OU une liste de tels dicts (ex. 'Zin' du Sommateur, plusieurs
+    entrées — detecteur.py:701/718)."""
+    if isinstance(bloc, dict):
+        return list(bloc.get('refs', []))
+    return [ref for sous in (bloc or []) if isinstance(sous, dict)
+            for ref in sous.get('refs', [])]
 
 
 def _ordre_des_circuits(resultats) -> list:
@@ -995,9 +1009,13 @@ def _positionner_amplificateur_inverseur(comps, roles, x: int, y: int) -> dict:
     """@brief Gabarit canonique de l'ampli inverseur.
 
     Zin en chaîne horizontale à gauche de l'AOP (alignée sur son entrée),
-    AOP au centre, Zf en chaîne horizontale AU-DESSUS de l'AOP avec un
-    angle de 90° — c'est ce qui distingue visuellement le chemin de
-    contre-réaction (OUT -> IN-) de la chaîne Zin (angle 0, horizontale).
+    AOP au centre, Zf en chaîne horizontale AU-DESSUS de l'AOP — c'est la
+    POSITION (strictement au-dessus), pas une rotation, qui distingue le
+    chemin de contre-réaction de la chaîne Zin. Angle toujours 0 : la
+    rotation des broches de fil (_xml_fil) n'est pas fiable pour un symbole
+    tourné dans ERetroDesign — confirmé : une Zf à angle=90 s'affichait mal
+    (fils désalignés). Ne pas réintroduire de rotation sans corriger
+    _xml_fil pour tenir compte de comp.angle.
     Tout composant du bloc absent de `roles` (satellite) est placé par la
     grille compacte existante, sous la disposition canonique — jamais perdu.
 
@@ -1018,7 +1036,7 @@ def _positionner_amplificateur_inverseur(comps, roles, x: int, y: int) -> dict:
             pos[ref] = (x + j * _PAS_X_BLOC, y_aop, 0)
     for j, ref in enumerate(roles.get('Zf', [])):
         if ref in refs_du_bloc:
-            pos[ref] = (x_aop + j * _PAS_X_BLOC, y, 90)
+            pos[ref] = (x_aop + j * _PAS_X_BLOC, y, 0)
     restants = [c for c in comps if c.ref not in pos]
     pos.update(_positionner_grille_compacte(restants, x, y + 2 * _PAS_Y_BLOC))
     return pos
