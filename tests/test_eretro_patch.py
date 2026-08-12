@@ -13,6 +13,44 @@ from circuit_analyzer.xml import generer_xml, lire_xml
 _DOSSIER_REEL = "CARTE POUR TESTER (VRAI TEST)"
 
 
+def test_deltas_disposition_canonique_ancre_sur_le_centroide_reel(tmp_path):
+    """@brief Les refs de role (aop/Zin/Zf) d'un ampli inverseur recoivent un
+    delta qui les ramene vers la disposition canonique, centree sur leur
+    centroide REEL actuel — pas une origine arbitraire."""
+    from circuit_analyzer.eretro_patch import _deltas_disposition_canonique
+    from circuit_analyzer.xml import _grouper_par_circuit
+
+    comps = [
+        Composant("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Composant("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Composant("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    chemin = _fichier_synthetique(tmp_path, comps)
+    lus, res = _analyser(chemin)
+    source = lus.source
+    blocs = _grouper_par_circuit(lus, res)
+    assert len(blocs) == 1 and blocs[0].roles, "l'ampli inverseur doit etre reconnu avec ses roles"
+
+    deltas = _deltas_disposition_canonique(source, lus, blocs)
+    assert set(deltas) == {"U1", "R1", "R2"}
+    for ref, (dx, dy) in deltas.items():
+        assert isinstance(dx, (int, float)) and isinstance(dy, (int, float))
+
+
+def test_deltas_disposition_canonique_vide_sans_roles(tmp_path):
+    """@brief Un montage non migre (pas de roles) ne produit aucun delta."""
+    from circuit_analyzer.eretro_patch import _deltas_disposition_canonique
+    from circuit_analyzer.xml import _Bloc
+
+    comps = [Composant("R1", "R", {"1": "A", "2": "B"})]
+    chemin = _fichier_synthetique(tmp_path, comps)
+    lus, _ = _analyser(chemin)
+    bloc_sans_roles = _Bloc("Divers", list(lus))
+    deltas = _deltas_disposition_canonique(lus.source, lus, [bloc_sans_roles])
+    assert deltas == {}
+
+
 def _fichier_synthetique(tmp_path, comps=None):
     """@brief Ecrit un BoardSCH valide via generer_xml et renvoie son chemin.
 

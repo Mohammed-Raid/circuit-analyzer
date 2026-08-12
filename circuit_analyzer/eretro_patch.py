@@ -13,7 +13,14 @@ import logging
 import xml.etree.ElementTree as ET
 from collections import Counter
 
-from circuit_analyzer.xml import _grouper_par_circuit, _ids_groupes_par_ref
+from circuit_analyzer.xml import (
+    _grouper_par_circuit,
+    _ids_groupes_par_ref,
+    _PAS_X_BLOC,
+    _PAS_Y_BLOC,
+    _POSITIONNEURS_PAR_MOTIF,
+    _positionner_amplificateur_inverseur,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -88,6 +95,68 @@ def _ecrire(element, balise, valeur):
         return False
     cible.text = str(valeur)
     return True
+
+
+def _deltas_disposition_canonique(source, composants, blocs) -> dict:
+    """@brief Deplacements (dx, dy) des composants de role d'un montage migre.
+
+    @param source SourceXML (pont ref -> ET.Element).
+    @param composants Composants analyses (Composant, avec .ref).
+    @param blocs Sortie de _grouper_par_circuit (porte .label et .roles).
+    @return dict {ref: (dx, dy)} ; {} si rien a deplacer.
+
+    N'agit QUE sur les refs de role (aop/Zin/Zf) d'un montage dont le label
+    est dans _POSITIONNEURS_PAR_MOTIF ET dont roles est peuple — meme garde
+    que le chemin generer_xml, aucune regression possible sur un montage non
+    migre. Les satellites et tout le reste de la carte ne sont jamais
+    consideres ici.
+
+    La disposition canonique est ANCREE sur le centroide REEL actuel du
+    groupe (pas une origine arbitraire) : minimise le risque de chevaucher
+    un composant reel voisin non deplace.
+    """
+    comp_par_ref = {c.ref: c for c in composants}
+    deltas = {}
+    for bloc in blocs:
+        if bloc.label not in _POSITIONNEURS_PAR_MOTIF or not bloc.roles:
+            continue
+        refs_role = [ref for refs in bloc.roles.values() for ref in refs]
+        positions_reelles = {}
+        for ref in refs_role:
+            element = source.elements.get(ref)
+            if element is None:
+                continue
+            x_elem, y_elem = element.find("CtrIem/X"), element.find("CtrIem/Y")
+            if x_elem is None or y_elem is None:
+                continue
+            try:
+                positions_reelles[ref] = (float(x_elem.text), float(y_elem.text))
+            except (TypeError, ValueError):
+                continue
+        if not positions_reelles:
+            continue
+
+        cx = sum(p[0] for p in positions_reelles.values()) / len(positions_reelles)
+        cy = sum(p[1] for p in positions_reelles.values()) / len(positions_reelles)
+        # _positionner_amplificateur_inverseur(comps, roles, x, y) centre son
+        # AOP a (x + 2*_PAS_X_BLOC, y + _PAS_Y_BLOC) et sa chaine Zf a (., y) :
+        # on choisit (x, y) pour que ce centre approximatif de la disposition
+        # coincide avec le centroide reel calcule ci-dessus.
+        x_origine = cx - 1.5 * _PAS_X_BLOC
+        y_origine = cy - _PAS_Y_BLOC
+        comps_role = [comp_par_ref[ref] for ref in positions_reelles if ref in comp_par_ref]
+        nouvelles = _positionner_amplificateur_inverseur(
+            comps_role, bloc.roles, x_origine, y_origine)
+
+        for ref, position in nouvelles.items():
+            if ref not in positions_reelles:
+                continue
+            nx, ny = position[0], position[1]
+            ox, oy = positions_reelles[ref]
+            dx, dy = nx - ox, ny - oy
+            if dx or dy:
+                deltas[ref] = (dx, dy)
+    return deltas
 
 
 def ecrire_groupes(source, composants, resultats=None) -> str:
