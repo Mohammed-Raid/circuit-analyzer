@@ -909,6 +909,84 @@ def test_decaler_point_failsoft_avec_pointf_malformee():
     assert len(list(point_vide)) == 0, "un PointF vide doit rester vide"
 
 
+def test_ecrire_groupes_deplace_lampli_inverseur_vers_sa_disposition_canonique(tmp_path):
+    """@brief Bout en bout : un ampli inverseur reconnu sur une carte "scannee"
+    (chemin ecrire_groupes) est translate vers sa disposition canonique."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+
+    comps = [
+        Composant("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Composant("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Composant("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    chemin = _fichier_synthetique(tmp_path, comps)
+    lus, res = _analyser(chemin)
+    positions_avant = {
+        ref: (float(el.find("CtrIem/X").text), float(el.find("CtrIem/Y").text))
+        for ref, el in lus.source.elements.items()
+    }
+
+    xml_patche = ecrire_groupes(lus.source, lus, res)
+    racine = ET.fromstring(xml_patche)
+    positions_apres = {
+        item.findtext("reference"):
+            (float(item.find("CtrIem/X").text), float(item.find("CtrIem/Y").text))
+        for item in racine.findall(".//CmpntL/DataItem")
+    }
+
+    # Les 3 composants de l'ampli inverseur ont bouge (ou sont deja canoniques,
+    # peu probable ici mais pas garanti faux) — au moins un a bouge.
+    assert any(positions_avant[ref] != positions_apres[ref] for ref in ("U1", "R1", "R2"))
+
+
+def test_ecrire_groupes_ne_deplace_jamais_un_montage_non_migre(tmp_path):
+    """@brief Garde-fou : un montage SANS positionneur canonique (ex. suiveur
+    de tension) garde ses positions reelles intactes, seul le groupage s'applique."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+
+    comps = [
+        Composant("U1", "U", {"IN+": "N1", "IN-": "N2", "OUT": "N2"}),
+    ]
+    chemin = _fichier_synthetique(tmp_path, comps)
+    lus, res = _analyser(chemin)
+    x_avant = float(lus.source.elements["U1"].find("CtrIem/X").text)
+    y_avant = float(lus.source.elements["U1"].find("CtrIem/Y").text)
+
+    xml_patche = ecrire_groupes(lus.source, lus, res)
+    racine = ET.fromstring(xml_patche)
+    item = next(i for i in racine.findall(".//CmpntL/DataItem")
+                if i.findtext("reference") == "U1")
+    assert float(item.find("CtrIem/X").text) == x_avant
+    assert float(item.find("CtrIem/Y").text) == y_avant
+
+
+def test_ecrire_groupes_preserve_la_connectivite_apres_translation(tmp_path):
+    """@brief Contrainte dure : la translation ne change AUCUNE connexion —
+    reparse le resultat et confirme que l'ampli inverseur est toujours detecte
+    avec les memes composants."""
+    from circuit_analyzer.xml import lire_xml
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+
+    comps = [
+        Composant("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Composant("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Composant("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    chemin = _fichier_synthetique(tmp_path, comps)
+    lus, res = _analyser(chemin)
+    xml_patche = ecrire_groupes(lus.source, lus, res)
+
+    chemin_patche = os.path.join(str(tmp_path), "patche.xml")
+    with open(chemin_patche, "w", encoding="utf-8") as f:
+        f.write(xml_patche)
+    relu, res_relu = _analyser(chemin_patche)
+    types_relu = sorted(r["circuit_type"] for r in res_relu)
+    assert "Amplificateur inverseur (AOP)" in types_relu
+    assert {c.ref for c in relu} == {"U1", "R1", "R2"}
+
+
 def _comparer_sauf_groupes(a, b, chemin="/"):
     """@brief Egalite RECURSIVE de deux arbres, hors champs de groupe.
 

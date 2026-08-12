@@ -118,6 +118,8 @@ def _deltas_disposition_canonique(source, composants, blocs) -> dict:
     comp_par_ref = {c.ref: c for c in composants}
     deltas = {}
     for bloc in blocs:
+        if not hasattr(bloc, 'label') or not hasattr(bloc, 'roles'):
+            continue
         if bloc.label not in _POSITIONNEURS_PAR_MOTIF or not bloc.roles:
             continue
         refs_role = [ref for refs in bloc.roles.values() for ref in refs]
@@ -235,6 +237,8 @@ def ecrire_groupes(source, composants, resultats=None) -> str:
     le rend a l'unite (Form1.cs:9515).
     """
     blocs = _grouper_par_circuit(composants, resultats) if resultats else []
+    if blocs:
+        _appliquer_deltas(source, _deltas_disposition_canonique(source, composants, blocs))
     gid_par_ref = _ids_groupes_par_ref(blocs) if blocs else {}
     # `getattr` et non `.label` : le nom est DECORATIF (il s'affiche sur le
     # cadre du groupe), il ne doit jamais faire echouer l'ecriture d'un groupe.
