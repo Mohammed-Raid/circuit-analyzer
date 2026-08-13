@@ -1213,13 +1213,14 @@ def test_ecrire_groupes_preserve_la_connectivite_apres_translation(tmp_path):
 
 def test_ecrire_groupes_deplace_amplificateur_differentiel(tmp_path):
     """@brief Chemin carte scannee : le differentiel (nouvellement migre)
-    est translate vers sa disposition canonique, pas seulement groupe.
-    Meme style d'assertion (positions avant/apres) que le test existant
-    test_ecrire_groupes_deplace_lampli_inverseur_vers_sa_disposition_canonique
-    (ligne 1136) : AVANT le Step 5 de ce Task (registre pas encore etendu),
-    `_deltas_disposition_canonique` exclut ce bloc (garde
-    `bloc.label not in _POSITIONNEURS_PAR_MOTIF`, eretro_patch.py:119) donc
-    AUCUNE position ne bouge — ce test DOIT echouer avant le Step 5."""
+    est translate vers sa disposition canonique EXACTE, pas seulement
+    "quelque chose a bouge". Revue de branche : une assertion `any(pos_avant
+    != pos_apres ...)` laissait passer un bug ou _deltas_disposition_canonique
+    appelait TOUJOURS le positionneur de l'ampli inverseur au lieu de celui
+    du differentiel (U1/R2 bougeaient quand meme, coincidence de forme
+    partielle, mais R1/R3/R4 recevaient un mauvais gabarit) -- on compare
+    maintenant la FORME obtenue (positions normalisees au coin superieur
+    gauche) au gabarit canonique calcule directement, pas juste "a bouge"."""
     from circuit_analyzer.eretro_patch import ecrire_groupes
 
     comps = [
@@ -1232,10 +1233,6 @@ def test_ecrire_groupes_deplace_amplificateur_differentiel(tmp_path):
     ]
     chemin = _fichier_synthetique(tmp_path, comps)
     lus, res = _analyser(chemin)
-    positions_avant = {
-        ref: (float(el.find("CtrIem/X").text), float(el.find("CtrIem/Y").text))
-        for ref, el in lus.source.elements.items()
-    }
 
     xml_patche = ecrire_groupes(lus.source, lus, res)
     racine = ET.fromstring(xml_patche)
@@ -1244,8 +1241,23 @@ def test_ecrire_groupes_deplace_amplificateur_differentiel(tmp_path):
             (float(item.find("CtrIem/X").text), float(item.find("CtrIem/Y").text))
         for item in racine.findall(".//CmpntL/DataItem")
     }
-    assert any(positions_avant[ref] != positions_apres[ref]
-               for ref in ("U1", "R1", "R2", "R3", "R4"))
+    from circuit_analyzer.xml import _positionner_amplificateur_differentiel
+
+    refs = ("U1", "R1", "R2", "R3", "R4")
+    min_x = min(positions_apres[ref][0] for ref in refs)
+    min_y = min(positions_apres[ref][1] for ref in refs)
+    forme_obtenue = {ref: (positions_apres[ref][0] - min_x,
+                            positions_apres[ref][1] - min_y) for ref in refs}
+
+    roles = {"aop": ["U1"], "Z1": ["R1"], "Zf": ["R2"], "Z3": ["R3"], "Zg": ["R4"]}
+    canonique = _positionner_amplificateur_differentiel(comps, roles, 0, 0)
+    can_min_x = min(p[0] for p in canonique.values())
+    can_min_y = min(p[1] for p in canonique.values())
+    forme_attendue = {ref: (pos[0] - can_min_x, pos[1] - can_min_y)
+                       for ref, pos in canonique.items()}
+    assert forme_obtenue == forme_attendue, (
+        "la disposition patchee ne correspond pas au gabarit canonique "
+        "(chevauchements de forme, pas juste 'a bouge')")
 
     # Connectivite : le montage reste detectable apres translation.
     chemin_patche = os.path.join(str(tmp_path), "patche.xml")
@@ -1259,41 +1271,54 @@ def test_ecrire_groupes_deplace_amplificateur_differentiel(tmp_path):
 
 def test_ecrire_groupes_deplace_les_trois_montages_a_deux_roles(tmp_path):
     """@brief Sommateur, Integrateur, Derivateur (partagent la forme {Zin, Zf})
-    sont chacun translates vers une disposition canonique apres migration,
-    sur le chemin carte scannee. Meme raisonnement rouge/vert que le test
-    precedent : DOIT echouer avant le Step 5 (registre pas encore etendu)."""
+    sont chacun translates vers une disposition canonique EXACTE apres
+    migration, sur le chemin carte scannee. Meme durcissement que le test
+    precedent (revue de branche) : compare la FORME obtenue au gabarit
+    canonique calcule directement, pas juste "une position a bouge"."""
     from circuit_analyzer.eretro_patch import ecrire_groupes
+    from circuit_analyzer.xml import _positionner_amplificateur_inverseur
 
     cas = {
-        "Amplificateur sommateur (AOP)": [
-            Composant("U1", "U", {"IN+": "GND", "IN-": "NET_INV",
-                                  "OUT": "NET_OUT", "V+": "VCC", "V-": "GND"}),
-            Composant("R1", "R", {"1": "NET_INV", "2": "NET_IN1"}),
-            Composant("R2", "R", {"1": "NET_INV", "2": "NET_IN2"}),
-            # ref "R3" (pas "Rf") : lire_xml() renumerote TOUJOURS les refs
-            # par prefixe de type + ordre positionnel (generer_ref,
-            # xml.py:1954), en ignorant le <reference> d'origine — "Rf"
-            # (3e composant R) ressortirait de toute facon en "R3" apres le
-            # roundtrip _fichier_synthetique -> _analyser. Comportement
-            # preexistant (commit 40668f53, 2026-07-17), sans rapport avec
-            # ce registre ; nommer le fixture avec la valeur deja renumerotee
-            # evite un KeyError sans rapport avec ce qui est teste ici.
-            Composant("R3", "R", {"1": "NET_OUT", "2": "NET_INV"}),
-        ],
-        "Intégrateur (AOP)": [
-            Composant("U1", "U", {"IN+": "GND", "IN-": "NET_INV",
-                                  "OUT": "NET_OUT", "V+": "VCC", "V-": "GND"}),
-            Composant("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
-            Composant("C1", "C", {"1": "NET_INV", "2": "NET_OUT"}),
-        ],
-        "Dérivateur (AOP)": [
-            Composant("U1", "U", {"IN+": "GND", "IN-": "NET_INV",
-                                  "OUT": "NET_OUT", "V+": "VCC", "V-": "GND"}),
-            Composant("C1", "C", {"1": "NET_INV", "2": "NET_IN"}),
-            Composant("R1", "R", {"1": "NET_INV", "2": "NET_OUT"}),
-        ],
+        "Amplificateur sommateur (AOP)": {
+            "comps": [
+                Composant("U1", "U", {"IN+": "GND", "IN-": "NET_INV",
+                                      "OUT": "NET_OUT", "V+": "VCC", "V-": "GND"}),
+                Composant("R1", "R", {"1": "NET_INV", "2": "NET_IN1"}),
+                Composant("R2", "R", {"1": "NET_INV", "2": "NET_IN2"}),
+                # ref "R3" (pas "Rf") : lire_xml() renumerote TOUJOURS les refs
+                # par prefixe de type + ordre positionnel (generer_ref,
+                # xml.py:1954), en ignorant le <reference> d'origine — "Rf"
+                # (3e composant R) ressortirait de toute facon en "R3" apres le
+                # roundtrip _fichier_synthetique -> _analyser. Comportement
+                # preexistant (commit 40668f53, 2026-07-17), sans rapport avec
+                # ce registre ; nommer le fixture avec la valeur deja renumerotee
+                # evite un KeyError sans rapport avec ce qui est teste ici.
+                Composant("R3", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+            ],
+            "roles": {"aop": ["U1"], "Zin": ["R1", "R2"], "Zf": ["R3"]},
+        },
+        "Intégrateur (AOP)": {
+            "comps": [
+                Composant("U1", "U", {"IN+": "GND", "IN-": "NET_INV",
+                                      "OUT": "NET_OUT", "V+": "VCC", "V-": "GND"}),
+                Composant("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+                Composant("C1", "C", {"1": "NET_INV", "2": "NET_OUT"}),
+            ],
+            "roles": {"aop": ["U1"], "Zin": ["R1"], "Zf": ["C1"]},
+        },
+        "Dérivateur (AOP)": {
+            "comps": [
+                Composant("U1", "U", {"IN+": "GND", "IN-": "NET_INV",
+                                      "OUT": "NET_OUT", "V+": "VCC", "V-": "GND"}),
+                Composant("C1", "C", {"1": "NET_INV", "2": "NET_IN"}),
+                Composant("R1", "R", {"1": "NET_INV", "2": "NET_OUT"}),
+            ],
+            "roles": {"aop": ["U1"], "Zin": ["C1"], "Zf": ["R1"]},
+        },
     }
-    for idx, (label, comps) in enumerate(cas.items()):
+    for idx, (label, spec) in enumerate(cas.items()):
+        comps = spec["comps"]
+        roles = spec["roles"]
         # `_fichier_synthetique` ecrit toujours vers le meme nom fixe
         # ("synth.xml") DANS tmp_path (voir son implementation,
         # test_eretro_patch.py:83-97) — reutiliser tmp_path directement
@@ -1303,11 +1328,6 @@ def test_ecrire_groupes_deplace_les_trois_montages_a_deux_roles(tmp_path):
         chemin = _fichier_synthetique(tmp_path, comps)
         lus, res = _analyser(chemin)
         refs = [c.ref for c in comps]
-        positions_avant = {
-            ref: (float(lus.source.elements[ref].find("CtrIem/X").text),
-                  float(lus.source.elements[ref].find("CtrIem/Y").text))
-            for ref in refs
-        }
 
         xml_patche = ecrire_groupes(lus.source, lus, res)
         racine = ET.fromstring(xml_patche)
@@ -1316,8 +1336,18 @@ def test_ecrire_groupes_deplace_les_trois_montages_a_deux_roles(tmp_path):
                 (float(item.find("CtrIem/X").text), float(item.find("CtrIem/Y").text))
             for item in racine.findall(".//CmpntL/DataItem")
         }
-        assert any(positions_avant[ref] != positions_apres[ref] for ref in refs), \
-            f"{label} : aucune position n'a bouge"
+
+        min_x = min(positions_apres[ref][0] for ref in refs)
+        min_y = min(positions_apres[ref][1] for ref in refs)
+        forme_obtenue = {ref: (positions_apres[ref][0] - min_x,
+                                positions_apres[ref][1] - min_y) for ref in refs}
+
+        canonique = _positionner_amplificateur_inverseur(comps, roles, 0, 0)
+        can_min_x = min(p[0] for p in canonique.values())
+        can_min_y = min(p[1] for p in canonique.values())
+        forme_attendue = {ref: (pos[0] - can_min_x, pos[1] - can_min_y)
+                           for ref, pos in canonique.items()}
+        assert forme_obtenue == forme_attendue, f"{label} : forme incorrecte apres translation"
 
         chemin_patche = os.path.join(str(tmp_path), f"patche_{idx}.xml")
         with open(chemin_patche, "w", encoding="utf-8") as f:

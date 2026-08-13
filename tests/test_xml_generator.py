@@ -776,6 +776,23 @@ def test_positionner_amplificateur_inverseur_ignore_role_hors_bloc():
     assert "U1" in pos and "R1" in pos and "R2" in pos
 
 
+def test_positionner_amplificateur_inverseur_zin_a_trois_entrees_evite_laop():
+    """@brief Revue de branche : avec 3 entrees Zin, la 3e (j=2) tombait pile
+    sur la colonne de l'AOP (meme x) — chevauchement reel sur un sommateur a
+    3 entrees, un montage standard, pas un cas exotique."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN1"}),
+        Component("R2", "R", {"1": "NET_INV", "2": "NET_IN2"}),
+        Component("R3", "R", {"1": "NET_INV", "2": "NET_IN3"}),
+        Component("Rf", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    roles = {"aop": ["U1"], "Zin": ["R1", "R2", "R3"], "Zf": ["Rf"]}
+    pos = _positionner_amplificateur_inverseur(comps, roles, 0, 0)
+    colonnes = {pos["R1"][0], pos["R2"][0], pos["R3"][0], pos["U1"][0]}
+    assert len(colonnes) == 4, "une entree Zin partage la colonne de l'AOP"
+
+
 # ── Positionneur canonique : amplificateur différentiel ─────────────────────
 
 
@@ -837,6 +854,26 @@ def test_positionner_amplificateur_differentiel_ignore_role_hors_bloc():
     pos = _positionner_amplificateur_differentiel(comps, roles, 0, 0)
     assert "R99" not in pos
     assert all(ref in pos for ref in ("U1", "R1", "R2", "R3", "R4"))
+
+
+def test_positionner_amplificateur_differentiel_z1_a_trois_entrees_evite_laop():
+    """@brief Meme garde-fou que pour Zin de l'ampli inverseur, applique a Z1
+    (meme risque structurel si un Z1 composite a 3+ elements existait)."""
+    comps = [
+        Component("U1", "U", {"IN+": "NET_INPLUS", "IN-": "NET_INMOINS",
+                              "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INMOINS", "2": "NET_A"}),
+        Component("R2", "R", {"1": "NET_A", "2": "NET_B"}),
+        Component("R3", "R", {"1": "NET_B", "2": "NET_IN1"}),
+        Component("Rf", "R", {"1": "NET_OUT", "2": "NET_INMOINS"}),
+        Component("R5", "R", {"1": "NET_INPLUS", "2": "NET_IN2"}),
+        Component("R6", "R", {"1": "NET_INPLUS", "2": "GND"}),
+    ]
+    roles = {"aop": ["U1"], "Z1": ["R1", "R2", "R3"], "Zf": ["Rf"],
+             "Z3": ["R5"], "Zg": ["R6"]}
+    pos = _positionner_amplificateur_differentiel(comps, roles, 0, 0)
+    colonnes = {pos["R1"][0], pos["R2"][0], pos["R3"][0], pos["U1"][0]}
+    assert len(colonnes) == 4, "une entree Z1 partage la colonne de l'AOP"
 
 
 # ── Dispatch du positionneur canonique + angle dans le XML ──────────────────────

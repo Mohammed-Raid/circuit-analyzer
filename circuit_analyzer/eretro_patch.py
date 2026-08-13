@@ -17,7 +17,6 @@ from circuit_analyzer.xml import (
     _grouper_par_circuit,
     _ids_groupes_par_ref,
     _POSITIONNEURS_PAR_MOTIF,
-    _positionner_amplificateur_inverseur,
 )
 
 _log = logging.getLogger(__name__)
@@ -103,8 +102,10 @@ def _deltas_disposition_canonique(source, composants, blocs) -> dict:
     @param blocs Sortie de _grouper_par_circuit (porte .label et .roles).
     @return dict {ref: (dx, dy)} ; {} si rien a deplacer.
 
-    N'agit QUE sur les refs de role (aop/Zin/Zf) d'un montage dont le label
-    est dans _POSITIONNEURS_PAR_MOTIF ET dont roles est peuple — meme garde
+    N'agit QUE sur les refs de role (le nom exact des roles depend du
+    positionneur associe a bloc.label, cf. _POSITIONNEURS_PAR_MOTIF) d'un
+    montage dont le label est dans _POSITIONNEURS_PAR_MOTIF ET dont roles
+    est peuple — meme garde
     que le chemin generer_xml, aucune regression possible sur un montage non
     migre. Les satellites et tout le reste de la carte ne sont jamais
     consideres ici.
@@ -154,7 +155,7 @@ def _deltas_disposition_canonique(source, composants, blocs) -> dict:
         # positionneur (contrairement a des coefficients devines a la main,
         # qui avaient produit une derive de (-43, -63) a chaque export —
         # revue de branche, jamais convergente).
-        provisoire = _positionner_amplificateur_inverseur(comps_role, bloc.roles, 0, 0)
+        provisoire = _POSITIONNEURS_PAR_MOTIF[bloc.label](comps_role, bloc.roles, 0, 0)
         provisoire_role = {ref: pos for ref, pos in provisoire.items() if ref in positions_reelles}
         if not provisoire_role:
             continue

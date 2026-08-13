@@ -1033,7 +1033,12 @@ def _positionner_amplificateur_inverseur(comps, roles, x: int, y: int) -> dict:
             pos[ref] = (x_aop, y_aop, 0)
     for j, ref in enumerate(roles.get('Zin', [])):
         if ref in refs_du_bloc:
-            pos[ref] = (x + j * _PAS_X_BLOC, y_aop, 0)
+            # Colonne 2 est occupee par l'AOP (x_aop) sur cette meme ligne
+            # -- sauter cette colonne au-dela de 2 entrees pour eviter un
+            # chevauchement exact (revue de branche : un sommateur a 3
+            # entrees, montage standard, tombait pile sur l'AOP).
+            col = j if j < 2 else j + 1
+            pos[ref] = (x + col * _PAS_X_BLOC, y_aop, 0)
     for j, ref in enumerate(roles.get('Zf', [])):
         if ref in refs_du_bloc:
             pos[ref] = (x_aop + j * _PAS_X_BLOC, y, 0)
@@ -1067,7 +1072,9 @@ def _positionner_amplificateur_differentiel(comps, roles, x: int, y: int) -> dic
             pos[ref] = (x_aop, y_aop, 0)
     for j, ref in enumerate(roles.get('Z1', [])):
         if ref in refs_du_bloc:
-            pos[ref] = (x + j * _PAS_X_BLOC, y_aop, 0)
+            # Meme raison que Zin de l'ampli inverseur : colonne 2 = l'AOP.
+            col = j if j < 2 else j + 1
+            pos[ref] = (x + col * _PAS_X_BLOC, y_aop, 0)
     for j, ref in enumerate(roles.get('Zf', [])):
         if ref in refs_du_bloc:
             pos[ref] = (x_aop + j * _PAS_X_BLOC, y, 0)
