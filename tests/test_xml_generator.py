@@ -161,6 +161,37 @@ def test_roundtrip_combined_multi_pattern():
     assert orig == roundtrip
 
 
+def test_roundtrip_amplificateur_differentiel():
+    """@brief Le montage differentiel survit au roundtrip XML (connectivite)."""
+    comps = [
+        Component("U1", "U", {"IN+": "NET_INPLUS", "IN-": "NET_INMOINS",
+                              "OUT": "NET_OUT", "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_INMOINS", "2": "NET_IN1"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INMOINS"}),
+        Component("R3", "R", {"1": "NET_INPLUS", "2": "NET_IN2"}),
+        Component("R4", "R", {"1": "NET_INPLUS", "2": "GND"}),
+    ]
+    xml = components_to_xml(comps)
+    back = _xml_to_components(xml)
+    types = [r["circuit_type"] for r in match_patterns(build_graph(back))]
+    assert "Amplificateur différentiel (AOP)" in types
+
+
+def test_roundtrip_amplificateur_sommateur():
+    """@brief Le montage sommateur survit au roundtrip XML (connectivite)."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN1"}),
+        Component("R2", "R", {"1": "NET_INV", "2": "NET_IN2"}),
+        Component("Rf", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    xml = components_to_xml(comps)
+    back = _xml_to_components(xml)
+    types = [r["circuit_type"] for r in match_patterns(build_graph(back))]
+    assert "Amplificateur sommateur (AOP)" in types
+
+
 def test_disposition_canonique_preserve_la_connectivite():
     """@brief Contrainte dure : la regeneration avec disposition canonique
     ne change AUCUNE connexion — verifie en re-detectant sur le resultat.
@@ -839,6 +870,42 @@ def test_positionner_composants_bloc_repli_si_pas_de_roles():
     resultat = _positionner_composants_bloc(bloc, 50, 60)
     # L'ancien gabarit famille place l'AOP a (x + _PAS_X_BLOC, y) — pas x+2*_PAS_X_BLOC.
     assert resultat["U1"][:2] == (50 + _PAS_X_BLOC, 60)
+
+
+def test_positionner_composants_bloc_dispatch_sommateur_integrateur_derivateur():
+    """@brief Les 3 montages qui partagent la forme {Zin, Zf} de l'ampli
+    inverseur reutilisent LE MEME positionneur via le registre — y compris
+    le Sommateur, dont Zin est une LISTE (plusieurs entrees), deja gere par
+    _positionner_amplificateur_inverseur."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN1"}),
+        Component("R2", "R", {"1": "NET_INV", "2": "NET_IN2"}),
+        Component("Rf", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    roles = {"aop": ["U1"], "Zin": ["R1", "R2"], "Zf": ["Rf"]}
+    for label in ("Amplificateur sommateur (AOP)", "Intégrateur (AOP)",
+                  "Dérivateur (AOP)"):
+        bloc = _Bloc(label, comps, roles=roles)
+        attendu = _positionner_amplificateur_inverseur(comps, roles, 50, 60)
+        assert _positionner_composants_bloc(bloc, 50, 60) == attendu
+
+
+def test_positionner_composants_bloc_dispatch_differentiel():
+    """@brief L'Amplificateur différentiel utilise son propre positionneur
+    (forme a 4 roles, pas celle de l'ampli inverseur)."""
+    comps = [
+        Component("U1", "U", {"IN+": "NET_INPLUS", "IN-": "NET_INMOINS",
+                              "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INMOINS", "2": "NET_IN1"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INMOINS"}),
+        Component("R3", "R", {"1": "NET_INPLUS", "2": "NET_IN2"}),
+        Component("R4", "R", {"1": "NET_INPLUS", "2": "GND"}),
+    ]
+    roles = {"aop": ["U1"], "Z1": ["R1"], "Zf": ["R2"], "Z3": ["R3"], "Zg": ["R4"]}
+    bloc = _Bloc("Amplificateur différentiel (AOP)", comps, roles=roles)
+    attendu = _positionner_amplificateur_differentiel(comps, roles, 50, 60)
+    assert _positionner_composants_bloc(bloc, 50, 60) == attendu
 
 
 def _item(xml_str, ref):

@@ -1211,6 +1211,122 @@ def test_ecrire_groupes_preserve_la_connectivite_apres_translation(tmp_path):
     assert {c.ref for c in relu} == {"U1", "R1", "R2"}
 
 
+def test_ecrire_groupes_deplace_amplificateur_differentiel(tmp_path):
+    """@brief Chemin carte scannee : le differentiel (nouvellement migre)
+    est translate vers sa disposition canonique, pas seulement groupe.
+    Meme style d'assertion (positions avant/apres) que le test existant
+    test_ecrire_groupes_deplace_lampli_inverseur_vers_sa_disposition_canonique
+    (ligne 1136) : AVANT le Step 5 de ce Task (registre pas encore etendu),
+    `_deltas_disposition_canonique` exclut ce bloc (garde
+    `bloc.label not in _POSITIONNEURS_PAR_MOTIF`, eretro_patch.py:119) donc
+    AUCUNE position ne bouge — ce test DOIT echouer avant le Step 5."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+
+    comps = [
+        Composant("U1", "U", {"IN+": "NET_INPLUS", "IN-": "NET_INMOINS",
+                              "OUT": "NET_OUT", "V+": "VCC", "V-": "GND"}),
+        Composant("R1", "R", {"1": "NET_INMOINS", "2": "NET_IN1"}),
+        Composant("R2", "R", {"1": "NET_OUT", "2": "NET_INMOINS"}),
+        Composant("R3", "R", {"1": "NET_INPLUS", "2": "NET_IN2"}),
+        Composant("R4", "R", {"1": "NET_INPLUS", "2": "GND"}),
+    ]
+    chemin = _fichier_synthetique(tmp_path, comps)
+    lus, res = _analyser(chemin)
+    positions_avant = {
+        ref: (float(el.find("CtrIem/X").text), float(el.find("CtrIem/Y").text))
+        for ref, el in lus.source.elements.items()
+    }
+
+    xml_patche = ecrire_groupes(lus.source, lus, res)
+    racine = ET.fromstring(xml_patche)
+    positions_apres = {
+        item.findtext("reference"):
+            (float(item.find("CtrIem/X").text), float(item.find("CtrIem/Y").text))
+        for item in racine.findall(".//CmpntL/DataItem")
+    }
+    assert any(positions_avant[ref] != positions_apres[ref]
+               for ref in ("U1", "R1", "R2", "R3", "R4"))
+
+    # Connectivite : le montage reste detectable apres translation.
+    chemin_patche = os.path.join(str(tmp_path), "patche.xml")
+    with open(chemin_patche, "w", encoding="utf-8") as f:
+        f.write(xml_patche)
+    relu, res_relu = _analyser(chemin_patche)
+    types_relu = sorted(r["circuit_type"] for r in res_relu)
+    assert "Amplificateur différentiel (AOP)" in types_relu
+    assert {c.ref for c in relu} == {"U1", "R1", "R2", "R3", "R4"}
+
+
+def test_ecrire_groupes_deplace_les_trois_montages_a_deux_roles(tmp_path):
+    """@brief Sommateur, Integrateur, Derivateur (partagent la forme {Zin, Zf})
+    sont chacun translates vers une disposition canonique apres migration,
+    sur le chemin carte scannee. Meme raisonnement rouge/vert que le test
+    precedent : DOIT echouer avant le Step 5 (registre pas encore etendu)."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+
+    cas = {
+        "Amplificateur sommateur (AOP)": [
+            Composant("U1", "U", {"IN+": "GND", "IN-": "NET_INV",
+                                  "OUT": "NET_OUT", "V+": "VCC", "V-": "GND"}),
+            Composant("R1", "R", {"1": "NET_INV", "2": "NET_IN1"}),
+            Composant("R2", "R", {"1": "NET_INV", "2": "NET_IN2"}),
+            # ref "R3" (pas "Rf") : lire_xml() renumerote TOUJOURS les refs
+            # par prefixe de type + ordre positionnel (generer_ref,
+            # xml.py:1954), en ignorant le <reference> d'origine — "Rf"
+            # (3e composant R) ressortirait de toute facon en "R3" apres le
+            # roundtrip _fichier_synthetique -> _analyser. Comportement
+            # preexistant (commit 40668f53, 2026-07-17), sans rapport avec
+            # ce registre ; nommer le fixture avec la valeur deja renumerotee
+            # evite un KeyError sans rapport avec ce qui est teste ici.
+            Composant("R3", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+        ],
+        "Intégrateur (AOP)": [
+            Composant("U1", "U", {"IN+": "GND", "IN-": "NET_INV",
+                                  "OUT": "NET_OUT", "V+": "VCC", "V-": "GND"}),
+            Composant("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+            Composant("C1", "C", {"1": "NET_INV", "2": "NET_OUT"}),
+        ],
+        "Dérivateur (AOP)": [
+            Composant("U1", "U", {"IN+": "GND", "IN-": "NET_INV",
+                                  "OUT": "NET_OUT", "V+": "VCC", "V-": "GND"}),
+            Composant("C1", "C", {"1": "NET_INV", "2": "NET_IN"}),
+            Composant("R1", "R", {"1": "NET_INV", "2": "NET_OUT"}),
+        ],
+    }
+    for idx, (label, comps) in enumerate(cas.items()):
+        # `_fichier_synthetique` ecrit toujours vers le meme nom fixe
+        # ("synth.xml") DANS tmp_path (voir son implementation,
+        # test_eretro_patch.py:83-97) — reutiliser tmp_path directement
+        # pour chaque cas est sans risque : le fichier est relu en memoire
+        # (`lus = lire_xml(chemin)`) avant l'iteration suivante, donc
+        # l'ecrasement entre cas n'aliase rien.
+        chemin = _fichier_synthetique(tmp_path, comps)
+        lus, res = _analyser(chemin)
+        refs = [c.ref for c in comps]
+        positions_avant = {
+            ref: (float(lus.source.elements[ref].find("CtrIem/X").text),
+                  float(lus.source.elements[ref].find("CtrIem/Y").text))
+            for ref in refs
+        }
+
+        xml_patche = ecrire_groupes(lus.source, lus, res)
+        racine = ET.fromstring(xml_patche)
+        positions_apres = {
+            item.findtext("reference"):
+                (float(item.find("CtrIem/X").text), float(item.find("CtrIem/Y").text))
+            for item in racine.findall(".//CmpntL/DataItem")
+        }
+        assert any(positions_avant[ref] != positions_apres[ref] for ref in refs), \
+            f"{label} : aucune position n'a bouge"
+
+        chemin_patche = os.path.join(str(tmp_path), f"patche_{idx}.xml")
+        with open(chemin_patche, "w", encoding="utf-8") as f:
+            f.write(xml_patche)
+        relu, res_relu = _analyser(chemin_patche)
+        types_relu = [r["circuit_type"] for r in res_relu]
+        assert label in types_relu, f"{label} non redetecte apres translation"
+
+
 def test_ecrire_groupes_mixed_board_ne_deplace_que_les_montages_reconnus(tmp_path):
     """@brief Integration : sur une MEME carte, un montage reconnu bouge mais un
     composant bystander reste exactement a sa position initiale.

@@ -1084,6 +1084,10 @@ def _positionner_amplificateur_differentiel(comps, roles, x: int, y: int) -> dic
 
 _POSITIONNEURS_PAR_MOTIF = {
     "Amplificateur inverseur (AOP)": _positionner_amplificateur_inverseur,
+    "Amplificateur sommateur (AOP)": _positionner_amplificateur_inverseur,
+    "Intégrateur (AOP)": _positionner_amplificateur_inverseur,
+    "Dérivateur (AOP)": _positionner_amplificateur_inverseur,
+    "Amplificateur différentiel (AOP)": _positionner_amplificateur_differentiel,
 }
 
 
