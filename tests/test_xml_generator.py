@@ -708,6 +708,55 @@ def test_le_plan_de_forme_partage_n_est_jamais_mute():
     assert _TYPE_VERS_FORME["D"][1] == avant, "plan de forme MUTE"
 
 
+# ── Detection des roles a empiler (serie/parallele/fan-in) ──────────────────
+
+from circuit_analyzer.xml import _roles_a_empiler
+
+
+def test_roles_a_empiler_liste_toujours_empilee():
+    """@brief Un role dont la valeur brute est une LISTE (fan-in, ex. Zin
+    du Sommateur) est toujours empile, quel que soit le nombre d'items."""
+    r = {'impedances': {'Zin': [{'refs': ['R1']}, {'refs': ['R2']}],
+                         'Zf': {'refs': ['Rf']}}}
+    assert _roles_a_empiler(r) == frozenset({'Zin'})
+
+
+def test_roles_a_empiler_parallele_pur():
+    """@brief Un bloc unique a 2+ refs avec composition parallele pure
+    ('//' present, '+' absent) est empile."""
+    r = {'impedances': {'Zf': {'refs': ['C1', 'R6'], 'composition': '(C1//R6)'}}}
+    assert _roles_a_empiler(r) == frozenset({'Zf'})
+
+
+def test_roles_a_empiler_serie_pure_non_empilee():
+    """@brief Une composition serie pure ('+', pas de '//') reste en rangee."""
+    r = {'impedances': {'Zf': {'refs': ['R2', 'R3'], 'composition': 'R2+R3'}}}
+    assert _roles_a_empiler(r) == frozenset()
+
+
+def test_roles_a_empiler_composition_mixte_non_empilee():
+    """@brief Une composition mixte ('+' ET '//', ex. R1+(R2//C1)) reste en
+    rangee -- repli sur le comportement existant, sur, pas de risque
+    d'empiler un cas imbrique mal compris."""
+    r = {'impedances': {'Zin': {'refs': ['R1', 'R2', 'C1'],
+                                'composition': 'R1+(R2//C1)'}}}
+    assert _roles_a_empiler(r) == frozenset()
+
+
+def test_roles_a_empiler_une_seule_ref_jamais_empilee():
+    """@brief Un role a 1 seule ref n'a rien a empiler, meme si sa
+    composition contenait '//' par erreur."""
+    r = {'impedances': {'Zf': {'refs': ['R1'], 'composition': 'R1'}}}
+    assert _roles_a_empiler(r) == frozenset()
+
+
+def test_roles_a_empiler_sans_impedances():
+    """@brief Match sans 'impedances' (Divers, ou motif pas encore migre)
+    -> frozenset vide, jamais d'exception."""
+    assert _roles_a_empiler({}) == frozenset()
+    assert _roles_a_empiler({'impedances': None}) == frozenset()
+
+
 # ── Positionneur canonique : amplificateur inverseur ────────────────────────────
 
 from circuit_analyzer.xml import _positionner_amplificateur_inverseur, _positionner_amplificateur_differentiel, _PAS_X_BLOC, _PAS_Y_BLOC

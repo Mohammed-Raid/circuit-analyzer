@@ -851,6 +851,39 @@ def _refs_du_role(bloc) -> list:
             for ref in sous.get('refs', [])]
 
 
+def _roles_a_empiler(r) -> frozenset:
+    """@brief Noms de role dont la valeur brute doit etre empilee verticalement.
+
+    @param r Match d'un circuit detecte (sortie de detecteur.py).
+    @return frozenset des noms de role : soit une LISTE de blocs dans
+            r['impedances'] (fan-in, ex. Zin du Sommateur -- plusieurs
+            entrees independantes), soit un bloc unique a 2+ refs dont la
+            composition est un parallele PUR ('//' present, '+' absent,
+            ex. '(C1//R6)' -- un integrateur reel avec resistance de
+            fuite). Une composition serie ('+') ou mixte ('R1+(R2//C1)')
+            reste en rangee (repli sur le comportement existant, jamais
+            d'empilement pour un cas imbrique mal compris). Un role a 1
+            seule ref n'a jamais rien a empiler.
+    """
+    impedances = r.get('impedances')
+    if not impedances:
+        return frozenset()
+    empiles = set()
+    for nom, valeur in impedances.items():
+        if isinstance(valeur, list):
+            empiles.add(nom)
+            continue
+        if not isinstance(valeur, dict):
+            continue
+        refs = valeur.get('refs', [])
+        if len(refs) < 2:
+            continue
+        composition = valeur.get('composition', '') or ''
+        if '//' in composition and '+' not in composition:
+            empiles.add(nom)
+    return frozenset(empiles)
+
+
 def _ordre_des_circuits(resultats) -> list:
     """
     @brief Ordre d'émission des blocs (circuits d'un même îlot consécutifs).
