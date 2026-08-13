@@ -679,7 +679,7 @@ def test_le_plan_de_forme_partage_n_est_jamais_mute():
 
 # ── Positionneur canonique : amplificateur inverseur ────────────────────────────
 
-from circuit_analyzer.xml import _positionner_amplificateur_inverseur, _PAS_X_BLOC, _PAS_Y_BLOC
+from circuit_analyzer.xml import _positionner_amplificateur_inverseur, _positionner_amplificateur_differentiel, _PAS_X_BLOC, _PAS_Y_BLOC
 
 
 def test_positionner_amplificateur_inverseur_places_roles_canoniquement():
@@ -743,6 +743,69 @@ def test_positionner_amplificateur_inverseur_ignore_role_hors_bloc():
     assert "R99" not in pos, "ref hors du bloc place quand meme : risque de vol de position inter-blocs"
     # les refs legitimes du bloc restent placees normalement
     assert "U1" in pos and "R1" in pos and "R2" in pos
+
+
+# ── Positionneur canonique : amplificateur différentiel ─────────────────────
+
+
+def test_positionner_amplificateur_differentiel_places_roles_canoniquement():
+    """@brief Zf au-dessus, Z1 a la hauteur de l'AOP (comme Zin de l'inverseur),
+    Z3 une ligne EN DESSOUS de l'AOP, Zg encore en dessous, alignee sous l'AOP."""
+    comps = [
+        Component("U1", "U", {"IN+": "NET_INPLUS", "IN-": "NET_INMOINS",
+                              "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INMOINS", "2": "NET_IN1"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INMOINS"}),
+        Component("R3", "R", {"1": "NET_INPLUS", "2": "NET_IN2"}),
+        Component("R4", "R", {"1": "NET_INPLUS", "2": "GND"}),
+    ]
+    roles = {"aop": ["U1"], "Z1": ["R1"], "Zf": ["R2"], "Z3": ["R3"], "Zg": ["R4"]}
+    pos = _positionner_amplificateur_differentiel(comps, roles, 100, 200)
+    x_aop, y_aop = 100 + 2 * _PAS_X_BLOC, 200 + _PAS_Y_BLOC
+    assert pos["U1"] == (x_aop, y_aop, 0)
+    assert pos["R1"] == (100, y_aop, 0)                      # Z1
+    assert pos["R2"] == (x_aop, 200, 0)                      # Zf
+    assert pos["R3"] == (100, y_aop + _PAS_Y_BLOC, 0)         # Z3
+    assert pos["R4"] == (x_aop, y_aop + 2 * _PAS_Y_BLOC, 0)   # Zg
+    # Ordre vertical attendu : Zf (haut) -> AOP -> Z3 -> Zg (bas)
+    assert pos["R2"][1] < pos["U1"][1] < pos["R3"][1] < pos["R4"][1]
+
+
+def test_positionner_amplificateur_differentiel_garde_les_satellites():
+    """@brief Un composant du bloc absent des roles (satellite) est place, pas perdu."""
+    comps = [
+        Component("U1", "U", {"IN+": "NET_INPLUS", "IN-": "NET_INMOINS",
+                              "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INMOINS", "2": "NET_IN1"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INMOINS"}),
+        Component("R3", "R", {"1": "NET_INPLUS", "2": "NET_IN2"}),
+        Component("R4", "R", {"1": "NET_INPLUS", "2": "GND"}),
+        Component("C9", "C", {"1": "NET_IN1", "2": "GND"}),
+    ]
+    roles = {"aop": ["U1"], "Z1": ["R1"], "Zf": ["R2"], "Z3": ["R3"], "Zg": ["R4"]}
+    pos = _positionner_amplificateur_differentiel(comps, roles, 0, 0)
+    assert "C9" in pos
+    assert len(pos["C9"]) == 2
+
+
+def test_positionner_amplificateur_differentiel_ignore_role_hors_bloc():
+    """@brief Un ref present dans `roles` mais absent de `comps` ne doit JAMAIS
+    recevoir de position ici (meme garde-fou que l'ampli inverseur : evite le
+    vol de position inter-blocs via le `pos.update(...)` partage de
+    `_positionner_blocs`)."""
+    comps = [
+        Component("U1", "U", {"IN+": "NET_INPLUS", "IN-": "NET_INMOINS",
+                              "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INMOINS", "2": "NET_IN1"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INMOINS"}),
+        Component("R3", "R", {"1": "NET_INPLUS", "2": "NET_IN2"}),
+        Component("R4", "R", {"1": "NET_INPLUS", "2": "GND"}),
+    ]
+    roles = {"aop": ["U1"], "Z1": ["R1"], "Zf": ["R2"], "Z3": ["R3"],
+             "Zg": ["R4", "R99"]}
+    pos = _positionner_amplificateur_differentiel(comps, roles, 0, 0)
+    assert "R99" not in pos
+    assert all(ref in pos for ref in ("U1", "R1", "R2", "R3", "R4"))
 
 
 # ── Dispatch du positionneur canonique + angle dans le XML ──────────────────────

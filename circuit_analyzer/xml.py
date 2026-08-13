@@ -1042,6 +1042,46 @@ def _positionner_amplificateur_inverseur(comps, roles, x: int, y: int) -> dict:
     return pos
 
 
+def _positionner_amplificateur_differentiel(comps, roles, x: int, y: int) -> dict:
+    """@brief Gabarit canonique de l'amplificateur différentiel.
+
+    Deux chemins d'entrée empilés autour de l'AOP : Zf (contre-réaction,
+    IN-) strictement au-dessus (même convention que Zf de l'ampli
+    inverseur), Z1 (entrée IN-) à la même hauteur que l'AOP (même
+    convention que Zin de l'ampli inverseur), puis Z3 (entrée IN+) une
+    ligne EN DESSOUS de l'AOP, et Zg (référence masse de IN+) encore une
+    ligne en dessous, alignée sous l'AOP. Angle toujours 0 (même raison
+    que l'ampli inverseur — cf. sa docstring).
+
+    @param comps Composants du bloc (Composant/Component).
+    @param roles {'aop': [...], 'Z1': [...], 'Zf': [...], 'Z3': [...], 'Zg': [...]}.
+    @param x, y Origine du bloc.
+    @return dict {ref: (x, y, angle)} pour les rôles connus,
+            {ref: (x, y)} pour les satellites.
+    """
+    pos = {}
+    refs_du_bloc = {c.ref for c in comps}
+    x_aop, y_aop = x + 2 * _PAS_X_BLOC, y + _PAS_Y_BLOC
+    for ref in roles.get('aop', []):
+        if ref in refs_du_bloc:
+            pos[ref] = (x_aop, y_aop, 0)
+    for j, ref in enumerate(roles.get('Z1', [])):
+        if ref in refs_du_bloc:
+            pos[ref] = (x + j * _PAS_X_BLOC, y_aop, 0)
+    for j, ref in enumerate(roles.get('Zf', [])):
+        if ref in refs_du_bloc:
+            pos[ref] = (x_aop + j * _PAS_X_BLOC, y, 0)
+    for j, ref in enumerate(roles.get('Z3', [])):
+        if ref in refs_du_bloc:
+            pos[ref] = (x + j * _PAS_X_BLOC, y_aop + _PAS_Y_BLOC, 0)
+    for j, ref in enumerate(roles.get('Zg', [])):
+        if ref in refs_du_bloc:
+            pos[ref] = (x_aop + j * _PAS_X_BLOC, y_aop + 2 * _PAS_Y_BLOC, 0)
+    restants = [c for c in comps if c.ref not in pos]
+    pos.update(_positionner_grille_compacte(restants, x, y + 3 * _PAS_Y_BLOC))
+    return pos
+
+
 _POSITIONNEURS_PAR_MOTIF = {
     "Amplificateur inverseur (AOP)": _positionner_amplificateur_inverseur,
 }
