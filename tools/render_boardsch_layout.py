@@ -88,6 +88,21 @@ if __name__ == "__main__":
     render(xml, OUT / "disposition_ampli_inverseur.png")
     print(f"Rendu ecrit : {OUT / 'disposition_ampli_inverseur.png'}")
 
+    # Amplificateur différentiel (nouvellement migré) : vérifie les 4
+    # lignes empilées (Zf haut / AOP+Z1 / Z3 / Zg bas).
+    comps_diff = [
+        Component("U1", "U", {"IN+": "NET_INPLUS", "IN-": "NET_INMOINS",
+                              "OUT": "NET_OUT", "V+": "VCC", "V-": "GND"}),
+        Component("R1", "R", {"1": "NET_INMOINS", "2": "NET_IN1"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INMOINS"}),
+        Component("R3", "R", {"1": "NET_INPLUS", "2": "NET_IN2"}),
+        Component("R4", "R", {"1": "NET_INPLUS", "2": "GND"}),
+    ]
+    resultats_diff = match_patterns(build_graph(comps_diff))
+    xml_diff = components_to_xml(comps_diff, resultats_diff)
+    render(xml_diff, OUT / "disposition_ampli_differentiel.png")
+    print(f"Rendu ecrit : {OUT / 'disposition_ampli_differentiel.png'}")
+
     # Chemin carte scannee (ecrire_groupes) : avant/apres translation.
     # "avant" doit etre GENUINEMENT non-canonique pour que la comparaison
     # montre quelque chose : components_to_xml canonise deja l'ampli
