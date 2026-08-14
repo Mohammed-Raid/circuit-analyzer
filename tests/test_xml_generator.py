@@ -1071,7 +1071,7 @@ def test_positionner_amplificateur_differentiel_z1_empile_meme_colonne():
 
 import xml.etree.ElementTree as ET
 
-from circuit_analyzer.xml import _Bloc, _positionner_composants_bloc
+from circuit_analyzer.xml import _Bloc, _positionner_composants_bloc, _grouper_par_circuit
 
 
 def test_positionner_composants_bloc_utilise_le_canonique_si_roles():
@@ -1133,6 +1133,44 @@ def test_positionner_composants_bloc_dispatch_differentiel():
     roles = {"aop": ["U1"], "Z1": ["R1"], "Zf": ["R2"], "Z3": ["R3"], "Zg": ["R4"]}
     bloc = _Bloc("Amplificateur différentiel (AOP)", comps, roles=roles)
     attendu = _positionner_amplificateur_differentiel(comps, roles, 50, 60)
+    assert _positionner_composants_bloc(bloc, 50, 60) == attendu
+
+
+def test_grouper_par_circuit_peuple_roles_empiles_depuis_le_match():
+    """@brief _grouper_par_circuit calcule roles_empiles pour chaque bloc,
+    a partir du meme match que roles (pas un calcul separe/desynchronise)."""
+    r = {
+        'circuit_type': 'Intégrateur (AOP)',
+        'components': ['U2', 'R5', 'C1', 'R6'],
+        'impedances': {
+            'Zin': {'refs': ['R5'], 'composition': 'R5'},
+            'Zf': {'refs': ['C1', 'R6'], 'composition': '(C1//R6)'},
+        },
+    }
+    comps = [
+        Component("U2", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R5", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("C1", "C", {"1": "NET_INV", "2": "NET_OUT"}),
+        Component("R6", "R", {"1": "NET_INV", "2": "NET_OUT"}),
+    ]
+    blocs = _grouper_par_circuit(comps, [r])
+    bloc = next(b for b in blocs if b.label == 'Intégrateur (AOP)')
+    assert bloc.roles_empiles == frozenset({'Zf'})
+
+
+def test_positionner_composants_bloc_transmet_roles_empiles_au_positionneur():
+    """@brief _positionner_composants_bloc passe bien bloc.roles_empiles au
+    positionneur dispatche -- pas seulement bloc.roles."""
+    comps = [
+        Component("U2", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R5", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("C1", "C", {"1": "NET_INV", "2": "NET_OUT"}),
+        Component("R6", "R", {"1": "NET_INV", "2": "NET_OUT"}),
+    ]
+    roles = {"aop": ["U2"], "Zin": ["R5"], "Zf": ["C1", "R6"]}
+    bloc = _Bloc("Intégrateur (AOP)", comps, roles=roles,
+                 roles_empiles=frozenset({"Zf"}))
+    attendu = _positionner_amplificateur_inverseur(comps, roles, 50, 60, frozenset({"Zf"}))
     assert _positionner_composants_bloc(bloc, 50, 60) == attendu
 
 

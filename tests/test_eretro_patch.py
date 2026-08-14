@@ -1274,9 +1274,17 @@ def test_ecrire_groupes_deplace_les_trois_montages_a_deux_roles(tmp_path):
     sont chacun translates vers une disposition canonique EXACTE apres
     migration, sur le chemin carte scannee. Meme durcissement que le test
     precedent (revue de branche) : compare la FORME obtenue au gabarit
-    canonique calcule directement, pas juste "une position a bouge"."""
+    canonique calcule directement, pas juste "une position a bouge".
+
+    Le gabarit canonique de reference est calcule avec le roles_empiles
+    REEL du match detecte (via _roles_a_empiler), pas suppose vide : le
+    Zin du Sommateur (R1, R2) est un vrai fan-in (deux entrees
+    independantes -- 'impedances'['Zin'] est une LISTE de blocs cote
+    detecteur), donc empile verticalement depuis le cablage de ce
+    chantier -- Integrateur/Derivateur n'ont qu'une ref par role et ne
+    sont pas affectes."""
     from circuit_analyzer.eretro_patch import ecrire_groupes
-    from circuit_analyzer.xml import _positionner_amplificateur_inverseur
+    from circuit_analyzer.xml import _positionner_amplificateur_inverseur, _roles_a_empiler
 
     cas = {
         "Amplificateur sommateur (AOP)": {
@@ -1342,7 +1350,9 @@ def test_ecrire_groupes_deplace_les_trois_montages_a_deux_roles(tmp_path):
         forme_obtenue = {ref: (positions_apres[ref][0] - min_x,
                                 positions_apres[ref][1] - min_y) for ref in refs}
 
-        canonique = _positionner_amplificateur_inverseur(comps, roles, 0, 0)
+        r = next(r for r in res if r["circuit_type"] == label)
+        roles_empiles = _roles_a_empiler(r)
+        canonique = _positionner_amplificateur_inverseur(comps, roles, 0, 0, roles_empiles)
         can_min_x = min(p[0] for p in canonique.values())
         can_min_y = min(p[1] for p in canonique.values())
         forme_attendue = {ref: (pos[0] - can_min_x, pos[1] - can_min_y)
@@ -1355,6 +1365,55 @@ def test_ecrire_groupes_deplace_les_trois_montages_a_deux_roles(tmp_path):
         relu, res_relu = _analyser(chemin_patche)
         types_relu = [r["circuit_type"] for r in res_relu]
         assert label in types_relu, f"{label} non redetecte apres translation"
+
+
+def test_ecrire_groupes_empile_un_zf_reellement_parallele(tmp_path):
+    """@brief Bout en bout, chemin carte scannee : un Zf reellement
+    parallele (C1//R6, le cas reel de test_pid_3.xml) est empile
+    verticalement -- pas seulement translate en rangee. Verifie la FORME
+    complete (comme les tests renforces plus tot aujourd'hui), pas juste
+    'une position a bouge'."""
+    from circuit_analyzer.eretro_patch import ecrire_groupes
+    from circuit_analyzer.xml import _positionner_amplificateur_inverseur
+
+    comps = [
+        Composant("U2", "U", {"IN+": "GND", "IN-": "NET_INV",
+                              "OUT": "NET_OUT", "V+": "VCC", "V-": "GND"}),
+        Composant("R5", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Composant("C1", "C", {"1": "NET_INV", "2": "NET_OUT"}),
+        Composant("R6", "R", {"1": "NET_INV", "2": "NET_OUT"}),
+    ]
+    chemin = _fichier_synthetique(tmp_path, comps)
+    lus, res = _analyser(chemin)
+
+    xml_patche = ecrire_groupes(lus.source, lus, res)
+    racine = ET.fromstring(xml_patche)
+    positions_apres = {
+        item.findtext("reference"):
+            (float(item.find("CtrIem/X").text), float(item.find("CtrIem/Y").text))
+        for item in racine.findall(".//CmpntL/DataItem")
+    }
+
+    refs = ["U2", "R5", "C1", "R6"]
+    min_x = min(positions_apres[ref][0] for ref in refs)
+    min_y = min(positions_apres[ref][1] for ref in refs)
+    forme_obtenue = {ref: (positions_apres[ref][0] - min_x,
+                            positions_apres[ref][1] - min_y) for ref in refs}
+
+    roles = {"aop": ["U2"], "Zin": ["R5"], "Zf": ["C1", "R6"]}
+    canonique = _positionner_amplificateur_inverseur(comps, roles, 0, 0, frozenset({"Zf"}))
+    can_min_x = min(p[0] for p in canonique.values())
+    can_min_y = min(p[1] for p in canonique.values())
+    forme_attendue = {ref: (pos[0] - can_min_x, pos[1] - can_min_y)
+                       for ref, pos in canonique.items()}
+    assert forme_obtenue == forme_attendue
+
+    chemin_patche = os.path.join(str(tmp_path), "patche.xml")
+    with open(chemin_patche, "w", encoding="utf-8") as f:
+        f.write(xml_patche)
+    relu, res_relu = _analyser(chemin_patche)
+    types_relu = [r["circuit_type"] for r in res_relu]
+    assert "Intégrateur (AOP)" in types_relu
 
 
 def test_ecrire_groupes_mixed_board_ne_deplace_que_les_montages_reconnus(tmp_path):

@@ -797,10 +797,14 @@ class _Bloc:
     refs qui le jouent — vide si le montage n'a pas de décomposition par
     rôle connue (Divers, ou montage pas encore migré vers un positionneur
     canonique).
+    `roles_empiles` : ensemble des noms de rôle à empiler verticalement
+    (fan-in ou parallèle pur) au lieu d'une rangée horizontale — cf.
+    _roles_a_empiler. Vide si rien à empiler.
     """
     label: str
     comps: list
     roles: dict = field(default_factory=dict)
+    roles_empiles: frozenset = field(default_factory=frozenset)
 
 
 def _refs_du_bloc(r) -> list:
@@ -925,7 +929,7 @@ def _grouper_par_circuit(composants, resultats):
         label = r["circuit_type"]
         b = _Bloc(label, [comp_par_ref[ref] for ref in _refs_du_bloc(r)
                           if ref in comp_par_ref and type_du_ref.get(ref) == label],
-                  roles=_roles_du_bloc(r))
+                  roles=_roles_du_bloc(r), roles_empiles=_roles_a_empiler(r))
         if b.comps:
             blocs.append(b)
     divers = [c for ref, c in comp_par_ref.items() if ref not in type_du_ref]
@@ -1217,7 +1221,7 @@ def _positionner_composants_bloc(bloc: _Bloc, x: int, y: int) -> dict:
     """
     positionneur = _POSITIONNEURS_PAR_MOTIF.get(bloc.label)
     if positionneur is not None and bloc.roles:
-        return positionneur(bloc.comps, bloc.roles, x, y)
+        return positionneur(bloc.comps, bloc.roles, x, y, bloc.roles_empiles)
     if "commande de relais" in bloc.label.lower():
         return _positionner_commande_relais(bloc.comps, x, y)
     if "pont diviseur" in bloc.label.lower():

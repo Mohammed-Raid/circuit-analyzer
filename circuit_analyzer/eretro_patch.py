@@ -155,7 +155,7 @@ def _deltas_disposition_canonique(source, composants, blocs) -> dict:
         # positionneur (contrairement a des coefficients devines a la main,
         # qui avaient produit une derive de (-43, -63) a chaque export —
         # revue de branche, jamais convergente).
-        provisoire = _POSITIONNEURS_PAR_MOTIF[bloc.label](comps_role, bloc.roles, 0, 0)
+        provisoire = _POSITIONNEURS_PAR_MOTIF[bloc.label](comps_role, bloc.roles, 0, 0, bloc.roles_empiles)
         provisoire_role = {ref: pos for ref, pos in provisoire.items() if ref in positions_reelles}
         if not provisoire_role:
             continue
