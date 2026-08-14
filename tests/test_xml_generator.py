@@ -842,6 +842,84 @@ def test_positionner_amplificateur_inverseur_zin_a_trois_entrees_evite_laop():
     assert len(colonnes) == 4, "une entree Zin partage la colonne de l'AOP"
 
 
+def test_positionner_amplificateur_inverseur_roles_empiles_vide_est_byte_identique():
+    """@brief Garantie centrale de ce chantier : roles_empiles vide (par
+    defaut) produit EXACTEMENT le meme resultat qu'avant l'ajout de ce
+    parametre -- non-regression explicite."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    roles = {"aop": ["U1"], "Zin": ["R1"], "Zf": ["R2"]}
+    avec_defaut = _positionner_amplificateur_inverseur(comps, roles, 100, 200)
+    avec_vide = _positionner_amplificateur_inverseur(comps, roles, 100, 200, frozenset())
+    assert avec_defaut == avec_vide
+    x_aop, y_aop = 100 + 2 * _PAS_X_BLOC, 200 + _PAS_Y_BLOC
+    assert avec_defaut["U1"] == (x_aop, y_aop, 0)
+    assert avec_defaut["R1"] == (100, y_aop, 0)
+    assert avec_defaut["R2"] == (x_aop, 200, 0)
+
+
+def test_positionner_amplificateur_inverseur_zin_empile_meme_colonne_lignes_distinctes():
+    """@brief Zin empile (fan-in, 3 entrees) : meme colonne x que le debut
+    de la rangee d'aujourd'hui, 3 lignes y distinctes en descendant depuis
+    la ligne de l'AOP (j=0 partage la ligne de l'AOP, comme le cas a 1
+    seule entree)."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN1"}),
+        Component("R2", "R", {"1": "NET_INV", "2": "NET_IN2"}),
+        Component("R3", "R", {"1": "NET_INV", "2": "NET_IN3"}),
+        Component("Rf", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+    ]
+    roles = {"aop": ["U1"], "Zin": ["R1", "R2", "R3"], "Zf": ["Rf"]}
+    pos = _positionner_amplificateur_inverseur(comps, roles, 0, 0, frozenset({"Zin"}))
+    assert pos["R1"] == (0, 190, 0)
+    assert pos["R2"] == (0, 380, 0)
+    assert pos["R3"] == (0, 570, 0)
+    assert pos["U1"] == (520, 190, 0)          # AOP inchange (col 2, ligne 190)
+    assert pos["R1"][0] == pos["R2"][0] == pos["R3"][0]   # meme colonne
+    assert len({pos["R1"][1], pos["R2"][1], pos["R3"][1]}) == 3  # 3 lignes distinctes
+
+
+def test_positionner_amplificateur_inverseur_zf_empile_cas_reel_c1_parallele_r6():
+    """@brief Cas reel trouve sur test_pid_3.xml : Zf = C1//R6 (integrateur
+    avec resistance de fuite). Empile verticalement au-dessus de l'AOP au
+    lieu d'une rangee -- c'est ce qui corrige le fil en diagonale observe
+    dans ERetroDesign."""
+    comps = [
+        Component("U2", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R5", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("C1", "C", {"1": "NET_INV", "2": "NET_OUT"}),
+        Component("R6", "R", {"1": "NET_INV", "2": "NET_OUT"}),
+    ]
+    roles = {"aop": ["U2"], "Zin": ["R5"], "Zf": ["C1", "R6"]}
+    pos = _positionner_amplificateur_inverseur(comps, roles, 0, 0, frozenset({"Zf"}))
+    x_aop = 2 * _PAS_X_BLOC
+    assert pos["C1"] == (x_aop, 0, 0)
+    assert pos["R6"] == (x_aop, _PAS_Y_BLOC, 0)
+    assert pos["U2"] == (x_aop, 2 * _PAS_Y_BLOC, 0)   # AOP sous les 2 lignes de Zf
+    assert pos["R5"] == (0, 2 * _PAS_Y_BLOC, 0)        # Zin non empile, meme ligne que l'AOP
+
+
+def test_positionner_amplificateur_inverseur_satellites_apres_bande_zin_empilee():
+    """@brief Un satellite (composant hors roles) se place TOUJOURS sous la
+    derniere bande utilisee -- meme quand cette bande est agrandie par un
+    empilement, jamais de chevauchement."""
+    comps = [
+        Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INV", "2": "NET_IN1"}),
+        Component("R2", "R", {"1": "NET_INV", "2": "NET_IN2"}),
+        Component("Rf", "R", {"1": "NET_OUT", "2": "NET_INV"}),
+        Component("C9", "C", {"1": "NET_IN1", "2": "GND"}),
+    ]
+    roles = {"aop": ["U1"], "Zin": ["R1", "R2"], "Zf": ["Rf"]}
+    pos = _positionner_amplificateur_inverseur(comps, roles, 0, 0, frozenset({"Zin"}))
+    plus_bas = max(pos["R1"][1], pos["R2"][1], pos["U1"][1])
+    assert pos["C9"][1] > plus_bas
+
+
 # ── Positionneur canonique : amplificateur différentiel ─────────────────────
 
 

@@ -1038,7 +1038,8 @@ def _positionner_blocs(blocs) -> dict:
     return pos
 
 
-def _positionner_amplificateur_inverseur(comps, roles, x: int, y: int) -> dict:
+def _positionner_amplificateur_inverseur(comps, roles, x: int, y: int,
+                                          roles_empiles: frozenset = frozenset()) -> dict:
     """@brief Gabarit canonique de l'ampli inverseur.
 
     Zin en chaîne horizontale à gauche de l'AOP (alignée sur son entrée),
@@ -1052,31 +1053,58 @@ def _positionner_amplificateur_inverseur(comps, roles, x: int, y: int) -> dict:
     Tout composant du bloc absent de `roles` (satellite) est placé par la
     grille compacte existante, sous la disposition canonique — jamais perdu.
 
+    Zin et Zf sont chacun soit une RANGÉE horizontale (comportement par
+    défaut, roles_empiles vide) soit un EMPILEMENT vertical (colonne
+    partagée, une ligne par ref) quand leur nom figure dans
+    `roles_empiles` — cf. _roles_a_empiler pour la décision. La hauteur de
+    la bande Zf détermine où commence la ligne de l'AOP/Zin ; la hauteur de
+    la bande Zin détermine où commencent les satellites.
+
     @param comps Composants du bloc (Composant/Component).
     @param roles {'aop': [...], 'Zin': [...], 'Zf': [...]}.
     @param x, y Origine du bloc.
+    @param roles_empiles Noms de rôle ('Zin' et/ou 'Zf') à empiler
+           verticalement au lieu d'aligner en rangée — cf.
+           _roles_a_empiler. Vide par défaut : comportement rangée
+           identique à avant l'ajout de ce paramètre.
     @return dict {ref: (x, y, angle)} pour les rôles connus,
             {ref: (x, y)} pour les satellites.
     """
     pos = {}
     refs_du_bloc = {c.ref for c in comps}
-    x_aop, y_aop = x + 2 * _PAS_X_BLOC, y + _PAS_Y_BLOC
+    zf_refs = roles.get('Zf', [])
+    zin_refs = roles.get('Zin', [])
+    hauteur_zf = len(zf_refs) if 'Zf' in roles_empiles and zf_refs else 1
+    hauteur_zin = max(1, len(zin_refs)) if 'Zin' in roles_empiles else 1
+
+    y_zf = y
+    y_aop = y + hauteur_zf * _PAS_Y_BLOC
+    x_aop = x + 2 * _PAS_X_BLOC
+
     for ref in roles.get('aop', []):
         if ref in refs_du_bloc:
             pos[ref] = (x_aop, y_aop, 0)
-    for j, ref in enumerate(roles.get('Zin', [])):
-        if ref in refs_du_bloc:
-            # Colonne 2 est occupee par l'AOP (x_aop) sur cette meme ligne
-            # -- sauter cette colonne au-dela de 2 entrees pour eviter un
-            # chevauchement exact (revue de branche : un sommateur a 3
-            # entrees, montage standard, tombait pile sur l'AOP).
+
+    for j, ref in enumerate(zin_refs):
+        if ref not in refs_du_bloc:
+            continue
+        if 'Zin' in roles_empiles:
+            pos[ref] = (x, y_aop + j * _PAS_Y_BLOC, 0)
+        else:
             col = j if j < 2 else j + 1
             pos[ref] = (x + col * _PAS_X_BLOC, y_aop, 0)
-    for j, ref in enumerate(roles.get('Zf', [])):
-        if ref in refs_du_bloc:
-            pos[ref] = (x_aop + j * _PAS_X_BLOC, y, 0)
+
+    for j, ref in enumerate(zf_refs):
+        if ref not in refs_du_bloc:
+            continue
+        if 'Zf' in roles_empiles:
+            pos[ref] = (x_aop, y_zf + j * _PAS_Y_BLOC, 0)
+        else:
+            pos[ref] = (x_aop + j * _PAS_X_BLOC, y_zf, 0)
+
     restants = [c for c in comps if c.ref not in pos]
-    pos.update(_positionner_grille_compacte(restants, x, y + 2 * _PAS_Y_BLOC))
+    pos.update(_positionner_grille_compacte(
+        restants, x, y_aop + hauteur_zin * _PAS_Y_BLOC))
     return pos
 
 
