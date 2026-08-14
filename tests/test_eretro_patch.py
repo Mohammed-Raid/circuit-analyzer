@@ -1352,6 +1352,20 @@ def test_ecrire_groupes_deplace_les_trois_montages_a_deux_roles(tmp_path):
 
         r = next(r for r in res if r["circuit_type"] == label)
         roles_empiles = _roles_a_empiler(r)
+        # Epingle le VRAI detecteur, pas seulement la logique de
+        # _roles_a_empiler elle-meme (deja testee isolement avec des dicts
+        # ecrits a la main) : si le detecteur cessait un jour de rendre le
+        # Zin du Sommateur en LISTE (fan-in), ce test continuerait de
+        # passer sans cette assertion -- silencieusement, en revenant a
+        # la rangee et au risque de collision AOP que saute-colonne-2
+        # existe pour eviter (revue de branche).
+        attendus = {
+            "Amplificateur sommateur (AOP)": frozenset({"Zin"}),
+            "Intégrateur (AOP)": frozenset(),
+            "Dérivateur (AOP)": frozenset(),
+        }
+        assert roles_empiles == attendus[label], (
+            f"{label} : roles_empiles reel {roles_empiles} != attendu {attendus[label]}")
         canonique = _positionner_amplificateur_inverseur(comps, roles, 0, 0, roles_empiles)
         can_min_x = min(p[0] for p in canonique.values())
         can_min_y = min(p[1] for p in canonique.values())
