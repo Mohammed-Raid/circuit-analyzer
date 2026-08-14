@@ -987,6 +987,34 @@ def detecter_miroir_courant(graphe):
     return resultats
 
 
+def _a_broches_mosfet(comp) -> bool:
+    """@brief Vrai si un composant a des broches G/D/S nommées, quel que
+    soit son type déclaré.
+
+    Une carte réelle exporte parfois un MOSFET sous un type générique (ex.
+    'X') plutôt que 'M' — les noms de broches suffisent à lever
+    l'ambiguïté, même raisonnement que _u_candidat_aop pour les AOP :
+    faire confiance à la forme plutôt qu'à une étiquette de type qui peut
+    être absente ou générique côté export.
+    """
+    return all(comp.pins.get(p) for p in ('G', 'D', 'S'))
+
+
+def _source_relie_a_la_masse(graphe, source) -> bool:
+    """@brief Vrai si `source` EST un nœud de masse, ou l'atteint via une
+    seule résistance.
+
+    La résistance de sense/découplage entre la source et la masse est un
+    motif standard côté bas d'un convertisseur à découpage (mesure de
+    courant) — mais on ne suit JAMAIS au-delà d'un seul saut, pour ne
+    jamais matcher un diviseur résistif quelconque comme un interrupteur
+    de puissance.
+    """
+    if est_masse(source):
+        return True
+    return any(est_masse(autre) for _, autre in _voisins_de_type(graphe, source, 'R'))
+
+
 def detecter_mosfet_commutation(graphe):
     """
     @brief MOSFET en commutation (côté bas) : source à la masse, R sur la grille.
@@ -994,21 +1022,21 @@ def detecter_mosfet_commutation(graphe):
     @param graphe Graphe NetworkX du circuit.
     @return list[dict] Circuits détectés ({'circuit_type', 'components', 'nodes'}).
     Fonctionne comme un interrupteur commandé par la tension de grille.
+    La source peut être directement à la masse, ou l'atteindre via une
+    seule résistance de sense (cf. _source_relie_a_la_masse).
     """
     resultats = []
     composants = graphe.graph.get('components', {})
 
     for ref_m, comp in composants.items():
-        if comp.type != 'M':
+        if not _a_broches_mosfet(comp):
             continue
 
         grille = comp.pins.get('G')
         drain  = comp.pins.get('D')
         source = comp.pins.get('S')
-        if not all([grille, drain, source]):
-            continue
 
-        if not est_masse(source):
+        if not _source_relie_a_la_masse(graphe, source):
             continue
 
         r_grille = [ref for ref, _ in _voisins_de_type(graphe, grille, 'R')]
@@ -1034,16 +1062,14 @@ def detecter_mosfet_cote_haut(graphe):
     composants = graphe.graph.get('components', {})
 
     for ref_m, comp in composants.items():
-        if comp.type != 'M':
+        if not _a_broches_mosfet(comp):
             continue
 
         grille = comp.pins.get('G')
         drain  = comp.pins.get('D')
         source = comp.pins.get('S')
-        if not all([grille, drain, source]):
-            continue
 
-        if est_masse(source):
+        if _source_relie_a_la_masse(graphe, source):
             continue  # Déjà détecté comme MOSFET commutation (côté bas)
         if not est_alimentation(drain):
             continue  # Le drain doit être sur un rail positif
