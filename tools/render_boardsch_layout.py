@@ -103,6 +103,21 @@ if __name__ == "__main__":
     render(xml_diff, OUT / "disposition_ampli_differentiel.png")
     print(f"Rendu ecrit : {OUT / 'disposition_ampli_differentiel.png'}")
 
+    # Integrateur avec Zf reellement parallele (C1//R6) : verifie
+    # l'empilement vertical au lieu de la rangee -- le cas reel trouve sur
+    # test_pid_3.xml, qui produisait un fil en diagonale avant ce chantier.
+    comps_zf_parallele = [
+        Component("U2", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
+                              "V+": "VCC", "V-": "GND"}),
+        Component("R5", "R", {"1": "NET_INV", "2": "NET_IN"}),
+        Component("C1", "C", {"1": "NET_INV", "2": "NET_OUT"}),
+        Component("R6", "R", {"1": "NET_INV", "2": "NET_OUT"}),
+    ]
+    resultats_zf_par = match_patterns(build_graph(comps_zf_parallele))
+    xml_zf_par = components_to_xml(comps_zf_parallele, resultats_zf_par)
+    render(xml_zf_par, OUT / "disposition_zf_parallele.png")
+    print(f"Rendu ecrit : {OUT / 'disposition_zf_parallele.png'}")
+
     # Chemin carte scannee (ecrire_groupes) : avant/apres translation.
     # "avant" doit etre GENUINEMENT non-canonique pour que la comparaison
     # montre quelque chose : components_to_xml canonise deja l'ampli
