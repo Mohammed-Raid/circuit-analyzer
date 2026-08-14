@@ -1003,6 +1003,70 @@ def test_positionner_amplificateur_differentiel_z1_a_trois_entrees_evite_laop():
     assert len(colonnes) == 4, "une entree Z1 partage la colonne de l'AOP"
 
 
+def test_positionner_amplificateur_differentiel_roles_empiles_vide_est_byte_identique():
+    """@brief Meme garantie de non-regression que pour l'ampli inverseur."""
+    comps = [
+        Component("U1", "U", {"IN+": "NET_INPLUS", "IN-": "NET_INMOINS",
+                              "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INMOINS", "2": "NET_IN1"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INMOINS"}),
+        Component("R3", "R", {"1": "NET_INPLUS", "2": "NET_IN2"}),
+        Component("R4", "R", {"1": "NET_INPLUS", "2": "GND"}),
+    ]
+    roles = {"aop": ["U1"], "Z1": ["R1"], "Zf": ["R2"], "Z3": ["R3"], "Zg": ["R4"]}
+    avec_defaut = _positionner_amplificateur_differentiel(comps, roles, 100, 200)
+    avec_vide = _positionner_amplificateur_differentiel(comps, roles, 100, 200, frozenset())
+    assert avec_defaut == avec_vide
+    x_aop, y_aop = 100 + 2 * _PAS_X_BLOC, 200 + _PAS_Y_BLOC
+    assert avec_defaut["U1"] == (x_aop, y_aop, 0)
+    assert avec_defaut["R3"] == (100, y_aop + _PAS_Y_BLOC, 0)
+    assert avec_defaut["R4"] == (x_aop, y_aop + 2 * _PAS_Y_BLOC, 0)
+
+
+def test_positionner_amplificateur_differentiel_zf_empile_pousse_les_bandes_suivantes():
+    """@brief Zf empile (2 elements paralleles) grandit vers le haut ; l'AOP,
+    Z3 et Zg descendent tous d'autant pour ne jamais chevaucher Zf."""
+    comps = [
+        Component("U1", "U", {"IN+": "NET_INPLUS", "IN-": "NET_INMOINS",
+                              "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INMOINS", "2": "NET_IN1"}),
+        Component("C2", "C", {"1": "NET_OUT", "2": "NET_INMOINS"}),
+        Component("R2", "R", {"1": "NET_OUT", "2": "NET_INMOINS"}),
+        Component("R3", "R", {"1": "NET_INPLUS", "2": "NET_IN2"}),
+        Component("R4", "R", {"1": "NET_INPLUS", "2": "GND"}),
+    ]
+    roles = {"aop": ["U1"], "Z1": ["R1"], "Zf": ["C2", "R2"], "Z3": ["R3"], "Zg": ["R4"]}
+    pos = _positionner_amplificateur_differentiel(comps, roles, 0, 0, frozenset({"Zf"}))
+    x_aop = 2 * _PAS_X_BLOC
+    assert pos["C2"] == (x_aop, 0, 0)
+    assert pos["R2"] == (x_aop, _PAS_Y_BLOC, 0)
+    assert pos["U1"] == (x_aop, 2 * _PAS_Y_BLOC, 0)
+    assert pos["R1"] == (0, 2 * _PAS_Y_BLOC, 0)          # Z1 : meme ligne que l'AOP
+    assert pos["R3"] == (0, 3 * _PAS_Y_BLOC, 0)          # Z3 : une bande plus bas qu'avant
+    assert pos["R4"] == (x_aop, 4 * _PAS_Y_BLOC, 0)      # Zg : idem
+
+
+def test_positionner_amplificateur_differentiel_z1_empile_meme_colonne():
+    """@brief Z1 empile (fan-in a 3 entrees) : meme colonne, lignes
+    distinctes -- meme garde-fou que Zin de l'ampli inverseur."""
+    comps = [
+        Component("U1", "U", {"IN+": "NET_INPLUS", "IN-": "NET_INMOINS",
+                              "OUT": "NET_OUT"}),
+        Component("R1", "R", {"1": "NET_INMOINS", "2": "NET_A"}),
+        Component("R2", "R", {"1": "NET_A", "2": "NET_B"}),
+        Component("R3", "R", {"1": "NET_B", "2": "NET_IN1"}),
+        Component("Rf", "R", {"1": "NET_OUT", "2": "NET_INMOINS"}),
+        Component("R5", "R", {"1": "NET_INPLUS", "2": "NET_IN2"}),
+        Component("R6", "R", {"1": "NET_INPLUS", "2": "GND"}),
+    ]
+    roles = {"aop": ["U1"], "Z1": ["R1", "R2", "R3"], "Zf": ["Rf"],
+             "Z3": ["R5"], "Zg": ["R6"]}
+    pos = _positionner_amplificateur_differentiel(comps, roles, 0, 0, frozenset({"Z1"}))
+    assert pos["R1"][0] == pos["R2"][0] == pos["R3"][0]
+    assert len({pos["R1"][1], pos["R2"][1], pos["R3"][1]}) == 3
+    assert pos["R5"][1] > max(pos["R1"][1], pos["R2"][1], pos["R3"][1])  # Z3 sous les 3 lignes de Z1
+
+
 # ── Dispatch du positionneur canonique + angle dans le XML ──────────────────────
 
 import xml.etree.ElementTree as ET

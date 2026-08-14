@@ -1108,7 +1108,8 @@ def _positionner_amplificateur_inverseur(comps, roles, x: int, y: int,
     return pos
 
 
-def _positionner_amplificateur_differentiel(comps, roles, x: int, y: int) -> dict:
+def _positionner_amplificateur_differentiel(comps, roles, x: int, y: int,
+                                             roles_empiles: frozenset = frozenset()) -> dict:
     """@brief Gabarit canonique de l'amplificateur différentiel.
 
     Deux chemins d'entrée empilés autour de l'AOP : Zf (contre-réaction,
@@ -1119,34 +1120,80 @@ def _positionner_amplificateur_differentiel(comps, roles, x: int, y: int) -> dic
     ligne en dessous, alignée sous l'AOP. Angle toujours 0 (même raison
     que l'ampli inverseur — cf. sa docstring).
 
+    Chaque rôle à 2+ refs est soit une RANGÉE horizontale (par défaut)
+    soit un EMPILEMENT vertical (cf. _roles_a_empiler) quand son nom
+    figure dans `roles_empiles`. Les 4 bandes (Zf, AOP+Z1, Z3, Zg) sont
+    placées EN CASCADE : la hauteur de chaque bande (1 ligne, ou N si
+    empilée) détermine où commence la bande suivante — un empilement
+    dans une bande pousse toutes les bandes en dessous, jamais de
+    chevauchement.
+
     @param comps Composants du bloc (Composant/Component).
     @param roles {'aop': [...], 'Z1': [...], 'Zf': [...], 'Z3': [...], 'Zg': [...]}.
     @param x, y Origine du bloc.
+    @param roles_empiles Noms de rôle à empiler verticalement — cf.
+           _roles_a_empiler. Vide par défaut : comportement rangée
+           identique à avant l'ajout de ce paramètre.
     @return dict {ref: (x, y, angle)} pour les rôles connus,
             {ref: (x, y)} pour les satellites.
     """
     pos = {}
     refs_du_bloc = {c.ref for c in comps}
-    x_aop, y_aop = x + 2 * _PAS_X_BLOC, y + _PAS_Y_BLOC
+    zf_refs = roles.get('Zf', [])
+    z1_refs = roles.get('Z1', [])
+    z3_refs = roles.get('Z3', [])
+    zg_refs = roles.get('Zg', [])
+    hauteur_zf = len(zf_refs) if 'Zf' in roles_empiles and zf_refs else 1
+    hauteur_z1 = max(1, len(z1_refs)) if 'Z1' in roles_empiles else 1
+    hauteur_z3 = len(z3_refs) if 'Z3' in roles_empiles and z3_refs else 1
+    hauteur_zg = len(zg_refs) if 'Zg' in roles_empiles and zg_refs else 1
+
+    y_zf = y
+    y_aop = y + hauteur_zf * _PAS_Y_BLOC
+    y_z3 = y_aop + hauteur_z1 * _PAS_Y_BLOC
+    y_zg = y_z3 + hauteur_z3 * _PAS_Y_BLOC
+    x_aop = x + 2 * _PAS_X_BLOC
+
     for ref in roles.get('aop', []):
         if ref in refs_du_bloc:
             pos[ref] = (x_aop, y_aop, 0)
-    for j, ref in enumerate(roles.get('Z1', [])):
-        if ref in refs_du_bloc:
-            # Meme raison que Zin de l'ampli inverseur : colonne 2 = l'AOP.
+
+    for j, ref in enumerate(z1_refs):
+        if ref not in refs_du_bloc:
+            continue
+        if 'Z1' in roles_empiles:
+            pos[ref] = (x, y_aop + j * _PAS_Y_BLOC, 0)
+        else:
             col = j if j < 2 else j + 1
             pos[ref] = (x + col * _PAS_X_BLOC, y_aop, 0)
-    for j, ref in enumerate(roles.get('Zf', [])):
-        if ref in refs_du_bloc:
-            pos[ref] = (x_aop + j * _PAS_X_BLOC, y, 0)
-    for j, ref in enumerate(roles.get('Z3', [])):
-        if ref in refs_du_bloc:
-            pos[ref] = (x + j * _PAS_X_BLOC, y_aop + _PAS_Y_BLOC, 0)
-    for j, ref in enumerate(roles.get('Zg', [])):
-        if ref in refs_du_bloc:
-            pos[ref] = (x_aop + j * _PAS_X_BLOC, y_aop + 2 * _PAS_Y_BLOC, 0)
+
+    for j, ref in enumerate(zf_refs):
+        if ref not in refs_du_bloc:
+            continue
+        if 'Zf' in roles_empiles:
+            pos[ref] = (x_aop, y_zf + j * _PAS_Y_BLOC, 0)
+        else:
+            pos[ref] = (x_aop + j * _PAS_X_BLOC, y_zf, 0)
+
+    for j, ref in enumerate(z3_refs):
+        if ref not in refs_du_bloc:
+            continue
+        if 'Z3' in roles_empiles:
+            pos[ref] = (x, y_z3 + j * _PAS_Y_BLOC, 0)
+        else:
+            pos[ref] = (x + j * _PAS_X_BLOC, y_z3, 0)
+
+    for j, ref in enumerate(zg_refs):
+        if ref not in refs_du_bloc:
+            continue
+        if 'Zg' in roles_empiles:
+            pos[ref] = (x_aop, y_zg + j * _PAS_Y_BLOC, 0)
+        else:
+            pos[ref] = (x_aop + j * _PAS_X_BLOC, y_zg, 0)
+
     restants = [c for c in comps if c.ref not in pos]
-    pos.update(_positionner_grille_compacte(restants, x, y + 3 * _PAS_Y_BLOC))
+    pos.update(_positionner_grille_compacte(
+        restants, x, y_zg + max(0, hauteur_zg - 1) * _PAS_Y_BLOC))
     return pos
 
 
