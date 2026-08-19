@@ -31,6 +31,20 @@ def _wizard(ctk_root, refs_info):
                          unclassified=list(refs_info), comp_info=refs_info)
 
 
+def _textes_widgets(widget) -> set[str]:
+    """@brief Recueille recursivement le texte (`cget("text")`) de tous les
+    widgets descendants -- utilise pour verifier ce qui est reellement
+    affiche a l'ecran sans dependre de la structure interne des frames."""
+    textes = set()
+    for enfant in widget.winfo_children():
+        try:
+            textes.add(enfant.cget("text"))
+        except Exception:
+            pass
+        textes |= _textes_widgets(enfant)
+    return textes
+
+
 def test_apercu_dessine_un_symbole_par_composant_selectionne(ctk_root):
     refs_info = {
         "R1": {"type": "R", "value": "10k", "pins": {"1": "N1", "2": "N2"}},
@@ -105,6 +119,53 @@ def test_go_to_etape_4_affiche_l_apercu(ctk_root):
     w._name_var.set("Mon pattern")
     w._go_to(4)
     assert w._apercu_canvas is not None
+
+
+def test_etape3_regroupe_les_conditions_predefinies_par_categorie(ctk_root):
+    """BUG TROUVÉ EN TESTANT (« les conditions topologiques je les trouve un
+    peu flou ») : les 12 cases a cocher doivent etre regroupees par
+    categorie (CONDITION_GROUPS), pas listees a plat -- plus facile a
+    parcourir qu'une liste continue de 12 cases sans structure."""
+    from custom_circuits.loader import CONDITION_GROUPS
+    w = _wizard(ctk_root, {})
+
+    textes = _textes_widgets(w._cond_scroll3)
+    for nom_groupe, _labels in CONDITION_GROUPS:
+        assert nom_groupe in textes, f"groupe {nom_groupe!r} absent de l'affichage"
+
+
+def test_etape3_distingue_visuellement_predefinies_et_personnalisees(ctk_root):
+    """Un en-tete « CONDITIONS PREDEFINIES » doit distinguer les 12 cases
+    fixes du builder « AJOUTER UNE CONDITION PERSONNALISEE » qui suit --
+    sinon les deux systemes se lisent comme une seule liste continue, sans
+    indication de quand utiliser lequel."""
+    w = _wizard(ctk_root, {})
+    textes = _textes_widgets(w._cond_scroll3)
+    assert any("CONDITIONS PRÉDÉFINIES" in t for t in textes)
+    assert any("Cases prêtes à l'emploi" in t for t in textes)
+    assert any("AJOUTER UNE CONDITION PERSONNALISÉE" in t for t in textes)
+    assert any("composez votre propre condition" in t for t in textes)
+
+
+def test_go_to_etape_4_avec_apercu_image_affiche_l_image_reelle(ctk_root):
+    """BUG TROUVÉ EN TESTANT (« le vrai schéma pas que des boites ») : quand
+    un aperçu image (capture réelle du canevas de l'éditeur) est fourni au
+    wizard, l'étape 4 doit l'afficher directement -- pas régénérer le rendu
+    schemdraw simplifié (boîtes génériques, disposition en ligne droite)."""
+    from PIL import Image
+    from gui.pattern_wizard import PatternWizard
+
+    img = Image.new("RGB", (40, 20), "red")
+    refs_info = {"R1": {"type": "R", "value": "10k",
+                        "pins": {"1": "N1", "2": "N2"}}}
+    w = PatternWizard(ctk_root, graph=None, unclassified=list(refs_info),
+                      comp_info=refs_info, apercu_image=img)
+    w._go_to(2)
+    w._name_var.set("Mon pattern")
+    w._go_to(4)
+
+    assert w._apercu_canvas is None, "le rendu schemdraw simplifie ne doit pas etre utilise"
+    assert w._apercu_image_label is not None
 
 
 def test_doublon_de_nom_refuse_a_l_etape_2(ctk_root, monkeypatch, tmp_path):

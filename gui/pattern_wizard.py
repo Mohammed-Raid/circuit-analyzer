@@ -21,6 +21,7 @@ from matplotlib.figure import Figure
 from circuit_analyzer.detecteur import NOMS_CIRCUITS
 from custom_circuits.loader import (
     CONDITION_DESCRIPTIONS,
+    CONDITION_GROUPS,
     CONDITION_KIND_DESCRIPTIONS,
     CONDITION_KIND_LABELS,
     CONDITION_KINDS,
@@ -158,13 +159,19 @@ class PatternWizard(ctk.CTkToplevel):
     """
 
     def __init__(self, parent, graph, unclassified: list[str],
-                 comp_info: dict, on_created=None):
+                 comp_info: dict, on_created=None, apercu_image=None):
         super().__init__(parent)
 
         self._graph       = graph
         self._unclassified = list(unclassified)
         self._comp_info   = comp_info
         self._on_created  = on_created
+        # [MODIF 2026-08-19] Capture reelle du canevas de l'editeur (PIL.Image),
+        # transmise par TabDraw._save_as_pattern -- quand fournie, l'etape 4
+        # l'affiche telle quelle au lieu de regenerer le rendu schemdraw
+        # simplifie (boites generiques, disposition en ligne). None quand le
+        # wizard est ouvert depuis Analyser (pas de dessin reel a capturer).
+        self._apercu_image = apercu_image
 
         # État du wizard
         self._step        = 1          # étape courante (1–4)
@@ -218,6 +225,7 @@ class PatternWizard(ctk.CTkToplevel):
         # Panneau JSON live
         self._json_box    = None
         self._apercu_canvas = None
+        self._apercu_image_label = None
 
         self._setup_window()
         self._build()
@@ -562,40 +570,59 @@ class PatternWizard(ctk.CTkToplevel):
         scroll.grid_remove()                      # masqué par défaut
         self._cond_scroll3 = scroll
 
-        for label in CONDITION_LABELS:
-            var = tk.BooleanVar(value=False)
-            self._cond_vars[label] = var
+        # [MODIF 2026-08-19] BUG TROUVÉ EN TESTANT (« les conditions
+        # topologiques je les trouve un peu flou ») : les 12 cases et le
+        # builder de conditions génériques (ci-dessous) se lisaient comme une
+        # seule liste continue, sans indication de quand utiliser lequel.
+        # En-tête + regroupement par CONDITION_GROUPS (déjà défini côté
+        # loader.py mais jamais consommé par l'UI) pour rendre la structure
+        # visible, sans rien changer au moteur en dessous.
+        ctk.CTkLabel(scroll, text="CONDITIONS PRÉDÉFINIES",
+                     font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                     text_color=MUTED).pack(anchor="w", padx=4, pady=(0, 2))
+        ctk.CTkLabel(scroll, text="Cases prêtes à l'emploi pour les cas courants.",
+                     font=ctk.CTkFont("Segoe UI", 9),
+                     text_color=MUTED, anchor="w").pack(anchor="w", padx=4, pady=(0, 8))
 
-            row = ctk.CTkFrame(scroll, fg_color="transparent")
-            row.pack(fill="x", pady=(6, 0), padx=4)
+        for nom_groupe, labels_du_groupe in CONDITION_GROUPS:
+            ctk.CTkLabel(scroll, text=nom_groupe,
+                         font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                         text_color=TEXT).pack(anchor="w", padx=4, pady=(8, 2))
 
-            cb = ctk.CTkCheckBox(
-                row, text=condition_display(label),
-                variable=var,
-                font=ctk.CTkFont("Segoe UI", 11),
-                text_color=TEXT,
-                fg_color=BLUE_D, hover_color=BLUE,
-                checkmark_color=TEXT,
-                command=self._refresh_json)
-            cb.pack(side="left")
+            for label in labels_du_groupe:
+                var = tk.BooleanVar(value=False)
+                self._cond_vars[label] = var
 
-            # Tag "détecté" affiché à droite (caché par défaut)
-            detected_lbl = ctk.CTkLabel(
-                row, text="● détecté",
-                font=ctk.CTkFont("Segoe UI", 9),
-                text_color=_JSON_FG)
-            detected_lbl.pack(side="left", padx=8)
-            detected_lbl.pack_forget()
+                row = ctk.CTkFrame(scroll, fg_color="transparent")
+                row.pack(fill="x", pady=(6, 0), padx=4)
 
-            desc = CONDITION_DESCRIPTIONS.get(label, "")
-            if desc:
-                ctk.CTkLabel(scroll, text=desc,
-                             font=ctk.CTkFont("Segoe UI", 9),
-                             text_color=MUTED, anchor="w",
-                             justify="left").pack(anchor="w", padx=28, pady=(0, 2))
+                cb = ctk.CTkCheckBox(
+                    row, text=condition_display(label),
+                    variable=var,
+                    font=ctk.CTkFont("Segoe UI", 11),
+                    text_color=TEXT,
+                    fg_color=BLUE_D, hover_color=BLUE,
+                    checkmark_color=TEXT,
+                    command=self._refresh_json)
+                cb.pack(side="left")
 
-            var._cb_widget       = cb            # type: ignore[attr-defined]
-            var._detected_label  = detected_lbl  # type: ignore[attr-defined]
+                # Tag "détecté" affiché à droite (caché par défaut)
+                detected_lbl = ctk.CTkLabel(
+                    row, text="● détecté",
+                    font=ctk.CTkFont("Segoe UI", 9),
+                    text_color=_JSON_FG)
+                detected_lbl.pack(side="left", padx=8)
+                detected_lbl.pack_forget()
+
+                desc = CONDITION_DESCRIPTIONS.get(label, "")
+                if desc:
+                    ctk.CTkLabel(scroll, text=desc,
+                                 font=ctk.CTkFont("Segoe UI", 9),
+                                 text_color=MUTED, anchor="w",
+                                 justify="left").pack(anchor="w", padx=28, pady=(0, 2))
+
+                var._cb_widget       = cb            # type: ignore[attr-defined]
+                var._detected_label  = detected_lbl  # type: ignore[attr-defined]
 
         self._build_condition_builder(scroll)
 
@@ -612,7 +639,11 @@ class PatternWizard(ctk.CTkToplevel):
             fill="x", padx=4, pady=(14, 10))
         ctk.CTkLabel(parent, text="AJOUTER UNE CONDITION PERSONNALISÉE",
                      font=ctk.CTkFont("Segoe UI", 10, "bold"),
-                     text_color=MUTED).pack(anchor="w", padx=4, pady=(0, 6))
+                     text_color=MUTED).pack(anchor="w", padx=4, pady=(0, 2))
+        ctk.CTkLabel(parent,
+                     text="Pour un cas non couvert ci-dessus, composez votre propre condition.",
+                     font=ctk.CTkFont("Segoe UI", 9),
+                     text_color=MUTED, anchor="w").pack(anchor="w", padx=4, pady=(0, 6))
 
         kind_row = ctk.CTkFrame(parent, fg_color="transparent")
         kind_row.pack(fill="x", padx=4, pady=(0, 2))
@@ -1598,13 +1629,27 @@ class PatternWizard(ctk.CTkToplevel):
         """@brief Reconstruit l'apercu schematique et met a jour JSON/resume de l'etape 4."""
         if self._apercu_canvas is not None:
             self._apercu_canvas.get_tk_widget().destroy()
-        fig = self._dessiner_apercu()
-        self._apercu_canvas = FigureCanvasTkAgg(fig, master=self._apercu_frame)
-        self._apercu_canvas.draw()
-        self._apercu_canvas.get_tk_widget().configure(
-            bg=_JSON_BG, highlightthickness=0)
-        self._apercu_canvas.get_tk_widget().pack(
-            fill="both", expand=True, padx=4, pady=4)
+            self._apercu_canvas = None
+        if self._apercu_image_label is not None:
+            self._apercu_image_label.destroy()
+            self._apercu_image_label = None
+
+        if self._apercu_image is not None:
+            ctk_img = ctk.CTkImage(light_image=self._apercu_image,
+                                   dark_image=self._apercu_image,
+                                   size=self._apercu_image.size)
+            self._apercu_image_label = ctk.CTkLabel(
+                self._apercu_frame, image=ctk_img, text="")
+            self._apercu_image_label.image = ctk_img  # garde une reference (anti-GC)
+            self._apercu_image_label.pack(fill="both", expand=True, padx=4, pady=4)
+        else:
+            fig = self._dessiner_apercu()
+            self._apercu_canvas = FigureCanvasTkAgg(fig, master=self._apercu_frame)
+            self._apercu_canvas.draw()
+            self._apercu_canvas.get_tk_widget().configure(
+                bg=_JSON_BG, highlightthickness=0)
+            self._apercu_canvas.get_tk_widget().pack(
+                fill="both", expand=True, padx=4, pady=4)
 
         payload = self._build_pattern_dict()
         text = json.dumps(payload, ensure_ascii=False, indent=2)

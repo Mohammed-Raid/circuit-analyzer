@@ -224,7 +224,8 @@ def test_enregistrer_comme_pattern_propose_le_verrou_de_categorie(tab_draw, monk
     import gui.pattern_wizard as pattern_wizard_mod
 
     class _FauxWizard:
-        def __init__(self, parent, graph, refs, comp_info, on_created=None):
+        def __init__(self, parent, graph, refs, comp_info, on_created=None,
+                     apercu_image=None):
             captes["comp_info"] = comp_info
     # `_save_as_pattern` fait `from gui.pattern_wizard import PatternWizard` EN
     # LOCAL (dans la méthode) : on patche donc la classe à la SOURCE, pas le
@@ -264,7 +265,8 @@ def test_enregistrer_comme_pattern_apres_import_conserve_le_nom_reel(
     captes = {}
 
     class _FauxWizard:
-        def __init__(self, parent, graph, refs, comp_info, on_created=None):
+        def __init__(self, parent, graph, refs, comp_info, on_created=None,
+                     apercu_image=None):
             captes["comp_info"] = comp_info
     monkeypatch.setattr(pattern_wizard_mod, "PatternWizard", _FauxWizard)
 
@@ -274,3 +276,41 @@ def test_enregistrer_comme_pattern_apres_import_conserve_le_nom_reel(
     assert captes["comp_info"]["X1"]["categorie"] == "Photoresistance", (
         "le nom reel importe depuis le XML doit survivre a l'aller-retour "
         "editeur, pas retomber sur le nom du catalogue generique")
+
+
+def test_enregistrer_comme_pattern_transmet_l_apercu_capture_au_wizard(
+        tab_draw, monkeypatch):
+    """BUG TROUVÉ EN TESTANT (demande utilisateur : « le vrai schéma pas que
+    des boites comme j'ai vu tout à l'heure ») : l'aperçu de l'étape 4 doit
+    montrer EXACTEMENT ce qui est dessiné dans l'éditeur, pas une
+    reconstruction linéaire simplifiée -- `_save_as_pattern` doit donc
+    capturer le canevas réel de l'éditeur et le transmettre au wizard."""
+    from PIL import Image
+    import gui.pattern_wizard as pattern_wizard_mod
+
+    ed = tab_draw._editor
+    ed._place_type = "R"
+    ed._place_at(200, 200)
+
+    image_bidon = Image.new("RGB", (10, 10), "blue")
+    monkeypatch.setattr(tab_draw, "_capturer_apercu_editeur",
+                        lambda: image_bidon)
+
+    captes = {}
+
+    class _FauxWizard:
+        def __init__(self, parent, graph, refs, comp_info, on_created=None,
+                     apercu_image=None):
+            captes["apercu_image"] = apercu_image
+    monkeypatch.setattr(pattern_wizard_mod, "PatternWizard", _FauxWizard)
+
+    tab_draw._save_as_pattern()
+
+    assert captes["apercu_image"] is image_bidon
+
+
+def test_capturer_apercu_editeur_renvoie_none_si_fenetre_non_visible(tab_draw):
+    """La fenetre de test est retiree (`root.withdraw()`) -- capturer un
+    canevas non visible ne doit ni lever, ni renvoyer une image incoherente,
+    juste None (le wizard retombe alors sur son apercu auto-genere)."""
+    assert tab_draw._capturer_apercu_editeur() is None

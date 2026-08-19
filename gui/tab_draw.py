@@ -3,6 +3,7 @@
 @brief Onglet « Schéma » : encapsule l'éditeur interactif et déclenche l'analyse.
 """
 import json
+import logging
 import os
 import tempfile
 from collections.abc import Callable
@@ -18,6 +19,8 @@ from gui import ui_kit
 from gui.schematic_editor import SchematicEditor
 from gui.schematic_io import build_from_components
 from gui.theme import BG, CARD, CARD2, TEXT, TEXT_MUTED
+
+_log = logging.getLogger(__name__)
 
 
 def _xml_groupe_par_circuit(composants) -> str:
@@ -331,6 +334,36 @@ class TabDraw:
             messagebox.showinfo("Netlist générée",
                                 self._editor.to_netlist(), parent=self.frame)
 
+    def _capturer_apercu_editeur(self):
+        """@brief Capture une image du canevas de l'éditeur tel qu'affiché à l'écran.
+
+        [MODIF 2026-08-19] BUG TROUVÉ EN TESTANT (demande utilisateur : « le
+        vrai schéma pas que des boites ») : l'aperçu de l'étape 4 du wizard
+        régénérait le circuit en ligne droite avec des symboles génériques
+        (boîtes pour AOP/transistors), sans rapport avec le dessin réel. Une
+        capture d'écran du canevas au moment du clic est fidèle par
+        construction (c'est littéralement ce que l'utilisateur voit), sans
+        dupliquer la logique de rendu de l'éditeur.
+
+        @return PIL.Image.Image | None : None si la fenêtre n'est pas visible
+            (ex. tests avec `root.withdraw()`) ou si la capture échoue — le
+            wizard retombe alors sur son aperçu auto-généré habituel.
+        """
+        canvas = self._editor._canvas
+        if not canvas.winfo_viewable():
+            return None
+        try:
+            from PIL import ImageGrab
+            canvas.update_idletasks()
+            x0 = canvas.winfo_rootx()
+            y0 = canvas.winfo_rooty()
+            x1 = x0 + canvas.winfo_width()
+            y1 = y0 + canvas.winfo_height()
+            return ImageGrab.grab(bbox=(x0, y0, x1, y1))
+        except Exception:
+            _log.debug("capture apercu editeur impossible", exc_info=True)
+            return None
+
     def _save_as_pattern(self):
         """@brief Ouvre le wizard pour enregistrer le circuit dessiné comme pattern.
 
@@ -339,6 +372,7 @@ class TabDraw:
         PatternWizard pré-coche tous les composants et détecte automatiquement
         les conditions topologiques vraies (via suggest_conditions).
         """
+        apercu_image = self._capturer_apercu_editeur()
         path = self._export_netlist_file(prefix="pattern_editeur_")
         if path is None:
             return
@@ -375,6 +409,7 @@ class TabDraw:
         PatternWizard(
             self.frame, graph, refs, comp_info,
             on_created=self._pattern_created,
+            apercu_image=apercu_image,
         )
 
     def _pattern_created(self):
