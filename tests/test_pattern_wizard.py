@@ -147,6 +147,25 @@ def test_etape3_distingue_visuellement_predefinies_et_personnalisees(ctk_root):
     assert any("composez votre propre condition" in t for t in textes)
 
 
+def test_taille_affichage_reduit_une_grande_capture_en_gardant_le_ratio():
+    """BUG TROUVÉ EN TESTANT (« la previsualisation est trop zoomee ») : une
+    capture d'ecran reelle du canevas (souvent bien plus grande que la petite
+    zone d'apercu de l'etape 4) etait affichee a sa taille de capture BRUTE
+    -- on n'en voyait qu'un morceau agrandi. Doit tenir dans la boite max
+    sans deformer le ratio largeur/hauteur."""
+    from gui.pattern_wizard import _taille_affichage
+    w, h = _taille_affichage((2000, 1000), 640, 220)
+    assert w <= 640 and h <= 220
+    assert abs(w / h - 2000 / 1000) < 0.01
+
+
+def test_taille_affichage_n_agrandit_pas_une_petite_capture():
+    """Une image deja plus petite que la boite max ne doit pas etre etiree --
+    seul le RETRECISSEMENT est le probleme signale, pas l'agrandissement."""
+    from gui.pattern_wizard import _taille_affichage
+    assert _taille_affichage((100, 50), 640, 220) == (100, 50)
+
+
 def test_go_to_etape_4_avec_apercu_image_affiche_l_image_reelle(ctk_root):
     """BUG TROUVÉ EN TESTANT (« le vrai schéma pas que des boites ») : quand
     un aperçu image (capture réelle du canevas de l'éditeur) est fourni au

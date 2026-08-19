@@ -141,6 +141,37 @@ def _type_label(t: str, pins=None) -> str:
     return _TYPE_LABELS.get(t, t)
 
 
+# Boîte max d'affichage de l'aperçu étape 4 -- même ordre de grandeur que le
+# Figure(figsize=(6.5, 2.4)) du rendu schemdraw de repli, pour une echelle
+# visuelle coherente entre les deux modes d'apercu.
+_APERCU_MAX_W = 640
+_APERCU_MAX_H = 220
+
+
+def _taille_affichage(taille_image: tuple[int, int],
+                      max_w: int = _APERCU_MAX_W,
+                      max_h: int = _APERCU_MAX_H) -> tuple[int, int]:
+    """@brief Taille d'affichage d'une image dans une boite max, ratio preserve.
+
+    [MODIF 2026-08-19] BUG TROUVÉ EN TESTANT (« la previsualisation est trop
+    zoomee ») : une capture d'ecran reelle du canevas est souvent bien plus
+    grande que la petite zone d'apercu de l'etape 4 -- l'afficher a sa taille
+    brute ne montrait qu'un morceau agrandi, pas le schema entier. Ne
+    RETRECIT que si necessaire (jamais d'agrandissement d'une image deja
+    petite, ce n'est pas le probleme signale).
+
+    @param taille_image (largeur, hauteur) de l'image source, en pixels.
+    @param max_w Largeur max de la boite d'affichage.
+    @param max_h Hauteur max de la boite d'affichage.
+    @return tuple[int, int] Taille d'affichage (largeur, hauteur).
+    """
+    w, h = taille_image
+    if w <= max_w and h <= max_h:
+        return (w, h)
+    echelle = min(max_w / w, max_h / h)
+    return (max(1, round(w * echelle)), max(1, round(h * echelle)))
+
+
 class PatternWizard(ctk.CTkToplevel):
     """
     @brief Wizard 4 étapes (modale 860×540) pour créer un pattern circuit custom.
@@ -1637,7 +1668,7 @@ class PatternWizard(ctk.CTkToplevel):
         if self._apercu_image is not None:
             ctk_img = ctk.CTkImage(light_image=self._apercu_image,
                                    dark_image=self._apercu_image,
-                                   size=self._apercu_image.size)
+                                   size=_taille_affichage(self._apercu_image.size))
             self._apercu_image_label = ctk.CTkLabel(
                 self._apercu_frame, image=ctk_img, text="")
             self._apercu_image_label.image = ctk_img  # garde une reference (anti-GC)
