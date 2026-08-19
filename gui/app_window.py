@@ -3,24 +3,31 @@
 @brief Fenêtre principale CustomTkinter : barre latérale de navigation et onglets.
 """
 import customtkinter as ctk
+
 from circuit_analyzer import __version__
-from gui.fonts import register_fonts, FONT_FAMILY
+from gui import ui_kit
+from gui.fonts import FONT_FAMILY, register_fonts
 from gui.tab_analyze import TabAnalyze
+from gui.tab_circuits import TabCircuits
 from gui.tab_components import TabComponents
 from gui.tab_draw import TabDraw
-import gui.ui_kit as ui_kit
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-from gui.theme import BG, SURFACE, CARD, BORDER, TEXT, MUTED, BLUE, BLUE_D
+from gui.theme import BG, BLUE, BORDER, CARD, MUTED, SURFACE, TEXT
 
 
 class AppWindow:
-    """@brief Fenêtre principale de l'application (barre latérale + 3 onglets)."""
+    """@brief Fenêtre principale de l'application (barre latérale + 4 onglets)."""
 
-    def __init__(self):
-        """@brief Construit la fenêtre, ses dimensions et son contenu."""
+    def __init__(self, initial_file=None):
+        """@brief Construit la fenêtre, ses dimensions et son contenu.
+
+        @param initial_file Chemin d'un schéma à charger et analyser automatiquement au
+               démarrage (passé en argument de ligne de commande par ERetroDesign pour le
+               bouton « Analyser le schéma » — un clic, sans action manuelle). None = normal.
+        """
         register_fonts()  # Enregistre Inter avant toute création de widget
         self.root = ctk.CTk()
         self.root.title("Circuit Analyzer")
@@ -30,6 +37,22 @@ class AppWindow:
         self._active = 0
         self._nav_btns = []
         self._build()
+        if initial_file:
+            # Laisse la fenêtre se réaliser avant d'attaquer l'analyse (même délai que
+            # l'ancien hook, évite toute course avec le premier rendu Tk).
+            self._initial_file = initial_file
+            self.root.after(300, self._auto_analyze)
+
+    def _auto_analyze(self):
+        """@brief Charge et analyse le fichier passé au démarrage (onglet Analyser).
+
+        Reprend exactement le chemin déjà utilisé par TabDraw (bouton "Analyser" du
+        Schéma) : _file_path.set(path) puis _analyze(), pour rester sur le même code
+        testé plutôt que d'appeler l'analyse par un autre biais.
+        """
+        self._tab_a._file_path.set(self._initial_file)
+        self._tab_a._analyze()
+        self._switch(0)
 
     def _build(self):
         """@brief Construit la barre latérale, les boutons de navigation et les onglets."""
@@ -77,6 +100,7 @@ class AppWindow:
             ("search",   "Analyser",   "Lire et analyser"),
             ("pen-tool", "Schéma",     "Dessiner un circuit"),
             ("wrench",   "Composants", "Bibliothèque"),
+            ("zap",      "Circuits",   "Patterns personnalisés"),
         ]
         for i, (icon, label, sub) in enumerate(items):
             btn = _NavButton(nav_frame, icon, label, sub,
@@ -98,17 +122,34 @@ class AppWindow:
         content.grid_columnconfigure(0, weight=1)
         content.grid_rowconfigure(0, weight=1)
 
-        tab_a = TabAnalyze(content)
+        # Liaison tardive : tab_c n'existe pas encore quand tab_a/tab_d sont créés,
+        # mais ce callback n'est appelé qu'après une action utilisateur (le nom
+        # tab_c est alors résolu).
+        def _on_pattern_created():
+            # Un pattern vient d'être créé (éditeur/analyse) : recharger la liste
+            # de l'onglet Circuits, sinon il n'y apparaît qu'au prochain démarrage.
+            tab_c.refresh_circuits()
+
+        tab_a = TabAnalyze(content, on_pattern_created=_on_pattern_created)
+        self._tab_a = tab_a  # référence gardée pour l'auto-analyse au démarrage (voir _auto_analyze)
         tab_d = TabDraw(content,
                         on_analyze=lambda path: (
                             tab_a._file_path.set(path),
                             tab_a._analyze(),
                             self._switch(0),
-                        ))
+                        ),
+                        on_pattern_created=_on_pattern_created)
+        tab_c = TabCircuits(content)
 
-        tab_p = TabComponents(content, on_save=tab_d.refresh_palette)
+        def _on_lib_change():
+            # La bibliothèque a changé : rafraîchir l'onglet Circuits ET la
+            # palette de l'éditeur de schéma (nouveaux types / types supprimés).
+            tab_c.refresh_component_list()
+            tab_d.refresh_palette()
 
-        self._frames = [tab_a.frame, tab_d.frame, tab_p.frame]
+        tab_p = TabComponents(content, on_save=_on_lib_change)
+
+        self._frames = [tab_a.frame, tab_d.frame, tab_p.frame, tab_c.frame]
         for f in self._frames:
             f.grid(row=0, column=0, sticky="nsew")
 
@@ -117,7 +158,7 @@ class AppWindow:
     def _switch(self, idx: int):
         """@brief Active l'onglet d'indice idx et met à jour la navigation.
 
-        @param idx Indice de l'onglet à afficher (0=Analyser, 1=Schéma, 2=Composants).
+        @param idx Indice de l'onglet à afficher (0=Analyser, 1=Schéma, 2=Composants, 3=Circuits).
         @return None
         """
         self._active = idx

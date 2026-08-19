@@ -1,8 +1,14 @@
 # Gabarits XML pour les montages canoniques — Design
 
 **Date :** 2026-08-10
-**Statut :** design présenté au relais du boss, en attente de validation par le
-boss lui-même avant écriture du plan d'implémentation.
+**Statut :** validé par le boss (2026-08-17, en clarification directe : « Full
+original design: drawing also redefines detection » — le design complet,
+détection ET disposition, confirmé plutôt que la version disposition seule).
+Plan d'implémentation écrit : `docs/superpowers/plans/2026-08-17-gabarits-xml-montages-canoniques.md`.
+Extension actée par la même occasion : le gabarit XML sert AUSSI de patron de
+DISPOSITION (positions canoniques), pas seulement de structure à reconnaître
+— puisque le fichier de référence dessiné par le boss porte déjà de vraies
+positions, aucune raison de les ignorer une fois la structure lue.
 
 **Suite de :** aucune — nouveau chantier, indépendant de « fidélité de forme
 réelle éditeur » (import/export XML, en cours de revue sur la branche

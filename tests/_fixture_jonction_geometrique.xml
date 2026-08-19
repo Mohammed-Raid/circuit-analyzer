@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<BoardSCH xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <CmpntL>
+    <DataItem>
+      <Name>Résistance</Name>
+      <reference>R1</reference>
+      <value>1k</value>
+      <datapolygon />
+      <datasegment />
+      <dataarc />
+      <datapin>
+        <DataPin>
+          <Pname>1</Pname>
+          <Pnumber>1</Pnumber>
+          <NodeL><string>0_0_0_10</string></NodeL>
+          <Pin><X>0</X><Y>0</Y></Pin>
+          <typ>0</typ>
+        </DataPin>
+        <DataPin>
+          <Pname>2</Pname>
+          <Pnumber>2</Pnumber>
+          <NodeL><string>0_1_0_11</string></NodeL>
+          <Pin><X>50</X><Y>0</Y></Pin>
+          <typ>0</typ>
+        </DataPin>
+      </datapin>
+      <CtrIem><X>0</X><Y>0</Y></CtrIem>
+      <angle>0</angle>
+      <id>0</id>
+      <GpId>0</GpId>
+      <zmH>1</zmH>
+      <zmV>1</zmV>
+      <typ>0</typ>
+      <Top>true</Top>
+      <Bottom>false</Bottom>
+      <Visible>true</Visible>
+    </DataItem>
+    <DataItem>
+      <Name>Résistance</Name>
+      <reference>R2</reference>
+      <value>1k</value>
+      <datapolygon />
+      <datasegment />
+      <dataarc />
+      <datapin>
+        <DataPin>
+          <Pname>1</Pname>
+          <Pnumber>1</Pnumber>
+          <NodeL><string>1_0_0_12</string></NodeL>
+          <Pin><X>0</X><Y>0</Y></Pin>
+          <typ>0</typ>
+        </DataPin>
+        <DataPin>
+          <Pname>2</Pname>
+          <Pnumber>2</Pnumber>
+          <NodeL><string>1_1_0_13</string></NodeL>
+          <Pin><X>50</X><Y>0</Y></Pin>
+          <typ>0</typ>
+        </DataPin>
+      </datapin>
+      <CtrIem><X>200</X><Y>0</Y></CtrIem>
+      <angle>0</angle>
+      <id>1</id>
+      <GpId>0</GpId>
+      <zmH>1</zmH>
+      <zmV>1</zmV>
+      <typ>0</typ>
+      <Top>true</Top>
+      <Bottom>false</Bottom>
+      <Visible>true</Visible>
+    </DataItem>
+    <DataItem>
+      <Name>Résistance</Name>
+      <reference>R3</reference>
+      <value>1k</value>
+      <datapolygon />
+      <datasegment />
+      <dataarc />
+      <datapin>
+        <DataPin>
+          <Pname>1</Pname>
+          <Pnumber>1</Pnumber>
+          <NodeL><string>2_0_0_14</string></NodeL>
+          <Pin><X>0</X><Y>0</Y></Pin>
+          <typ>0</typ>
+        </DataPin>
+        <DataPin>
+          <Pname>2</Pname>
+          <Pnumber>2</Pnumber>
+          <NodeL><string>2_1_0_15</string></NodeL>
+          <Pin><X>50</X><Y>0</Y></Pin>
+          <typ>0</typ>
+        </DataPin>
+      </datapin>
+      <CtrIem><X>100</X><Y>200</Y></CtrIem>
+      <angle>0</angle>
+      <id>2</id>
+      <GpId>0</GpId>
+      <zmH>1</zmH>
+      <zmV>1</zmV>
+      <typ>0</typ>
+      <Top>true</Top>
+      <Bottom>false</Bottom>
+      <Visible>true</Visible>
+    </DataItem>
+  </CmpntL>
+  <lineL>
+    <Line>
+      <CFirst>0_0_0_10</CFirst>
+      <CLast>1_0_0_12</CLast>
+      <LP>
+        <PointF><X>0</X><Y>0</Y></PointF>
+        <PointF><X>100</X><Y>0</Y></PointF>
+        <PointF><X>100</X><Y>100</Y></PointF>
+      </LP>
+      <pGap />
+      <ID>0</ID>
+      <idF>0</idF>
+      <idL>0</idL>
+      <GpId>0</GpId>
+      <Visible>true</Visible>
+      <select>false</select>
+      <Top>true</Top>
+      <Bottom>false</Bottom>
+      <BeIngrp>false</BeIngrp>
+      <VltgL>0</VltgL>
+      <CustomWidth>0</CustomWidth>
+    </Line>
+    <Line>
+      <CFirst>99_9_3_1</CFirst>
+      <CLast>2_0_0_14</CLast>
+      <LP>
+        <PointF><X>100</X><Y>0</Y></PointF>
+        <PointF><X>200</X><Y>0</Y></PointF>
+      </LP>
+      <pGap />
+      <ID>0</ID>
+      <idF>0</idF>
+      <idL>0</idL>
+      <GpId>0</GpId>
+      <Visible>true</Visible>
+      <select>false</select>
+      <Top>true</Top>
+      <Bottom>false</Bottom>
+      <BeIngrp>false</BeIngrp>
+      <VltgL>0</VltgL>
+      <CustomWidth>0</CustomWidth>
+    </Line>
+  </lineL>
+  <CCmpntL />
+  <GrpL />
+  <zoom>1</zoom>
+  <ImagWidth>0</ImagWidth>
+  <ImageHeight>0</ImageHeight>
+  <SideTopBottom>false</SideTopBottom>
+  <Texts />
+  <NetLabels />
+  <Vias />
+  <ImgScaleTop>1</ImgScaleTop>
+  <ImgScaleBottom>1</ImgScaleBottom>
+  <ImgOffXTop>0</ImgOffXTop>
+  <ImgOffYTop>0</ImgOffYTop>
+  <ImgOffXBottom>0</ImgOffXBottom>
+  <ImgOffYBottom>0</ImgOffYBottom>
+  <ImgMirrorXTop>false</ImgMirrorXTop>
+  <ImgMirrorXBottom>false</ImgMirrorXBottom>
+</BoardSCH>

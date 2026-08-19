@@ -1220,7 +1220,17 @@ def test_ecrire_groupes_deplace_amplificateur_differentiel(tmp_path):
     du differentiel (U1/R2 bougeaient quand meme, coincidence de forme
     partielle, mais R1/R3/R4 recevaient un mauvais gabarit) -- on compare
     maintenant la FORME obtenue (positions normalisees au coin superieur
-    gauche) au gabarit canonique calcule directement, pas juste "a bouge"."""
+    gauche) au gabarit canonique calcule directement, pas juste "a bouge".
+
+    [MODIF 2026-08-17] Lot 9b : la "forme attendue" est desormais calculee
+    via `positions_depuis_gabarit` (le gabarit DESSINE, qui a la PRIORITE
+    depuis ce lot -- voir `eretro_patch._provisoire_bloc`), pas directement
+    via `_positionner_amplificateur_differentiel` (l'ancien positionneur
+    Python, toujours actif en REPLI seulement si aucun gabarit n'existe
+    pour ce montage -- ce qui n'est plus le cas ici, un gabarit existe).
+    Un gabarit "Amplificateur differentiel.xml" est deja fourni avec le
+    projet (chantier de migration precedent) : ce test verifie qu'il est
+    bien celui utilise, pas l'ancien code."""
     from circuit_analyzer.eretro_patch import ecrire_groupes
 
     comps = [
@@ -1241,7 +1251,7 @@ def test_ecrire_groupes_deplace_amplificateur_differentiel(tmp_path):
             (float(item.find("CtrIem/X").text), float(item.find("CtrIem/Y").text))
         for item in racine.findall(".//CmpntL/DataItem")
     }
-    from circuit_analyzer.xml import _positionner_amplificateur_differentiel
+    from circuit_analyzer.gabarit import positions_depuis_gabarit
 
     refs = ("U1", "R1", "R2", "R3", "R4")
     min_x = min(positions_apres[ref][0] for ref in refs)
@@ -1249,8 +1259,8 @@ def test_ecrire_groupes_deplace_amplificateur_differentiel(tmp_path):
     forme_obtenue = {ref: (positions_apres[ref][0] - min_x,
                             positions_apres[ref][1] - min_y) for ref in refs}
 
-    roles = {"aop": ["U1"], "Z1": ["R1"], "Zf": ["R2"], "Z3": ["R3"], "Zg": ["R4"]}
-    canonique = _positionner_amplificateur_differentiel(comps, roles, 0, 0)
+    canonique = positions_depuis_gabarit("Amplificateur différentiel (AOP)", comps, 0, 0)
+    assert canonique is not None, "le gabarit du differentiel doit exister et matcher ce cas"
     can_min_x = min(p[0] for p in canonique.values())
     can_min_y = min(p[1] for p in canonique.values())
     forme_attendue = {ref: (pos[0] - can_min_x, pos[1] - can_min_y)
@@ -1366,7 +1376,14 @@ def test_ecrire_groupes_deplace_les_trois_montages_a_deux_roles(tmp_path):
         }
         assert roles_empiles == attendus[label], (
             f"{label} : roles_empiles reel {roles_empiles} != attendu {attendus[label]}")
-        canonique = _positionner_amplificateur_inverseur(comps, roles, 0, 0, roles_empiles)
+        # [MODIF 2026-08-17] Lot 9b : "canonique" vient desormais du gabarit
+        # DESSINE (positions_depuis_gabarit), qui a la PRIORITE sur
+        # _positionner_amplificateur_inverseur depuis ce lot -- voir
+        # eretro_patch._provisoire_bloc. Les 3 montages ont deja un gabarit
+        # fourni avec le projet (chantier de migration precedent).
+        from circuit_analyzer.gabarit import positions_depuis_gabarit
+        canonique = positions_depuis_gabarit(label, comps, 0, 0)
+        assert canonique is not None, f"{label} : le gabarit doit exister et matcher ce cas"
         can_min_x = min(p[0] for p in canonique.values())
         can_min_y = min(p[1] for p in canonique.values())
         forme_attendue = {ref: (pos[0] - can_min_x, pos[1] - can_min_y)

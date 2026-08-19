@@ -624,6 +624,17 @@ class TabComponents:
         self._load()
         if dernier:
             self._afficher_perso(dernier)
+        # [MODIF 2026-08-18] BUG TROUVE EN TESTANT (« quand je fais update componant
+        # la majorite sont affiches en symbole AOP, pas le vrai symbole ») : contrairement
+        # a _sauvegarder/_supprimer/_importer_eretro, cette methode n'appelait jamais
+        # self._on_save() -- l'editeur de schema (SchematicEditor._defs, construit une
+        # seule fois puis mis en cache) ne se reconstruisait donc JAMAIS apres un import
+        # en masse. Les types fraichement recus retombaient sur le rendu generique par
+        # TYPE ('U' -> triangle AOP, cf. gui/schematic_symbols.py::_tr_u) au lieu du vrai
+        # contour importe, meme si ce contour etait bel et bien enregistre dans
+        # component_library.json.
+        if self._on_save:
+            self._on_save()
         messagebox.showinfo(
             "Bibliotheque partagee",
             f"{ajoutes} composant(s) ajoute(s), {majs} mis a jour.")

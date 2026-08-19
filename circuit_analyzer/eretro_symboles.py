@@ -104,6 +104,41 @@ def _lire_symbole(chemin):
                  "typ": int((racine.findtext("typ") or "0").strip() or 0)}
 
 
+def plan_alias(chemin):
+    """@brief Plan {broche brute -> nom sémantique} d'un symbole, ou {} si aucun alias.
+
+    [MODIF 2026-08-18] Pont bibliothèque personnalisée (onglet Composants) -> lecture
+    de carte reelle (xml.py::lire_xml). L'onglet Composants ("Recevoir la bibliotheque
+    partagee") ne retient que le nom AFFICHE de chaque broche (Pname en priorite, cf.
+    eretro_lib._entree_depuis_dataitem), alors que `lire_xml` identifie une broche par
+    Pnumber EN PRIORITE (l'identite de broche "vit" dans Pnumber pour la plupart des
+    symboles, Pname souvent vide ou juste redondant) -- sur un symbole comme "MOSFET
+    canal N" (Pnumber "1"/"2"/"3", Pname "G"/"D"/"S"), la bibliotheque personnalisee
+    seule ne suffit donc PAS a retrouver que la broche brute "1" est "G". Cette
+    fonction relit le MEME fichier source et construit ce pont : {"1": "G", "G": "G",
+    ...} -- la broche brute (Pnumber si present, sinon Pname, meme priorite que
+    `lire_xml`) ET le nom semantique lui-meme (passthrough, cf. `plan.get(pnom, pnom)`
+    cote appelant) pointent tous deux vers le nom semantique.
+
+    @param chemin Fichier `<DataItem>` de bibliotheque (LibItem/Lib/*.xml).
+    @return dict {broche brute ou semantique -> nom semantique}.
+    """
+    try:
+        racine = ET.parse(chemin).getroot()
+    except (ET.ParseError, OSError):
+        return {}
+    plan = {}
+    for broche in racine.findall("./datapin/DataPin"):
+        pnum = (broche.findtext("Pnumber") or "").strip()
+        pnom = (broche.findtext("Pname") or "").strip()
+        brute = pnum or pnom
+        if not brute or not pnom:
+            continue
+        plan[brute] = pnom
+        plan[pnom] = pnom
+    return plan
+
+
 def charger(dossier=None):
     """@brief Sa bibliotheque, au format des entrees de `_FORME`.
 

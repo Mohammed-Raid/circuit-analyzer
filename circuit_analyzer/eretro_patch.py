@@ -17,7 +17,25 @@ from circuit_analyzer.xml import (
     _grouper_par_circuit,
     _ids_groupes_par_ref,
     _POSITIONNEURS_PAR_MOTIF,
+    _positionner_commande_relais,
+    _positionner_pont_diviseur,
+    _positionner_pont_redresseur,
 )
+
+# [MODIF 2026-08-17] Lot 9c : montages avec un positionneur Python DÉDIÉ
+# (choisi par mot-clé dans le label, voir `xml._positionner_composants_bloc`)
+# mais SANS jamais passer par `bloc.roles` -- au même titre que
+# `_POSITIONNEURS_PAR_MOTIF`, ce sont des dispositions SPÉCIFIQUES au
+# montage (pas un repli générique aop/rc/grille) : légitimes à appliquer
+# sur une carte scannée, contrairement à la grille générique. Chaque
+# positionneur a une signature DIFFÉRENTE de `_POSITIONNEURS_PAR_MOTIF`
+# (pas de `roles`/`roles_empiles`) -- table séparée, appelée avec
+# seulement (comps, x, y).
+_POSITIONNEURS_PAR_MOTCLE = {
+    "commande de relais": _positionner_commande_relais,
+    "pont diviseur": _positionner_pont_diviseur,
+    "pont redresseur": _positionner_pont_redresseur,
+}
 
 _log = logging.getLogger(__name__)
 
@@ -94,20 +112,86 @@ def _ecrire(element, balise, valeur):
     return True
 
 
+def _provisoire_bloc(bloc, comp_par_ref: dict, refs_du_bloc: set):
+    """@brief Positions PROVISOIRES (origine 0,0) pour un bloc -- essaie
+    D'ABORD un gabarit dessine (patterns_reference/{bloc.label}.xml, voir
+    gabarit.positions_depuis_gabarit), puis le positionneur Python
+    historique (_POSITIONNEURS_PAR_MOTIF) en repli, INCHANGÉ.
+
+    [MODIF 2026-08-17] Lot 9b : `_deltas_disposition_canonique` (le chemin
+    carte SCANNÉE, réimportable dans ERetroDesign -- voir
+    `eretro_patch.py` en tête de fichier) appelait `_POSITIONNEURS_PAR_MOTIF`
+    DIRECTEMENT, sans jamais passer par `xml._positionner_composants_bloc`
+    (où le lot 9 avait été branché) -- un gabarit ajouté par le boss n'avait
+    donc AUCUN effet sur ce chemin, seulement sur `generer_xml` (schéma
+    régénéré depuis zéro, jamais utilisé pour une carte reçue). Trouvé en
+    vérifiant le lot 9 de bout en bout AVANT de le considérer fini (demande
+    explicite du boss : « check that everything works [...] send it to the
+    other app check that the placement works well »).
+
+    Le gabarit est essayé sur bloc.comps EN ENTIER (jamais un sous-ensemble
+    partiel) -- exactement le même principe de sécurité que le lot 9 : on
+    ne fait correspondre le gabarit qu'au sous-graphe des composants DÉJÀ
+    confirmés par le détecteur Python pour ce bloc précis, jamais au reste
+    de la carte.
+
+    @param bloc Bloc de circuit détecté (label + comps + roles).
+    @param comp_par_ref {ref: Composant} de toute la carte.
+    @param refs_du_bloc {ref} des composants de CE bloc (scope strict --
+    UNIQUEMENT pour un test d'appartenance, JAMAIS pour itérer : un `set`
+    Python n'a pas d'ordre stable garanti, voir note ci-dessous).
+    @return dict {ref: (x, y)} ou None si ni gabarit ni positionneur
+    historique ne s'appliquent (montage non migré -- laisser tel quel).
+    """
+    from circuit_analyzer.gabarit import positions_depuis_gabarit
+    # [MODIF 2026-08-17] BUG TROUVÉ EN TESTANT (lot 9b) : itérer `refs_du_bloc`
+    # (un `set`, sans ordre garanti) pour reconstruire `comps_bloc` cassait
+    # l'ordre D'ORIGINE de `bloc.comps` (celui du détecteur Python). Pour un
+    # montage où deux composants jouent EXACTEMENT le même rôle structurel
+    # (ex. les deux résistances d'entrée d'un sommateur, interchangeables),
+    # le gabarit leur assigne un rôle par INDEX de découverte (voir
+    # `Gabarit.correspondre`, Phase 2) -- un ordre différent leur donne donc
+    # des positions ÉCHANGÉES entre elles. Résultat toujours électriquement
+    # correct (les deux jouent le même rôle), mais visuellement non
+    # déterministe d'un appel à l'autre. Corrigé : `bloc.comps` (une LISTE,
+    # déjà dans l'ordre du détecteur) est parcouru directement, `refs_du_bloc`
+    # ne sert plus qu'à un test d'appartenance (garde de scope, jamais une
+    # itération).
+    comps_bloc = [c for c in bloc.comps if c.ref in refs_du_bloc]
+    provisoire = positions_depuis_gabarit(bloc.label, comps_bloc, 0, 0)
+    if provisoire is not None:
+        return provisoire
+    if bloc.label in _POSITIONNEURS_PAR_MOTIF and bloc.roles:
+        comps_role = [comp_par_ref[ref] for refs in bloc.roles.values() for ref in refs
+                     if ref in refs_du_bloc and ref in comp_par_ref]
+        return _POSITIONNEURS_PAR_MOTIF[bloc.label](comps_role, bloc.roles, 0, 0, bloc.roles_empiles)
+    # [MODIF 2026-08-17] Lot 9c : positionneurs Python DÉDIÉS choisis par
+    # mot-clé (commande de relais, pont diviseur, pont redresseur -- voir
+    # `xml._positionner_composants_bloc`, même mots-clés). Ce ne sont PAS
+    # un repli générique (contrairement à `_positionner_aop`/`_positionner_rc`/
+    # `_positionner_grille_compacte`, délibérément EXCLUS ici) : chacun est
+    # une disposition SPÉCIFIQUE au montage, légitime à appliquer sur une
+    # carte scannée au même titre que `_POSITIONNEURS_PAR_MOTIF`.
+    label_low = bloc.label.lower()
+    for mot_cle, positionneur in _POSITIONNEURS_PAR_MOTCLE.items():
+        if mot_cle in label_low:
+            return positionneur(comps_bloc, 0, 0)
+    return None
+
+
 def _deltas_disposition_canonique(source, composants, blocs) -> dict:
-    """@brief Deplacements (dx, dy) des composants de role d'un montage migre.
+    """@brief Deplacements (dx, dy) des composants d'un montage migre.
 
     @param source SourceXML (pont ref -> ET.Element).
     @param composants Composants analyses (Composant, avec .ref).
-    @param blocs Sortie de _grouper_par_circuit (porte .label et .roles).
+    @param blocs Sortie de _grouper_par_circuit (porte .label, .comps, .roles).
     @return dict {ref: (dx, dy)} ; {} si rien a deplacer.
 
-    N'agit QUE sur les refs de role (le nom exact des roles depend du
-    positionneur associe a bloc.label, cf. _POSITIONNEURS_PAR_MOTIF) d'un
-    montage dont le label est dans _POSITIONNEURS_PAR_MOTIF ET dont roles
-    est peuple — meme garde
-    que le chemin generer_xml, aucune regression possible sur un montage non
-    migre. Les satellites et tout le reste de la carte ne sont jamais
+    Un montage est considéré "migré" (donc candidat à un déplacement) s'il
+    a soit un gabarit dessiné (patterns_reference/{label}.xml, voir
+    _provisoire_bloc), soit un positionneur Python historique ET des rôles
+    peuplés — sinon aucun delta, aucune régression possible sur un montage
+    non migré. Les satellites et tout le reste de la carte ne sont jamais
     consideres ici.
 
     La disposition canonique est ANCREE sur le centroide REEL actuel du
@@ -117,18 +201,20 @@ def _deltas_disposition_canonique(source, composants, blocs) -> dict:
     comp_par_ref = {c.ref: c for c in composants}
     deltas = {}
     for bloc in blocs:
-        if bloc.label not in _POSITIONNEURS_PAR_MOTIF or not bloc.roles:
-            continue
         # Scope strict au bloc COURANT : le chemin netlist appelle toujours
         # le positionneur avec exactement bloc.comps, jamais un ensemble plus
         # large — aligner ce chemin dessus interdit par construction de
         # deplacer une ref qui n'appartiendrait pas a CE bloc precis (revue
         # de branche, Minor #5).
         refs_du_bloc = {c.ref for c in bloc.comps}
-        refs_role = [ref for refs in bloc.roles.values() for ref in refs
-                     if ref in refs_du_bloc]
+        provisoire = _provisoire_bloc(bloc, comp_par_ref, refs_du_bloc)
+        if provisoire is None:
+            continue
+
         positions_reelles = {}
-        for ref in refs_role:
+        for ref in provisoire:
+            if ref not in refs_du_bloc:
+                continue
             element = source.elements.get(ref)
             if element is None:
                 continue
@@ -145,8 +231,6 @@ def _deltas_disposition_canonique(source, composants, blocs) -> dict:
         cx = sum(p[0] for p in positions_reelles.values()) / len(positions_reelles)
         cy = sum(p[1] for p in positions_reelles.values()) / len(positions_reelles)
 
-        comps_role = [comp_par_ref[ref] for ref in positions_reelles
-                      if ref in comp_par_ref and ref in refs_du_bloc]
         # Placer provisoirement a une origine arbitraire (0,0) juste pour
         # connaitre le CENTROIDE de la disposition canonique elle-meme, puis
         # ne garder que le DECALAGE necessaire pour amener CE centroide sur
@@ -155,7 +239,6 @@ def _deltas_disposition_canonique(source, composants, blocs) -> dict:
         # positionneur (contrairement a des coefficients devines a la main,
         # qui avaient produit une derive de (-43, -63) a chaque export —
         # revue de branche, jamais convergente).
-        provisoire = _POSITIONNEURS_PAR_MOTIF[bloc.label](comps_role, bloc.roles, 0, 0, bloc.roles_empiles)
         provisoire_role = {ref: pos for ref, pos in provisoire.items() if ref in positions_reelles}
         if not provisoire_role:
             continue

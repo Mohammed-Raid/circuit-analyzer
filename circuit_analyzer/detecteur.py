@@ -51,6 +51,27 @@ def _u_candidat_aop(comp):
     return entree is None or entree['categorie'] == 'AOP'
 
 
+def _est_led(comp) -> bool:
+    """@brief Vrai si la diode `comp` est identifiable comme une LED (indicateur),
+    et non un redresseur/signal (1N4007, 1N4148…).
+
+    Signal utilisé plutôt qu'une pure heuristique topologique : le catalogue
+    (`categorie`, rempli quand le composant vient de la bibliothèque réelle,
+    cf. `circuit_analyzer.xml.lire_xml`) ou, à défaut, le champ `value` brut.
+    Sans ce signal, `detecter_redresseur_simple` confondait un indicateur LED
+    alimenté par une résistance de tirage (diode en série + R vers GND, montage
+    "sink") avec un redresseur simple alternance — les deux montages sont
+    topologiquement identiques ; seule la nature réelle du composant (LED vs
+    diode de redressement) permet de trancher quand le nœud d'anode n'est pas
+    nommé comme un rail connu (cf. `est_alimentation`, déjà exclu séparément)."""
+    texte = f"{getattr(comp, 'categorie', '') or ''} {getattr(comp, 'value', '') or ''}".upper()
+    if 'LED' in texte:
+        return True
+    from circuit_analyzer.catalogue import identifier
+    entree = identifier('D', getattr(comp, 'value', ''))
+    return entree is not None and entree.get('categorie') == 'LED'
+
+
 def _est_rail(noeud) -> bool:
     """@brief Vrai si le nœud est une masse, une alimentation ou une terre de protection.
 
@@ -1323,6 +1344,18 @@ def detecter_redresseur_simple(graphe):
             continue
         if est_alimentation(anode):    # LED indicateur ou autre
             continue
+        if _est_led(comp):
+            # Diode+R vers GND est topologiquement identique à un redresseur
+            # simple alternance (série + charge à la masse) ET à un indicateur
+            # LED monté en "sink" (LED en série + R de limitation vers GND) --
+            # l'exclusion `est_alimentation(anode)` ci-dessus ne rattrape que le
+            # cas où l'anode porte un nom de rail connu (ex. "VCC"). Une LED
+            # alimentée via une résistance de tirage vers un nœud intermédiaire
+            # non nommé rail (ex. "LEDA") passait ce filtre et ressortait
+            # (à tort) en « Redresseur simple alternance ». Le catalogue
+            # (`categorie`/`value`) est un signal direct : une LED n'est
+            # JAMAIS un redresseur, indépendamment de la topologie observée.
+            continue
 
         # Chercher une R de charge sur la cathode vers GND
         for ref_r, autre in _voisins_de_type(graphe, cathode, 'R'):
@@ -1703,6 +1736,82 @@ NOMS_CIRCUITS = [
 match_patterns = None  # défini après analyser()
 
 
+# [MODIF 2026-08-17] Lot 8 -- BASCULE RÉELLE des gabarits prouvés (voir
+# docs/superpowers/plans/2026-08-17-gabarits-xml-montages-canoniques.md).
+# Chaque valeur ci-dessous est le détecteur Python D'ORIGINE, INCHANGÉ --
+# jamais supprimé -- que le gabarit du même fichier remplace UNIQUEMENT si
+# son chargement réussit (voir contrat de repli dans
+# `circuit_analyzer.gabarit.detecteurs_gabarit_pour_bascule`). Un fichier de
+# référence absent, corrompu, ou rendu ambigu par une modification manuelle
+# laisse silencieusement le détecteur Python actif -- jamais de perte de
+# détection. Clé = nom de fichier dans `patterns_reference/` (sans .xml),
+# doit rester synchronisé avec `gabarit._CIRCUIT_TYPE_EXACT`.
+_FICHIER_VERS_DETECTEUR_ORIGINAL = {
+    'Suiveur de tension':                     detecter_suiveur_tension,
+    'Amplificateur inverseur':                detecter_amplificateur_inverseur,
+    'Amplificateur sommateur':                detecter_amplificateur_sommateur,
+    'Amplificateur non-inverseur':            detecter_amplificateur_non_inverseur,
+    'Integrateur':                            detecter_integrateur,
+    'Derivateur':                             detecter_derivateur,
+    'Amplificateur differentiel':             detecter_amplificateur_differentiel,
+    'Comparateur':                            detecter_comparateur,
+    'Bascule de Schmitt':                     detecter_bascule_schmitt,
+    'Transistor en commutation':              detecter_transistor_commutation,
+    "Collecteur commun (suiveur d'emetteur)": detecter_suiveur_emetteur,
+    'MOSFET en commutation':                  detecter_mosfet_commutation,
+    'MOSFET haute-tension (cote haut)':       detecter_mosfet_cote_haut,
+    'Diode de roue libre':                    detecter_diode_roue_libre,
+    'Diode de protection ESD':                detecter_diode_protection_esd,
+    'Miroir de courant BJT':                  detecter_miroir_courant,
+    'Etage push-pull':                        detecter_push_pull,
+    'Paire Darlington':                       detecter_darlington,
+    'Amplificateur emetteur commun':          detecter_amplificateur_emetteur_commun,
+}
+
+
+_cache_gabarits_bascule = None   # chargé une seule fois -- voir _gabarits_bascule()
+
+
+def _gabarits_bascule() -> dict:
+    """@brief Charge les gabarits de bascule UNE SEULE FOIS par run (mis en
+    cache) -- appeler `detecteurs_gabarit_pour_bascule()` (parse 19 fichiers
+    XML) à CHAQUE `analyser()` serait un coût I/O répété inutile, sur un
+    projet qui vise 5000+ composants et où `analyser()` peut être appelé en
+    boucle (tests, ré-analyses successives). Rechargement = redémarrage du
+    process, cohérent avec le point encore ouvert du design d'origine
+    ("mécanisme exact de recharge : redémarrage vs bouton, à trancher") --
+    un bouton "recharger les gabarits" pourra vider ce cache plus tard sans
+    toucher au reste du mécanisme.
+
+    @return dict {nom_fichier: callable} des gabarits chargés avec succès.
+    """
+    global _cache_gabarits_bascule
+    if _cache_gabarits_bascule is None:
+        from circuit_analyzer.gabarit import detecteurs_gabarit_pour_bascule
+        _cache_gabarits_bascule = detecteurs_gabarit_pour_bascule()
+    return _cache_gabarits_bascule
+
+
+def _detecteurs_actifs(liste_originale: list) -> list:
+    """@brief Substitue, dans `liste_originale`, chaque détecteur Python dont
+    le gabarit a chargé avec succès par sa version gabarit -- préserve
+    l'ORDRE exact de la liste d'origine (l'ordre de priorité anti-vol entre
+    détecteurs complexes doit rester identique, sinon un composant pourrait
+    être "volé" par un montage différent de celui d'aujourd'hui).
+
+    @param liste_originale `_DETECTEURS_COMPLEXES` ou `_DETECTEURS_SIMPLES`,
+    jamais modifiée (une NOUVELLE liste est retournée).
+    @return list Liste substituée, même longueur, même ordre.
+    """
+    gabarits = _gabarits_bascule()
+    detecteur_vers_fichier = {v: k for k, v in _FICHIER_VERS_DETECTEUR_ORIGINAL.items()}
+    out = []
+    for d in liste_originale:
+        fichier = detecteur_vers_fichier.get(d)
+        out.append(gabarits[fichier] if fichier in gabarits else d)
+    return out
+
+
 def analyser(graphe, patterns_personnalises=None):
     """
     @brief Analyse le graphe et retourne tous les circuits détectés.
@@ -1716,7 +1825,15 @@ def analyser(graphe, patterns_personnalises=None):
             avec les attributs .supprimes (matches ignorés) et .ilots (structure en étages).
     """
     # Charger les patterns personnalisés depuis l'interface graphique (si présents)
-    # Ils s'insèrent entre les circuits complexes et les circuits simples.
+    # Ils s'insèrent entre les circuits complexes et les circuits simples --
+    # SAUF les patterns "précis" (cf. bloc de tri plus bas), qui passent avant.
+    # `patterns_precis`/`patterns_generiques` : par défaut vides, remplis
+    # seulement quand `patterns_personnalises` est None (chargement JSON normal) --
+    # un appelant qui fournit sa PROPRE liste de fonctions détecteur (tests) n'a
+    # pas d'objet Pattern à inspecter pour `_required_reqs` ; elle garde alors
+    # sa place historique (générique) sans tenter le tri.
+    patterns_precis = []
+    patterns_generiques = []
     if patterns_personnalises is None:
         try:
             from custom_circuits.loader import get_custom_patterns
@@ -1738,12 +1855,63 @@ def analyser(graphe, patterns_personnalises=None):
                     for match in pattern.match(graphe):
                         yield {**match, 'circuit_type': pattern.name}
                 return detecter
-            patterns_personnalises = [_envelopper(p) for p in objets_custom]
+            for p in objets_custom:
+                requis = getattr(p, '_required_reqs', [])
+                cible = (patterns_precis if any(r.get('categorie') for r in requis)
+                        else patterns_generiques)
+                cible.append(_envelopper(p))
         except Exception:
-            patterns_personnalises = []
+            pass
+        patterns_personnalises = []
+    else:
+        patterns_generiques = list(patterns_personnalises)
+        patterns_personnalises = []
 
-    # Ordre final : complexes → personnalisés → simples
-    tous_les_detecteurs = _DETECTEURS_COMPLEXES + list(patterns_personnalises) + _DETECTEURS_SIMPLES
+    # [MODIF 2026-08-17] Lot 8 -- BASCULE TENTÉE PUIS RETIRÉE (voir plan) : mise en
+    # service réelle essayée, puis REVERTÉE le jour même après avoir trouvé, sur
+    # de VRAIS fichiers du corpus (`ilot_reel_darlington_relais_rlc.xml`), que le
+    # modèle structurel "correspondance EXACTE à chaque broche nommée" est TROP
+    # STRICT pour la réalité d'une carte scannée : une broche qui n'est PAS elle-
+    # même le sujet du motif (ex. OUT d'un AOP, la broche "libre" d'une diode)
+    # porte très souvent, sur un vrai circuit multi-étages, un ou des composants
+    # SUPPLÉMENTAIRES légitimes (étage suivant, charge, snubber...) absents du
+    # petit schéma de référence isolé -- le moteur refuse alors le match ENTIER
+    # au lieu de l'accepter avec ce surplus. Constaté concrètement : « Paire
+    # Darlington » perdue (les deux collecteurs touchent VCC par des nœuds locaux
+    # différents, pas le même net littéral dessiné en référence) et « Diode de
+    # roue libre » perdue (l'anode réelle porte un composant voisin absent de la
+    # référence isolée) -- perte de détection RÉELLE, puis un troisième montage
+    # (`test impedances`, motif personnalisé) récupère les composants libérés
+    # avec des `nodes` vides, qui plante un consommateur aval (gui/circuit_viewer).
+    # Risque jugé SYSTÉMIQUE (pas limité à ces deux montages) : n'importe laquelle
+    # des 19 broches "libres" pourrait subir le même sort sur un autre fichier
+    # réel. Revert immédiat plutôt que ship un pipeline PIRE que le Python pur sur
+    # un vrai fichier -- voir le plan pour l'extension nécessaire ("groupes du
+    # gabarit = SOUS-ENSEMBLE requis, pas égalité stricte, sur les broches hors
+    # rôle du motif") avant toute nouvelle tentative de bascule.
+    # `_DETECTEURS_COMPLEXES`/`_DETECTEURS_SIMPLES` restent la liste ACTIVE,
+    # 100% Python, inchangée -- `_detecteurs_actifs`/`_FICHIER_VERS_DETECTEUR_ORIGINAL`
+    # et le mécanisme de gabarit.py restent en place, prêts à réessayer une fois
+    # l'extension faite, mais ne sont plus appelés ici.
+    # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (« j'ai créé un pattern AOP +
+    # photorésistance [noms verrouillés], enregistré, réouvert le même schéma
+    # dans Analyser -- il ne matche jamais ») : avec l'ordre `complexes →
+    # personnalisés → simples` ci-dessous, un détecteur complexe générique (ex.
+    # "Comparateur (AOP)", qui réclame N'IMPORTE QUEL AOP sans contre-réaction)
+    # s'exécute et RÉCLAME le composant AVANT le pattern personnalisé -- le
+    # garde anti-vol (`composants_utilises`, plus bas) écarte alors le match
+    # personnalisé même s'il est *plus précis* (noms réels verrouillés sur les
+    # DEUX composants, cf. `CustomCircuitPattern._required_reqs`). Un pattern
+    # personnalisé dont AU MOINS UN composant requis porte une `categorie`
+    # verrouillée est une identification délibérée, plus spécifique qu'une
+    # heuristique générique par forme -- il passe donc AVANT les complexes.
+    # Un pattern personnalisé "à l'ancienne" (types nus seulement, ex.
+    # `components: ["R", "C"]`) reste à sa place historique (entre complexes
+    # et simples) : comportement inchangé pour tout pattern existant.
+    # (`patterns_precis`/`patterns_generiques` déjà triés plus haut.)
+    # Ordre final : personnalisés précis → complexes → personnalisés génériques → simples
+    tous_les_detecteurs = (patterns_precis + _DETECTEURS_COMPLEXES
+                           + patterns_generiques + _DETECTEURS_SIMPLES)
 
     # Réduction préalable (directive métier en rouge du document de référence) :
     # les sous-réseaux passifs série/parallèle sont collapsés en dipôles

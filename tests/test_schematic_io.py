@@ -2,6 +2,7 @@
 @file test_schematic_io.py
 @brief Tests de la sérialisation .circ et de l'import netlist/XML dans l'éditeur.
 """
+import os
 from dataclasses import dataclass
 
 import pytest
@@ -253,3 +254,54 @@ def test_load_dict_rejette_format_inconnu(ctk_root):
         ed.load_dict({"foo": "bar"})
     with pytest.raises(ValueError):
         ed.load_dict({"format": "circ", "version": 99})
+
+
+# ── Non-régression : ouverture d'un vrai fichier .xml (bug utilisateur) ───────
+
+_CHEMIN_TEST_REEL = os.path.join(
+    os.path.dirname(__file__), "..", "Debug", "schema_test", "test.xml")
+
+
+@pytest.mark.skipif(not os.path.isfile(_CHEMIN_TEST_REEL), reason="Debug/schema_test/test.xml absent")
+def test_ouverture_reelle_test_xml_ne_perd_aucune_connexion_reelle():
+    """BUG TROUVÉ EN TESTANT (2026-08-19, "j'ouvre test.xml dans l'onglet
+    Schéma et je ne vois pas les connexions") : `lire_xml` construit
+    `Component.pins` (électrique) et `Component.pinout` (géométrie, ->
+    utilisé par `build_from_components` pour valider quelles broches sont
+    dessinables) via DEUX dérivations indépendantes de la même broche —
+    `pins` via `pnom = info_b['pname']` (peut être le Pnumber, cf. le repli
+    `pnum or pnom`), `pinout` via `_entree_depuis_dataitem` (Pname littéral).
+    Quand le plan de renommage (ex. Photorésistance/Phototransistor classés
+    comme diode 'D', plan {'A','K','1','2'}) ne matche QUE l'une des deux
+    formes, `pins` et `pinout` finissaient avec des clés différentes pour la
+    MÊME broche -> `build_from_components` rejetait chaque broche comme
+    "pin not in avail" -> composant sans aucun fil affiché dans l'éditeur,
+    alors que l'analyseur backend (`analyser`/`detecter_ilots`) voyait la
+    connexion normalement. Fichier réel de l'utilisateur (AOP + GND +
+    Photoresistance + Oscillateur + Point de test + Phototransistor,
+    enregistré depuis ERetroDesign) : toute broche câblée doit produire un
+    fil dans l'éditeur, aucune ne doit être comptée "dropped_pins" sauf les
+    V+/V- de l'AOP (réellement non câblées dans ce schéma)."""
+    from circuit_analyzer.xml import lire_xml
+
+    composants = lire_xml(_CHEMIN_TEST_REEL)
+    doc = build_from_components(composants, COMP_DEFS)
+    rapport = doc.pop("_report")
+
+    # Seules les broches V+/V- de l'AOP (non câblées dans ce schéma réel)
+    # doivent être droppées -- toute autre broche câblée doit produire un fil.
+    assert rapport["dropped_pins"] == 2
+    assert rapport["ignored_components"] == []
+
+    ids_reels = {c["id"]: c["ref"] for c in doc["components"] if c["type"] != "GND"}
+    refs_avec_fil = set()
+    for w in doc["wires"]:
+        if w["from_comp_id"] in ids_reels:
+            refs_avec_fil.add(ids_reels[w["from_comp_id"]])
+        if w["to_comp_id"] in ids_reels:
+            refs_avec_fil.add(ids_reels[w["to_comp_id"]])
+
+    # Les 5 composants réels (U1 AOP, X1 Photoresistance, D1 Oscillateur,
+    # X2 Point de test, D2 Phototransistor) sont tous câblés dans le fichier
+    # source -> tous doivent apparaître dans au moins un fil reconstruit.
+    assert refs_avec_fil == {"U1", "X1", "D1", "X2", "D2"}

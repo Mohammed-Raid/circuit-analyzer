@@ -115,6 +115,9 @@ class Composant:
         boite_ic : True si le type a été déduit du catch-all IC (nom réel
                    non reconnu, ≥3 broches) ou d'un connecteur J — rendu en
                    boîte neutre étiquetée du nom, jamais un faux AOP.
+        categorie : nom RÉEL du composant tel que lu dans la bibliothèque (ex.
+                    "Photorésistance", "Thermistance", "MOSFET canal N") —
+                    voir doc de champ ci-dessous.
     """
     ref:   str
     type:  str
@@ -122,6 +125,16 @@ class Composant:
     value: str = ''
     par_forme: bool = False
     boite_ic: bool = False
+    # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (« AOP + photorésistance -> U + R,
+    # indiscernable de n'importe quel autre montage U+R ») : `type` reste la lettre
+    # ÉLECTRIQUE grossière (R/C/L/D/Q/M/U...), partagée par TOUT ce qui se comporte
+    # pareil électriquement -- une photorésistance N'A PAS de lettre dédiée, elle
+    # reste 'R'. `categorie` porte le nom RÉEL du composant (celui de la
+    # bibliothèque), pour filtrer plus finement dans un pattern personnalisé
+    # (ex. "R dont la categorie est Photorésistance") SANS toucher à `type` (qui
+    # reste la seule chose que les détecteurs/le rendu/les plans de broches
+    # connaissent). Vide = comportement inchangé (aucun filtre supplémentaire).
+    categorie: str = ''
     # Contour reel (lignes/arcs/polygones) capture a l'import, uniquement
     # pour les types catch-all sans symbole dedie (U a plan vide, X) --
     # spec 2026-08-07. None = comportement generique inchange.

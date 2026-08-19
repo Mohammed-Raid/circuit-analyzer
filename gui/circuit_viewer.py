@@ -1612,6 +1612,59 @@ def show_dipole_detail(refs, composition, graph, comp_info, parent=None):
                   command=popup.destroy).pack(side="right", padx=12, pady=7)
 
 
+def _dessiner_generique(d, result, ci):
+    """@brief Dessin de repli pour un pattern SANS entrée dans _DRAWERS.
+
+    Cas d'un pattern personnalisé (custom_circuits.json, créé via le wizard sans écrire de
+    code) : aligne les composants en ligne, avec de VRAIS symboles (style_symbole, mêmes
+    classes schemdraw que les montages intégrés), et cable un fil DIRECT entre composants
+    CONSÉCUTIFS (dans l'ordre de result["components"]) qui partagent un net -- même logique
+    que pattern_wizard._dessiner_apercu, pour que l'aperçu du wizard et le schéma final du
+    même pattern se ressemblent. Pas de gestion rails/branches/compaction : ce n'est pas le
+    moteur ilots, un repli volontairement simple.
+
+    @param d Dessin schemdraw en cours (ouvert par l'appelant, _make_fig).
+    @param result Match du circuit détecté ({'components': [...], ...}).
+    @param ci Dict {ref -> infos composant} (comp_info), avec 'type'/'value'/'pins'.
+    @return None (aucune ancre : pas de boîtes Z de couplage pour un pattern générique).
+    """
+    from gui.impedance_schematic import style_symbole
+
+    refs = result.get("components", [])
+    if not refs:
+        return None
+
+    espace = 2.5
+    bornes = {}
+    for i, ref in enumerate(refs):
+        info = ci.get(ref, {})
+        typ = info.get("type", "?")
+        val = info.get("value", "")
+        cls, coul, ref_txt, valeur = style_symbole(typ, val, ref)
+        x0, x1 = i * espace, i * espace + 1.5
+        el = cls().at((x0, 0)).to((x1, 0)).color(coul).label(
+            ref_txt, loc="bottom", fontsize=11, color=coul)
+        if valeur:
+            el = el.label(valeur, loc="top", fontsize=11, color=coul)
+        d.add(el)
+        bornes[ref] = (x0, x1)
+
+    nets_par_ref = {ref: set((ci.get(ref, {}).get("pins") or {}).values()) for ref in refs}
+    tous_les_nets = set()
+    for nets in nets_par_ref.values():
+        tous_les_nets.update(nets)
+
+    for net in tous_les_nets:
+        composants_du_net = [ref for ref in refs if net in nets_par_ref[ref]]
+        for j in range(len(composants_du_net) - 1):
+            ref_a, ref_b = composants_du_net[j], composants_du_net[j + 1]
+            _xa0, xa1 = bornes[ref_a]
+            xb0, _xb1 = bornes[ref_b]
+            d.add(elm.Line().at((xa1, 0)).to((xb0, 0)).color(_WIRE))
+
+    return None
+
+
 def _make_fig(result, comp_info, drawer_fn, matches=None, detaille: bool = False):
     """@brief Construit la figure matplotlib du schéma (ou un texte de repli).
 
@@ -1636,6 +1689,13 @@ def _make_fig(result, comp_info, drawer_fn, matches=None, detaille: bool = False
 
     fig._z_hitboxes = []   # zones cliquables des Z (renseignées par le drawer)
     fig._comp_positions = {}   # registre ref -> position (renseigné par le drawer)
+    # [MODIF 2026-08-18] Un pattern personnalisé (créé via le wizard, custom_circuits.json)
+    # n'a pas d'entrée dans _DRAWERS -- sans repli, il tombait sur un texte brut (nom + refs),
+    # jamais un vrai schéma câblé. _dessiner_generique reprend la même logique que l'aperçu du
+    # wizard (pattern_wizard._dessiner_apercu) : symboles réels en ligne, fils directs entre
+    # composants consécutifs partageant un net. Zéro code requis pour qu'un NOUVEAU pattern
+    # personnalisé obtienne un schéma exportable en PNG, comme les montages intégrés.
+    drawer_fn = drawer_fn or _dessiner_generique
     if drawer_fn:
         try:
             with schemdraw.Drawing(canvas=ax, show=False) as d:
@@ -2732,15 +2792,21 @@ _SYMBOL_ELM = {
 }
 
 
-def _voie_devices(columns):
+def _voie_devices(columns, rows=()):
     """@brief Abscisse (centre) de la voie verticale des composants multi-broches.
 
     Le bord GAUCHE de la boite doit degager STUB_REACH depuis la derniere
     colonne : un dipole « bus a gauche, E/S a droite » sort son symbole puis son
     nom de net jusque-la. A un seul COL_PITCH, la diode D4 de « pg carte » etait
-    dessinee A TRAVERS l'isolateur SI844AB."""
+    dessinee A TRAVERS l'isolateur SI844AB.
+
+    @param rows Lignes du plan : la demi-largeur reservee suit la boite la
+        PLUS LARGE reellement dessinee (cf. `_largeur_bloc`), pas la constante
+        `_W_BLOC` -- sinon un boitier a noms de broches longs (ex. A788J/
+        SI844AB) deborde a gauche par-dessus la derniere colonne-bus."""
+    largeur = max((_largeur_bloc(r) for r in rows), default=_W_BLOC)
     return (max((c["x"] for c in columns), default=0.0)
-            + 2 * COL_PITCH + _W_BLOC / 2.0)
+            + 2 * COL_PITCH + largeur / 2.0)
 
 
 def _draw_island_schematic(d, plan, hitboxes=None):
@@ -2757,7 +2823,7 @@ def _draw_island_schematic(d, plan, hitboxes=None):
     # Voie dediee a droite pour les composants multi-broches (AOP, blocs) :
     # ils y sont empiles par ligne, donc deux composants actifs ne se chevauchent
     # jamais (chacun a son y) et ne se regroupent plus au barycentre.
-    device_x = _voie_devices(columns)
+    device_x = _voie_devices(columns, rows)
 
     # Colonnes-bus rognees : ligne verticale + etiquette + masse eventuelle.
     for c in columns:
@@ -2929,6 +2995,34 @@ def _demi_hauteur_bloc(row):
     return max(_H_BLOC_MIN, (n + 1) * _ESP_MOIGNON) / 2.0
 
 
+def _largeur_bloc(row):
+    """@brief Largeur qu'un bloc occupera au dessin — MIROIR de `_draw_block_row`,
+    meme principe que `_demi_hauteur_bloc` mais pour la largeur.
+
+    `_W_BLOC` etait une constante fixe : assez large pour ~4 caracteres de
+    chaque cote. Un vrai boitier reel porte souvent des noms de fonction de
+    6-7 caracteres des DEUX cotes a la fois (ex. A788J/SI844AB, pg carte.xml :
+    "VDD2#2"/"GND2#2" a gauche, "ABSVAL"/"Vref" a droite) — les deux textes,
+    ancres pres de leur bord respectif et etendus vers l'INTERIEUR de la boite
+    (cf. `_brancher_colonnes`/`_brancher_moignons`), se rencontraient alors au
+    centre : mesure sur ce boitier, bbox de "VDD2#2" chevauchant "Vref" et
+    "Vout" a plus de 60 % avant meme la passe anti-collision. MIROIR de
+    `puce_schematic._taille_ic` (meme calcul de largeur de texte, cote boite
+    generique de l'ilot plutot que boite de puce identifiee)."""
+    if _rendu_en_triangle(row) or len(row.get("pins") or []) <= 2:
+        return _W_BLOC
+    from schemdraw.elements.intcircuits import text_size
+    fontsize = 8
+    noms_gauche = [p for p, _n in (row.get("cols") or [])]
+    noms_droite = [p for p, _n in _stubs_visibles(row)]
+    lw = max((text_size(n, size=fontsize)[0] / 72 * 2 for n in noms_gauche), default=0.0)
+    rw = max((text_size(n, size=fontsize)[0] / 72 * 2 for n in noms_droite), default=0.0)
+    # 2*0.3 : l'offset d'ancrage de chaque cote (cf. `_draw_block_row`,
+    # `gauche + 0.3` / `droite - 0.3`) ; +0.4 : marge de securite pour que
+    # les deux textes les plus longs ne se touchent jamais au centre.
+    return max(_W_BLOC, lw + rw + 2 * 0.3 + 0.4)
+
+
 def _eventail(n, y):
     """@brief Ordonnees de n broches centrees sur y, du haut vers le bas."""
     return [y + (n - 1) * _ESP_MOIGNON / 2.0 - k * _ESP_MOIGNON for k in range(n)]
@@ -2975,6 +3069,12 @@ def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
     # est pose juste au-dessus de ce bord et venait sinon buter dessus.
     n = max(len(cols_pins), len(stubs))
     h = max(_H_BLOC_MIN, (n + 1) * _ESP_MOIGNON)
+    # Largeur suivant le VRAI besoin de texte (cf. `_largeur_bloc`), pas une
+    # constante fixe : un boitier reel a noms de fonction longs des deux cotes
+    # (VDD2#2/GND2#2 a gauche, ABSVAL/Vref/Vout a droite sur A788J/SI844AB)
+    # depassait la largeur fixe et les deux etiquettes se rencontraient au
+    # centre de la boite.
+    w = _largeur_bloc(row)
     # PIEGE schemdraw : `elm.Rect` prend corner1/corner2, PAS w/h. Un
     # `Rect(w=2.2, h=1.0)` part dans **kwargs et est IGNORE EN SILENCE -> toutes
     # les boites sortaient au carre unite par defaut, ancrees par leur coin bas
@@ -2982,11 +3082,11 @@ def _draw_block_row(d, row, cols_pins, x_by_net, device_x):
     # CENTRES sur (device_x, y).
     # Etiquette AU-DESSUS de la boite (loc="top") : centree, elle chevauchait
     # les labels de net qui sortent a DROITE des boites multi-broches.
-    d += elm.Rect(corner1=(-_W_BLOC / 2.0, -h / 2.0),
-                  corner2=(_W_BLOC / 2.0, h / 2.0)).at((device_x, y)).label(
+    d += elm.Rect(corner1=(-w / 2.0, -h / 2.0),
+                  corner2=(w / 2.0, h / 2.0)).at((device_x, y)).label(
         titre if titre is not None else row["ref"], loc="top").color(_WIRE)
     _enregistrer_position(d, row.get("ref"), (device_x, y))
-    gauche, droite = device_x - _W_BLOC / 2.0, device_x + _W_BLOC / 2.0
+    gauche, droite = device_x - w / 2.0, device_x + w / 2.0
 
     # Colonnes (bord gauche) et moignons (bord droit) sont eventes
     # INDEPENDAMMENT, tous deux centres sur la MEME ordonnee `y` avec le MEME
@@ -3018,7 +3118,23 @@ def _brancher_colonnes(d, cols_pins, x_by_net, ys, x_bord, x_nom):
         d += elm.Line().at((x, yy)).to((x_bord, yy)).color(_WIRE)
         d += elm.Dot().at((x, yy)).color(_WIRE)
         if x_nom is not None:
-            d += elm.Label().at((x_nom, yy)).label(pin, fontsize=8, color=_WIRE)
+            # halign="left" : le texte COMMENCE a l'ancre (x_bord + 0.3, juste a
+            # l'interieur du bord gauche de la boite) et s'etend vers la DROITE
+            # (interieur de la boite). Avant ce correctif l'ancrage etait
+            # laisse a "center" (defaut) : la moitie du texte s'etendait alors
+            # vers la GAUCHE, par-dessus le bord gauche et le fil qui s'y
+            # termine, des qu'un nom de broche depassait ~6 caracteres (ex.
+            # "GND2#2", "VDD2#2" sur A788J/SI844AB, pg carte.xml). Ce
+            # chevauchement texte/fil, present des le dessin initial (avant
+            # meme la passe anti-collision), declenchait ensuite une cascade
+            # de poussees dans `ajuster_labels` qui finissait par superposer
+            # des etiquettes de broches VOISINES entre elles (6 paires
+            # residuelles mesurees : GND1/GND2, /Fault/VDD2, VDD2#2/ABSVAL,
+            # GND2#2/Vout, CH/CL...). Ancrer le texte pour qu'il ne quitte
+            # JAMAIS son cote de la boite supprime la cause a la racine, quelle
+            # que soit la longueur du nom de broche.
+            d += elm.Label().at((x_nom, yy)).label(
+                pin, fontsize=8, color=_WIRE, halign="left", valign="center")
 
 
 def _brancher_moignons(d, stubs, ys, x_bord, x_nom):
@@ -3027,7 +3143,12 @@ def _brancher_moignons(d, stubs, ys, x_bord, x_nom):
         d += elm.Line().at((x_bord, yy)).right(0.9).color(_WIRE)
         _draw_net_end(d, net)
         if x_nom is not None:
-            d += elm.Label().at((x_nom, yy)).label(pin, fontsize=8, color=_WIRE)
+            # halign="right" : symetrique de _brancher_colonnes -- le texte se
+            # TERMINE a l'ancre (x_bord - 0.3, juste a l'interieur du bord
+            # droit) et s'etend vers la GAUCHE (interieur de la boite), sans
+            # jamais chevaucher le bord droit ni le moignon qui en part.
+            d += elm.Label().at((x_nom, yy)).label(
+                pin, fontsize=8, color=_WIRE, halign="right", valign="center")
 
 
 def _component_label(comp):
@@ -5564,29 +5685,68 @@ def _draw_mosfet_switch(d, result, ci, origin=(3, 0), titre=True,
             "absorbed_refs": absorbed_refs}
 
 
-def _draw_high_side_mosfet(d, result, ci):
-    """@brief Dessine le schéma « MOSFET haute-tension (côté haut) »."""
+def _draw_high_side_mosfet(d, result, ci, origin=(3, 0), titre=True,
+                           in_label="IN", out_label="LOAD"):
+    """@brief Dessine le schéma « MOSFET haute-tension (côté haut) ».
+
+    [MODIF 2026-08-19] BUG TROUVE EN TESTANT (même cause que `_draw_relay_driver`,
+    cf. son commentaire) : signature sans `origin`/`titre`/`in_label`/`out_label`
+    et SANS valeur de retour — jamais déclenché car aucun schéma canonique
+    existant n'enchaînait un commutateur côté-haut après un autre étage, mais
+    `_dessiner_montage_a` appelle TOUS les `_DRAWERS[...]` de
+    `_MONTAGES_TRANSISTOR_TERMINAUX` (ce montage en fait partie) avec ces 4
+    kwargs dès qu'un îlot le chaîne : `TypeError: unexpected keyword argument
+    'origin'`. Alignée sur le contrat de `_draw_mosfet_switch` (même famille,
+    variante côté-haut : drain→VCC, source→LOAD, au lieu de drain→charge,
+    source→GND) et de `_draw_relay_driver` (même famille TERMINALE : `in`
+    câble la connexion entrante depuis l'étage précédent, `out` n'a aucun
+    consommateur mais reste fourni pour la cohérence de la forme de retour)."""
     m = _ref(result, ci, "M")
     r = _ref(result, ci, "R")
     # .reverse() : cf. D3 dans _draw_mosfet_switch — ramène la grille à GAUCHE
     # (sans toucher drain/source) pour garder IN à gauche, comme partout ailleurs.
-    t = d.add(elm.NFet().at((3, 0)).reverse())
-    _enregistrer_position(d, m, (3, 0))
+    t = d.add(elm.NFet().at(origin).reverse())
+    _enregistrer_position(d, m, origin)
     gx, gy = t.gate
     _r_simple(d, r, ci, (gx - 0.9, gy), (gx - 2.6, gy), "Rg")
     d.add(elm.Line().at(t.gate).to((gx - 0.9, gy)))
-    d.add(elm.Dot().at((gx - 2.6, gy)).label("IN", loc="left"))
+    in_pt = (gx - 2.6, gy)
+    dot = elm.Dot().at(in_pt)
+    if in_label:
+        dot = dot.label(in_label, loc="left")
+    d.add(dot)
     # Drain at top → VCC power rail
     d.add(elm.Line().at(t.drain).up(1))
     d.add(elm.Dot().label("VCC", loc="right"))
     # Source at bottom → load (not GND)
     d.add(elm.Line().at(t.source).down(1))
-    d.add(elm.Dot().label("LOAD", loc="left"))
-    _titre_montage(d, result, (t.drain[0], t.drain[1] + 1.8))
+    out_pt = d.here
+    dot2 = elm.Dot().at(out_pt)
+    if out_label:
+        dot2 = dot2.label(out_label, loc="left")
+    d.add(dot2)
+    title_pt = (t.drain[0], t.drain[1] + 1.8)
+    if titre:
+        _titre_montage(d, result, title_pt)
+    return {"in": in_pt, "out": out_pt, "title": title_pt}
 
 
-def _draw_relay_driver(d, result, ci):
-    """@brief Dessine le schéma « Commande de relais » (K + Q/M + diode flyback)."""
+def _draw_relay_driver(d, result, ci, origin=(0, 0), titre=True, in_label=None, out_label=""):
+    """@brief Dessine le schéma « Commande de relais » (K + Q/M + diode flyback).
+
+    [MODIF 2026-08-19] BUG TROUVE EN TESTANT (chaine capteur -> comparateur ->
+    transistor -> relais, cf. tests/test_recognition_chains.py) : appelé SEUL
+    (`_make_fig`), ce montage n'avait jamais besoin de `origin`/`titre`/
+    `in_label`/`out_label` -- mais des qu'un relais driver suit un AUTRE étage
+    dans un ilot (`_ordonner_montages_flux` -> `_draw_island_chain` ->
+    `_dessiner_montage_a`), TOUS les `_DRAWERS[...]` sont appelés avec ces 4
+    paramètres (même signature que `_draw_darlington`/`_draw_common_emitter`) :
+    `TypeError: unexpected keyword argument 'origin'`, jamais déclenché avant
+    car aucun schéma canonique existant ne chaînait un driver de relais après
+    un comparateur. `out_label` est accepté mais inutilisé : le driver de
+    relais est TOUJOURS un étage terminal (la bobine pilote le matériel, aucun
+    net de sortie ne continue la chaîne)."""
+    ox, oy = origin
     k   = _ref(result, ci, "K")
     qs  = _refs(result, ci, "Q")
     ms  = _refs(result, ci, "M")
@@ -5594,13 +5754,16 @@ def _draw_relay_driver(d, result, ci):
     dbs = _refs(result, ci, "D")
 
     use_mosfet = not qs and bool(ms)
-    t = d.add((elm.NFet() if use_mosfet else elm.BjtNpn()).at((3.5, 0)))
-    _enregistrer_position(d, (ms[0] if use_mosfet else (qs[0] if qs else None)), (3.5, 0))
+    t = d.add((elm.NFet() if use_mosfet else elm.BjtNpn()).at((ox + 3.5, oy)))
+    _enregistrer_position(d, (ms[0] if use_mosfet else (qs[0] if qs else None)), (ox + 3.5, oy))
 
     ctrl_pin = t.gate if use_mosfet else t.base
     coll_pin = t.drain if use_mosfet else t.collector
     emit_pin = t.source if use_mosfet else t.emitter
-    ctrl_lbl = "VG" if use_mosfet else "CMD"
+    if in_label is not None:
+        ctrl_lbl = in_label
+    else:
+        ctrl_lbl = "VG" if use_mosfet else "CMD"
 
     # Contrôle : résistance de base en boîte Z cliquable, ou ligne directe
     cxp, cyp = ctrl_pin
@@ -5614,9 +5777,17 @@ def _draw_relay_driver(d, result, ci):
     if rbs:
         _r_simple(d, rbs[0], ci, (cxp - 2.4, cyp), (cxp - 0.7, cyp), "Rb")
         d.add(elm.Line().at((cxp - 0.7, cyp)).to((cxp, cyp)))
-        d.add(elm.Dot().at((cxp - 2.4, cyp)).label(ctrl_lbl, loc="left"))
+        in_pt = (cxp - 2.4, cyp)
+        dot = elm.Dot().at(in_pt)
+        if ctrl_lbl:
+            dot = dot.label(ctrl_lbl, loc="left")
+        d.add(dot)
     else:
-        d.add(elm.Line().at(ctrl_pin).left(1).label(ctrl_lbl, loc="left"))
+        in_pt = (cxp - 1, cyp)
+        line = elm.Line().at(ctrl_pin).left(1)
+        if ctrl_lbl:
+            line = line.label(ctrl_lbl, loc="left")
+        d.add(line)
 
     # Bobine du relais : collecteur → petit segment → bobine → VCC. Le segment
     # dégage l'étiquette K1 du fil de collecteur.
@@ -5657,7 +5828,16 @@ def _draw_relay_driver(d, result, ci):
     # Émetteur → GND
     d.add(elm.Line().at(emit_pin).down(0.5))
     d.add(elm.Ground())
-    _titre_montage(d, result, (coil_top[0], coil_top[1] + 0.9))
+    title_pt = (coil_top[0], coil_top[1] + 0.9)
+    if titre:
+        _titre_montage(d, result, title_pt)
+    # [MODIF 2026-08-19] `in`/`out` : meme contrat que _draw_mosfet_switch (autre
+    # montage TERMINAL, cf. _MONTAGES_TRANSISTOR_TERMINAUX) -- "in" cable la
+    # connexion ENTRANTE depuis l'etage precedent (_dessiner_montage_a exige
+    # res["in"] meme pour un montage terminal) ; "out" n'a pas de consommateur
+    # (aucun montage ne chaine APRES un driver de relais) mais reste fourni,
+    # ancre sur le haut de la bobine, pour la coherence de la forme de retour.
+    return {"in": in_pt, "out": coil_top, "title": title_pt}
 
 
 def _draw_current_mirror(d, result, ci):

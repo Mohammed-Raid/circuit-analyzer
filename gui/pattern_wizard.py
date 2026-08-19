@@ -21,8 +21,12 @@ from matplotlib.figure import Figure
 from circuit_analyzer.detecteur import NOMS_CIRCUITS
 from custom_circuits.loader import (
     CONDITION_DESCRIPTIONS,
+    CONDITION_KIND_DESCRIPTIONS,
+    CONDITION_KIND_LABELS,
+    CONDITION_KINDS,
     CONDITION_LABELS,
     condition_display,
+    libelle_nombre_composants_ilot,
     load_custom_circuits,
     save_custom_circuits,
     suggest_conditions,
@@ -66,15 +70,73 @@ _TYPE_LABELS = {
     "U": "Circuit intégré",
     "K": "Relais",
     "M": "MOSFET",
-    "X": "Connecteur",
+    "J": "Connecteur",
+    # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT : 'X' = composant NON reconnu par
+    # l'analyseur (nom absent des tables, forme ambiguë) -- 'J' est le vrai type
+    # connecteur (`_MAPPING_ERETRO`, mots-clés connect/jumper/borne). Étiqueter 'X'
+    # "Connecteur" affirmait à tort ce que le composant EST alors qu'on ne le sait
+    # justement pas -- trompeur au moment précis où l'utilisateur choisit de
+    # l'inclure dans un nouveau pattern (« Créer le pattern »).
+    "X": "Inconnu",
 }
+
+# [MODIF 2026-08-18] Comparateurs pour les "kind" numériques (au_moins_n,
+# valeur_compare, nombre_broches) -- la CLÉ part dans le JSON (cf.
+# custom_circuits.loader._COMPARATEURS, même clés), le LIBELLE est ce que
+# l'utilisateur voit dans le menu déroulant du builder.
+_COMPARATEUR_CHOIX = [
+    (">=", "au moins (≥)"),
+    ("==", "exactement (=)"),
+    ("<=", "au plus (≤)"),
+    (">",  "strictement plus (>)"),
+    ("<",  "strictement moins (<)"),
+]
+_COMPARATEUR_LABELS = [lbl for _cle, lbl in _COMPARATEUR_CHOIX]
+_COMPARATEUR_LABEL_VERS_CLE = {lbl: cle for cle, lbl in _COMPARATEUR_CHOIX}
+_COMPARATEUR_CLE_VERS_LABEL = {cle: lbl for cle, lbl in _COMPARATEUR_CHOIX}
+
+# [MODIF 2026-08-18] Lot « add more costomation ... 1 to a lot of pins or this
+# one should never be connected to this » : "sens" (positif/négatif) et "mode"
+# (une seule broche suffit / toutes exigées) du kind "connexion_broches".
+_SENS_CHOIX = [
+    ("connectee", "doit être connectée"),
+    ("jamais_connectee", "ne doit JAMAIS être connectée"),
+]
+_SENS_LABELS = [lbl for _cle, lbl in _SENS_CHOIX]
+_SENS_LABEL_VERS_CLE = {lbl: cle for cle, lbl in _SENS_CHOIX}
+
+_MODE_BROCHES_CHOIX = [
+    ("au_moins_une", "au moins une de ces broches"),
+    ("toutes", "TOUTES ces broches, chacune"),
+]
+_MODE_BROCHES_LABELS = [lbl for _cle, lbl in _MODE_BROCHES_CHOIX]
+_MODE_BROCHES_LABEL_VERS_CLE = {lbl: cle for cle, lbl in _MODE_BROCHES_CHOIX}
 
 
 def _type_color(t: str) -> str:
     return _TYPE_COLORS.get(t, "#94a3b8")
 
 
-def _type_label(t: str) -> str:
+def _type_label(t: str, pins=None) -> str:
+    """@brief Libellé affiché pour un type de composant.
+
+    [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (« aop is still showing circuit
+    integre ») : le type 'U' regroupe TOUT composant "boîte à broches" (AOP,
+    TL431, régulateur, IC catalogue quelconque…) — il n'existe pas de lettre
+    dédiée "AOP" dans ce système de types, donc `_TYPE_LABELS["U"]` reste
+    volontairement générique ("Circuit intégré"). Un AOP est reconnaissable
+    sans ambiguïté par ses broches sémantiques (IN+/IN-/OUT, posées par le
+    plan `_NOM_VERS_TYPE['AOP']` de `circuit_analyzer/xml.py`) : quand elles
+    sont présentes, on affiche un libellé plus précis plutôt que la
+    catégorie générique — la lettre de TYPE elle-même (toujours 'U') reste
+    inchangée, seul ce texte d'affichage devient plus spécifique.
+
+    @param t Lettre de type ('R', 'U', 'D'...).
+    @param pins Dict des broches du composant (optionnel), pour affiner U.
+    @return str Libellé lisible.
+    """
+    if t == "U" and pins and {"IN+", "IN-", "OUT"} <= set(pins):
+        return "Amplificateur opérationnel (AOP)"
     return _TYPE_LABELS.get(t, t)
 
 
@@ -107,9 +169,42 @@ class PatternWizard(ctk.CTkToplevel):
         # État du wizard
         self._step        = 1          # étape courante (1–4)
         self._comp_vars: dict[str, tk.BooleanVar] = {}
+        # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (« AOP + photorésistance -> U + R,
+        # indiscernable de n'importe quel autre montage U+R ») : case par composant,
+        # « exiger précisément ce nom » -- décoché (défaut) = exigence sur le type
+        # SEUL, comme avant ; coché = exigence sur type+categorie (cf. Composant.categorie),
+        # ex. "R" -> {"type": "R", "categorie": "Photorésistance"}.
+        self._verrouiller_categorie_vars: dict[str, tk.BooleanVar] = {}
+        # [MODIF 2026-08-18] Nom réel ÉDITABLE par composant (pré-rempli avec
+        # Composant.categorie, mais corrigeable -- cf. « ma photorésistance est
+        # lue comme R-résistance, je ne peux pas le voir/changer »). Utilisé par
+        # `_composants_requis()` à la place de la valeur figée de `comp_info`.
+        self._categorie_vars: dict[str, tk.StringVar] = {}
         self._name_var    = tk.StringVar()
         self._cond_vars: dict[str, tk.BooleanVar] = {}
         self._suggested: set[str] = set()  # conditions détectées automatiquement
+        # [MODIF 2026-08-18] Conditions GÉNÉRIQUES (dicts) ajoutées par l'utilisateur
+        # via le builder de l'étape 3 -- distinctes des 12 conditions nommées
+        # (self._cond_vars), fusionnées avec elles dans _selected_conditions().
+        self._conditions_perso: list[dict] = []
+        self._builder_kind_var = tk.StringVar(value=CONDITION_KIND_LABELS[CONDITION_KINDS[0]])
+        self._builder_param_vars: dict[str, tk.StringVar] = {}
+        self._builder_params_frame = None
+        self._builder_liste_frame = None
+        # [MODIF 2026-08-18] État du sélecteur de broches à cases (kind
+        # "connexion_broches") -- {'_any': BooleanVar, 'pin_name': BooleanVar, ...}
+        # par côté, reconstruit à chaque changement de type. Cf.
+        # _construire_selecteur_broches / _broches_selectionnees.
+        self._builder_broches_a: dict = {}
+        self._builder_broches_b: dict = {}
+        self._builder_meme_composant_var = tk.BooleanVar(value=False)
+        # [MODIF 2026-08-19] BUG TROUVÉ EN TESTANT (demande utilisateur : pattern
+        # « 1 AOP + 1 photorésistance » matchait quand même un îlot contenant EN
+        # PLUS 2 ampoules -- « there is no this option » pour l'interdire). Case
+        # décochée par défaut (aucun changement pour les patterns existants) --
+        # cochée, un îlot ne matche que s'il ne contient AUCUN composant hors de
+        # la liste "components" déclarée. Cf. CustomCircuitPattern._composition_exacte.
+        self._composition_exacte_var = tk.BooleanVar(value=False)
 
         # Widgets de navigation / feedback
         self._btn_prev    = None
@@ -272,7 +367,7 @@ class PatternWizard(ctk.CTkToplevel):
             t     = info.get("type", "?")
             val   = info.get("value", "")
             color = _type_color(t)
-            label_txt = _type_label(t)
+            label_txt = _type_label(t, info.get("pins"))
 
             row_frame = ctk.CTkFrame(frame, fg_color="transparent")
             row_frame.pack(fill="x", pady=4, padx=4)
@@ -302,6 +397,101 @@ class PatternWizard(ctk.CTkToplevel):
                 corner_radius=6,
                 padx=6, pady=2)
             badge.pack(side="left")
+
+            # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (« ma photorésistance est lue
+            # comme R-résistance, je ne peux pas le voir/changer ») : le nom réel
+            # (Composant.categorie) est maintenant un CHAMP ÉDITABLE, pas juste un
+            # libellé figé -- pré-rempli avec ce que l'analyseur a capturé, mais
+            # l'utilisateur peut le CORRIGER (ex. un symbole "Résistance" générique
+            # réutilisé sans le renommer, ou toute détection jugée fausse) avant de
+            # verrouiller l'exigence du pattern dessus (cf. « AOP + photorésistance
+            # -> U + R, indiscernable de n'importe quel autre montage U+R »). Case
+            # décochée par défaut : comportement inchangé (exigence sur le type seul).
+            categorie_init = info.get("categorie") or ""
+            cat_var = tk.StringVar(value=categorie_init)
+            self._categorie_vars[ref] = cat_var
+            lock_var = tk.BooleanVar(value=False)
+            self._verrouiller_categorie_vars[ref] = lock_var
+
+            lock_row = ctk.CTkFrame(row_frame, fg_color="transparent")
+            lock_row.pack(side="left", padx=(10, 0))
+            ctk.CTkCheckBox(
+                lock_row, text="exiger précisément :",
+                variable=lock_var,
+                font=ctk.CTkFont("Segoe UI", 9),
+                text_color=MUTED,
+                fg_color=BLUE_D, hover_color=BLUE,
+                checkmark_color=TEXT,
+                checkbox_width=14, checkbox_height=14,
+                command=self._refresh_json,
+            ).pack(side="left")
+            cat_entry = ctk.CTkEntry(
+                lock_row, textvariable=cat_var,
+                width=150, height=22,
+                font=ctk.CTkFont("Segoe UI", 9),
+                fg_color=CARD, border_color=BORDER, text_color=TEXT)
+            cat_entry.pack(side="left", padx=(4, 0))
+            cat_var.trace_add("write", lambda *_: self._refresh_json())
+
+        # [MODIF 2026-08-19] BUG TROUVÉ EN TESTANT (demande utilisateur : pattern
+        # « 1 AOP + 1 photorésistance » matchait quand même avec 2 ampoules en
+        # plus dans l'îlot) : option pattern-globale, pas par composant --
+        # placée après la liste, pas dans chaque ligne.
+        exact_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        exact_frame.pack(fill="x", pady=(14, 4), padx=4)
+        ctk.CTkCheckBox(
+            exact_frame, text="Composition exacte : aucun autre composant dans le circuit",
+            variable=self._composition_exacte_var,
+            font=ctk.CTkFont("Segoe UI", 11, "bold"),
+            text_color=TEXT,
+            fg_color=BLUE_D, hover_color=BLUE,
+            checkmark_color=TEXT,
+            command=self._refresh_json,
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            exact_frame,
+            text="Décoché (défaut) : accepte des composants supplémentaires non "
+                 "listés ici. Coché : l'îlot ne matche que s'il ne contient AUCUN "
+                 "composant en dehors de cette liste (ex. exclut un montage avec "
+                 "une lampe ajoutée en plus de l'AOP et de la photorésistance).",
+            font=ctk.CTkFont("Segoe UI", 9),
+            text_color=MUTED,
+            justify="left", wraplength=420,
+        ).pack(anchor="w", padx=(28, 0))
+
+    def _composants_requis(self) -> list:
+        """@brief Liste "components" du pattern : type seul, ou {'type','categorie'}
+        pour toute ref dont la case « exiger précisément » est cochée.
+
+        [MODIF 2026-08-18] Le nom utilisé vient de `self._categorie_vars[ref]`
+        (champ ÉDITABLE, pré-rempli depuis comp_info mais corrigeable par
+        l'utilisateur), PAS directement de `comp_info` -- cf. « ma photorésistance
+        est lue comme R-résistance, je ne peux pas le voir/changer ». Un champ
+        vidé par l'utilisateur (case cochée mais texte effacé) retombe sur le
+        type seul, jamais une categorie vide silencieuse.
+
+        Dédoublonne en préservant l'ordre de première apparition, comme
+        `_selected_types()` -- mais sur la clé (type, categorie_ou_None).
+
+        @return list[str|dict] Prête à sérialiser dans "components".
+        """
+        seen: list = []
+        vus: set = set()
+        for ref in self._selected_refs():
+            info = self._comp_info.get(ref, {})
+            t = info.get("type", "?")
+            verrou = self._verrouiller_categorie_vars.get(ref)
+            cat_var = self._categorie_vars.get(ref)
+            categorie = None
+            if verrou and verrou.get() and cat_var:
+                texte = cat_var.get().strip()
+                categorie = texte or None
+            cle = (t, categorie)
+            if cle in vus:
+                continue
+            vus.add(cle)
+            seen.append({"type": t, "categorie": categorie} if categorie else t)
+        return seen
 
     # ── Étape 2 : Nom du pattern ──────────────────────────────────────────────
 
@@ -406,6 +596,604 @@ class PatternWizard(ctk.CTkToplevel):
 
             var._cb_widget       = cb            # type: ignore[attr-defined]
             var._detected_label  = detected_lbl  # type: ignore[attr-defined]
+
+        self._build_condition_builder(scroll)
+
+    # ── Étape 3bis : builder de condition générique ──────────────────────────
+    # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (« les conditions sont vieilles,
+    # aucune possibilité d'en ajouter ») : les 12 conditions ci-dessus restent
+    # figées (code Python). Ce builder compose une NOUVELLE condition depuis des
+    # briques réutilisables (kind + type de composant + broche + cible) sans
+    # toucher au code -- cf. custom_circuits.loader._evaluer_condition_generique.
+
+    def _build_condition_builder(self, parent):
+        """@brief Section « Ajouter une condition personnalisée » (fin de l'étape 3)."""
+        ctk.CTkFrame(parent, height=1, fg_color=BORDER).pack(
+            fill="x", padx=4, pady=(14, 10))
+        ctk.CTkLabel(parent, text="AJOUTER UNE CONDITION PERSONNALISÉE",
+                     font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                     text_color=MUTED).pack(anchor="w", padx=4, pady=(0, 6))
+
+        kind_row = ctk.CTkFrame(parent, fg_color="transparent")
+        kind_row.pack(fill="x", padx=4, pady=(0, 2))
+        ctk.CTkLabel(kind_row, text="Type de condition :",
+                     font=ctk.CTkFont("Segoe UI", 11),
+                     text_color=TEXT).pack(side="left", padx=(0, 8))
+        kind_menu = ctk.CTkOptionMenu(
+            kind_row, variable=self._builder_kind_var,
+            values=[CONDITION_KIND_LABELS[k] for k in CONDITION_KINDS],
+            width=340, height=30,
+            command=lambda *_: self._rebuild_builder_params())
+        kind_menu.pack(side="left")
+
+        self._builder_kind_desc = ctk.CTkLabel(
+            parent, text="", font=ctk.CTkFont("Segoe UI", 9),
+            text_color=MUTED, anchor="w", justify="left", wraplength=520)
+        self._builder_kind_desc.pack(anchor="w", padx=4, pady=(2, 8))
+
+        self._builder_params_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        self._builder_params_frame.pack(fill="x", padx=4, pady=(0, 8))
+
+        # Erreurs de validation affichées dans le footer commun (self._err_label,
+        # via _show_error) -- toujours visible, pas besoin de scroller jusqu'ici.
+        ctk.CTkButton(
+            parent, text="+  Ajouter cette condition",
+            height=32, corner_radius=8,
+            font=ctk.CTkFont("Segoe UI", 11, "bold"),
+            fg_color=BLUE_D, hover_color=BLUE,
+            command=self._ajouter_condition_perso,
+        ).pack(anchor="w", padx=4, pady=(0, 10))
+
+        self._builder_liste_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        self._builder_liste_frame.pack(fill="x", padx=4)
+
+        self._rebuild_builder_params()
+        self._refresh_conditions_perso_liste()
+
+    def _kind_selectionne(self) -> str:
+        """@brief Clé stable ("kind") du type de condition choisi dans le menu."""
+        libelle = self._builder_kind_var.get()
+        for k in CONDITION_KINDS:
+            if CONDITION_KIND_LABELS[k] == libelle:
+                return k
+        return CONDITION_KINDS[0]
+
+    def _types_disponibles(self) -> list[str]:
+        """@brief Types de composants présents sur le schéma analysé (pour les menus).
+
+        [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (« je ne peux pas voir/choisir
+        ma photorésistance dans nom précis ») : 'X' (non classifié) était exclu
+        ici -- exactement le type d'une photorésistance (aucune forme/nom
+        dédiés dans le catalogue électrique). Ça empêchait de sélectionner 'X'
+        comme type dans le builder de condition, donc `_categories_pour_type`
+        n'était jamais interrogé pour lui : son nom réel restait invisible
+        alors que l'étape 1 (case « exiger précisément ») le proposait déjà
+        très bien pour ce même type. Exclusion retirée -- cohérent avec
+        l'étape 1, qui n'a jamais exclu 'X'.
+        """
+        types = sorted({info.get("type") for info in self._comp_info.values()
+                       if info.get("type")})
+        return types or ["R"]
+
+    def _broches_pour_type(self, type_comp: str) -> list[str]:
+        """@brief Noms de broches observés pour un type de composant donné."""
+        broches: set = set()
+        for info in self._comp_info.values():
+            if info.get("type") == type_comp:
+                broches.update((info.get("pins") or {}).keys())
+        return sorted(broches) or ["1"]
+
+    def _categories_pour_type(self, type_comp: str) -> list[str]:
+        """@brief Noms réels (Composant.categorie) distincts observés pour un type.
+
+        [MODIF 2026-08-18] cf. « AOP + photorésistance -> U + R, indiscernable » :
+        permet à une condition du builder de filtrer sur le nom précis, pas
+        seulement le type électrique (ex. "R" ne suffit pas à isoler la
+        photorésistance d'une résistance ordinaire).
+
+        @param type_comp Lettre de type ('R', 'D'...).
+        @return list[str] Noms réels distincts, triés.
+        """
+        return sorted({info.get("categorie") for info in self._comp_info.values()
+                       if info.get("type") == type_comp and info.get("categorie")})
+
+    def _ajouter_ligne_categorie(self, type_var: tk.StringVar, cle: str, parent=None):
+        """@brief Ajoute une ligne « Nom précis (optionnel) » liée à `type_var`.
+
+        Stocke le choix dans `self._builder_param_vars[cle]` ; se reconstruit
+        automatiquement quand `type_var` change (mêmes noms réels que ce type-là).
+
+        @param type_var Variable du menu "Type" dont dépendent les noms proposés.
+        @param cle Clé sous laquelle stocker la variable dans `_builder_param_vars`.
+        @param parent [MODIF 2026-08-18] Conteneur parent (par défaut
+            `self._builder_params_frame`) -- nécessaire pour un côté B qui se
+            reconstruit dans son propre sous-cadre (cf. kind "connexion_broches").
+        """
+        parent = parent if parent is not None else self._builder_params_frame
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(fill="x", pady=2)
+        ctk.CTkLabel(row, text="Nom précis (optionnel) :",
+                     font=ctk.CTkFont("Segoe UI", 11),
+                     text_color=TEXT, width=170, anchor="w").pack(side="left")
+        choix = ["(n'importe lequel)"] + self._categories_pour_type(type_var.get())
+        var = tk.StringVar(value=choix[0])
+        menu = ctk.CTkOptionMenu(row, variable=var, values=choix, width=220, height=28)
+        menu.pack(side="left")
+        self._builder_param_vars[cle] = var
+
+        def _sur_type_change(valeur):
+            nouvelles = ["(n'importe lequel)"] + self._categories_pour_type(valeur)
+            var.set(nouvelles[0])
+            menu.configure(values=nouvelles)
+        type_var.trace_add("write", lambda *_: _sur_type_change(type_var.get()))
+
+    def _rebuild_builder_params(self):
+        """@brief Reconstruit les champs de paramètres pour le "kind" sélectionné."""
+        for w in self._builder_params_frame.winfo_children():
+            w.destroy()
+        self._builder_param_vars.clear()
+        self._clear_error()
+
+        kind = self._kind_selectionne()
+        self._builder_kind_desc.configure(
+            text=CONDITION_KIND_DESCRIPTIONS.get(kind, ""))
+        types = self._types_disponibles()
+
+        def _ligne(texte, parent=None):
+            # [MODIF 2026-08-18] `parent` optionnel : le côté B de "connexion_broches"
+            # a besoin de reconstruire ses lignes dans son propre sous-cadre.
+            parent = parent if parent is not None else self._builder_params_frame
+            row = ctk.CTkFrame(parent, fg_color="transparent")
+            row.pack(fill="x", pady=2)
+            ctk.CTkLabel(row, text=texte, font=ctk.CTkFont("Segoe UI", 11),
+                        text_color=TEXT, width=110, anchor="w").pack(side="left")
+            return row
+
+        def _menu(row, valeurs, defaut, command=None):
+            var = tk.StringVar(value=defaut)
+            ctk.CTkOptionMenu(row, variable=var, values=valeurs,
+                              width=180, height=28, command=command).pack(side="left")
+            return var
+
+        if kind == "broche_vers_rail":
+            r1 = _ligne("Type :")
+            self._builder_param_vars["type"] = _menu(r1, types, types[0])
+            self._ajouter_ligne_categorie(self._builder_param_vars["type"], "categorie")
+            r2 = _ligne("Broche :")
+            broche_choix = ["(n'importe laquelle)"] + self._broches_pour_type(types[0])
+            self._builder_param_vars["broche"] = _menu(r2, broche_choix, broche_choix[0])
+
+            def _sur_type_change(valeur):
+                nouvelles = ["(n'importe laquelle)"] + self._broches_pour_type(valeur)
+                self._builder_param_vars["broche"].set(nouvelles[0])
+                menu_widget = r2.winfo_children()[-1]
+                menu_widget.configure(values=nouvelles)
+            self._builder_param_vars["type"].trace_add(
+                "write", lambda *_: _sur_type_change(self._builder_param_vars["type"].get()))
+
+            r3 = _ligne("Rail :")
+            self._builder_param_vars["rail"] = _menu(r3, ["Masse", "Alimentation"], "Masse")
+
+        elif kind == "au_moins_n":
+            r1 = _ligne("Type :")
+            self._builder_param_vars["type"] = _menu(r1, types, types[0])
+            self._ajouter_ligne_categorie(self._builder_param_vars["type"], "categorie")
+            # [MODIF 2026-08-18] Comparateur ajouté (au lieu du seul ">=" implicite
+            # d'avant) -- absent d'une condition sauvegardée AVANT cet ajout, le
+            # backend retombe alors sur ">=" (cf. custom_circuits.loader).
+            r_cmp = _ligne("Comparateur :")
+            self._builder_param_vars["comparateur_txt"] = _menu(
+                r_cmp, _COMPARATEUR_LABELS, _COMPARATEUR_LABELS[0])
+            r2 = _ligne("Nombre :")
+            var_n = tk.StringVar(value="2")
+            ctk.CTkEntry(r2, textvariable=var_n, width=80, height=28).pack(side="left")
+            self._builder_param_vars["n"] = var_n
+
+        elif kind == "meme_noeud":
+            r1 = _ligne("Type 1 :")
+            self._builder_param_vars["type1"] = _menu(r1, types, types[0])
+            r2 = _ligne("Type 2 :")
+            defaut2 = types[1] if len(types) > 1 else types[0]
+            self._builder_param_vars["type2"] = _menu(r2, types, defaut2)
+
+        elif kind == "en_serie":
+            r1 = _ligne("Type :")
+            self._builder_param_vars["type"] = _menu(r1, types, types[0])
+            self._ajouter_ligne_categorie(self._builder_param_vars["type"], "categorie")
+
+        elif kind == "en_parallele":
+            # [MODIF 2026-08-18] Lot « we are very limited, add all the possible
+            # pattern of a schema » : complément d'en_serie -- deux composants qui
+            # partagent leurs DEUX broches (pas juste un nœud, cf. meme_noeud).
+            # Types 1 et 2 volontairement PAS forcés différents (contrairement à
+            # meme_noeud) : le cas le plus courant est "deux R en parallèle", même
+            # type, deux instances.
+            r1 = _ligne("Type 1 :")
+            self._builder_param_vars["type1"] = _menu(r1, types, types[0])
+            self._ajouter_ligne_categorie(self._builder_param_vars["type1"], "categorie1")
+            r2 = _ligne("Type 2 :")
+            self._builder_param_vars["type2"] = _menu(r2, types, types[0])
+            self._ajouter_ligne_categorie(self._builder_param_vars["type2"], "categorie2")
+
+        elif kind == "broche_non_connectee":
+            r1 = _ligne("Type :")
+            self._builder_param_vars["type"] = _menu(r1, types, types[0])
+            self._ajouter_ligne_categorie(self._builder_param_vars["type"], "categorie")
+            r2 = _ligne("Broche :")
+            broche_choix = ["(n'importe laquelle)"] + self._broches_pour_type(types[0])
+            self._builder_param_vars["broche"] = _menu(r2, broche_choix, broche_choix[0])
+
+            def _sur_type_change_nc(valeur):
+                nouvelles = ["(n'importe laquelle)"] + self._broches_pour_type(valeur)
+                self._builder_param_vars["broche"].set(nouvelles[0])
+                r2.winfo_children()[-1].configure(values=nouvelles)
+            self._builder_param_vars["type"].trace_add(
+                "write", lambda *_: _sur_type_change_nc(self._builder_param_vars["type"].get()))
+
+        elif kind == "valeur_compare":
+            r1 = _ligne("Type :")
+            self._builder_param_vars["type"] = _menu(r1, types, types[0])
+            self._ajouter_ligne_categorie(self._builder_param_vars["type"], "categorie")
+            r_cmp = _ligne("Comparateur :")
+            self._builder_param_vars["comparateur_txt"] = _menu(
+                r_cmp, _COMPARATEUR_LABELS, _COMPARATEUR_LABELS[0])
+            r2 = _ligne("Seuil :")
+            var_seuil = tk.StringVar(value="10k")
+            ctk.CTkEntry(r2, textvariable=var_seuil, width=100, height=28).pack(side="left")
+            ctk.CTkLabel(r2, text="(ex: 10k, 100n, 4.7k)",
+                        font=ctk.CTkFont("Segoe UI", 9),
+                        text_color=MUTED).pack(side="left", padx=(6, 0))
+            self._builder_param_vars["seuil_txt"] = var_seuil
+
+        elif kind == "meme_valeur":
+            r1 = _ligne("Type 1 :")
+            self._builder_param_vars["type1"] = _menu(r1, types, types[0])
+            self._ajouter_ligne_categorie(self._builder_param_vars["type1"], "categorie1")
+            r2 = _ligne("Type 2 :")
+            self._builder_param_vars["type2"] = _menu(r2, types, types[0])
+            self._ajouter_ligne_categorie(self._builder_param_vars["type2"], "categorie2")
+
+        elif kind == "nombre_broches":
+            r1 = _ligne("Type :")
+            self._builder_param_vars["type"] = _menu(r1, types, types[0])
+            self._ajouter_ligne_categorie(self._builder_param_vars["type"], "categorie")
+            r_cmp = _ligne("Comparateur :")
+            self._builder_param_vars["comparateur_txt"] = _menu(
+                r_cmp, _COMPARATEUR_LABELS, _COMPARATEUR_LABELS[0])
+            r2 = _ligne("Nombre de broches :")
+            var_n = tk.StringVar(value="8")
+            ctk.CTkEntry(r2, textvariable=var_n, width=80, height=28).pack(side="left")
+            self._builder_param_vars["n"] = var_n
+
+        elif kind == "type_absent":
+            r1 = _ligne("Type :")
+            self._builder_param_vars["type"] = _menu(r1, types, types[0])
+
+        elif kind == "contre_reaction":
+            r1 = _ligne("Type :")
+            self._builder_param_vars["type"] = _menu(r1, types, types[0])
+            self._ajouter_ligne_categorie(self._builder_param_vars["type"], "categorie")
+            broches0 = self._broches_pour_type(types[0])
+            r2 = _ligne("Broche source :")
+            self._builder_param_vars["broche_source"] = _menu(r2, broches0, broches0[0])
+            r3 = _ligne("Broche cible :")
+            defaut_cible = broches0[1] if len(broches0) > 1 else broches0[0]
+            self._builder_param_vars["broche_cible"] = _menu(r3, broches0, defaut_cible)
+
+            def _sur_type_change_cr(valeur):
+                nouvelles = self._broches_pour_type(valeur)
+                self._builder_param_vars["broche_source"].set(nouvelles[0])
+                r2.winfo_children()[-1].configure(values=nouvelles)
+                cible = nouvelles[1] if len(nouvelles) > 1 else nouvelles[0]
+                self._builder_param_vars["broche_cible"].set(cible)
+                r3.winfo_children()[-1].configure(values=nouvelles)
+            self._builder_param_vars["type"].trace_add(
+                "write", lambda *_: _sur_type_change_cr(self._builder_param_vars["type"].get()))
+
+        elif kind == "connexion_broches":
+            # [MODIF 2026-08-18] Condition générique demandée par l'utilisateur :
+            # « choisir les broches d'un composant et à quoi elles sont reliées,
+            # broche par broche, y compris entre deux broches du MÊME composant ».
+            # [MODIF 2026-08-18] Lot « add more costomation ... 1 to a lot of pins
+            # or this one should never be connected to this » : "Sens" (une
+            # connexion attendue, ou au contraire une connexion INTERDITE) placé
+            # tout en haut -- s'applique à toute la condition, pas à un seul côté.
+            r_sens = _ligne("Sens :")
+            self._builder_param_vars["sens_txt"] = _menu(
+                r_sens, _SENS_LABELS, _SENS_LABELS[0])
+
+            ctk.CTkLabel(self._builder_params_frame, text="Côté A",
+                         font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                         text_color=MUTED).pack(anchor="w", pady=(4, 2))
+            ra = _ligne("Type :")
+            self._builder_param_vars["type_a"] = _menu(ra, types, types[0])
+            self._ajouter_ligne_categorie(self._builder_param_vars["type_a"], "categorie_a")
+            self._construire_selecteur_broches(
+                self._builder_params_frame, self._builder_param_vars["type_a"],
+                self._builder_broches_a, "Broches côté A :")
+            # "Mode" (une suffit / toutes exigées) n'a de sens QUE si plusieurs
+            # broches sont sélectionnées côté A ("n'importe laquelle" cochée =
+            # broches=[] côté backend, "toutes les broches du composant" --
+            # ambigu à combiner avec "toutes exigées" -- champ affiché quand
+            # même, comportement par défaut ("au_moins_une") s'applique aussi
+            # dans ce cas, cf. custom_circuits.loader.).
+            r_mode = _ligne("Mode côté A :")
+            self._builder_param_vars["mode_a_txt"] = _menu(
+                r_mode, _MODE_BROCHES_LABELS, _MODE_BROCHES_LABELS[0])
+
+            ctk.CTkFrame(self._builder_params_frame, height=1, fg_color=BORDER).pack(
+                fill="x", pady=(10, 6))
+            ctk.CTkLabel(self._builder_params_frame, text="Côté B",
+                         font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                         text_color=MUTED).pack(anchor="w", pady=(0, 2))
+
+            # [MODIF 2026-08-18] Variable NEUVE à chaque reconstruction (pas
+            # `.set(False)` sur l'ancienne) : re-sélectionner ce "kind" après
+            # être passé par un autre accumulerait sinon des trace_add() sur
+            # le même BooleanVar persistant, avec des fermetures obsolètes
+            # pointant vers un `cote_b_frame` déjà détruit -> TclError différée.
+            self._builder_meme_composant_var = tk.BooleanVar(value=False)
+            toggle_row = ctk.CTkFrame(self._builder_params_frame, fg_color="transparent")
+            toggle_row.pack(fill="x", pady=2)
+
+            cote_b_frame = ctk.CTkFrame(self._builder_params_frame, fg_color="transparent")
+            cote_b_frame.pack(fill="x")
+
+            def _rebuild_cote_b():
+                for w in cote_b_frame.winfo_children():
+                    w.destroy()
+                if self._builder_meme_composant_var.get():
+                    self._construire_selecteur_broches(
+                        cote_b_frame, self._builder_param_vars["type_a"],
+                        self._builder_broches_b, "Broche(s) reliée(s) (même composant) :")
+                else:
+                    rb = _ligne("Type :", parent=cote_b_frame)
+                    self._builder_param_vars["type_b"] = _menu(rb, types, types[0])
+                    self._ajouter_ligne_categorie(
+                        self._builder_param_vars["type_b"], "categorie_b", parent=cote_b_frame)
+                    self._construire_selecteur_broches(
+                        cote_b_frame, self._builder_param_vars["type_b"],
+                        self._builder_broches_b, "Broches côté B :")
+
+            ctk.CTkCheckBox(
+                toggle_row, text="même composant que côté A (autre broche, pas un 2ème composant)",
+                variable=self._builder_meme_composant_var,
+                font=ctk.CTkFont("Segoe UI", 10)).pack(anchor="w")
+            # [MODIF 2026-08-18] trace_add (pas `command=`) : se déclenche même sur
+            # un `.set()` programmatique (tests), cohérent avec `_sur_type_change`
+            # ailleurs dans ce fichier -- un `command=` de CTkCheckBox ne se
+            # déclenche que sur un vrai clic utilisateur.
+            self._builder_meme_composant_var.trace_add(
+                "write", lambda *_: _rebuild_cote_b())
+
+            _rebuild_cote_b()
+
+    def _construire_selecteur_broches(self, parent, type_var: tk.StringVar,
+                                       stockage: dict, label_text: str = "Broches :"):
+        """@brief Sélecteur à cases d'un ensemble OR de broches (+ « n'importe laquelle »).
+
+        [MODIF 2026-08-18] Brique pour le kind "connexion_broches" : l'utilisateur
+        coche une ou plusieurs broches (OR -- n'importe laquelle des cochées
+        convient), ou laisse « n'importe laquelle » cochée (comportement par
+        défaut, équivalent à `broches=[]` côté backend). Se reconstruit
+        entièrement à chaque changement de `type_var` (les broches dépendent du
+        type choisi).
+
+        @param parent Conteneur CTk parent.
+        @param type_var Variable du menu "Type" dont dépendent les broches proposées.
+        @param stockage Dict à (re)remplir -- `self._builder_broches_a` ou `_b`.
+        @param label_text Libellé affiché devant le sélecteur.
+        """
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(fill="x", pady=2)
+        ctk.CTkLabel(row, text=label_text, font=ctk.CTkFont("Segoe UI", 11),
+                     text_color=TEXT, width=170, anchor="w").pack(side="left", anchor="n")
+
+        cases_frame = ctk.CTkFrame(row, fg_color="transparent")
+        cases_frame.pack(side="left")
+
+        def _rebuild(*_):
+            for w in cases_frame.winfo_children():
+                w.destroy()
+            stockage.clear()
+            any_var = tk.BooleanVar(value=True)
+            stockage["_any"] = any_var
+            case_widgets: list = []
+
+            def _sur_any_toggle():
+                etat = "disabled" if any_var.get() else "normal"
+                for cb in case_widgets:
+                    cb.configure(state=etat)
+
+            ctk.CTkCheckBox(cases_frame, text="n'importe laquelle", variable=any_var,
+                             command=_sur_any_toggle,
+                             font=ctk.CTkFont("Segoe UI", 10)).pack(anchor="w")
+
+            for broche in self._broches_pour_type(type_var.get()):
+                var = tk.BooleanVar(value=False)
+                stockage[broche] = var
+                cb = ctk.CTkCheckBox(cases_frame, text=broche, variable=var,
+                                      state="disabled",
+                                      font=ctk.CTkFont("Segoe UI", 10))
+                cb.pack(anchor="w")
+                case_widgets.append(cb)
+
+        type_var.trace_add("write", _rebuild)
+        _rebuild()
+
+    def _broches_selectionnees(self, stockage: dict) -> list:
+        """@brief Lit un sélecteur `_construire_selecteur_broches` -> liste de noms.
+
+        @return list[str] Broches cochées, ou `[]` si « n'importe laquelle »
+            (convention partagée avec `custom_circuits.loader` : liste vide =
+            pas de filtre sur la broche).
+        """
+        if stockage.get("_any") is not None and stockage["_any"].get():
+            return []
+        return [nom for nom, var in stockage.items() if nom != "_any" and var.get()]
+
+    def _condition_perso_depuis_champs(self) -> dict | None:
+        """@brief Construit le dict de condition depuis les champs du builder.
+
+        @return dict|None La condition, ou None si un champ requis est invalide.
+        """
+        kind = self._kind_selectionne()
+        v = {k: var.get() for k, var in self._builder_param_vars.items()}
+        # [MODIF 2026-08-18] "categorie" optionnelle (cf. _ajouter_ligne_categorie) --
+        # présente uniquement pour les "kind" qui l'exposent, "(n'importe lequel)" = pas de filtre.
+        categorie = v.get("categorie")
+        if categorie == "(n'importe lequel)":
+            categorie = None
+
+        if kind == "broche_vers_rail":
+            broche = None if v["broche"] == "(n'importe laquelle)" else v["broche"]
+            rail = "masse" if v["rail"] == "Masse" else "alimentation"
+            return {"kind": kind, "type": v["type"], "categorie": categorie,
+                    "broche": broche, "rail": rail}
+        if kind == "au_moins_n":
+            try:
+                n = int(v["n"])
+            except ValueError:
+                self._show_error("Le nombre doit être un entier.")
+                return None
+            # [MODIF 2026-08-18] Comparateur ajouté -- 0 devient valide pour "==" /
+            # "<=" (ex. "exactement 0" == type_absent, redondant mais pas absurde),
+            # seul un compte négatif reste rejeté (jamais valide, quel que soit le
+            # comparateur).
+            if n < 0:
+                self._show_error("Le nombre ne peut pas être négatif.")
+                return None
+            comparateur = _COMPARATEUR_LABEL_VERS_CLE.get(v.get("comparateur_txt"), ">=")
+            return {"kind": kind, "type": v["type"], "categorie": categorie,
+                    "n": n, "comparateur": comparateur}
+        if kind == "meme_noeud":
+            if v["type1"] == v["type2"]:
+                self._show_error("Choisissez deux types différents.")
+                return None
+            return {"kind": kind, "types": [v["type1"], v["type2"]]}
+        if kind == "en_serie":
+            return {"kind": kind, "type": v["type"], "categorie": categorie}
+        if kind == "en_parallele":
+            cat1 = v.get("categorie1")
+            cat1 = None if cat1 == "(n'importe lequel)" else cat1
+            cat2 = v.get("categorie2")
+            cat2 = None if cat2 == "(n'importe lequel)" else cat2
+            return {"kind": kind, "types": [v["type1"], v["type2"]],
+                    "categories": [cat1, cat2]}
+        if kind == "broche_non_connectee":
+            broche = None if v["broche"] == "(n'importe laquelle)" else v["broche"]
+            return {"kind": kind, "type": v["type"], "categorie": categorie,
+                    "broche": broche}
+        if kind == "valeur_compare":
+            from circuit_analyzer.value_parser import parse_valeur
+            seuil = parse_valeur(v.get("seuil_txt"))
+            if seuil is None:
+                self._show_error("Seuil illisible (ex : 10k, 100n, 4.7k).")
+                return None
+            comparateur = _COMPARATEUR_LABEL_VERS_CLE.get(v.get("comparateur_txt"), ">=")
+            return {"kind": kind, "type": v["type"], "categorie": categorie,
+                    "comparateur": comparateur, "seuil": seuil}
+        if kind == "meme_valeur":
+            cat1 = v.get("categorie1")
+            cat1 = None if cat1 == "(n'importe lequel)" else cat1
+            cat2 = v.get("categorie2")
+            cat2 = None if cat2 == "(n'importe lequel)" else cat2
+            return {"kind": kind, "types": [v["type1"], v["type2"]],
+                    "categories": [cat1, cat2]}
+        if kind == "nombre_broches":
+            try:
+                n = int(v["n"])
+            except ValueError:
+                self._show_error("Le nombre doit être un entier.")
+                return None
+            if n < 0:
+                self._show_error("Le nombre ne peut pas être négatif.")
+                return None
+            comparateur = _COMPARATEUR_LABEL_VERS_CLE.get(v.get("comparateur_txt"), ">=")
+            return {"kind": kind, "type": v["type"], "categorie": categorie,
+                    "comparateur": comparateur, "n": n}
+        if kind == "type_absent":
+            return {"kind": kind, "types": [v["type"]]}
+        if kind == "contre_reaction":
+            if v["broche_source"] == v["broche_cible"]:
+                self._show_error("Choisissez deux broches différentes.")
+                return None
+            return {"kind": kind, "type": v["type"], "categorie": categorie,
+                    "broche_source": v["broche_source"], "broche_cible": v["broche_cible"]}
+        if kind == "connexion_broches":
+            categorie_a = v.get("categorie_a")
+            if categorie_a == "(n'importe lequel)":
+                categorie_a = None
+            cote_a = {"type": v["type_a"], "categorie": categorie_a,
+                      "broches": self._broches_selectionnees(self._builder_broches_a)}
+            # [MODIF 2026-08-18] "mode" -- absent = "au_moins_une", donc omis du
+            # dict quand c'est le choix par défaut (JSON plus compact, cohérent
+            # avec le reste : un champ optionnel absent = comportement d'origine).
+            mode_a = _MODE_BROCHES_LABEL_VERS_CLE.get(v.get("mode_a_txt"), "au_moins_une")
+            if mode_a != "au_moins_une":
+                cote_a["mode"] = mode_a
+
+            broches_b = self._broches_selectionnees(self._builder_broches_b)
+            if self._builder_meme_composant_var.get():
+                cote_b = {"meme_composant": True, "broches": broches_b}
+            else:
+                categorie_b = v.get("categorie_b")
+                if categorie_b == "(n'importe lequel)":
+                    categorie_b = None
+                cote_b = {"type": v.get("type_b"), "categorie": categorie_b,
+                          "broches": broches_b}
+            cond = {"kind": kind, "cote_a": cote_a, "cote_b": cote_b}
+            sens = _SENS_LABEL_VERS_CLE.get(v.get("sens_txt"), "connectee")
+            if sens != "connectee":
+                cond["sens"] = sens
+            return cond
+        return None
+
+    def _ajouter_condition_perso(self):
+        """@brief Valide, ajoute la condition du builder à la liste, et rafraîchit l'affichage."""
+        self._clear_error()
+        cond = self._condition_perso_depuis_champs()
+        if cond is None:
+            return
+        if cond in self._conditions_perso:
+            self._show_error("Cette condition est déjà ajoutée.")
+            return
+        self._conditions_perso.append(cond)
+        self._refresh_conditions_perso_liste()
+        self._refresh_json()
+
+    def _supprimer_condition_perso(self, cond: dict):
+        """@brief Retire une condition générique déjà ajoutée."""
+        if cond in self._conditions_perso:
+            self._conditions_perso.remove(cond)
+        self._refresh_conditions_perso_liste()
+        self._refresh_json()
+
+    def _refresh_conditions_perso_liste(self):
+        """@brief Redessine la liste des conditions personnalisées déjà ajoutées."""
+        if self._builder_liste_frame is None:
+            return
+        for w in self._builder_liste_frame.winfo_children():
+            w.destroy()
+        if not self._conditions_perso:
+            return
+        ctk.CTkLabel(self._builder_liste_frame, text="Conditions ajoutées :",
+                     font=ctk.CTkFont("Segoe UI", 10, "bold"),
+                     text_color=MUTED).pack(anchor="w", pady=(4, 4))
+        for cond in list(self._conditions_perso):
+            row = ctk.CTkFrame(self._builder_liste_frame, fg_color=CARD2, corner_radius=6)
+            row.pack(fill="x", pady=2)
+            ctk.CTkLabel(row, text=condition_display(cond),
+                         font=ctk.CTkFont("Segoe UI", 10),
+                         text_color=TEXT, anchor="w",
+                         justify="left", wraplength=440).pack(
+                             side="left", padx=8, pady=6, fill="x", expand=True)
+            ctk.CTkButton(
+                row, text="×", width=26, height=26, corner_radius=6,
+                font=ctk.CTkFont("Segoe UI", 12, "bold"),
+                fg_color="transparent", hover_color=_ERR, text_color=MUTED,
+                command=lambda c=cond: self._supprimer_condition_perso(c),
+            ).pack(side="right", padx=6)
 
     def _toggle_advanced3(self):
         """@brief Affiche/masque les cases de conditions (options avancées)."""
@@ -656,12 +1444,20 @@ class PatternWizard(ctk.CTkToplevel):
                 seen.append(t)
         return seen
 
-    def _selected_conditions(self) -> list[str]:
-        """@brief Liste des conditions cochées.
+    def _selected_conditions(self) -> list:
+        """@brief Liste des conditions actives : nommées cochées + génériques ajoutées.
 
-        @return list[str] Labels des conditions activées.
+        [MODIF 2026-08-18] Étend le résultat aux conditions génériques
+        (`self._conditions_perso`, dicts construits par le builder) -- la
+        sérialisation JSON (`custom_circuits.json`) accepte nativement une
+        liste mélangeant str et dict, donc aucun changement de format requis
+        en aval (`_build_pattern_dict`/`_create_pattern` les consomment déjà
+        via cette seule méthode).
+
+        @return list[str|dict] Conditions nommées (labels) + génériques (dicts).
         """
-        return [lbl for lbl, var in self._cond_vars.items() if var.get()]
+        return ([lbl for lbl, var in self._cond_vars.items() if var.get()]
+                + list(self._conditions_perso))
 
     def _dessiner_apercu(self) -> Figure:
         """@brief Apercu schematique simple des composants selectionnes.
@@ -749,9 +1545,9 @@ class PatternWizard(ctk.CTkToplevel):
         @return dict Pattern partiel ou complet selon l'étape.
         """
         d: dict = {}
-        types = self._selected_types()
-        if types:
-            d["components"] = types
+        requis = self._composants_requis()
+        if requis:
+            d["components"] = requis
 
         name = self._name_var.get().strip()
         if name:
@@ -761,12 +1557,20 @@ class PatternWizard(ctk.CTkToplevel):
         if conds:
             d["conditions"] = conds
 
+        # [MODIF 2026-08-19] Cf. _composition_exacte_var -- omise (comme sens/mode
+        # de connexion_broches) quand décochée, aucun impact sur les patterns
+        # existants qui n'ont jamais eu cette clé.
+        if self._composition_exacte_var.get():
+            d["composition_exacte"] = True
+
         # Réordonner les clés pour un affichage logique
         ordered: dict = {}
         if "name" in d:
             ordered["name"] = d["name"]
         if "components" in d:
             ordered["components"] = d["components"]
+        if "composition_exacte" in d:
+            ordered["composition_exacte"] = d["composition_exacte"]
         if "conditions" in d:
             ordered["conditions"] = d["conditions"]
         return ordered
@@ -810,12 +1614,37 @@ class PatternWizard(ctk.CTkToplevel):
         self._preview_box.insert("1.0", text)
         self._preview_box.configure(state="disabled")
 
-        types = self._selected_types()
-        n_conds = len(self._selected_conditions())
-        type_str = ", ".join(types) if types else "?"
-        self._summary_label.configure(
-            text=f"Ce pattern sera reconnu dans tout circuit contenant "
-                 f"[{type_str}] avec {n_conds} condition(s).")
+        requis = self._composants_requis()
+        conds = self._selected_conditions()
+        type_str = ", ".join(
+            r if isinstance(r, str) else f"{r['type']} ({r['categorie']})"
+            for r in requis) if requis else "?"
+        # [MODIF 2026-08-19] BUG TROUVÉ EN TESTANT (demande utilisateur : « the
+        # verification etape the last one before confirmation ... need to be
+        # exactly precise on what condition u did ») : l'étape 4 est la DERNIÈRE
+        # vérification avant sauvegarde, mais son résumé se limitait à un
+        # COMPTE ("avec 3 condition(s)") -- aucun texte des conditions
+        # elles-mêmes n'y apparaissait (le détail lisible par condition
+        # n'existe qu'à l'étape 3, sous « Options avancées », repliée par
+        # défaut). Un utilisateur qui valide directement depuis l'étape 4 ne
+        # voyait donc JAMAIS ce que chaque condition signifie concrètement.
+        # Le JSON brut au-dessus est exact mais illisible pour un non-développeur.
+        # Réutilise `condition_display` (même fonction que la liste de
+        # l'étape 3 et le futur onglet Circuits) -- une seule source de vérité,
+        # donc aucun risque de divergence entre ce qui est affiché et ce qui
+        # sera réellement évalué/sauvegardé.
+        if self._composition_exacte_var.get():
+            lignes = [f"Ce pattern sera reconnu SEULEMENT dans un circuit contenant "
+                      f"EXACTEMENT [{type_str}] — aucun autre composant toléré."]
+        else:
+            lignes = [f"Ce pattern sera reconnu dans tout circuit contenant [{type_str}]."]
+        if conds:
+            lignes.append("Conditions exigées :")
+            lignes.extend(f"   •  {condition_display(c)}" for c in conds)
+        else:
+            lignes.append("Aucune condition supplémentaire — matche tout "
+                          "circuit contenant ces composants.")
+        self._summary_label.configure(text="\n".join(lignes))
 
     # ── Création finale ───────────────────────────────────────────────────────
 
@@ -830,9 +1659,11 @@ class PatternWizard(ctk.CTkToplevel):
 
         pattern = {
             "name":       name,
-            "components": self._selected_types(),
+            "components": self._composants_requis(),
             "conditions": self._selected_conditions(),
         }
+        if self._composition_exacte_var.get():
+            pattern["composition_exacte"] = True
 
         circuits = load_custom_circuits()
         circuits.append(pattern)

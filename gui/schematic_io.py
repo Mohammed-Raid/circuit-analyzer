@@ -45,7 +45,10 @@ def editor_to_dict(comps, wires, counters, next_id) -> dict:
                 if (pinout := getattr(c, "pinout", None)) is not None else {}),
              # Contour reel : même style additif (spec 2026-08-07).
              **({"forme_primitives": fp}
-                if (fp := getattr(c, "forme_primitives", None)) else {})}
+                if (fp := getattr(c, "forme_primitives", None)) else {}),
+             # Nom reel : même style additif (2026-08-18, cf. CompInst.categorie).
+             **({"categorie": cat}
+                if (cat := getattr(c, "categorie", "")) else {})}
             for c in comps.values()
         ],
         "wires": [
@@ -147,7 +150,11 @@ def build_from_components(composants, defs) -> dict:
         counters[comp.type] = max(counters.get(comp.type, 0),
                                   _ref_number(comp.ref, comp.type))
         entry = {"id": cid, "ref": comp.ref, "type": comp.type,
-                "value": comp.value, "cx": cx, "cy": cy, "rotation": 0}
+                "value": comp.value, "cx": cx, "cy": cy, "rotation": 0,
+                # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (nom réel perdu dès
+                # l'import dans l'éditeur, cf. CompInst.categorie) : propager le
+                # nom réel du composant importé, pas seulement sa lettre de type.
+                "categorie": getattr(comp, "categorie", "") or ""}
         if getattr(comp, "pinout", None):
             entry["pinout"] = {n: list(v) for n, v in comp.pinout.items()}
         if getattr(comp, "primitives", None):

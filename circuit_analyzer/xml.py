@@ -932,18 +932,33 @@ def _grouper_par_circuit(composants, resultats):
                   roles=_roles_du_bloc(r), roles_empiles=_roles_a_empiler(r))
         if b.comps:
             blocs.append(b)
+    # [MODIF 2026-08-17] BUG TROUVE EN TESTANT (demande utilisateur, en deux passes : d'abord « he cant
+    # reconize to something he puts it in groups divers and thats wrong he shouldnt put them in a
+    # group », puis, apres un premier correctif qui donnait a chaque inconnu son PROPRE bloc "Divers"
+    # separe, la consigne plus large « remove alll this bloc of diver like he desont put it in
+    # anything just leaves it like that ») : Ancien -- un residu non classifie SANS AUCUN net partage
+    # avec un montage reconnu recevait quand meme un bloc "Divers" fabrique pour l'occasion (seul ou
+    # avec d'autres residus). Un inconnu n'est l'affaire d'AUCUN montage detecte ; lui INVENTER un bloc
+    # revient a lui inventer une appartenance. Supprime : un composant non classifie qui ne partage
+    # REELLEMENT aucun net avec un montage reconnu n'entre plus jamais dans `blocs`. Le generateur
+    # (`generer_xml`, plus bas) sait deja placer un composant sans bloc -- repli existant : position en
+    # grille simple par index, aucune boite, aucune etiquette -- exactement « le laisser comme il est ».
+    #
+    # CONSERVE (n'est pas le meme cas) : un residu qui partage REELLEMENT un net avec un montage
+    # RECONNU (ex. R1, capte seulement par le filet de securite "Impedance Z" puis reintegre a son
+    # propre montage AOP par ce rattachement -- voir test_montage_reconnu_plus_composant_isole_cas_mixte)
+    # doit toujours rejoindre CE bloc reel : ce n'est pas "grouper des inconnus entre eux", c'est
+    # reconnaitre qu'il appartient deja, electriquement, a un montage identifie.
     divers = [c for ref, c in comp_par_ref.items() if ref not in type_du_ref]
-    if divers:
+    if divers and blocs:
         # Satellites "possible" : le détecteur les a classés incertains, ne pas forcer
-        # leur rattachement (ils doivent rester visibles en Divers).
+        # leur rattachement à un bloc confiant (ils restent simplement sans bloc).
         satellites_possibles = {
             sat['ref']
             for r in (resultats or [])
             for sat in r.get('satellites', [])
             if isinstance(sat, dict) and sat.get('status') != 'sure'
         }
-
-        # 1. Rattacher au groupe le plus proche par NET signal partagé.
         nets_du_groupe: dict = {}  # label -> set(nets)
         for r in (resultats or []):
             label = r["circuit_type"]
@@ -953,10 +968,8 @@ def _grouper_par_circuit(composants, resultats):
                     for net in getattr(c, 'pins', {}).values():
                         if net and net != 'NC' and not is_gnd(net) and not is_power(net):
                             nets_du_groupe.setdefault(label, set()).add(net)
-        restants = []
         for c in divers:
             if c.ref in satellites_possibles:
-                restants.append(c)
                 continue
             pins_c = set(v for v in getattr(c, 'pins', {}).values()
                          if v and v != 'NC' and not is_gnd(v) and not is_power(v))
@@ -964,20 +977,6 @@ def _grouper_par_circuit(composants, resultats):
                           if nets_du_groupe.get(b.label, set()) & pins_c), None)
             if cible is not None:
                 cible.comps.append(c)
-                type_du_ref[c.ref] = cible.label
-            else:
-                restants.append(c)
-        # 2. Parmi les restants, regrouper par cluster de nets partagés.
-        #    Les composants isolés (aucun net partagé) sont fusionnés en un seul
-        #    bloc Divers au lieu d'un bloc par composant.
-        if restants:
-            clusters = _clusteriser_par_nets(restants)
-            multi = [cl for cl in clusters if len(cl) > 1]
-            solo  = [cl[0] for cl in clusters if len(cl) == 1]
-            for cluster in multi:
-                blocs.append(_Bloc("Divers", cluster))
-            if solo:
-                blocs.append(_Bloc("Divers", solo))
 
     # Fusionner les blocs singleton (1 composant) d'un même label non-Divers.
     # Ex : 5 condensateurs de découplage détectés séparément → 1 seul bloc.
@@ -1219,6 +1218,21 @@ def _positionner_composants_bloc(bloc: _Bloc, x: int, y: int) -> dict:
     @return dict {ref -> (x, y)} ou {ref -> (x, y, angle)} pour les
             montages avec un gabarit canonique. Positions absolues.
     """
+    # [MODIF 2026-08-17] Lot 9 -- demande explicite du boss : « add another
+    # canonique one without hard coding it and still having the placement
+    # when exporting to the other app ». Essayé EN PREMIER (avant
+    # _POSITIONNEURS_PAR_MOTIF, qui reste 100% inchangé en repli) : un
+    # gabarit dessiné dans patterns_reference/ dont le nom de fichier
+    # correspond EXACTEMENT à bloc.label. Repli silencieux (None) vers la
+    # chaîne existante si aucun gabarit, ou si la correspondance de rôle
+    # échoue -- jamais bloquant, jamais un plantage. Import différé (pas en
+    # tête de fichier) : `gabarit.py` importe déjà `lire_xml` DEPUIS ce
+    # fichier (xml.py) -- un import en tête créerait un cycle.
+    from circuit_analyzer.gabarit import positions_depuis_gabarit
+    positions_gabarit = positions_depuis_gabarit(bloc.label, bloc.comps, x, y)
+    if positions_gabarit is not None:
+        return positions_gabarit
+
     positionneur = _POSITIONNEURS_PAR_MOTIF.get(bloc.label)
     if positionneur is not None and bloc.roles:
         return positionneur(bloc.comps, bloc.roles, x, y, bloc.roles_empiles)
@@ -1226,6 +1240,8 @@ def _positionner_composants_bloc(bloc: _Bloc, x: int, y: int) -> dict:
         return _positionner_commande_relais(bloc.comps, x, y)
     if "pont diviseur" in bloc.label.lower():
         return _positionner_pont_diviseur(bloc.comps, x, y)
+    if "pont redresseur" in bloc.label.lower():
+        return _positionner_pont_redresseur(bloc.comps, x, y)
     label_low = bloc.label.lower()
     if any(k in label_low for k in ("aop", "amplificateur", "comparateur", "intégrateur",
                                      "dérivateur", "suiveur", "bascule", "sommateur")):
@@ -1251,6 +1267,38 @@ def _positionner_commande_relais(comps, x: int, y: int) -> dict[str, tuple[int, 
         pos[diodes[0].ref] = (x + 2 * _PAS_X_BLOC, y)
 
     restants = relais[1:] + switchs[1:] + diodes[1:] + autres
+    pos.update(_positionner_grille_compacte(restants, x, y + 2 * _PAS_Y_BLOC))
+    return pos
+
+
+def _positionner_pont_redresseur(comps, x: int, y: int) -> dict[str, tuple[int, int]]:
+    """@brief Gabarit en LOSANGE pour un pont redresseur de Graetz (4 diodes).
+
+    [MODIF 2026-08-17] Lot 9c : contrairement aux autres montages migrés
+    ce chantier, celui-ci reste un positionneur PYTHON écrit à la main
+    (pas un gabarit dessiné dans patterns_reference/) -- voir la décision
+    documentée dans le plan : la règle de détection
+    (`detecter_pont_redresseur`) est un cycle fermé de 4 diodes SANS AUCUN
+    rôle distinctif entre elles, une propriété topologique fixe qu'AUCUN
+    dessin de référence ne pourrait faire varier (n'importe quel pont à 4
+    diodes dessiné produirait la même règle) -- un gabarit XML n'apporterait
+    donc rien ici, juste de la machinerie inutile pour reproduire une forme
+    dont la géométrie EST déjà entièrement connue d'avance (le losange
+    classique). `comps` arrive dans l'ORDRE DU CYCLE déjà tracé par le
+    détecteur (`[d1, d2, d3, d4]`, d1 relie n1-n2, d2 relie n2-n3, etc. --
+    voir `detecter_pont_redresseur`) : on place donc simplement les 4
+    sommets du losange dans cet ordre, sans avoir besoin de rejouer la
+    topologie nous-mêmes.
+    """
+    pos = {}
+    if len(comps) >= 4:
+        d1, d2, d3, d4 = comps[0], comps[1], comps[2], comps[3]
+        demi = _PAS_X_BLOC // 2
+        pos[d1.ref] = (x, y - demi)          # sommet HAUT
+        pos[d2.ref] = (x + demi, y)          # sommet DROIT
+        pos[d3.ref] = (x, y + demi)          # sommet BAS
+        pos[d4.ref] = (x - demi, y)          # sommet GAUCHE
+    restants = [c for c in comps if c.ref not in pos]
     pos.update(_positionner_grille_compacte(restants, x, y + 2 * _PAS_Y_BLOC))
     return pos
 
@@ -1350,7 +1398,31 @@ def generer_xml(composants, resultats=None, results=None) -> str:
     ref_vers_map = {}
     for i, comp in enumerate(composants):
         pinout = getattr(comp, "pinout", None)
-        if pinout:
+        # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (deux passes) : cette branche
+        # décidait du <Name> exporté (comp.type BRUT, ex. "D", au lieu du nom
+        # catalogue) sur la seule foi de `pinout` truthy -- correct tant que
+        # `pinout` n'était JAMAIS peuplé que pour un catch-all (`boite_ic`).
+        # Depuis que `lire_xml` peuple aussi `pinout` pour un type à PLAN NOMMÉ
+        # (AOP, TL431/MOSFET…) afin que l'éditeur de schéma positionne les
+        # broches sur le VRAI contour (et non le gabarit générique par type, ex.
+        # triangle AOP 3 broches), il faut un signal plus précis que `pinout`
+        # seul :
+        #  - `boite_ic` (1re tentative, insuffisante) : marche pour un composant
+        #    lu par `lire_xml`, mais un `Composant` construit ailleurs (ex.
+        #    `SchematicEditor.exporter_composants`, type perso "AMP" jamais
+        #    passé par `lire_xml`) a `boite_ic=False` par défaut alors qu'il a
+        #    tout autant besoin de la capture brute -- régression sur
+        #    `test_generer_xml_pinout_reel_a_noms_numeriques_survit_au_reimport`.
+        #  - Fix retenu : `comp.type not in _TYPE_VERS_FORME` -- un type qui a
+        #    une entrée catalogue (D/Q/M/U/R/C/L/F/K...) round-trippe TOUJOURS
+        #    par ce catalogue (identité préservée), qu'il ait ou non un pinout
+        #    réel -- `primitives`/`pinout` voyagent quand même (gen.ajouter plus
+        #    bas, hors de cette branche) pour un rendu/positions fidèles. Un
+        #    type qui n'a PAS d'entrée catalogue (custom, "AMP"...) ou un
+        #    catch-all `boite_ic` (dont le plan "AOP" par défaut de comp.type='U'
+        #    serait FAUX) passe par la capture brute, comme avant.
+        if pinout and (getattr(comp, "boite_ic", False)
+                       or comp.type not in _TYPE_VERS_FORME):
             # Contour + brochage REELS (Task 1/4) : `_xml_composant` dessine
             # chaque <DataPin> par NOM reel, indexe par `sorted(comp.pinout)`
             # (voir `_Generateur._idx_broche`, branche pinout). Le plan
@@ -1379,6 +1451,7 @@ def generer_xml(composants, resultats=None, results=None) -> str:
             # ce composant par NOM de broche (gen._idx_broche), pas par le
             # catalogue.
             plan_broches = None
+            nom_xml = nom_forme
         else:
             spec = _TYPE_VERS_FORME.get(comp.type)
             # Puce du catalogue (broches TOUTES numérotées, ex. NE555/74HC00) :
@@ -1415,27 +1488,55 @@ def generer_xml(composants, resultats=None, results=None) -> str:
             if spec is None:
                 continue
             nom_forme, plan_broches = spec
-            # Une broche dont le NOM n'est pas au plan (D1 en '-'/'+', U2.1 en
-            # 'C'/'E' sur les vraies cartes) était ignorée plus bas -> liaisons
-            # perdues EN SILENCE. On lui attribue un emplacement LIBRE de la forme.
-            # COPIE obligatoire : les plans de _TYPE_VERS_FORME sont partagés au
-            # niveau module, les compléter en place empoisonnerait les exports
-            # suivants.
-            inconnues = [p for p in comp.pins if p not in plan_broches]
-            if inconnues:
-                plan_broches = dict(plan_broches)
-                # Emplacements réellement pris par CE composant — pas tous les
-                # alias du plan : la forme Diode mappe {A,K,1,2} sur DEUX broches
-                # physiques seulement, donc « tout est occupé » serait faux.
-                occupees = {plan_broches[p] for p in comp.pins if p in plan_broches}
-                libres = [p for p in _FORME.get(nom_forme, {}).get("pins", {})
-                          if p not in occupees]
-                for nom_broche in inconnues:
-                    if not libres:
-                        _log.warning("%s : broche %r sans emplacement libre sur %s",
-                                     comp.ref, nom_broche, nom_forme)
-                        break
-                    plan_broches[nom_broche] = libres.pop(0)
+            # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (« j'ai appelé mon composant
+            # Photorésistance dans ERetroDesign, mais après "Enregistrer comme
+            # pattern" [export -> lire_xml] il redevient Résistance ») : `nom_forme`
+            # ici est le nom du CATALOGUE GÉNÉRIQUE (ex. "Résistance", forme
+            # placeholder pour tout type 'R', y compris une photorésistance faute de
+            # forme dédiée) -- jusqu'ici c'était AUSSI ce qui partait dans <Name>,
+            # écrasant silencieusement le nom réel de l'utilisateur (`comp.categorie`)
+            # à chaque aller-retour. `nom_xml` sépare maintenant les deux : le nom
+            # ECRIT dans <Name> (identité, relue comme `categorie` par `lire_xml`)
+            # préfère `comp.categorie` s'il est renseigné ; la FORME géométrique
+            # (`forme=nom_forme` passé à `gen.ajouter` plus bas) reste inchangée --
+            # aucune régression sur le rendu, qui n'a jamais eu de dessin dédié pour
+            # une photorésistance de toute façon.
+            _categorie = getattr(comp, "categorie", "") or ""
+            nom_xml = _categorie if _categorie else nom_forme
+            if pinout:
+                # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT : `<Name>` catalogue
+                # (nom_forme, ci-dessus) est CONSERVÉ pour l'identité au round-trip,
+                # mais le CÂBLAGE doit passer par `comp.pinout` -- `_Generateur.
+                # _idx_broche` (plus bas) priorise TOUJOURS `comp.pinout` dès qu'il
+                # est fourni à `gen.ajouter`, quelle que soit la branche qui a choisi
+                # `nom_forme`. Les alias catalogue ("+"/"-"/"s"...) ne correspondent
+                # à AUCUNE clé de `comp.pinout` (noms sémantiques réels, ex. "IN+")
+                # -> `ValueError: Broche introuvable` sans ce None (même sentinelle
+                # que la branche « capture brute » ci-dessus : câblage par NOM réel,
+                # pas par le catalogue).
+                plan_broches = None
+            else:
+                # Une broche dont le NOM n'est pas au plan (D1 en '-'/'+', U2.1 en
+                # 'C'/'E' sur les vraies cartes) était ignorée plus bas -> liaisons
+                # perdues EN SILENCE. On lui attribue un emplacement LIBRE de la forme.
+                # COPIE obligatoire : les plans de _TYPE_VERS_FORME sont partagés au
+                # niveau module, les compléter en place empoisonnerait les exports
+                # suivants.
+                inconnues = [p for p in comp.pins if p not in plan_broches]
+                if inconnues:
+                    plan_broches = dict(plan_broches)
+                    # Emplacements réellement pris par CE composant — pas tous les
+                    # alias du plan : la forme Diode mappe {A,K,1,2} sur DEUX broches
+                    # physiques seulement, donc « tout est occupé » serait faux.
+                    occupees = {plan_broches[p] for p in comp.pins if p in plan_broches}
+                    libres = [p for p in _FORME.get(nom_forme, {}).get("pins", {})
+                              if p not in occupees]
+                    for nom_broche in inconnues:
+                        if not libres:
+                            _log.warning("%s : broche %r sans emplacement libre sur %s",
+                                         comp.ref, nom_broche, nom_forme)
+                            break
+                        plan_broches[nom_broche] = libres.pop(0)
         angle = 0
         if positions and comp.ref in positions:
             pos_comp = positions[comp.ref]
@@ -1445,7 +1546,13 @@ def generer_xml(composants, resultats=None, results=None) -> str:
         else:
             x = 250 + (i % PER_RANGEE) * _LARG_COMP
             y = 250 + (i // PER_RANGEE) * _HAUT_RANGEE
-        cid = gen.ajouter(nom_forme, comp.value, x=x, y=y, angle=angle, ref=comp.ref,
+        # [MODIF 2026-08-18] `nom_xml` (identité, cf. commentaire ci-dessus) au lieu
+        # de `nom_forme` (forme catalogue) pour <Name> ; `forme=nom_forme` explicite
+        # pour que `_xml_composant` continue à dessiner la forme catalogue -- inerte
+        # pour la branche `pinout` (geometrie_reelle prend le pas, ne consulte jamais
+        # `comp.shape`), donc aucun changement pour cette branche.
+        cid = gen.ajouter(nom_xml, comp.value, x=x, y=y, angle=angle, ref=comp.ref,
+                          forme=nom_forme,
                           group_id=ids_groupes.get(comp.ref, 0),
                           primitives=getattr(comp, "primitives", None),
                           pinout=getattr(comp, "pinout", None))
@@ -1665,9 +1772,20 @@ _NOM_VERS_TYPE = {
     'Puce14':      ('U', {}),
     'Puce16':      ('U', {}),
     # ── AOP ──────────────────────────────────────────────────────────────────
-    'AOP':         ('U', {'+': 'IN+', '-': 'IN-', 's': 'OUT'}),
-    'OpAmp':       ('U', {'+': 'IN+', '-': 'IN-', 's': 'OUT'}),
-    'Op-Amp':      ('U', {'+': 'IN+', '-': 'IN-', 's': 'OUT'}),
+    # [MODIF 2026-08-19] BUG TROUVÉ EN TESTANT (schéma bâti via le VRAI chemin
+    # ERetroDesign -- Form1 réel par réflexion, pas generer_xml) : le vrai
+    # AOP.xml de la bibliothèque porte Pname ('+'/'-'/'s') ET Pnumber
+    # ('1'/'2'/'3') tous deux renseignés. `lire_xml` (xml.py l.2092) préfère
+    # Pnumber -- vrai pour les passifs dont Pname est vide, faux ici -- donc
+    # pnom lu vaut '1'/'2'/'3', absent de ce plan -> repli identité -> broches
+    # nommées '1'/'2'/'3'. Le padding IN+/IN-/OUT/V+/V- en 'NC' plus bas
+    # (l.2578) s'ajoute alors À CÔTÉ sans jamais matcher les vraies connexions
+    # -> IN- et OUT valent tous deux la même chaîne 'NC' -> faux positif
+    # « Suiveur de tension (AOP) » sur un vrai comparateur. Repli numérique
+    # ajouté, même remède déjà appliqué à Diode/LED/Zener/TVS ci-dessus.
+    'AOP':         ('U', {'+': 'IN+', '-': 'IN-', 's': 'OUT', '1': 'IN+', '2': 'IN-', '3': 'OUT'}),
+    'OpAmp':       ('U', {'+': 'IN+', '-': 'IN-', 's': 'OUT', '1': 'IN+', '2': 'IN-', '3': 'OUT'}),
+    'Op-Amp':      ('U', {'+': 'IN+', '-': 'IN-', 's': 'OUT', '1': 'IN+', '2': 'IN-', '3': 'OUT'}),
     # ── Transistors BJT ──────────────────────────────────────────────────────
     '2N2B':        ('Q', {'G': 'B', 'E': 'E', 'C': 'C'}),
     'Transistor':  ('Q', {'B': 'B', 'C': 'C', 'E': 'E'}),
@@ -1699,6 +1817,104 @@ _BROCHES_CRITIQUES: dict[str, list] = {
     'M': ['G', 'D', 'S'],
     'D': ['A', 'K'],
 }
+
+_cache_types_personnalises: dict | None = None
+
+# [MODIF 2026-08-18] Signatures de noms de broches -> (type électrique, plan).
+# Reprend eretro._PLAN_D/_PLAN_Q/_PLAN_M (mêmes tables que le dialecte natif) :
+# un composant personnalisé dont les broches s'appellent exactement A/K, B/C/E
+# ou G/D/S EST, par construction, une diode/un BJT/un MOSFET — peu importe son
+# nom ou le préfixe que l'utilisateur lui a donné dans l'onglet Composants.
+_SIGNATURES_BROCHES = (
+    (frozenset({'A', 'K'}), 'D', dict(eretro._PLAN_D)),
+    (frozenset({'+', '-'}), 'D', dict(eretro._PLAN_D)),
+    (frozenset({'B', 'C', 'E'}), 'Q', dict(eretro._PLAN_Q)),
+    (frozenset({'G', 'D', 'S'}), 'M', dict(eretro._PLAN_M)),
+    (frozenset({'A1', 'A2', '11', '12', '14'}), 'K',
+     {'A1': 'A1', 'A2': 'A2', '11': '11', '12': '12', '14': '14'}),
+)
+
+
+def _deviner_type_et_plan(pins: list) -> tuple | None:
+    """@brief (type, plan) déduit des NOMS de broches d'une entrée personnalisée.
+
+    @param pins Noms de broches (ex. ['G', 'D', 'S']), tels que capturés par
+           l'onglet Composants (Pname en priorité, cf. eretro_lib).
+    @return tuple(type_prefix, plan). Signature reconnue (diode/BJT/MOSFET/relais)
+            -> le type exact. Sinon, pour 3 broches ou plus, repli 'U' (boîte IC
+            étiquetée du nom, jamais invisible) avec un plan identité. Pour MOINS
+            de 3 broches, None (abstention) — BUG TROUVÉ EN TESTANT (« ça lit des
+            composants simples comme des circuits intégrés ») : un composant à 1
+            ou 2 broches a quasiment aucune chance d'être une IC (fusible, self,
+            interrupteur, résistance non standard… tous nommés "1"/"2",
+            indiscernables entre eux par le NOM SEUL) ; le forcer en 'U' affirmait
+            à tort une identité IC. Mieux vaut laisser le reste de `lire_xml`
+            (repli par forme, ou 'X') trancher que d'inventer une fausse IC.
+    """
+    cles = frozenset(p.strip().upper() for p in pins if p.strip())
+    for signature, type_prefix, plan in _SIGNATURES_BROCHES:
+        if cles == signature:
+            return type_prefix, plan
+    if len(pins) < 3:
+        return None
+    return 'U', {p: p for p in pins}
+
+
+def _types_personnalises() -> dict:
+    """@brief {nom de bibliothèque -> (type, plan)} depuis l'onglet Composants.
+
+    [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (demande utilisateur : « quand je clique
+    sur recevoir la bibliotheque partagee ça devrait aussi marcher dans enregistrer
+    pattern ») : `component_library.json` (onglet Composants, bouton « Recevoir la
+    bibliothèque partagée ») n'était consulté QUE par l'éditeur de schéma Python — la
+    lecture d'une VRAIE carte (`lire_xml`, donc toute analyse/détection/wizard « Créer
+    le pattern ») ne le regardait jamais. Un composant enregistré là (ex. MOSFET canal
+    N, TL431, Diode Zener — absents de `_NOM_VERS_TYPE` et du repli par forme) restait
+    donc invisible (type X) même après l'avoir « appris » dans l'onglet Composants.
+
+    Le TYPE ÉLECTRIQUE n'est PAS déduit du préfixe choisi par l'utilisateur : la
+    validation de l'onglet Composants réserve déjà les lettres R/C/L/D/F/Q/M/U/T/K/SW
+    aux types intégrés (« type intégré réservé »), donc un préfixe personnalisé n'est
+    JAMAIS l'une de ces lettres — et l'import en masse génère un préfixe à 3 lettres
+    (« MOS », « DIO3 »…) sans rapport avec le type électrique. Le signal fiable est
+    plutôt les NOMS de broches (`_deviner_type_et_plan`), capturés à l'identique dans
+    les deux chemins (création manuelle et import en masse).
+
+    @return dict {nom -> (type_prefix, plan)}, vide si aucune bibliothèque personnalisée
+            ou fichier illisible (jamais levé — bibliothèque d'un tiers, best-effort).
+    """
+    global _cache_types_personnalises
+    if _cache_types_personnalises is not None:
+        return _cache_types_personnalises
+    resultat: dict = {}
+    try:
+        import json
+        import os
+
+        from circuit_analyzer.composant import chemin_bibliotheque
+        chemin_json = chemin_bibliotheque()
+        if chemin_json.exists():
+            with open(chemin_json, encoding='utf-8') as f:
+                data = json.load(f)
+            dossier = eretro_symboles.chemin_par_defaut()
+            for entree in data.values():
+                nom = (entree.get('name') or '').strip()
+                pins = entree.get('pins') or []
+                if not nom or not pins or nom in resultat:
+                    continue
+                devine = _deviner_type_et_plan(pins)
+                if devine is None:
+                    continue
+                type_prefix, plan = devine
+                if dossier:
+                    chemin_symbole = os.path.join(dossier, nom + '.xml')
+                    if os.path.isfile(chemin_symbole):
+                        plan.update(eretro_symboles.plan_alias(chemin_symbole))
+                resultat[nom] = (type_prefix, plan)
+    except (OSError, ValueError) as e:
+        _log.warning("bibliothèque personnalisée (Composants) illisible, ignorée : %s", e)
+    _cache_types_personnalises = resultat
+    return resultat
 
 
 class ListeComposantsXML(list):
@@ -1767,6 +1983,27 @@ def _analyser_ref_packee(nid: str) -> tuple:
         raise ValueError(f"Référence packée invalide : {nid!r}")
     valeur = int(nid)
     return valeur // 1000, (valeur % 1000) // 100
+
+
+def _couche_de(elem):
+    """@brief Couche Top/Bottom d'un élément <Line> ou <DataItem>, ou None.
+
+    Les deux portent `<Top>`/`<Bottom>` en enfants DIRECTS (confirmé sur un
+    fichier réel ERetroDesign). None si absents (dialecte ancien) ou
+    ambigus (les deux `true`, ou les deux `false`) -- jamais de couche
+    devinée : un None ne déclenche jamais l'avertissement de cohérence
+    (voir doc de conception 2026-08-17, chantier "coherence-couches").
+
+    @param elem Élément <Line> ou <DataItem>.
+    @return 'Top', 'Bottom', ou None.
+    """
+    t = (elem.findtext('Top') or '').strip().lower()
+    b = (elem.findtext('Bottom') or '').strip().lower()
+    if t == 'true' and b != 'true':
+        return 'Top'
+    if b == 'true' and t != 'true':
+        return 'Bottom'
+    return None
 
 
 def _capturer_entete_source(chemin: str, tag_racine: str):
@@ -1870,6 +2107,7 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         elements[idx] = {'id': idx, 'name': nom, 'value': valeur, 'pins': broches,
                          'rail': eretro.classer_rail(typc, valeur, len(broches), nom),
                          'geo': eretro.extraire_geometrie(item),
+                         'couche': _couche_de(item),
                          'xml': item}
 
     # Étape 1 bis : puces composées ERetroDesign (CCmpntL) — dépliées.
@@ -1953,6 +2191,44 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             return (cid, pidx)
         return None
 
+    # [MODIF 2026-08-17] Vias (liaison Top/Bottom, `ERetroDesign/Via.cs`) : un
+    # fil qui démarre/finit SUR un via n'a AUCUNE référence formelle à ce bout
+    # (CFirst/CLast = null côté C#, voir DwLine/EndLine) — la seule trace est
+    # GÉOMÉTRIQUE, le premier/dernier point de <LP><PointF> posé exactement à
+    # <Via><Pos>. On indexe donc les vias par position (pas par <Net>, qui
+    # n'est qu'un libellé utilisateur — voir doc de conception 2026-08-17,
+    # cas 05_via/12 : deux vias au même <Net> sans fil ne fusionnent PAS).
+    vias_index: dict = {}
+    for vidx, via in enumerate(racine.findall('.//Vias/Via')):
+        vx, vy = via.findtext('Pos/X'), via.findtext('Pos/Y')
+        try:
+            vias_index[(round(float(vx)), round(float(vy)))] = vidx
+        except (TypeError, ValueError):
+            continue
+
+    def via_au_bout(fil, premier: bool):
+        """@brief Nœud synthétique ('via', idx) si ce bout de fil coïncide
+        exactement avec un via, None sinon.
+
+        @param fil Élément <Line>.
+        @param premier True = premier point de <LP> (bout CFirst), False =
+        dernier point (bout CLast).
+        @return tuple ('via', idx) ou None.
+        """
+        if not vias_index:
+            return None
+        points = fil.findall('LP/PointF')
+        if not points:
+            return None
+        p = points[0] if premier else points[-1]
+        px, py = p.findtext('X'), p.findtext('Y')
+        try:
+            cle = (round(float(px)), round(float(py)))
+        except (TypeError, ValueError):
+            return None
+        vidx = vias_index.get(cle)
+        return ('via', vidx) if vidx is not None else None
+
     # Une étiquette de réseau désigne un fil par son AttachedLine, qui est
     # l'INDICE du fil dans lineL (C# : `lLine[nl.AttachedLine].Name = nl.Net`),
     # PAS son <ID> — les vrais fichiers portent des <ID> tous à 0. On mémorise
@@ -1960,21 +2236,141 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
     ligne_vers_broche: dict[str, tuple] = {}
     lignes_xml = racine.findall('.//lineL/Line')
     lignes_cids: dict[int, tuple] = {}
+    # [MODIF 2026-08-19] Repli géométrique jonctions (voir bloc dédié après
+    # cette boucle) : on garde, par fil, tous ses points <LP> et ses deux
+    # extrémités résolues (ou None), pour retrouver après coup les jonctions
+    # dont la référence est périmée (index de composant qui ne pointe plus
+    # vers rien, ex. après suppression/reconstruction du fichier).
+    lignes_lp: dict[int, list] = {}
+    extremites_resolues: dict[int, tuple] = {}
     for idx_fil, fil in enumerate(lignes_xml):
         cf = (fil.findtext('CFirst') or '').strip()
         cl = (fil.findtext('CLast') or '').strip()
         bf = resoudre_extremite(cf, autoriser_packe=True)
+        # [MODIF 2026-08-17] Un bout VIDE (jamais une réf mal formée, qui
+        # porte toujours une chaîne) peut être un bout de via — jamais tenté
+        # avant, `resoudre_extremite('')` rendait déjà None systématiquement.
+        if bf is None and not cf:
+            bf = via_au_bout(fil, premier=True)
         bl = resoudre_extremite(cl, autoriser_packe=True)
+        if bl is None and not cl:
+            bl = via_au_bout(fil, premier=False)
+        coords_brutes = []
+        for p in fil.findall('LP/PointF'):
+            px, py = p.findtext('X'), p.findtext('Y')
+            try:
+                coords_brutes.append((round(float(px)), round(float(py))))
+            except (TypeError, ValueError):
+                coords_brutes.append(None)
+        lignes_lp[idx_fil] = coords_brutes
+        extremites_resolues[idx_fil] = (bf, bl)
         broche_fil = bf if bf is not None else bl
         if broche_fil is not None:
             ligne_vers_broche[str(idx_fil)] = broche_fil
         if bf is not None and bl is not None:
             unir(bf, bl)
             lignes_cids[idx_fil] = (bf[0], bl[0])
+            # [MODIF 2026-08-17] Cohérence Top/Bottom : un fil DIRECT (les deux
+            # bouts déjà résolus ici, via compris -- un bout via serait ('via',
+            # idx), jamais un vrai (cid, pidx)) qui relie un composant d'une
+            # couche à un composant de L'AUTRE couche est une impossibilité
+            # physique (aucun via entre les deux) -- voir doc de conception
+            # "coherence-couches". Un bout ('via', idx) est filtré par
+            # `isinstance(cid, int)` : le via a le droit de changer de couche,
+            # c'est justement son rôle.
+            couche_fil = _couche_de(fil)
+            if couche_fil is not None:
+                for cid_bout, _pidx_bout in (bf, bl):
+                    if not isinstance(cid_bout, int):
+                        continue
+                    couche_bout = elements[cid_bout].get('couche')
+                    if couche_bout is not None and couche_bout != couche_fil:
+                        avertissements.append(
+                            f"Fil #{idx_fil} sur {couche_fil} relie un composant "
+                            f"(id={cid_bout}) sur {couche_bout} sans via "
+                            f"(couches incohérentes)."
+                        )
         elif cf or cl:
             avertissements.append(
                 f"Fil non résolu : CFirst={cf!r}, CLast={cl!r}"
             )
+
+    # [MODIF 2026-08-19] Repli géométrique pour les jonctions fil-sur-fil
+    # dont la référence est absente ou périmée (`ERetroDesign/ConnRef.cs`,
+    # JunctionMark=999999 -- l'ancre comp/broche qu'elle porte peut ne plus
+    # exister si le composant visé a été supprimé/le fichier reconstruit
+    # après coup ; la référence textuelle devient alors irrésoluble alors
+    # que le point PHYSIQUE de la jonction, lui, reste exact). Comme pour
+    # les vias (`via_au_bout` ci-dessus), la seule trace fiable est
+    # GÉOMÉTRIQUE : deux fils qui partagent EXACTEMENT un point de leur
+    # <LP> sont le même réseau électrique, que la référence le dise ou non.
+    # Union-Find séparé sur les COORDONNÉES : un fil unit d'abord tous ses
+    # propres points entre eux (c'est un seul et même fil), puis tout point
+    # partagé par deux fils unit leurs réseaux. On regroupe ensuite, par
+    # cluster de coordonnées, les VRAIES broches trouvées aux extrémités
+    # résolues (bf/bl) qui y aboutissent, et on les fusionne dans le
+    # Union-Find électrique principal (`unir`) -- y compris les bouts
+    # résolus via un via (`('via', idx)`), unifiables comme n'importe quelle
+    # autre broche puisque `unir`/`trouver` acceptent toute clé hachable.
+    parent_coord: dict = {}
+
+    def _trouver_coord(c):
+        if c not in parent_coord:
+            parent_coord[c] = c
+        racine_c = c
+        while parent_coord[racine_c] != racine_c:
+            racine_c = parent_coord[racine_c]
+        n = c
+        while parent_coord[n] != racine_c:
+            parent_coord[n], n = racine_c, parent_coord[n]
+        return racine_c
+
+    def _unir_coord(a, b):
+        ra, rb = _trouver_coord(a), _trouver_coord(b)
+        if ra != rb:
+            parent_coord[ra] = rb
+
+    # [MODIF 2026-08-19] BUG TROUVÉ EN TESTANT (aller-retour "PG 3.xml") :
+    # une première version fusionnait les broches de TOUT cluster de
+    # coordonnées, même sans aucun échec de résolution dedans. `generer_xml`
+    # a un défaut préexistant et sans rapport (`_xml_fil`, repli `(0,0,0)`
+    # quand une broche d'IC dense n'est pas dans la table de formes du
+    # catalogue) qui fait écrire PLUSIEURS broches DISTINCTES d'un même
+    # composant au même point (son centre) -- un cluster purement composé
+    # de bouts déjà résolus normalement ne doit donc JAMAIS être fusionné :
+    # la coïncidence n'y est une preuve de rien. On ne répare que les
+    # clusters qui contiennent VRAIMENT un bout non résolu.
+    coord_vers_broches: dict = {}
+    coords_en_echec: set = set()
+    for idx_fil, coords in lignes_lp.items():
+        valides = [c for c in coords if c is not None]
+        for c in valides[1:]:
+            _unir_coord(valides[0], c)
+        bf, bl = extremites_resolues.get(idx_fil, (None, None))
+        if valides:
+            if bf is not None:
+                coord_vers_broches.setdefault(valides[0], set()).add(bf)
+            else:
+                coords_en_echec.add(valides[0])
+            if bl is not None:
+                coord_vers_broches.setdefault(valides[-1], set()).add(bl)
+            else:
+                coords_en_echec.add(valides[-1])
+
+    racines_a_reparer = {_trouver_coord(c) for c in coords_en_echec}
+
+    # Deuxième passe : les racines ont pu bouger après coup (unions faites
+    # après l'ajout d'une entrée) -- on regroupe par racine FINALE.
+    clusters_finaux: dict = {}
+    for c, broches in coord_vers_broches.items():
+        clusters_finaux.setdefault(_trouver_coord(c), set()).update(broches)
+
+    for racine_c, broches in clusters_finaux.items():
+        if racine_c not in racines_a_reparer:
+            continue
+        broches = list(broches)
+        for i in range(1, len(broches)):
+            unir(broches[0], broches[i])
 
     # Fils internes des puces composées (CCLine) : nets internes ET ponts X —
     # le C# (Form2.cs) relie une broche externe du boîtier à une broche
@@ -2113,6 +2509,14 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
 
         correspondance = _NOM_VERS_TYPE.get(nom) or eretro.mapper_nom(nom)
         par_forme = False
+        par_bibliotheque_personnalisee = False
+        if correspondance is None:
+            # [MODIF 2026-08-18] Nom appris par l'utilisateur dans l'onglet Composants
+            # (« Recevoir la bibliothèque partagée » + typage manuel) : consulté AVANT
+            # le repli par forme, plus spécifique/fiable qu'une géométrie ambiguë.
+            perso = _types_personnalises().get(nom)
+            if perso is not None:
+                correspondance, par_bibliotheque_personnalisee = perso, True
         if correspondance is None:
             # Nom inconnu : dernier recours avant la boîte noire — la forme
             # du symbole (segments/arcs) est consultée UNIQUEMENT ici, jamais
@@ -2218,7 +2622,8 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
                     net = broche_vers_net.get((cid, pidx), 'NC')
                     broches[str(pidx + 1)] = net
             composants.append(Component(ref=ref, type='X', pins=broches, value=elem['value'],
-                                        primitives=forme_reelle, pinout=brochage_reel))
+                                        primitives=forme_reelle, pinout=brochage_reel,
+                                        categorie=nom))
             composants.warnings.append(
                 f"Composant inconnu '{nom}' (id={cid}) → gardé comme {ref} (type X)"
             )
@@ -2228,18 +2633,71 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         ref = generer_ref(type_prefix, elem)
         cid_vers_ref[cid] = ref
         broches = {}
+        # [MODIF 2026-08-19] BUG TROUVÉ EN TESTANT (schéma réel ouvert dans
+        # l'éditeur GUI : composant sans aucun fil affiché, alors que
+        # l'analyseur backend voit la connexion) : conservé en parallèle de
+        # `broches`, indexé par pidx -- `_forme_et_brochage_reels()` garantit
+        # déjà `len(brochage_reel) == len(elem['pins'])` (garde ligne ~2604),
+        # donc cette liste correspond 1:1, dans l'ordre, aux clés de
+        # `brochage_reel` plus bas. Nécessaire car `brochage_reel` est
+        # reparsé INDÉPENDAMMENT (`_entree_depuis_dataitem`, Pname littéral)
+        # alors que `pnom` ici peut être le Pnumber (préférence `pnum or
+        # pnom` en amont) -- les deux atteignaient `plan.get(pnom, pnom)`
+        # avec des clés différentes, donc des résultats différents : `broches`
+        # (électrique) se renommait correctement (ex. "1"->"A" via le repli
+        # numérique du plan) mais `brochage_reel` (-> Component.pinout, lu
+        # par `gui/schematic_io.py::build_from_components`) restait sur le
+        # nom brut ("C") -- `pin not in avail` faisait tomber CHAQUE broche du
+        # composant en "dropped_pins", donc aucun fil dessiné dans l'éditeur.
+        broche_lib_par_pidx = []
         for pidx, info_b in enumerate(elem['pins']):
             pnom = info_b['pname']
             # plan None (passif ERetroDesign) : broches par position.
             broche_lib = str(pidx + 1) if plan is None else plan.get(pnom, pnom)
             net = broche_vers_net.get((cid, pidx), 'NC')
             broches[broche_lib] = net
+            broche_lib_par_pidx.append(broche_lib)
+
+        # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (« quand j'ouvre le schéma depuis un
+        # fichier XML c'est le symbole AOP qui s'affiche, pas celui d'ERetroDesign ») :
+        # cette capture était SAUTÉE (None, None) pour tout type à PLAN NOMMÉ (AOP,
+        # TL431/MOSFET via la bibliothèque personnalisée…) — `boite_ic` ne vaut True
+        # QUE pour les cas catch-all/connecteur. `Component.primitives` restait donc
+        # vide, et l'éditeur de schéma (gui/schematic_editor.py::_geom, appelé par
+        # `build_from_components` à l'OUVERTURE d'un XML — jamais quand on pose depuis
+        # la palette, qui utilise sa propre clé de bibliothèque déjà correcte) retombait
+        # sur le gabarit procédural générique par type ('U' -> triangle AOP).
+        # Étendue maintenant à tout type à plan NOMMÉ (`plan` truthy) -- PAS aux
+        # catalogues génériques (`plan` vide `{}`/None, ex. PuceN à broches "1".."n") :
+        # pour ceux-là, `comp.primitives` DOIT rester None (non-régression
+        # test_generer_xml_puce_generique_*_ne_devient_pas_boite_ic) -- leur géométrie
+        # est un gabarit DIP synthétique de `generer_xml`, pas un VRAI contour importé ;
+        # la capturer serait circulaire, pas une fidélité gagnée. Calculée ICI (avant
+        # le padding AOP juste en dessous), pour QUE ce padding puisse s'appuyer dessus.
+        forme_reelle, brochage_reel = (_forme_et_brochage_reels()
+                                       if (boite_ic or plan) else (None, None))
+
         # Broches AOP standard par défaut — UNIQUEMENT pour les formes à plan
         # nommé (AOP historique). Une puce numérotée (plan vide, forme PuceN)
         # ne doit PAS recevoir IN+/IN-/OUT en NC : ça créerait le mix
         # numéroté/nommé interdit par appliquer_catalogue (un 741 aliasé
         # verrait "2"->"IN-" collisionner avec le IN-='NC' injecté).
-        if type_prefix == 'U' and plan:
+        # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT : un composant personnalisé (ex.
+        # TL431, via `_types_personnalises` -- signature de broches inconnue, repli
+        # 'U' générique) n'a RIEN à voir avec un AOP -- lui injecter IN+/IN-/OUT/V+/V-
+        # en NC fabrique des broches fictives qui, toutes valant la même chaîne "NC",
+        # se retrouvent électriquement court-circuitées entre elles ET avec tout
+        # autre composant "orphelin" du même repli -- faux positif de détection
+        # (« Suiveur de tension » repéré sur un TL431, trouvé sur la carte flyback
+        # réelle). Exclu ici : `par_bibliotheque_personnalisee` ne concerne QUE ce
+        # repli générique, jamais un AOP catalogue authentique.
+        # NB : volontairement PAS gaté sur `brochage_reel` (essayé, revert) -- ça
+        # change aussi comment `lire_xml` reparse les fichiers `patterns_reference/`
+        # du moteur de gabarits (chantier « disposition canonique »), en cassant sa
+        # correspondance structurelle (V+/V- explicitement ignorées par ce moteur,
+        # mais leur ABSENCE change quand même l'empreinte comparée) -- portée gardée
+        # strictement au signal explicite `par_bibliotheque_personnalisee`.
+        if type_prefix == 'U' and plan and not par_bibliotheque_personnalisee:
             for std in ('IN+', 'IN-', 'OUT', 'V+', 'V-'):
                 broches.setdefault(std, 'NC')
 
@@ -2247,10 +2705,14 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
         # uniquement : une puce numérotée (PuceN, plan vide) n'a pas encore
         # ses broches fonctionnelles ici (l'aliasing catalogue tourne APRÈS
         # la boucle), le check IN+/IN-/OUT tirerait à faux sur chaque puce.
+        # Même exclusion que ci-dessus pour le repli 'U' générique : ses broches
+        # critiques réelles (A/K, B/C/E, G/D/S le cas échéant) sont déjà vérifiées
+        # normalement pour D/Q/M ; seul le cas 'U' fabriquerait un faux IN+/IN-/OUT.
+        verifier_critiques = plan and not (type_prefix == 'U' and par_bibliotheque_personnalisee)
         manquantes = [
             p for p in _BROCHES_CRITIQUES.get(type_prefix, [])
             if broches.get(p, 'NC') == 'NC'
-        ] if plan else []
+        ] if verifier_critiques else []
         if manquantes:
             composants.warnings.append(
                 f"{ref} ({nom}): broches critiques non connectées : {', '.join(manquantes)}"
@@ -2274,8 +2736,6 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
             if v:
                 valeur = v
 
-        forme_reelle, brochage_reel = ((None, None) if not boite_ic
-                                       else _forme_et_brochage_reels())
         # Si on a un brochage reel pour une boite_ic, reconstruire broches avec les
         # memes noms que pinout pour garantir set(pins) == set(pinout).
         if boite_ic and brochage_reel:
@@ -2288,14 +2748,48 @@ def lire_xml(chemin: str, alias_catalogue: bool = True) -> list:
                 for std in ('IN+', 'IN-', 'OUT', 'V+', 'V-'):
                     broches_corrigees.setdefault(std, 'NC')
             broches = broches_corrigees
+        elif brochage_reel and plan is not None:
+            # [MODIF 2026-08-18] Type à PLAN NOMMÉ (AOP, TL431/MOSFET via la bibliothèque
+            # personnalisée…) : le nommage sémantique de `broches` (déjà correct) est
+            # CONSERVÉ tel quel -- seules les POSITIONS géométriques de `brochage_reel`
+            # sont réutilisées (pour le rendu réel dans l'éditeur), rekeyées avec le
+            # MÊME plan que `broches` pour rester cohérentes (ex. AOP : `brochage_reel`
+            # porte les noms bruts "+"/"-"/"s", pas les noms sémantiques "IN+"/"IN-"/
+            # "OUT" de `broches`). Peupler `Component.pinout` ici est SANS RISQUE pour
+            # l'export : `generer_xml` (plus bas dans ce fichier) ne bascule sur sa
+            # branche « contour brut » que si `boite_ic` est vrai (jamais le cas ici) --
+            # un type à plan nommé garde donc son <Name> catalogue au round-trip, tout
+            # en gagnant des positions de broches géométriquement exactes à l'export.
+            # [MODIF 2026-08-19] BUG TROUVÉ EN TESTANT : l'ancien rekey relançait
+            # `plan.get(pnom, pnom)` sur les clés PROPRES de `brochage_reel` (Pname
+            # littéral, ex. "C"/"E" d'un phototransistor traité comme diode) au lieu
+            # des clés `pnom` utilisées plus haut pour construire `broches` (qui
+            # peuvent être le Pnumber, ex. "1"/"2", selon la préférence `pnum or
+            # pnom`). Les deux dérivations atteignaient le même `plan.get()` avec des
+            # entrées différentes -> résultats différents -> `Component.pins` et
+            # `Component.pinout` désynchronisés (mêmes broches, noms différents) ->
+            # `build_from_components` (gui/schematic_io.py) rejetait CHAQUE broche
+            # comme "pin not in avail" -> composant sans aucun fil affiché dans
+            # l'éditeur GUI, alors que l'analyseur backend voyait la connexion.
+            # Rekey positionnel (pidx) via `broche_lib_par_pidx`, déjà garanti de
+            # même longueur par le garde de `_forme_et_brochage_reels()` (ligne
+            # ~2604) -- élimine toute divergence de convention de nommage.
+            brochage_reel = {broche_lib_par_pidx[pidx]: pos
+                             for pidx, (_, pos) in enumerate(brochage_reel.items())}
         composants.append(Component(ref=ref, type=type_prefix, pins=broches,
                                     value=valeur, par_forme=par_forme,
                                     boite_ic=boite_ic,
-                                    primitives=forme_reelle, pinout=brochage_reel))
+                                    primitives=forme_reelle, pinout=brochage_reel,
+                                    categorie=nom))
         if par_forme:
             composants.warnings.append(
                 f"Composant '{nom}' (id={cid}) typé par sa forme (dessin) "
                 f"→ traité comme {type_prefix} ({ref})"
+            )
+        if par_bibliotheque_personnalisee:
+            composants.warnings.append(
+                f"Composant '{nom}' (id={cid}) typé via la bibliothèque personnalisée "
+                f"(onglet Composants) → traité comme {type_prefix} ({ref})"
             )
 
     if alias_catalogue:

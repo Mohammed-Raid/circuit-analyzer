@@ -380,27 +380,33 @@ def test_layout_groups_one_block_per_pattern():
     assert {c.ref for c in blocks[0].comps} == {"U1", "R1", "R2"}
 
 
-def test_layout_groups_unclassified_go_to_divers():
-    """@brief Verifie layout groups unclassified go to divers.
-
-    @return None
+def test_layout_groups_unclassified_get_no_block_at_all():
+    """@brief BUG TROUVE EN TESTANT (demande utilisateur, en deux passes : d'abord
+    « he cant reconize to something he puts it in groups divers and thats wrong
+    he shouldnt put them in a group », puis « remove alll this bloc of diver
+    like he desont put it in anything just leaves it like that »). Un composant
+    non classifie ne doit plus jamais etre place dans un bloc -- ni un "Divers"
+    partage avec d'autres inconnus, ni meme un "Divers" a lui tout seul. Il doit
+    simplement rester absent de `blocks` (le generateur le place ensuite en
+    grille simple, sans etiquette de groupe -- voir generer_xml).
     """
     comps = [
         Component("R1", "R", {"1": "NET_INV", "2": "NET_IN"}),
         Component("R2", "R", {"1": "NET_OUT", "2": "NET_INV"}),
         Component("U1", "U", {"IN+": "GND", "IN-": "NET_INV", "OUT": "NET_OUT",
                               "V+": "VCC", "V-": "GND"}),
-        Component("L1", "L", {"1": "A", "2": "B"}),   # not in any pattern
+        Component("L1", "L", {"1": "A", "2": "B"}),      # inconnu isole n°1
+        Component("F1", "F", {"1": "P", "2": "Q"}),      # inconnu isole n°2, AUCUN lien avec L1
     ]
     results = [{"circuit_type": "Amplificateur inverseur (AOP)",
                 "components": ["U1", "R1", "R2"], "nodes": []}]
     blocks = _layout_groups(comps, results)
     labels = [b.label for b in blocks]
-    assert "Divers" in labels
-    divers = next(b for b in blocks if b.label == "Divers")
-    assert {c.ref for c in divers.comps} == {"L1"}
-    # Divers is always last
-    assert blocks[-1].label == "Divers"
+    assert "Divers" not in labels, f"aucun bloc 'Divers' ne devrait plus exister : {labels}"
+    tous_refs = {c.ref for b in blocks for c in b.comps}
+    assert "L1" not in tous_refs and "F1" not in tous_refs
+    assert len(blocks) == 1
+    assert {c.ref for c in blocks[0].comps} == {"U1", "R1", "R2"}
 
 
 def test_place_blocks_groups_are_spatially_separated():
@@ -1334,18 +1340,25 @@ def test_generer_xml_pinout_reel_cable_le_bon_noeud_au_reimport():
     finally:
         os.unlink(chemin)
 
-    # ref regeneree par compteur de type a la lecture (comportement du lecteur,
-    # inchange par ce test) : <Name> porte desormais "U" (comp.type, ne
-    # collisionne avec aucune entree catalogue, cf. generer_xml) plutot que
-    # l'ancien "PuceN" -- correspondance is None des la 1ere passe -> type 'X'
-    # (bucket "inconnu mais forme/brochage reels preserves"), donc "X1" et
-    # non plus "U1". Seule la FIDELITE (broches/connectivite) nous interesse ici.
-    relu_u1 = next(c for c in relus if c.type == 'X')
+    # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (chantier bibliothèque personnalisée) :
+    # generer_xml preferait desormais le catalogue (_TYPE_VERS_FORME['U'] = "AOP")
+    # DES QUE comp.type y figure, meme avec un pinout reel -- amelioration, pas
+    # regression : <Name> porte "AOP" (identite catalogue reconnue au reimport)
+    # plutot que le "U" brut d'avant (jamais reconnu -> retombait en type 'X').
+    # Le cablage, lui, reste par NOM REEL (plan_broches force a None des que
+    # pinout est fourni, cf. generer_xml) -- donc toujours fidele, ce que ce
+    # test verifie. relu type == 'U' maintenant, plus jamais 'X'.
+    relu_u1 = next(c for c in relus if c.type == 'U')
     relu_r1 = next(c for c in relus if c.ref == 'R1')
 
-    # Memes noms de broches (plan de reimport passthrough, Puce catalogue).
-    assert set(relu_u1.pins) == set(u1.pins), \
-        f"noms de broches perdus/renommes au reimport : {relu_u1.pins}"
+    # Memes noms de broches d'ORIGINE, tous presents (plan de reimport passthrough) --
+    # PLUS le padding AOP standard (IN+/IN-/V+/V-, cf. generer_xml : un type 'U' a
+    # plan nomme catalogue recoit toujours ce padding par defaut ; seul le repli
+    # bibliotheque personnalisee -- hors sujet ici -- en est exempte).
+    assert set(u1.pins) <= set(relu_u1.pins), \
+        f"noms de broches d'origine perdus au reimport : {relu_u1.pins}"
+    assert set(relu_u1.pins) - set(u1.pins) <= {'IN+', 'IN-', 'V+', 'V-'}, \
+        f"broches inattendues au reimport : {relu_u1.pins}"
 
     # Vin+ (U1) et 1 (R1) partageaient le net N1 -> meme net apres reimport
     # (peu importe le libelle synthetique NETn attribue).
@@ -1357,6 +1370,59 @@ def test_generer_xml_pinout_reel_cable_le_bon_noeud_au_reimport():
     # (exerce la branche d'alimentation du bouclage de cablage).
     assert relu_u1.pins['Vin-'] == 'GND'
     assert relu_u1.pins['GND1'] == 'GND'
+
+
+# [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (« j'ai appelé mon composant
+# Photorésistance dans ERetroDesign, mais après "Enregistrer comme pattern" il
+# redevient Résistance ») : `gui/tab_draw.py::_save_as_pattern` fait
+# generer_xml() -> lire_xml() sur le circuit dessiné avant d'ouvrir le wizard.
+# generer_xml() écrivait toujours le nom du CATALOGUE GÉNÉRIQUE dans <Name>
+# (ex. "Résistance", placeholder de forme pour tout type 'R' faute de dessin
+# dédié pour une photorésistance) -- jamais `comp.categorie` (le nom réel
+# donné par l'utilisateur) -- donc le nom réel était silencieusement écrasé à
+# chaque aller-retour, même sans jamais toucher au fichier sur disque.
+
+def test_generer_xml_preserve_la_categorie_reelle_au_reimport():
+    """Round-trip generer_xml -> lire_xml : `categorie` (nom réel, ex. donné
+    dans ERetroDesign) doit survivre, pas retomber sur le nom générique du
+    catalogue associé au type électrique brut."""
+    import os
+    import tempfile
+
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml, lire_xml
+
+    ldr = Composant(ref='X1', type='X', value='', pins={'1': 'N1', '2': 'N2'})
+    ldr.categorie = 'Photoresistance'
+
+    xml_texte = generer_xml([ldr])
+    assert '<Name>Photoresistance</Name>' in xml_texte, \
+        "le nom reel doit partir dans <Name>, pas le nom du catalogue generique"
+
+    with tempfile.NamedTemporaryFile('w', suffix='.xml', delete=False, encoding='utf-8') as f:
+        f.write(xml_texte)
+        chemin = f.name
+    try:
+        relus = lire_xml(chemin)
+    finally:
+        os.unlink(chemin)
+
+    relu = relus[0]
+    assert relu.categorie == 'Photoresistance', \
+        f"le nom reel a ete ecrase au reimport : categorie={relu.categorie!r}"
+
+
+def test_generer_xml_sans_categorie_retombe_sur_le_nom_du_catalogue():
+    """Non-regression : un composant SANS nom reel (categorie vide, cas de
+    tous les composants lus depuis un fichier ERetroDesign normal avant ce
+    correctif) continue de round-tripper via le nom du catalogue, comme
+    avant."""
+    from circuit_analyzer.composant import Composant
+    from circuit_analyzer.xml import generer_xml
+
+    r1 = Composant(ref='R1', type='R', value='10k', pins={'1': 'N1', '2': 'N2'})
+    xml_texte = generer_xml([r1])
+    assert '<Name>Résistance</Name>' in xml_texte
 
 
 def test_generer_xml_pinout_reel_survit_a_deux_cycles_export_import():

@@ -70,11 +70,14 @@ def test_montage_reconnu_plus_composant_isole_cas_mixte():
         securite) rejoint bien le groupe du montage (meme <GpId> que
         U1/R2/C1) plutot que de finir isole ou mal groupe ;
       - R3 (residu authentiquement isole, aucun net partage) N'EST PAS
-        aspire dans le groupe du montage et n'est PAS silencieusement
-        supprime de l'export (il obtient son propre <GpId>, dans le bloc
-        « Divers » generique de `_grouper_par_circuit` — un mecanisme
-        prexistant, hors perimetre de cette branche, qui regroupe tout
-        composant non classifie non rattachable par net).
+        aspire dans le groupe du montage, ET n'est PAS silencieusement
+        supprime de l'export -- il reste present, SANS GROUPE DU TOUT
+        (GpId 0/absent). [MODIF 2026-08-17] BUG TROUVE EN TESTANT (demande
+        utilisateur : « remove alll this bloc of diver like he desont put
+        it in anything just leaves it like that ») : `_grouper_par_circuit`
+        fabriquait auparavant un bloc "Divers" pour R3 (GpId non-nul) --
+        un inconnu authentiquement isole ne doit plus recevoir AUCUN
+        groupe, meme un groupe generique a lui tout seul.
     """
     composants = _montage_reconnu() + [
         Composant("R3", "R", {"1": "X1", "2": "X2"}, "1k"),
@@ -89,7 +92,11 @@ def test_montage_reconnu_plus_composant_isole_cas_mixte():
         for di in racine.findall(".//DataItem")
         if di.find("reference") is not None
     }
-    assert gpid_par_ref["R3"] not in (None, "0"), "R3 a disparu de l'export"
+    assert "R3" in gpid_par_ref, "R3 a disparu de l'export"
+    assert gpid_par_ref["R3"] in (None, "0"), (
+        "R3 (isole, aucun net partage) ne doit plus recevoir AUCUN groupe "
+        "(plus de bloc 'Divers' generique) — voir gpid=" + str(gpid_par_ref["R3"])
+    )
     assert gpid_par_ref["R1"] == gpid_par_ref["U1"] == gpid_par_ref["R2"] == gpid_par_ref["C1"], (
         "R1 (capte seulement par le catch-all avant filtrage) aurait du "
         "rejoindre le groupe de son propre montage"

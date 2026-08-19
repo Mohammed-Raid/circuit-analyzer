@@ -58,6 +58,38 @@ def test_reseau_branche_n_est_pas_une_chaine():
     assert not any(c.get("chaine") for c in plan["columns"])
 
 
+def test_pattern_sans_drawer_dedie_utilise_le_repli_generique():
+    """BUG TROUVÉ EN TESTANT (session gabarits, 2026-08-18) : un pattern
+    personnalisé (créé via le wizard, sans entrée dans _DRAWERS) tombait sur
+    un texte brut (nom + refs) dans _make_fig, jamais un vrai schéma câblé.
+    `drawer_fn = drawer_fn or _dessiner_generique` doit maintenant router ce
+    cas vers _dessiner_generique, qui dessine de VRAIS symboles (résistance,
+    diode…) reliés par un fil quand deux composants consécutifs partagent un
+    net — pas juste le nom du pattern en texte."""
+    result = {"circuit_type": "Snubber RC perso", "components": ["R1", "C1"]}
+    comp_info = {
+        "R1": {"type": "R", "value": "100", "pins": {"1": "IN", "2": "N1"}},
+        "C1": {"type": "C", "value": "10nF", "pins": {"1": "N1", "2": "GND"}},
+    }
+    fig = cv._make_fig(result, comp_info, drawer_fn=None)
+    ax = fig.axes[0]
+    textes = [t.get_text() for t in ax.texts]
+    # Le texte de repli affichait le nom du pattern en gros titre centré —
+    # absent si le schéma générique (symboles + fils) a bien été dessiné.
+    assert "Snubber RC perso" not in textes
+    # Les deux refs doivent apparaître comme libellés de symbole (via style_symbole).
+    assert "R1" in textes
+    assert "C1" in textes
+
+
+def test_pattern_sans_composants_ne_plante_pas():
+    """Repli générique avec une liste de composants vide (garde-fou) : ne
+    doit pas lever d'exception."""
+    result = {"circuit_type": "Vide", "components": []}
+    fig = cv._make_fig(result, {}, drawer_fn=None)
+    assert fig is not None
+
+
 def test_draw_sommateur_n_plus_un_boites_z():
     result = {
         "circuit_type": "Amplificateur sommateur (AOP)",

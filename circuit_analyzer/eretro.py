@@ -44,7 +44,18 @@ def normaliser_nom(nom: str) -> str:
 
 _PLAN_D = {'A': 'A', 'K': 'K', '1': 'A', '2': 'K',
            'ANODE': 'A', 'CATHODE': 'K', '+': 'A', '-': 'K'}
-_PLAN_Q = {'B': 'B', 'C': 'C', 'E': 'E'}
+_PLAN_Q = {'B': 'B', 'C': 'C', 'E': 'E', '1': 'B', '2': 'C', '3': 'E'}
+# [MODIF 2026-08-19] BUG TROUVÉ EN TESTANT (schéma bâti via le VRAI chemin
+# ERetroDesign, pas generer_xml) : « Transistor NPN.xml » réel porte Pname
+# ('B'/'C'/'E') ET Pnumber ('1'/'2'/'3') tous deux renseignés — lire_xml
+# préfère Pnumber (xml.py l.2092, vrai pour les passifs dont Pname est vide),
+# donc pnom lu vaut '1'/'2'/'3', absent de ce plan -> repli identité -> les
+# broches du schéma se retrouvent nommées '1'/'2'/'3' au lieu de B/C/E, comme
+# _PLAN_D le gérait déjà pour Diode/LED (repli numérique déjà présent
+# ci-dessus). Sans repli ici, aucune connexion réelle sur un transistor
+# n'était perdue au sens des NETS, mais les détecteurs qui lisent
+# comp.pins.get('B')/('C')/('E') par nom littéral ratent silencieusement le
+# composant.
 _PLAN_M = {'G': 'G', 'D': 'D', 'S': 'S'}
 
 # Table des noms de bibliothèque ERetroDesign → (type, plan de broches).

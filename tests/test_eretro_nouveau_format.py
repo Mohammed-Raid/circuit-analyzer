@@ -33,15 +33,36 @@ def _pin(num, refs):
             f"<Size>9</Size></DataPin>")
 
 
-def _item(nom, ref, val, pins, balise="DataItem"):
+def _couche_xml(top):
+    # [MODIF 2026-08-17] `top` optionnel (None/True/False) -> <Top>/<Bottom>.
+    # None = absent (dialecte ancien, non-regressif) ; sert a la fois pour
+    # <DataItem> et <Line>, qui portent tous les deux ces deux champs en
+    # enfants directs (voir doc de conception "coherence-couches").
+    if top is None:
+        return ""
+    t = "true" if top else "false"
+    b = "false" if top else "true"
+    return f"<Top>{t}</Top><Bottom>{b}</Bottom>"
+
+
+def _item(nom, ref, val, pins, balise="DataItem", top=None):
     return (f"<{balise}><Name>{nom}</Name><reference>{ref}</reference>"
             f"<value>{val}</value><datapin>{''.join(pins)}</datapin>"
-            f"<CtrIem><X>0</X><Y>0</Y></CtrIem><angle>0</angle></{balise}>")
+            f"<CtrIem><X>0</X><Y>0</Y></CtrIem><angle>0</angle>"
+            f"{_couche_xml(top)}</{balise}>")
 
 
-def _fil(idx, cf, cl):
+def _fil(idx, cf, cl, lp=None, top=None):
+    # [MODIF 2026-08-17] `lp` optionnel = liste de points (x, y) -> <LP>.
+    # Absent par defaut (non-regressif : les cas existants n'en ont pas
+    # besoin) ; necessaire pour les nouveaux cas via, dont le mecanisme de
+    # fusion est geometrique (voir doc de conception 2026-08-17).
+    lp_xml = ""
+    if lp:
+        pts = "".join(f"<PointF><X>{x}</X><Y>{y}</Y></PointF>" for x, y in lp)
+        lp_xml = f"<LP>{pts}</LP>"
     return (f"<Line><ID>{idx}</ID><CFirst>{cf}</CFirst>"
-            f"<CLast>{cl}</CLast></Line>")
+            f"<CLast>{cl}</CLast>{lp_xml}{_couche_xml(top)}</Line>")
 
 
 def _carte(items=(), composes=(), fils=(), textes=(), etiquettes=(), vias=()):
@@ -59,10 +80,10 @@ def _carte(items=(), composes=(), fils=(), textes=(), etiquettes=(), vias=()):
             f'</BoardSCH>')
 
 
-def _res(ref, val, i):
+def _res(ref, val, i, top=None):
     """Resistance a deux broches, refs de connexite indexees sur `i`."""
     return _item("R", ref, val,
-                 [_pin("1", [f"{i}_0_0_0"]), _pin("2", [f"{i}_1_0_0"])])
+                 [_pin("1", [f"{i}_0_0_0"]), _pin("2", [f"{i}_1_0_0"])], top=top)
 
 
 def _ecrire(tmp_path, nom, xml):
@@ -122,6 +143,35 @@ CAS = {
                textes=["Alimentation 24V", "<&>\"'"]),
         []),
 
+    # [MODIF 2026-08-17] Connectivite par via (chantier "connectivite-vias") :
+    # un fil dont un bout est VIDE (pas de reference, cote via) fusionne avec
+    # un autre fil qui touche le MEME via, par coincidence geometrique exacte
+    # entre le point <LP> du bout et <Via><Pos> -- jamais par <Net>.
+    "10_via_simple": (
+        _carte(
+            items=[_res("R1", "10k", 0), _res("R2", "22k", 1)],
+            fils=[_fil(0, "0_1_0_0", "", lp=[(0, 0), (50, 0)]),
+                  _fil(1, "", "1_0_0_0", lp=[(50, 0), (100, 0)])],
+            vias=[(50, "N1")]),
+        [[(0, "2"), (1, "1")]]),
+
+    "11_via_chaine": (
+        _carte(
+            items=[_res(f"R{i+1}", "10k", i) for i in range(3)],
+            fils=[_fil(0, "0_1_0_0", "", lp=[(0, 0), (50, 0)]),
+                  _fil(1, "1_0_0_0", "", lp=[(0, 0), (50, 0)]),
+                  _fil(2, "", "2_0_0_0", lp=[(50, 0), (100, 0)])],
+            vias=[(50, "N1")]),
+        [[(0, "2"), (1, "1"), (2, "1")]]),
+
+    # Garde-fou anti-regression : meme <Net> sur deux vias, mais AUCUN fil ne
+    # les relie -> pas de fusion entre eux (le mecanisme est geometrique, pas
+    # par nom -- voir doc de conception).
+    "12_deux_vias_meme_net_sans_fil": (
+        _carte(items=[_res("R1", "10k", 0), _res("R2", "22k", 1)],
+               vias=[(20, "N1"), (280, "N1")]),
+        []),
+
     "09_jonction_chaine": (
         _carte(
             items=[_res(f"R{i+1}", "10k", i) for i in range(4)],
@@ -179,3 +229,44 @@ def test_etiquette_baptise_le_net_meme_avec_des_id_de_fil_dupliques(tmp_path):
     comps = lire_xml(_ecrire(tmp_path, "etiquette_id0", xml))
     nets = {n for c in comps for n in (c.pins or {}).values()}
     assert "vout" in nets, f"etiquette non appliquee ; nets={sorted(nets)}"
+
+
+# [MODIF 2026-08-17] Chantier "coherence-couches" : un fil DIRECT (sans via)
+# qui relie deux composants sur des couches Top/Bottom differentes est une
+# impossibilite physique -- avertissement, jamais un blocage (la connexite
+# reste inchangee).
+
+def test_couches_coherentes_aucun_avertissement(tmp_path):
+    """Deux composants + fil, tous Top -> aucun avertissement de couches
+    (garde-fou anti-faux-positif, le cas normal doit rester silencieux)."""
+    xml = _carte(
+        items=[_res("R1", "10k", 0, top=True), _res("R2", "22k", 1, top=True)],
+        fils=[_fil(0, "0_1_0_0", "1_0_0_0", top=True)])
+    comps = lire_xml(_ecrire(tmp_path, "couches_ok", xml))
+    assert not any("couche" in w.lower() for w in comps.warnings), comps.warnings
+    assert _net(comps, 0, "2") == _net(comps, 1, "1")
+
+
+def test_couches_incoherentes_avertit_sans_bloquer(tmp_path):
+    """R1 (Top) -- fil direct (Top) -- R2 (Bottom), AUCUN via : impossible
+    physiquement -> avertissement present, MAIS le net reste unifie (on
+    avertit, on ne casse jamais la connexite deja lue)."""
+    xml = _carte(
+        items=[_res("R1", "10k", 0, top=True), _res("R2", "22k", 1, top=False)],
+        fils=[_fil(0, "0_1_0_0", "1_0_0_0", top=True)])
+    comps = lire_xml(_ecrire(tmp_path, "couches_ko", xml))
+    assert any("couche" in w.lower() for w in comps.warnings), comps.warnings
+    assert _net(comps, 0, "2") == _net(comps, 1, "1")
+
+
+def test_couches_incoherentes_via_aucun_avertissement(tmp_path):
+    """Meme R1 (Top) / R2 (Bottom), mais relies par un VIA (qui a le droit
+    de changer de couche, c'est son role) -> aucun avertissement."""
+    xml = _carte(
+        items=[_res("R1", "10k", 0, top=True), _res("R2", "22k", 1, top=False)],
+        fils=[_fil(0, "0_1_0_0", "", lp=[(0, 0), (50, 0)], top=True),
+              _fil(1, "", "1_0_0_0", lp=[(50, 0), (100, 0)], top=False)],
+        vias=[(50, "N1")])
+    comps = lire_xml(_ecrire(tmp_path, "couches_via", xml))
+    assert not any("couche" in w.lower() for w in comps.warnings), comps.warnings
+    assert _net(comps, 0, "2") == _net(comps, 1, "1")

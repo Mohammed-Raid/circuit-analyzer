@@ -352,8 +352,16 @@ class TabDraw:
                 parent=self.frame)
             return
 
+        # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (« je ne peux pas le faire
+        # directement depuis l'interface schéma ») : ce chemin ouvre déjà le VRAI
+        # PatternWizard sans passer par Analyser -- mais "categorie" (nom réel du
+        # composant, ex. "Photorésistance") manquait ici alors que gui/tab_analyze.py
+        # la fournit déjà -- la case « exiger précisément » (verrouillage AOP+
+        # photorésistance) restait donc invisible pour un pattern créé depuis
+        # l'éditeur de schéma, contrairement à un pattern créé depuis Analyser.
         comp_info = {
-            c.ref: {"type": c.type, "value": c.value, "pins": c.pins}
+            c.ref: {"type": c.type, "value": c.value, "pins": c.pins,
+                    "categorie": getattr(c, "categorie", "")}
             for c in composants
         }
         refs = list(comp_info.keys())

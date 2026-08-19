@@ -366,6 +366,48 @@ def test_recevoir_n_ecrase_pas_les_composants_du_collegue(onglet, tmp_path, monk
     assert temoin.exists(), "le composant du collegue a ete supprime"
 
 
+def test_recevoir_biblio_previent_la_palette_de_l_editeur(tmp_path, monkeypatch):
+    """BUG TROUVÉ EN TESTANT (« quand je fais update componant la majorite sont
+    affiches en symbole AOP, pas le vrai symbole ») : `_sauvegarder`, `_supprimer`
+    et `_importer_eretro` appellent tous `on_save()` pour que l'éditeur de schéma
+    reconstruise sa palette (`SchematicEditor._defs`, mis en cache) -- `_recevoir_biblio`
+    (le bouton « Recevoir la bibliothèque partagée », le chemin réellement emprunté
+    pour peupler la bibliothèque en masse) ne le faisait PAS : les types reçus
+    restaient invisibles pour l'éditeur, qui retombait sur le rendu générique par
+    type ('U' -> triangle AOP) au lieu du vrai contour importé."""
+    chemin = tmp_path / "component_library.json"
+    monkeypatch.setattr("gui.tab_components.chemin_bibliotheque", lambda: chemin)
+    boites = _Boites()
+    monkeypatch.setattr("gui.tab_components.messagebox", boites)
+    from gui.tab_components import TabComponents
+    try:
+        root = ctk.CTk()
+    except Exception:
+        pytest.skip("pas de display Tk")
+    root.withdraw()
+    appels = []
+    t = TabComponents(root, on_save=lambda: appels.append(1))
+    root.update_idletasks()
+
+    source = tmp_path / "LibShared"
+    source.mkdir()
+    (source / "MOSFET canal N.xml").write_text(
+        '<DataItem><Name>MOSFET canal N</Name>'
+        '<datasegment><DataSegment><Spoint><X>-40</X><Y>0</Y></Spoint>'
+        '<Epoint><X>40</X><Y>0</Y></Epoint></DataSegment></datasegment>'
+        '<datapin><DataPin><Pname>G</Pname><Pnumber>1</Pnumber>'
+        '<Pin><X>-40</X><Y>0</Y></Pin></DataPin>'
+        '<DataPin><Pname>D</Pname><Pnumber>2</Pnumber>'
+        '<Pin><X>40</X><Y>0</Y></Pin></DataPin></datapin></DataItem>',
+        encoding="utf-8")
+    monkeypatch.setattr("gui.tab_components.dossier_partage", lambda: str(source))
+
+    t._recevoir_biblio()
+    root.destroy()
+
+    assert appels, "on_save() jamais appelé après _recevoir_biblio -- palette de l'éditeur restée périmée"
+
+
 def test_envoyer_ne_renvoie_pas_les_composes_recus(onglet, tmp_path, monkeypatch):
     """Un composé reçu de CCLib ne doit pas repartir aplati dans Lib : côté
     collègue ça ferait un DOUBLON dans la palette, et la version riche

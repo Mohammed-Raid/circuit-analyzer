@@ -539,6 +539,35 @@ def test_high_side_mosfet_entree_a_gauche():
     assert in_x < vcc_x, "IN doit rester a gauche du drain/VCC (pas en miroir)"
 
 
+HIGH_SIDE_MOSFET = (
+    {"circuit_type": "MOSFET haute-tension (côté haut)",
+     "components": ["M1", "Rg"], "nodes": ["NG", "VCC", "NLOAD"]},
+    _ci(("M1", "M", "", {"G": "NG", "D": "VCC", "S": "NLOAD"}),
+        ("Rg", "R", "100", {"1": "NIN", "2": "NG"})),
+)
+
+
+def test_high_side_mosfet_accepte_le_contrat_de_chainage():
+    """@brief BUG TROUVE EN TESTANT (chaine capteur -> comparateur -> MOSFET
+    cote-haut, meme cause que _draw_relay_driver cf. son commentaire) :
+    `_dessiner_montage_a` appelle TOUS les `_DRAWERS[...]` de
+    `_MONTAGES_TRANSISTOR_TERMINAUX` (dont ce montage) avec
+    origin=/titre=/in_label=/out_label= des qu'un ilot le chaine apres un
+    autre etage -- l'ancienne signature `(d, result, ci)` sans ces 4 kwargs
+    ni valeur de retour levait `TypeError: unexpected keyword argument
+    'origin'`, jamais declenche avant car aucun schema canonique n'enchainait
+    un commutateur cote-haut apres un autre etage."""
+    res = _ancres(cv._draw_high_side_mosfet, *HIGH_SIDE_MOSFET, origin=(5, 0))
+    assert "in" in res and "out" in res and "title" in res
+    assert res["in"][0] < res["out"][0], "IN doit rester a gauche du montage"
+
+
+def test_high_side_mosfet_origine_decale_le_dessin():
+    a = _ancres(cv._draw_high_side_mosfet, *HIGH_SIDE_MOSFET, origin=(0, 0))
+    b = _ancres(cv._draw_high_side_mosfet, *HIGH_SIDE_MOSFET, origin=(10, 0))
+    assert round(b["in"][0] - a["in"][0], 3) == 10.0
+
+
 def test_commutation_mosfet_vcc_ne_chevauche_pas_charge():
     fig, _txts = _render_ilot_xml("tr_mosfet_commutation.xml")
     _assert_texts_do_not_overlap(fig, "VCC", "L1")

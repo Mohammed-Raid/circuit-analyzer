@@ -110,3 +110,58 @@ def test_matcher_loads_custom_patterns(tmp_path, monkeypatch):
     results = match_patterns(build_graph(comps))
     types = [r['circuit_type'] for r in results]
     assert 'Circuit test' in types
+
+
+def test_pattern_perso_qui_exige_type_x_ne_matche_jamais(tmp_path, monkeypatch):
+    """@brief BUG TROUVE EN TESTANT (demande utilisateur : un composant non
+    reconnu ne doit jamais etre regroupe/etiquette par un pattern perso --
+    'X' est le type "boite noire", jamais un vrai type electrique).
+
+    Reproduit le cas reel trouve dans custom_circuits.json ("Potentionmetre",
+    components=["X"]) : meme un composant SEUL, sans aucun autre composant,
+    ne doit JAMAIS matcher un pattern qui exige 'X' -- il doit rester non
+    classifie plutot que d'etre regroupe sous le nom du pattern perso.
+    """
+    import json
+    import sys
+    custom = [{'name': 'Potentionmetre', 'components': ['X'],
+               'conditions': ['Pas de transistor dans le circuit']}]
+    (tmp_path / 'custom_circuits.json').write_text(json.dumps(custom), encoding='utf-8')
+    monkeypatch.setattr(sys, 'frozen', True, raising=False)
+    monkeypatch.setattr(sys, 'executable', str(tmp_path / 'AnalyseurCircuits.exe'))
+    comps = [Component('U9', 'X', {'1': 'NET_A', '2': 'NET_B'})]
+    results = match_patterns(build_graph(comps))
+    types = [r['circuit_type'] for r in results]
+    assert 'Potentionmetre' not in types, (
+        f"le composant inconnu U9 a ete regroupe/etiquete a tort : {results}")
+
+
+def test_pattern_perso_type_x_avec_categorie_verrouillee_matche(tmp_path, monkeypatch):
+    """@brief BUG TROUVÉ EN TESTANT (« j'ai créé un pattern AOP + photorésistance
+    [verrou "exiger précisément" coché], enregistré comme pattern, réouvert le
+    même schéma dans Analyser -- il ne matche jamais »).
+
+    Le garde ci-dessus (test précédent) rejette à raison un 'X' NU (« n'importe
+    quel inconnu ») -- mais rejetait aussi, à tort, un 'X' dont la categorie est
+    VERROUILLÉE sur un nom précis (ex. "Photoresistance"), qui n'a rien de flou :
+    c'est un composant identifié par son nom réel, jamais par le catalogue
+    électrique faute de forme dédiée. Cf. `CustomCircuitPattern.match`."""
+    import json
+    import sys
+    custom = [{'name': 'AOP photoresistance', 'components': [
+                  {'type': 'U', 'categorie': 'AOP'},
+                  {'type': 'X', 'categorie': 'Photoresistance'}],
+               'conditions': []}]
+    (tmp_path / 'custom_circuits.json').write_text(json.dumps(custom), encoding='utf-8')
+    monkeypatch.setattr(sys, 'frozen', True, raising=False)
+    monkeypatch.setattr(sys, 'executable', str(tmp_path / 'AnalyseurCircuits.exe'))
+    comps = [
+        Component('U1', 'U', {'IN+': 'GND', 'IN-': 'N1', 'OUT': 'N2'}),
+        Component('X1', 'X', {'1': 'N1', '2': 'N2'}),
+    ]
+    comps[0].categorie = 'AOP'
+    comps[1].categorie = 'Photoresistance'
+    results = match_patterns(build_graph(comps))
+    types = [r['circuit_type'] for r in results]
+    assert 'AOP photoresistance' in types, (
+        f"un 'X' a categorie verrouillee doit matcher, resultats : {results}")

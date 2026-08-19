@@ -50,17 +50,27 @@ def test_pont_editeur_vers_suggestions():
 
 
 def test_comp_info_construit_depuis_composants():
-    """comp_info (ref → type/value/pins) tel que construit par _save_as_pattern."""
+    """comp_info (ref → type/value/pins/categorie) tel que construit par
+    _save_as_pattern.
+
+    [MODIF 2026-08-18] "categorie" ajouté au dict -- BUG TROUVÉ EN TESTANT
+    (« je ne peux pas le faire directement depuis l'interface schéma ») :
+    ce comp_info manquait "categorie" alors que tab_analyze.py la fournit
+    déjà, rendant la case « exiger précisément » (verrouillage AOP+
+    photorésistance) invisible pour un pattern créé depuis l'éditeur."""
     composants = _composants_rc()
+    composants[0].categorie = "Photorésistance"
 
     comp_info = {
-        c.ref: {"type": c.type, "value": c.value, "pins": c.pins}
+        c.ref: {"type": c.type, "value": c.value, "pins": c.pins,
+                "categorie": getattr(c, "categorie", "")}
         for c in composants
     }
     assert comp_info["R1"]["type"] == "R"
     assert comp_info["C1"]["type"] == "C"
     # Chaque composant a bien des broches nommées (clé pin → net).
     assert comp_info["R1"]["pins"]
+    assert comp_info["R1"]["categorie"] == "Photorésistance"
 
 
 def test_export_xml_preserve_puce_catalogue_headless():
@@ -198,3 +208,69 @@ def test_export_circuit_simple_reste_analysable(tab_draw):
     assert "GND" in {n.upper() for n in r_lu.pins.values()}
     # Le graphe se construit sans erreur (entrée du pipeline d'analyse).
     assert construire_graphe(comps) is not None
+
+
+def test_enregistrer_comme_pattern_propose_le_verrou_de_categorie(tab_draw, monkeypatch):
+    """BUG TROUVÉ EN TESTANT (« je ne peux pas le faire directement depuis
+    l'interface schéma ») : bout-en-bout RÉEL du bouton « Enregistrer comme
+    pattern » (pas Analyser) -- le PatternWizard qu'il ouvre doit proposer la
+    case « exiger précisément » pour un composant nommé, exactement comme
+    depuis Analyser."""
+    ed = tab_draw._editor
+    ed._place_type = "R"
+    ed._place_at(200, 200)   # R1, exporté avec <Name>Résistance</Name>
+
+    captes = {}
+    import gui.pattern_wizard as pattern_wizard_mod
+
+    class _FauxWizard:
+        def __init__(self, parent, graph, refs, comp_info, on_created=None):
+            captes["comp_info"] = comp_info
+    # `_save_as_pattern` fait `from gui.pattern_wizard import PatternWizard` EN
+    # LOCAL (dans la méthode) : on patche donc la classe à la SOURCE, pas le
+    # nom déjà importé dans gui.tab_draw (qui n'existe pas au niveau module).
+    monkeypatch.setattr(pattern_wizard_mod, "PatternWizard", _FauxWizard)
+
+    tab_draw._save_as_pattern()
+
+    assert "comp_info" in captes
+    assert captes["comp_info"]["R1"]["categorie"] == "Résistance"
+
+
+# ── Nom réel perdu à l'IMPORT dans l'éditeur (pas seulement à l'export) ─────
+# BUG TROUVÉ EN TESTANT (« j'ai appelé mon composant Photorésistance dans
+# ERetroDesign, mais après "Enregistrer comme pattern" il redevient
+# Résistance ») : le test ci-dessus place un R FRAIS depuis la palette (jamais
+# nommé -> "Résistance" du catalogue est le comportement CORRECT). Le bug
+# réel touche un composant IMPORTÉ depuis un XML existant (nom réel déjà
+# connu, ex. "Photoresistance") -- `CompInst` n'avait aucun champ pour ce nom,
+# donc il disparaissait dès `build_from_components`/`load_dict`, AVANT même
+# le premier export. Ce test couvre le chemin réel complet : import XML ->
+# éditeur -> "Enregistrer comme pattern" -> wizard.
+
+def test_enregistrer_comme_pattern_apres_import_conserve_le_nom_reel(
+        tab_draw, monkeypatch):
+    from circuit_analyzer.composant import Composant
+    from gui.schematic_io import build_from_components
+    import gui.pattern_wizard as pattern_wizard_mod
+
+    ldr = Composant(ref='X1', type='X', value='', pins={'1': 'N1', '2': 'N2'})
+    ldr.categorie = 'Photoresistance'
+
+    doc = build_from_components([ldr], tab_draw._editor._defs)
+    doc.pop("_report", None)
+    tab_draw._editor.load_dict(doc)
+
+    captes = {}
+
+    class _FauxWizard:
+        def __init__(self, parent, graph, refs, comp_info, on_created=None):
+            captes["comp_info"] = comp_info
+    monkeypatch.setattr(pattern_wizard_mod, "PatternWizard", _FauxWizard)
+
+    tab_draw._save_as_pattern()
+
+    assert "comp_info" in captes
+    assert captes["comp_info"]["X1"]["categorie"] == "Photoresistance", (
+        "le nom reel importe depuis le XML doit survivre a l'aller-retour "
+        "editeur, pas retomber sur le nom du catalogue generique")

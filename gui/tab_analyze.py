@@ -353,8 +353,13 @@ class TabAnalyze:
             self._btn_reseau.configure(state="normal")
             self._btn_imped.configure(state="normal")
             # Build comp_info dict for the schematic viewer
+            # [MODIF 2026-08-18] "categorie" (nom réel, ex. "Photorésistance") ajouté
+            # pour le wizard « Créer le pattern » -- distinguer un composant nommé
+            # d'un composant générique du même type électrique (R d'une photorésistance
+            # vs R d'une résistance ordinaire), cf. custom_circuits.loader.
             self._comp_info = {
-                c.ref: {"type": c.type, "value": c.value, "pins": c.pins}
+                c.ref: {"type": c.type, "value": c.value, "pins": c.pins,
+                        "categorie": getattr(c, "categorie", "")}
                 for c in comps
             }
             self._render_cards(results, unclassified)
@@ -679,11 +684,21 @@ class TabAnalyze:
             uc_card.pack(fill="x", padx=16, pady=(4, 16))
             wrap = ctk.CTkFrame(uc_card, fg_color="transparent")
             wrap.pack(fill="x", padx=14, pady=10)
+            # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (« ma photorésistance est lue
+            # comme R-résistance, je ne peux pas le voir/changer ») : cette liste
+            # n'affichait QUE la référence brute (ex. "R14") -- son type électrique
+            # (R) se voit dans le PRÉFIXE de la ref, mais le nom RÉEL capturé
+            # (Composant.categorie, ex. "Photoresistance") n'était affiché NULLE
+            # PART, donnant l'impression fausse que l'appli ne voit "qu'une
+            # résistance". Mesuré : le backend capture déjà le bon nom -- seul
+            # l'affichage manquait. Le badge montre maintenant les deux.
             for chunk in _chunks(unclassified, 8):
                 row = ctk.CTkFrame(wrap, fg_color="transparent")
                 row.pack(anchor="w", pady=2)
                 for ref in chunk:
-                    ctk.CTkLabel(row, text=ref,
+                    categorie = (self._comp_info.get(ref, {}) or {}).get("categorie", "")
+                    texte = f"{ref} · {categorie}" if categorie else ref
+                    ctk.CTkLabel(row, text=texte,
                                  font=ctk.CTkFont("Consolas", 11, "bold"),
                                  text_color="#fca5a5",
                                  fg_color="#7f1d1d",

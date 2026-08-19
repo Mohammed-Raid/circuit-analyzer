@@ -135,6 +135,51 @@ def test_sa_vraie_bibliotheque_se_charge():
         "ses noms de broches sont ceux de nos plans _TYPE_VERS_FORME"
 
 
+def _symbole_alias(tmp_path, nom, pins_pnumber_pname):
+    """@brief Symbole avec Pnumber != Pname (cas MOSFET/TL431 : broche brute
+    numérique, nom sémantique distinct) — `_symbole` ci-dessus les force égaux."""
+    dp = "".join(
+        f"<DataPin><Pname>{pname}</Pname><Pnumber>{pnum}</Pnumber>"
+        f"<Pin><X>0</X><Y>0</Y></Pin></DataPin>"
+        for pnum, pname in pins_pnumber_pname)
+    chemin = os.path.join(str(tmp_path), nom + ".xml")
+    with open(chemin, "w", encoding="utf-8") as f:
+        f.write(f'<?xml version="1.0" encoding="utf-8"?>'
+                f"<DataItem><Name>{nom}</Name>"
+                f"<datapolygon /><datasegment /><dataarc />"
+                f"<datapin>{dp}</datapin><typ>0</typ></DataItem>")
+    return chemin
+
+
+def test_plan_alias_relie_la_broche_brute_pnumber_au_nom_semantique_pname():
+    """BUG TROUVÉ EN TESTANT (session gabarits, 2026-08-18) : `lire_xml`
+    identifie une broche par Pnumber EN PRIORITÉ (pnum or pnom), alors que la
+    bibliothèque personnalisée (onglet Composants) ne retient que le nom
+    AFFICHÉ (Pname en priorité) — sur "MOSFET canal N" (Pnumber 1/2/3, Pname
+    G/D/S), un plan {"G":"G","D":"D","S":"S"} seul ne matche JAMAIS la broche
+    brute "1"/"2"/"3" que lire_xml cherche réellement. `plan_alias` doit
+    fournir le pont : broche brute -> nom sémantique."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        chemin = _symbole_alias(d, "MOSFET canal N",
+                                 [("1", "G"), ("2", "D"), ("3", "S")])
+        plan = eretro_symboles.plan_alias(chemin)
+    assert plan["1"] == "G" and plan["2"] == "D" and plan["3"] == "S"
+    assert plan["G"] == "G" and plan["D"] == "D" and plan["S"] == "S"
+
+
+def test_plan_alias_reste_identite_quand_pname_et_pnumber_coincident():
+    """Un symbole où Pname == Pnumber (la majorité de la bibliothèque, ex.
+    Résistance "1"/"2") n'a besoin d'aucun alias réel : le plan reste
+    l'identité pure, `plan.get(pnom, pnom)` côté appelant y retombe de toute
+    façon même sans cette entrée."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        chemin = _symbole_alias(d, "Truc", [("1", "1"), ("2", "2")])
+        plan = eretro_symboles.plan_alias(chemin)
+    assert plan == {"1": "1", "2": "2"}
+
+
 def test_ses_formes_ecrasent_les_notres_a_nom_egal(tmp_path, monkeypatch):
     """Decision du boss : SA geometrie fait foi sur les noms communs."""
     _symbole(tmp_path, "Résistance", {"1": (80, 0), "2": (-80, 0)}, segments=3)

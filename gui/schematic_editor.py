@@ -246,6 +246,17 @@ class CompInst:
     # main) : liste de primitives ou None. Purement ADDITIF au rendu -- ne
     # remplace jamais `pinout` (spec 2026-08-07).
     forme_primitives: list | None = None
+    # [MODIF 2026-08-18] BUG TROUVÉ EN TESTANT (« j'ai appelé mon composant
+    # Photorésistance dans ERetroDesign, mais après import dans l'éditeur puis
+    # "Enregistrer comme pattern" il redevient Résistance ») : `CompInst`
+    # n'avait aucun champ pour le nom RÉEL du composant (Composant.categorie,
+    # cf. circuit_analyzer/composant.py) -- seul `comp_type` (lettre de type
+    # électrique brute) survivait à l'import (`build_from_components`), donc
+    # même en corrigeant `generer_xml`/`exporter_composants`, il n'y avait
+    # plus rien de spécifique à repasser : le nom réel était déjà perdu à
+    # l'IMPORT, avant même le premier export. Purement ADDITIF (comme
+    # `forme_primitives` ci-dessus) : '' = comportement inchangé.
+    categorie: str = ''
 
 
 @dataclass
@@ -1857,7 +1868,8 @@ class SchematicEditor(tk.Frame):
                           pinout=({n: tuple(v) for n, v in po.items()}
                                   if po is not None else None),
                           forme_primitives=(_normaliser_primitives(fp)
-                                             if fp is not None else None))
+                                             if fp is not None else None),
+                          categorie=c.get("categorie", ""))
             new_comps[ci.id] = ci
             max_id = max(max_id, ci.id)
 
@@ -2000,7 +2012,8 @@ class SchematicEditor(tk.Frame):
             composants.append(Composant(ref=comp.ref, type=t, pins=broches,
                                         value=v or comp.value,
                                         primitives=primitives,
-                                        pinout=pinout))
+                                        pinout=pinout,
+                                        categorie=comp.categorie))
         return composants
 
     # ── Utilitaires ──────────────────────────────────────────────────────────
